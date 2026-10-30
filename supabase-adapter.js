@@ -2,9 +2,9 @@
    Actif seulement si config.js est renseigné. Fournit window.PILOTAGE_SB (stockage), window.PILOTAGE_USER (auteur) et window.PILOTAGE_RO (lecture seule). */
 (function(){
   const cfg = window.PILOTAGE_CONFIG || {};
-  (window.PILOTAGE_PROVIDERS = window.PILOTAGE_PROVIDERS || {}).supabase = {label:'Supabase (base en ligne)', available:()=>!!(cfg.url && cfg.anonKey && window.supabase), init:function(){
+  if(!cfg.url || !cfg.anonKey || !window.supabase){ console.info('Pilotage : mode local (Supabase non configuré)'); return; }
     const sb = window.supabase.createClient(cfg.url, cfg.anonKey, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
-  let me = null, ready = null, lastTs = null, PJ = null;
+  let me = null, ready = null, lastTs = null, PJ = null, store = null;
 
   const css = document.createElement('style');
   css.textContent = '#pgAuth{position:fixed;inset:0;z-index:99999;background:#2B2F33;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif}#pgAuth form,#pgAuth .box{background:#fff;border-top:6px solid #F2A900;border-radius:10px;padding:22px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}#pgAuth h2{margin:0;font-size:20px}#pgAuth input{padding:11px;border:1px solid #ccc;border-radius:6px;font-size:16px}#pgAuth button{padding:12px;border:0;border-radius:6px;background:#CC5F00;color:#fff;font-size:16px;font-weight:600}#pgAuth button.l{background:#eee;color:#222}#pgAuth .e{color:#B4432D;font-size:13px;min-height:16px}#pgAuth small{color:#666}';
@@ -52,7 +52,7 @@
   async function chooseProjet(){
     const today = new Date().toISOString().slice(0,10), glob = me.role==='admin';
     let projets = [], mem = {};
-    { const r = await sb.from('projets').select('id,nom').order('created_at'); projets = r.data||[]; }
+    { const r = await sb.from('projets').select('id,nom,hebergement').order('created_at'); projets = r.data||[]; }
     { const r = await sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif').eq('user_id', me.id); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
     projets = projets.filter(p=>glob || (mem[p.id] && mem[p.id].actif));
     if(!projets.length){
@@ -66,7 +66,7 @@
       await new Promise(()=>{ const d = screen('<div class="box"><h2>⌛ Accès expiré</h2><p>Votre accès au projet « '+esc(p0.nom)+' » a expiré le '+esc(m.valide_jusqu)+'. Contactez l’administrateur pour le prolonger.</p><button id="pgRe">Vérifier</button><button class="l" id="pgOut">Se déconnecter</button></div>'); d.querySelector('#pgRe').onclick = ()=>location.reload(); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); }; });
     }
     const m = mem[pr.id] || {role:'admin', fonctions:{}, valide_jusqu:null};
-    PJ = {id:pr.id, nom:pr.nom, role: glob ? 'admin' : m.role, fonctions: (glob || m.role==='admin') ? {} : (m.fonctions||{}), valide_jusqu: m.valide_jusqu||null, global:glob, projets:projets.filter(okP)};
+    PJ = {id:pr.id, nom:pr.nom, hebergement:pr.hebergement||null, role: glob ? 'admin' : m.role, fonctions: (glob || m.role==='admin') ? {} : (m.fonctions||{}), valide_jusqu: m.valide_jusqu||null, global:glob, projets:projets.filter(okP)};
     window.PILOTAGE_PROJET = PJ;
     window.PILOTAGE_ADM = adm; window.PILOTAGE_GENPW = genPw;
     window.pilotageSwitchProjet = id2=>{ try{ localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
@@ -76,9 +76,11 @@
     if(!session){ await loginUI(); ({data:{session}} = await sb.auth.getSession()); }
     await profile(session.user);
     await chooseProjet();
+    await openStore();
     close();
     window.PILOTAGE_USER = {id:me.id, nom:me.nom};
     if(PJ.role==='lecteur') window.PILOTAGE_RO = true;
+    if(store && PJ.role!=='lecteur' && store.probe){ store.probe().then(ok=>{ if(!ok){ window.PILOTAGE_RO = true; console.warn('Hébergement en lecture seule pour ce compte'); } }); }
     try{ if(typeof userChipRender==='function') userChipRender(); }catch(e){}
     startWatch(); addMenu();
     return db;
@@ -88,21 +90,55 @@
      Ici elles sont envoyées dans la table « media » de Supabase (et relues par les autres appareils). */
   async function sha(str){ const b = new TextEncoder().encode(str); const h = await crypto.subtle.digest('SHA-1', b); return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
   const toURL = blob => new Promise((res,rej)=>{ const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
-  window.PILOTAGE_BLOBS = {
-    async upload(blob){ const url = await toURL(blob), id = await sha(url);
-      const {error} = await sb.from('media').upsert({projet_id:PJ.id, id, data:url}, {onConflict:'projet_id,id', ignoreDuplicates:true}); if(error) throw error; return {id}; },
-    async fetch(id){ const {data, error} = await sb.from('media').select('data').eq('projet_id', PJ.id).eq('id', id).maybeSingle();
-      if(error || !data) return {ok:false}; const b = await (await fetch(data.data)).blob(); return {ok:true, blob:async()=>b}; }
+  /* Stockage des données du projet : par défaut la base de l'outil ; sinon le fournisseur choisi pour ce projet (SharePoint…). */
+  const supaStore = {
+    provider:'supabase',
+    db:{ doc(path){ return {
+      async get(){ const {data, error} = await sb.from('docs').select('data').eq('projet_id', PJ.id).eq('path', path).maybeSingle(); if(error) throw error; return {exists:!!data, data:()=>data.data}; },
+      async set(obj){ const {error} = await sb.from('docs').upsert({projet_id:PJ.id, path, data:obj}, {onConflict:'projet_id,path'}); if(error) throw error; },
+      async delete(){ const {error} = await sb.from('docs').delete().eq('projet_id', PJ.id).eq('path', path); if(error) throw error; } }; } },
+    blobs:{
+      async upload(blob){ const url = await toURL(blob), id = await sha(url);
+        const {error} = await sb.from('media').upsert({projet_id:PJ.id, id, data:url}, {onConflict:'projet_id,id', ignoreDuplicates:true}); if(error) throw error; return {id}; },
+      async fetch(id){ const {data, error} = await sb.from('media').select('data').eq('projet_id', PJ.id).eq('id', id).maybeSingle();
+        if(error || !data) return {ok:false}; const b = await (await fetch(data.data)).blob(); return {ok:true, blob:async()=>b}; } },
+    async list(){ const d = await sb.from('docs').select('path').eq('projet_id', PJ.id), m = await sb.from('media').select('id').eq('projet_id', PJ.id); return {docs:(d.data||[]).map(x=>x.path), media:(m.data||[]).map(x=>x.id)}; },
+    async mark(){ const {data} = await sb.from('docs').select('data,updated_by').eq('projet_id', PJ.id).eq('path','pilotage/meta').maybeSingle(); return data ? {mark:data.data&&data.data.ts, by:data.updated_by} : null; }
   };
+  const cur = ()=>store || supaStore;
+  window.PILOTAGE_BLOBS = { upload:b=>cur().blobs.upload(b), fetch:id=>cur().blobs.fetch(id) };
+  const db = { doc(path){ return cur().db.doc(path); } };
+  window.PILOTAGE_SUPA_STORE = supaStore;
 
-  const db = { doc(path){ return {
-    async get(){ const {data, error} = await sb.from('docs').select('data').eq('projet_id', PJ.id).eq('path', path).maybeSingle(); if(error) throw error; return {exists:!!data, data:()=>data.data}; },
-    async set(obj){ const {error} = await sb.from('docs').upsert({projet_id:PJ.id, path, data:obj}, {onConflict:'projet_id,path'}); if(error) throw error; },
-    async delete(){ const {error} = await sb.from('docs').delete().eq('projet_id', PJ.id).eq('path', path); if(error) throw error; }
-  }; } };
+  async function openStore(){
+    const h = PJ.hebergement, P = (window.PILOTAGE_PROVIDERS||{})[h&&h.provider];
+    if(!h) return;
+    for(;;){
+      try{
+        if(!P || !P.available()) throw new Error('Le fournisseur « '+h.provider+' » n’est pas disponible dans cette version de l’application.');
+        store = await P.open(h); window.PILOTAGE_HOST = store; window.PILOTAGE_HOST_CFG = h; return;
+      }catch(e){
+        await new Promise(res=>{ const d = screen('<div class="box"><h2>☁ Hébergement indisponible</h2><p>'+esc(e.message)+'</p><button id="pgRe">Réessayer</button>'+(PJ.role==='admin'?'<button class="l" id="pgBase">Revenir à la base de l’outil (admin)</button>':'')+'<button class="l" id="pgOut">Se déconnecter</button></div>');
+          d.querySelector('#pgRe').onclick = ()=>res(); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); };
+          const bb = d.querySelector('#pgBase'); if(bb) bb.onclick = async ()=>{ await sb.from('projets').update({hebergement:null}).eq('id', PJ.id); location.reload(); }; });
+      }
+    }
+  }
+  /* Changer d'hébergement : copie les données du projet vers le nouveau stockage (elles suivent), puis enregistre le choix. */
+  window.PILOTAGE_SET_HOST = async function(newHosting, onProgress){
+    const P = newHosting ? window.PILOTAGE_PROVIDERS[newHosting.provider] : null;
+    const to = newHosting ? await P.open(newHosting) : supaStore, from = cur();
+    const say = onProgress || (()=>{});
+    const L = await from.list(); let n = 0, tot = L.docs.length + L.media.length;
+    for(const path of L.docs){ const r = await from.db.doc(path).get(); if(r.exists) await to.db.doc(path).set(r.data()); say(++n, tot); }
+    for(const id of L.media){ const r = await from.blobs.fetch(id); if(r.ok){ const b = await r.blob(); const nid = (await to.blobs.upload(b)).id; if(nid!==id) console.warn('identifiant d’image différent', id, nid); } say(++n, tot); }
+    const {error} = await sb.from('projets').update({hebergement:newHosting||null}).eq('id', PJ.id); if(error) throw error;
+    return true;
+  };
 
   /* Collaboration : si un autre utilisateur a enregistré et que je n'ai rien en attente, je recharge pour récupérer ses modifications. */
   function startWatch(){
+    if(store){ const chk = async ()=>{ try{ const m = await store.mark(); if(!m) return; if(lastTs===null){ lastTs = m.mark; return; } if(m.mark!==lastTs){ lastTs = m.mark; if(m.by!==store.userId){ let dirty = false; try{ dirty = localStorage.getItem('pilotage_dirty')==='1'; }catch(e){} if(!dirty && document.visibilityState==='visible') location.reload(); } } }catch(e){} }; chk(); setInterval(chk, 20000); return; }
     const check = async ()=>{
       try{
         const {data} = await sb.from('docs').select('data,updated_by').eq('projet_id', PJ.id).eq('path','pilotage/meta').maybeSingle(); if(!data) return;
@@ -158,5 +194,4 @@
 
   window.PILOTAGE_SB = ()=> (ready = ready || ensure());
   window.pilotageLogout = async ()=>{ await sb.auth.signOut(); location.reload(); };
-}};
 })();

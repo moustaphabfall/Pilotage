@@ -89,7 +89,7 @@ body.apcx-on #rtFloat{transition:opacity .25s}
 #rtFloat.folded .rf-h{border-radius:5px}
 #rtFloat .rf-h{cursor:pointer}
 #baseDerogPage{display:none!important}
-</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script>window.OCR_LOCAL="ocr/";</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="vendor/msal-browser.min.js"></script><script src="supabase-adapter.js"></script><script src="sharepoint-adapter.js"></script><script src="pilotage-core.js"></script></head><body>
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script>window.OCR_LOCAL="ocr/";</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="vendor/msal-browser.min.js"></script><script src="supabase-adapter.js"></script><script src="sharepoint-adapter.js"></script></head><body>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -15258,7 +15258,6 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
       +(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')
       +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')
       +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div>';
-    if(p.sharepoint&&p.role==='admin'){ return renderSP(w,head); }
     if(p.role!=='admin'){
       const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
       w.innerHTML=head+'<div class="card">Fonctionnalités désactivées pour vous : '+(off.length?off.map(esc).join(', '):'aucune')+'</div>';
@@ -15268,23 +15267,11 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     try{ cache=await adm({action:'p_members'}); }catch(e){ w.innerHTML=head+'<div class="card ko">'+esc(e.message)+'</div>'; bindHead(w); return; }
     draw();
   }
-  async function renderSP(w,head){
-    const S=window.PILOTAGE_SP; headHtml=head; let list=[], err='';
-    const paint=()=>{
-      w.innerHTML=head+'<h3>👥 Membres du projet</h3><div class="card"><small>Le projet est hébergé dans votre dossier SharePoint ; les membres partagent ce dossier. Lecture = consulter, Écriture = saisir et modifier.</small><table><tr><th>Personne</th><th>Droit</th><th></th></tr>'
-        +list.map(m=>'<tr data-id="'+esc(m.id)+'"><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+'</small></td><td>'+(m.role==='admin'||m.herite?'<span class="ok">'+(m.role==='admin'?'Administrateur':'Hérité du site')+'</span>':'<select data-r><option value="lecteur"'+(m.role==='lecteur'?' selected':'')+'>Lecture</option><option value="editeur"'+(m.role==='editeur'?' selected':'')+'>Écriture / modification</option></select>')+'</td><td>'+(m.role==='admin'||m.herite?'':'<button class="d" data-rm>Retirer</button>')+'</td></tr>').join('')+'</table></div>'
-        +'<h3>➕ Ajouter une personne</h3><div class="card"><div class="row"><input id="spE" type="email" placeholder="Adresse e-mail Microsoft 365"><select id="spR"><option value="editeur">Écriture / modification</option><option value="lecteur">Lecture</option></select><button class="p" id="spA">Inviter</button></div><small>Une invitation est envoyée par Microsoft ; la personne se connecte à l’application avec son compte et voit le projet dans « Projets partagés avec vous ».</small><div class="msg" id="pgMsg">'+esc(err)+'</div></div>';
-      bindHead(w);
-      const msg=(t,e)=>{ const m=w.querySelector('#pgMsg'); m.textContent=t; m.style.color=e?'#B4432D':'#2a7a3b'; };
-      const reload=async()=>{ try{ list=await S.members(); err=''; }catch(e){ err=e.message; } paint(); };
-      w.querySelector('#spA').onclick=async()=>{ const em=w.querySelector('#spE').value.trim(); if(!em) return; try{ await S.invite(em,w.querySelector('#spR').value); await reload(); w.querySelector('#pgMsg').textContent='Invitation envoyée à '+em; w.querySelector('#pgMsg').style.color='#2a7a3b'; }catch(e){ msg(e.message,true); } };
-      w.querySelectorAll('tr[data-id]').forEach(tr=>{ const id=tr.dataset.id, sel=tr.querySelector('[data-r]'), rm=tr.querySelector('[data-rm]');
-        if(sel) sel.onchange=async()=>{ try{ await S.setRole(id,sel.value); msg('Droit enregistré'); }catch(e){ msg(e.message,true); } };
-        if(rm) rm.onclick=async()=>{ if(!confirm('Retirer cet accès ?')) return; try{ await S.remove(id); await reload(); }catch(e){ msg(e.message,true); } }; });
-    };
-    w.innerHTML=head+'<div class="msg">Chargement…</div>'; bindHead(w);
-    try{ list=await S.members(); }catch(e){ err=e.message; } paint();
-  }
+  /* Synchronise les droits chez l'hébergeur (lecture / écriture) avec les rôles de l'outil. Sans effet si le projet est hébergé dans la base de l'outil. */
+  async function hostSync(kind,email,role){ const S=window.PILOTAGE_HOST; if(!S||!S.invite||!email) return; try{
+    if(kind==='add') await S.invite(email,role==='lecteur'?'lecteur':'editeur');
+    else { const mm=(await S.members()).find(x=>x.email===String(email).toLowerCase()&&!x.herite&&x.role!=='admin'); if(mm){ if(kind==='role') await S.setRole(mm.id,role==='lecteur'?'lecteur':'editeur'); else if(kind==='remove') await S.remove(mm.id); } }
+  }catch(e){ const m=document.getElementById('pgMsg'); if(m){ m.textContent='Droits chez l’hébergeur non mis à jour : '+e.message; m.style.color='#B4432D'; } } }
   function bindHead(w){
     const s=w.querySelector('#pgSw'); if(s) s.onchange=()=>window.pilotageSwitchProjet(s.value);
     const r=w.querySelector('#pgRen'); if(r) r.onclick=async()=>{ const v=prompt('Nom du projet :',PJ().nom); if(v===null||!v.trim()) return; try{ await adm({action:'p_projet_rename',nom:v.trim()}); PJ().nom=v.trim(); if(state.projet){ state.projet.nom=v.trim(); persist&&persist(); } render(); }catch(e){ alert(e.message); } };
@@ -15307,6 +15294,10 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
       +'<tr data-fr="'+m.user_id+'" '+(openF===m.user_id?'':'hidden')+'><td colspan="5">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
       +'<tr data-pp="'+m.user_id+'" hidden><td colspan="5"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')
       +'</table></div>');
+    { const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
+      body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
+        +'<div class="row"><select id="hP"><option value="">Base de l’outil (par défaut)</option>'+Object.keys(PR).map(k=>'<option value="'+k+'"'+(h&&h.provider===k?' selected':'')+(PR[k].available()?'':' disabled')+'>'+esc(PR[k].label)+(PR[k].available()?'':' (non configuré)')+'</option>').join('')+'</select><button class="p" id="hGo">Choisir / changer l’hébergement</button></div>'
+        +'<small>Le client (administrateur du projet) autorise l’hébergement avec son propre compte. En tant qu’administrateur de l’outil, vous pouvez le faire à sa place. Les données existantes sont copiées vers le nouvel hébergement, et les membres du projet y sont invités automatiquement.</small><div class="msg" id="hMsg"></div></div>'); }
     body.push('<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><input id="nP" value="'+esc(window.PILOTAGE_GENPW())+'"><select id="nR"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du projet</option></select></div>'
       +'<details><summary>Fonctionnalités accordées (tout activé par défaut)</summary>'+matrix('n',{})+'</details>'
       +'<div class="row"><input type="number" min="0" step="any" id="nM" placeholder="Montant" style="width:110px"><input id="nRf" placeholder="Référence du paiement"><label><input type="checkbox" id="nV"> paiement reçu et validé</label></div>'
@@ -15322,18 +15313,24 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     w.querySelectorAll('[data-prolong]').forEach(b=>b.onclick=()=>{ const r=b.closest('.row'), mt=r.querySelector('[data-mt]').value; run(()=>adm({action:'p_prolong',user_id:b.dataset.prolong,paiement:{valide:true,montant:mt?Number(mt):null}})); });
     w.querySelectorAll('[data-lapse]').forEach(b=>b.onclick=()=>run(()=>adm({action:'p_expire',user_id:b.dataset.lapse})));
     w.querySelectorAll('tr[data-u]').forEach(tr=>{ const id=tr.dataset.u, fr=w.querySelector('tr[data-fr="'+id+'"]'), pp=w.querySelector('tr[data-pp="'+id+'"]');
-      tr.querySelector('[data-role]').onchange=e=>run(()=>adm({action:'p_update',user_id:id,role:e.target.value}));
+      tr.querySelector('[data-role]').onchange=e=>run(async()=>{ await adm({action:'p_update',user_id:id,role:e.target.value}); const m=cache.members.find(x=>x.user_id===id); hostSync('role',m&&m.email,e.target.value); });
       tr.querySelector('[data-act]').onchange=e=>run(()=>adm({action:'p_update',user_id:id,actif:e.target.checked}));
       const fn=tr.querySelector('[data-fn]'); if(fn) fn.onclick=()=>{ openF=openF===id?null:id; fr.hidden=openF!==id; };
       const fs=fr.querySelector('[data-fsave]'); if(fs) fs.onclick=()=>run(async()=>{ await adm({action:'p_update',user_id:id,fonctions:readMatrix(fr)}); msg('Fonctionnalités enregistrées'); });
       tr.querySelector('[data-rp]').onclick=()=>{ pp.hidden=!pp.hidden; };
       const pw=tr.querySelector('[data-pw]'); if(pw) pw.onclick=async()=>{ const m=cache.members.find(x=>x.user_id===id), np=window.PILOTAGE_GENPW(); try{ await adm({action:'p_password',user_id:id,password:np}); cred='Nouveau mot de passe de '+m.email+' : '+np; draw(); }catch(e){ msg(e.message,true); } };
-      const rm=tr.querySelector('[data-rm]'); if(rm) rm.onclick=()=>{ const m=cache.members.find(x=>x.user_id===id); if(confirm('Retirer l’accès de '+(m.nom||m.email)+' à ce projet ?')) run(()=>adm({action:'p_remove',user_id:id})); };
+      const rm=tr.querySelector('[data-rm]'); if(rm) rm.onclick=()=>{ const m=cache.members.find(x=>x.user_id===id); if(confirm('Retirer l’accès de '+(m.nom||m.email)+' à ce projet ?')) run(async()=>{ await adm({action:'p_remove',user_id:id}); hostSync('remove',m.email); }); };
     });
+    const hg=w.querySelector('#hGo'); if(hg) hg.onclick=async()=>{ const k=w.querySelector('#hP').value, hm=w.querySelector('#hMsg'), say=(t,e)=>{ hm.textContent=t; hm.style.color=e?'#B4432D':'#2a7a3b'; };
+      try{ let nh=null; if(k){ nh=await window.PILOTAGE_PROVIDERS[k].setup(PJ().nom); if(!nh){ say('Annulé'); return; } }
+        say('Copie des données…'); await window.PILOTAGE_SET_HOST(nh,(n,t)=>say('Copie des données : '+n+'/'+t));
+        if(nh){ try{ const S=await window.PILOTAGE_PROVIDERS[nh.provider].open(nh); for(const m of cache.members){ if(m.moi||!m.email) continue; try{ await S.invite(m.email,m.role==='lecteur'?'lecteur':'editeur'); }catch(e){} } }catch(e){} }
+        say('Hébergement enregistré. Rechargement…'); setTimeout(()=>location.reload(),900); }catch(e){ say(e.message,true); } };
     const v=w.querySelector('#nV'), c=w.querySelector('#nC'); if(v) v.onchange=()=>{ c.disabled=!v.checked; };
     if(c) c.onclick=()=>{ const g=id=>w.querySelector(id).value.trim(); const email=g('#nE'), pw=g('#nP'), nom=g('#nN');
       const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details'));
       run(async()=>{ const r=await adm({action:'p_create',nom,email,password:pw,role:g('#nR'),fonctions:fonc,paiement:{valide:true,montant:mt?Number(mt):null,reference:g('#nRf')||null}});
+        hostSync('add',email,g('#nR'));
         cred='Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nProjet : '+PJ().nom+'\nIdentifiant : '+email+(r.existant?'\n(compte existant : mot de passe inchangé)':'\nMot de passe : '+pw)+'\nValable jusqu’au '+fmt(r.valide_jusqu); }); };
   }
 
@@ -15344,7 +15341,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     if(p){
       try{ if(!state.projet||state.projet.nom!==p.nom||state.projet.id!==p.id){ state.projet=Object.assign({},state.projet||{},{id:p.id,nom:p.nom}); if(typeof persist==='function') persist(); if(window.projChipRefresh) projChipRefresh(); } }catch(e){}
       apply();
-      if(p.role==='admin'&&!p.sharepoint&&window.PILOTAGE_ADM){ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); setInterval(()=>{ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); },300000); }
+      if(p.role==='admin'&&window.PILOTAGE_ADM){ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); setInterval(()=>{ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); },300000); }
       const cur=document.querySelector('.page.active'); if(cur&&cur.id!=='page-dashboard'&&cur.id.startsWith('page-')&&!pgCan(cur.id.slice(5))) showPage('dashboard');
       return;
     }

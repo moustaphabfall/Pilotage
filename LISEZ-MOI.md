@@ -10,9 +10,7 @@
 
 Rôles : administrateur (tout + accès), éditeur (saisit), lecteur (consulte).
 
-## Hébergements (fournisseurs)
-`pilotage-core.js` choisit l'hébergement ; chaque fournisseur est un fichier `*-adapter.js` qui s'enregistre dans `window.PILOTAGE_PROVIDERS`.
-- **Supabase** : actif si `url` et `anonKey` sont dans `config.js` (gestion des accès, rôles, fonctionnalités, paiement mensuel dans la page « Projet »).
-- **Microsoft 365 / SharePoint** : actif si `msClientId` est renseigné. Un projet = un dossier `Pilotage/<projet>` d'un site SharePoint ; ses membres partagent ce dossier (droits lecture / écriture donnés par l'administrateur du projet dans la page « Projet »).
-  Mise en place unique : Entra ID → Inscriptions d'applications → Nouvelle → « Application monopage (SPA) », URI de redirection = adresse de l'application ; autorisations Microsoft Graph déléguées : User.Read, Files.ReadWrite.All, Sites.ReadWrite.All (consentement d'un administrateur du tenant) ; coller l'ID dans `config.js`.
-- Autres fournisseurs : ajouter un fichier qui expose `{label, available(), init()}` et définit `PILOTAGE_SB`, `PILOTAGE_BLOBS`, `PILOTAGE_USER`, `PILOTAGE_PROJET`.
+## Administration et hébergement des données (deux choses séparées)
+- **Administration** (comptes, projets, rôles, fonctionnalités, paiement mensuel) : toujours dans l'annuaire de l'outil (Supabase), quel que soit l'hébergement. Page « Projet ».
+- **Hébergement des données** de chaque projet : rubrique « Hébergement des données » de la page Projet. Par défaut la base de l'outil ; sinon un fournisseur (fichier `*-adapter.js` enregistré dans `window.PILOTAGE_PROVIDERS` avec `{label, available(), setup(), open()}`). Le client (administrateur du projet) autorise avec son compte, ou l'administrateur de l'outil le fait à sa place. Les données existantes sont copiées vers le nouvel hébergement et les membres y sont invités (lecture / écriture) automatiquement.
+- **Microsoft 365 / SharePoint** : actif si `msClientId` est renseigné dans `config.js`. Inscription unique : Entra ID → Inscriptions d'applications → Nouvelle → « Application monopage (SPA) », URI de redirection = adresse de l'application ; autorisations Microsoft Graph déléguées User.Read, Files.ReadWrite.All, Sites.ReadWrite.All (consentement d'un administrateur du tenant).
