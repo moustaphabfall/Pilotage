@@ -3,7 +3,9 @@
 (function(){
   const cfg = window.PILOTAGE_CONFIG || {};
   if(!cfg.url || !cfg.anonKey || !window.supabase){ console.info('Pilotage : mode local (Supabase non configuré)'); return; }
-    const sb = window.supabase.createClient(cfg.url, cfg.anonKey, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
+    /* lien reçu par e-mail (invitation, réinitialisation) : repéré avant que la bibliothèque n'efface l'adresse */
+  const RET = /[#&?]type=(invite|recovery|signup|magiclink)/.exec(location.hash+location.search);
+  const sb = window.supabase.createClient(cfg.url, cfg.anonKey, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
   let me = null, ready = null, lastTs = null, PJ = null, store = null;
 
   const css = document.createElement('style');
@@ -30,8 +32,11 @@
           <input name="email" type="email" placeholder="E-mail" required autocomplete="email"><input name="pw" type="password" placeholder="Mot de passe (8 caractères min.)" minlength="8" required autocomplete="${mode==='in'?'current-password':'new-password'}">
           ${mode==='in'&&social.length?social.map(k=>'<button type="button" class="l" data-oa="'+k+'">'+SOCIAL[k]+'</button>').join('')+'<small style="text-align:center">ou avec votre identifiant :</small>':''}
           <div class="e">${err||''}</div><button type="submit">${mode==='in'?'Se connecter':'Créer mon accès'}</button>
+          ${mode==='in'?'<button type="button" class="l" id="pgFg">Mot de passe oublié ?</button>':''}
           <button type="button" class="l" id="pgSw">${mode==='in'?'Première fois ? Créer mon accès':'J’ai déjà un accès'}</button></form>`);
         d.querySelectorAll('[data-oa]').forEach(b=>b.onclick = async ()=>{ const {error} = await sb.auth.signInWithOAuth({provider:b.dataset.oa, options:{redirectTo:location.origin+location.pathname, scopes:b.dataset.oa==='azure'?'email':undefined}}); if(error) draw(error.message); });
+        const fg = d.querySelector('#pgFg'); if(fg) fg.onclick = async ()=>{ const em = (d.querySelector('input[name=email]').value||'').trim(); if(!em){ draw('Saisissez votre e-mail ci-dessus, puis cliquez sur « Mot de passe oublié ».'); return; }
+          const {error} = await sb.auth.resetPasswordForEmail(em, {redirectTo:location.origin+location.pathname}); draw(error?error.message:'Si cette adresse a un accès, un e-mail vient d’être envoyé : cliquez sur le lien pour choisir un nouveau mot de passe.'); };
         d.querySelector('#pgSw').onclick = ()=>{ mode = mode==='in'?'up':'in'; draw(); };
         d.querySelector('form').onsubmit = async ev=>{
           ev.preventDefault(); const f = new FormData(ev.target), email = f.get('email'), pw = f.get('pw');
@@ -46,6 +51,21 @@
     });
   }
 
+  /* arrivée par le lien de l'e-mail : l'adresse est ainsi vérifiée ; la personne choisit son mot de passe */
+  function passwordUI(){
+    return new Promise(res=>{
+      const draw = err=>{
+        const d = screen('<form><h2>🔐 Choisissez votre mot de passe</h2><small>Votre adresse e-mail est vérifiée. Choisissez maintenant votre mot de passe (8 caractères minimum).</small>'
+          +'<input name="p1" type="password" placeholder="Nouveau mot de passe" minlength="8" required autocomplete="new-password"><input name="p2" type="password" placeholder="Confirmer le mot de passe" minlength="8" required autocomplete="new-password"><div class="e">'+(err||'')+'</div><button type="submit">Enregistrer et entrer</button></form>');
+        d.querySelector('form').onsubmit = async ev=>{ ev.preventDefault(); const f = new FormData(ev.target), a = f.get('p1'), b = f.get('p2');
+          if(a!==b){ draw('Les deux mots de passe ne sont pas identiques.'); return; }
+          const {error} = await sb.auth.updateUser({password:a}); if(error){ draw(error.message); return; }
+          try{ history.replaceState(null,'',location.pathname); }catch(e){}
+          res(); };
+      };
+      draw();
+    });
+  }
   async function profile(user){
     for(;;){
       const {data, error} = await sb.from('profiles').select('nom,role,approuve').eq('id', user.id).maybeSingle();
@@ -84,6 +104,7 @@
   async function ensure(){
     let {data:{session}} = await sb.auth.getSession();
     if(!session){ await loginUI(); ({data:{session}} = await sb.auth.getSession()); }
+    if(RET && /invite|recovery/.test(RET[1])) await passwordUI();
     await profile(session.user);
     await chooseProjet();
     await openStore();

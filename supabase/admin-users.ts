@@ -94,11 +94,12 @@ Deno.serve(async (req) => {
       const pm = new Map((ps || []).map((p) => [p.id, p.nom]));
       const { data: us } = await admin.auth.admin.listUsers({ perPage: 500 });
       const em = new Map((us?.users || []).map((u) => [u.id, u.email]));
+      const cf = new Map((us?.users || []).map((u) => [u.id, !!u.email_confirmed_at]));
       const { data: pay } = await admin.from('projet_paiements').select('user_id,valide_le,du,au,montant,reference').eq('projet_id', pid).order('valide_le', { ascending: false });
       const { data: nt } = await admin.from('projet_notifs').select('id,user_id,type,echeance,lu,traite').eq('projet_id', pid).eq('traite', false).order('echeance');
       return J({
         today,
-        members: (ms || []).map((m) => ({ ...m, nom: pm.get(m.user_id) || '', email: em.get(m.user_id) || '', moi: m.user_id === user.id, dernier_paiement: (pay || []).find((p) => p.user_id === m.user_id) || null })),
+        members: (ms || []).map((m) => ({ ...m, nom: pm.get(m.user_id) || '', email: em.get(m.user_id) || '', confirme: cf.get(m.user_id) !== false, moi: m.user_id === user.id, dernier_paiement: (pay || []).find((p) => p.user_id === m.user_id) || null })),
         notifs: (nt || []).map((n) => ({ ...n, nom: pm.get(n.user_id) || '', email: em.get(n.user_id) || '' })),
       });
     }
@@ -111,7 +112,12 @@ Deno.serve(async (req) => {
       const { data: us } = await admin.auth.admin.listUsers({ perPage: 500 });
       const ex = us?.users.find((u) => (u.email || '').toLowerCase() === email);
       if (ex) { uid = ex.id; }
-      else {
+      else if (b.invite === true) {
+        const { data, error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: b.nom || email } });
+        if (error) return J({ error: 'Invitation non envoyée : ' + error.message }, 400);
+        uid = data.user!.id;
+        await admin.from('profiles').upsert({ id: uid, nom: b.nom || email, role: 'editeur', approuve: true });
+      } else {
         if (password.length < 8) return J({ error: 'Mot de passe : 8 caractères min.' }, 400);
         const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { nom: b.nom || email } });
         if (error) return J({ error: error.message }, 400);
@@ -124,7 +130,17 @@ Deno.serve(async (req) => {
       const { error: e1 } = await admin.from('projet_membres').insert({ projet_id: pid, user_id: uid, role, fonctions: b.fonctions || {}, valide_jusqu: au, actif: true });
       if (e1) return J({ error: e1.message }, 400);
       await admin.from('projet_paiements').insert({ projet_id: pid, user_id: uid, valide_par: user.id, du: today, au, montant: b.paiement.montant ?? null, reference: b.paiement.reference ?? null });
-      return J({ ok: true, id: uid, valide_jusqu: au, existant: !!ex });
+      return J({ ok: true, id: uid, valide_jusqu: au, existant: !!ex, invitation: b.invite === true && !ex });
+    }
+    if (b.action === 'p_resend') {
+      const { data: m } = await admin.from('projet_membres').select('user_id').eq('projet_id', pid).eq('user_id', b.user_id).maybeSingle();
+      if (!m) return J({ error: 'Membre introuvable' }, 404);
+      const { data: gu, error: ge } = await admin.auth.admin.getUserById(b.user_id);
+      if (ge || !gu?.user?.email) return J({ error: 'Utilisateur introuvable' }, 404);
+      if (gu.user.email_confirmed_at) return J({ error: 'Ce compte est déjà activé : la personne peut utiliser « Mot de passe oublié » sur l’écran de connexion.' }, 400);
+      const { error } = await admin.auth.admin.inviteUserByEmail(gu.user.email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: gu.user.user_metadata?.nom || gu.user.email } });
+      if (error) return J({ error: 'Invitation non renvoyée : ' + error.message }, 400);
+      return J({ ok: true });
     }
     if (b.action === 'p_update') {
       const patch: Record<string, unknown> = {};
