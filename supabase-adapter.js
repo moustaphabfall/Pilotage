@@ -60,58 +60,20 @@
     return db;
   }
 
-  /* Images (photos, plans) : stockées à part dans la table « media » ; le document principal ne garde qu'une référence légère.
-     Au chargement, le document arrive tout de suite (images remplacées par un pixel), puis les images arrivent en arrière-plan. */
-  const PH = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=#m=', MIN = 3000, known = new Set(), cache = {};
+  /* Images (photos, plans) : l'artefact les garde en local (IndexedDB) et ne met dans le document que des références « idb:… ».
+     Ici elles sont envoyées dans la table « media » de Supabase (et relues par les autres appareils). */
   async function sha(str){ const b = new TextEncoder().encode(str); const h = await crypto.subtle.digest('SHA-1', b); return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
-  async function extract(node, out){
-    if(typeof node === 'string'){
-      if(node.startsWith(PH)) return 'media:' + node.slice(PH.length);
-      if(node.length > MIN && node.startsWith('data:')){ const id = await sha(node); if(!known.has(id)) out[id] = node; cache[id] = node; return 'media:' + id; }
-      return node;
-    }
-    if(Array.isArray(node)){ const r = []; for(const x of node) r.push(await extract(x, out)); return r; }
-    if(node && typeof node === 'object'){ const r = {}; for(const k of Object.keys(node)) r[k] = await extract(node[k], out); return r; }
-    return node;
-  }
-  async function pushMedia(out){
-    const ids = Object.keys(out); let batch = [], size = 0;
-    const flush = async ()=>{ if(!batch.length) return; const {error} = await sb.from('media').upsert(batch, {onConflict:'id', ignoreDuplicates:true}); if(error) throw error; batch.forEach(r=>known.add(r.id)); batch = []; size = 0; };
-    for(const id of ids){ batch.push({id, data:out[id]}); size += out[id].length; if(size > 1500000) await flush(); }
-    await flush();
-  }
-  function lighten(node, refs){
-    if(typeof node === 'string'){ if(node.startsWith('media:')){ const id = node.slice(6); refs.add(id); known.add(id); return cache[id] || (PH + id); } return node; }
-    if(Array.isArray(node)) return node.map(x=>lighten(x, refs));
-    if(node && typeof node === 'object'){ const r = {}; for(const k of Object.keys(node)) r[k] = lighten(node[k], refs); return r; }
-    return node;
-  }
-  function patch(node){ let n = 0;
-    const walk = o=>{ if(!o || typeof o !== 'object') return; for(const k of Object.keys(o)){ const v = o[k]; if(typeof v === 'string'){ if(v.startsWith(PH)){ const d = cache[v.slice(PH.length)]; if(d){ o[k] = d; n++; } } } else walk(v); } };
-    try{ walk(state); }catch(e){} return n; }
-  let hydrating = false, pending = new Set();
-  async function hydrate(refs){
-    refs.forEach(id=>{ if(!cache[id]) pending.add(id); }); if(hydrating) return; hydrating = true;
-    try{
-      for(let t = 0; t < 60 && typeof state === 'undefined'; t++) await new Promise(r=>setTimeout(r, 250));
-      while(pending.size){
-        const ids = Array.from(pending).slice(0, 4); ids.forEach(i=>pending.delete(i));
-        const {data, error} = await sb.from('media').select('id,data').in('id', ids);
-        if(error){ console.warn('media', error.message); continue; }
-        (data||[]).forEach(r=>{ cache[r.id] = r.data; });
-        if(patch()){ try{ if(typeof renderAll==='function') renderAll(); if(window.rtRender) window.rtRender(); }catch(e){} }
-      }
-    } finally { hydrating = false; }
-  }
-  window.PILOTAGE_MEDIA_PATCH = ()=>patch();
+  const toURL = blob => new Promise((res,rej)=>{ const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+  window.PILOTAGE_BLOBS = {
+    async upload(blob){ const url = await toURL(blob), id = await sha(url);
+      const {error} = await sb.from('media').upsert({id, data:url}, {onConflict:'id', ignoreDuplicates:true}); if(error) throw error; return {id}; },
+    async fetch(id){ const {data, error} = await sb.from('media').select('data').eq('id', id).maybeSingle();
+      if(error || !data) return {ok:false}; const b = await (await fetch(data.data)).blob(); return {ok:true, blob:async()=>b}; }
+  };
 
   const db = { doc(path){ return {
-    async get(){ const {data, error} = await sb.from('docs').select('data').eq('path', path).maybeSingle(); if(error) throw error;
-      if(!data) return {exists:false, data:()=>undefined};
-      const refs = new Set(), light = lighten(data.data, refs); if(refs.size) setTimeout(()=>hydrate(refs), 0);
-      return {exists:true, data:()=>light}; },
-    async set(obj){ const out = {}; const light = await extract(obj, out); if(Object.keys(out).length) await pushMedia(out);
-      const {error} = await sb.from('docs').upsert({path, data:light}); if(error) throw error; },
+    async get(){ const {data, error} = await sb.from('docs').select('data').eq('path', path).maybeSingle(); if(error) throw error; return {exists:!!data, data:()=>data.data}; },
+    async set(obj){ const {error} = await sb.from('docs').upsert({path, data:obj}); if(error) throw error; },
     async delete(){ const {error} = await sb.from('docs').delete().eq('path', path); if(error) throw error; }
   }; } };
 

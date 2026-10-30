@@ -2667,7 +2667,7 @@ let _bMap = null;
 async function blobMapLoad(){ if(_bMap) return _bMap; const db=await sbDb(); const d=await db.doc('pilotage/blobmap').get(); _bMap = d.exists ? Object.assign({}, d.data().m||{}) : {}; return _bMap; }
 function _dataUrlToBlob(u){ const i=u.indexOf(','), head=u.slice(5,i), mime=head.split(';')[0]||'application/octet-stream', bin=atob(u.slice(i+1)), arr=new Uint8Array(bin.length); for(let k=0;k<bin.length;k++) arr[k]=bin.charCodeAt(k); return new Blob([arr],{type:mime}); }
 async function blobUpload(){
-  const assets = window.claude && window.claude.use ? await window.claude.use('assets') : null;
+  const assets = window.PILOTAGE_BLOBS || (window.claude && window.claude.use ? await window.claude.use('assets') : null);
   if(!assets) return;
   const map = await blobMapLoad(); const todo=[..._bMem.keys()].filter(k=>!map[k]); if(!todo.length) return;
   const keys = new Set(); const walk=o=>{ if(!o||typeof o!=='object') return; for(const x in o){ const v=o[x]; if(typeof v==='string'){ const k=_bRev.get(v); if(k) keys.add(k); } else walk(v); } }; walk(state);
@@ -2683,7 +2683,7 @@ async function blobPullMissing(){
     if(!missing.size) return;
     const map = await blobMapLoad(); const list=[...missing].filter(k=>map[k]); let got=0;
     for(let i=0;i<list.length;i+=3){
-      await Promise.all(list.slice(i,i+3).map(async k=>{ try{ const r=await fetch('/_blob/'+map[k]); if(!r.ok) return; const b=await r.blob(); const url=await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(b); }); _bMem.set(k,url); _bRev.set(url,k); _bPending.set(k,url); got++; }catch(e){ console.error('image distante',k,String(e)); } }));
+      await Promise.all(list.slice(i,i+3).map(async k=>{ try{ const r=await (window.PILOTAGE_BLOBS?window.PILOTAGE_BLOBS.fetch(map[k]):fetch('/_blob/'+map[k])); if(!r.ok) return; const b=await r.blob(); const url=await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(b); }); _bMem.set(k,url); _bRev.set(url,k); _bPending.set(k,url); got++; }catch(e){ console.error('image distante',k,String(e)); } }));
     }
     if(got){ await blobFlush(); const w2=o=>{ if(!o||typeof o!=='object') return; for(const x in o){ const v=o[x]; if(typeof v==='string'){ if(v.startsWith('idb:')&&_bMem.has(v)) o[x]=_bMem.get(v); } else w2(v); } }; w2(state);
       try{ renderAll(); if(window.rtRender) window.rtRender(); const pp=document.getElementById('page-plans'); if(pp&&pp.classList.contains('active')) renderPlans(true); const pt=document.getElementById('page-travaux'); if(pt&&pt.classList.contains('active')) renderTravaux(); }catch(e){ console.error(e); } }
