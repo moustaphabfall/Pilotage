@@ -2,8 +2,8 @@
    Actif seulement si config.js est renseigné. Fournit window.PILOTAGE_SB (stockage), window.PILOTAGE_USER (auteur) et window.PILOTAGE_RO (lecture seule). */
 (function(){
   const cfg = window.PILOTAGE_CONFIG || {};
-  if(!cfg.url || !cfg.anonKey || !window.supabase){ console.info('Pilotage : mode local (Supabase non configuré)'); return; }
-  const sb = window.supabase.createClient(cfg.url, cfg.anonKey, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
+  (window.PILOTAGE_PROVIDERS = window.PILOTAGE_PROVIDERS || {}).supabase = {label:'Supabase (base en ligne)', available:()=>!!(cfg.url && cfg.anonKey && window.supabase), init:function(){
+    const sb = window.supabase.createClient(cfg.url, cfg.anonKey, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
   let me = null, ready = null, lastTs = null, PJ = null;
 
   const css = document.createElement('style');
@@ -158,4 +158,5 @@
 
   window.PILOTAGE_SB = ()=> (ready = ready || ensure());
   window.pilotageLogout = async ()=>{ await sb.auth.signOut(); location.reload(); };
+}};
 })();

@@ -3,3 +3,7 @@ window.PILOTAGE_CONFIG = {
   url: 'https://mejwjoyumcuxvaqfooxq.supabase.co',      // ex. https://xxxxxxxx.supabase.co
   anonKey: 'sb_publishable_vj5RIBOrB4SgMGf00bOmyg_B4rvR4aZ'   // ex. eyJhbGciOi... ou sb_publishable_...
 };
+/* Hébergements proposés : chaque fournisseur est actif s'il est configuré. backend:'supabase'|'sharepoint' force un choix ; sans backend, l'application propose la liste.
+   Microsoft 365 / SharePoint : enregistrer UNE FOIS l'application chez Microsoft (Entra ID → Inscriptions d'applications → « Application monopage », URI de redirection = l'adresse de l'application), puis coller l'ID de l'application ici. */
+window.PILOTAGE_CONFIG.msClientId = '';      // ex. 00000000-0000-0000-0000-000000000000
+// window.PILOTAGE_CONFIG.backend = 'supabase';

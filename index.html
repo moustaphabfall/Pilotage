@@ -89,7 +89,7 @@ body.apcx-on #rtFloat{transition:opacity .25s}
 #rtFloat.folded .rf-h{border-radius:5px}
 #rtFloat .rf-h{cursor:pointer}
 #baseDerogPage{display:none!important}
-</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script>window.OCR_LOCAL="ocr/";</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="supabase-adapter.js"></script></head><body>
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script>window.OCR_LOCAL="ocr/";</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="vendor/msal-browser.min.js"></script><script src="supabase-adapter.js"></script><script src="sharepoint-adapter.js"></script><script src="pilotage-core.js"></script></head><body>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -15258,6 +15258,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
       +(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')
       +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')
       +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div>';
+    if(p.sharepoint&&p.role==='admin'){ return renderSP(w,head); }
     if(p.role!=='admin'){
       const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
       w.innerHTML=head+'<div class="card">Fonctionnalités désactivées pour vous : '+(off.length?off.map(esc).join(', '):'aucune')+'</div>';
@@ -15266,6 +15267,23 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     headHtml=head; w.innerHTML=head+'<div class="msg">Chargement…</div>'; bindHead(w);
     try{ cache=await adm({action:'p_members'}); }catch(e){ w.innerHTML=head+'<div class="card ko">'+esc(e.message)+'</div>'; bindHead(w); return; }
     draw();
+  }
+  async function renderSP(w,head){
+    const S=window.PILOTAGE_SP; headHtml=head; let list=[], err='';
+    const paint=()=>{
+      w.innerHTML=head+'<h3>👥 Membres du projet</h3><div class="card"><small>Le projet est hébergé dans votre dossier SharePoint ; les membres partagent ce dossier. Lecture = consulter, Écriture = saisir et modifier.</small><table><tr><th>Personne</th><th>Droit</th><th></th></tr>'
+        +list.map(m=>'<tr data-id="'+esc(m.id)+'"><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+'</small></td><td>'+(m.role==='admin'||m.herite?'<span class="ok">'+(m.role==='admin'?'Administrateur':'Hérité du site')+'</span>':'<select data-r><option value="lecteur"'+(m.role==='lecteur'?' selected':'')+'>Lecture</option><option value="editeur"'+(m.role==='editeur'?' selected':'')+'>Écriture / modification</option></select>')+'</td><td>'+(m.role==='admin'||m.herite?'':'<button class="d" data-rm>Retirer</button>')+'</td></tr>').join('')+'</table></div>'
+        +'<h3>➕ Ajouter une personne</h3><div class="card"><div class="row"><input id="spE" type="email" placeholder="Adresse e-mail Microsoft 365"><select id="spR"><option value="editeur">Écriture / modification</option><option value="lecteur">Lecture</option></select><button class="p" id="spA">Inviter</button></div><small>Une invitation est envoyée par Microsoft ; la personne se connecte à l’application avec son compte et voit le projet dans « Projets partagés avec vous ».</small><div class="msg" id="pgMsg">'+esc(err)+'</div></div>';
+      bindHead(w);
+      const msg=(t,e)=>{ const m=w.querySelector('#pgMsg'); m.textContent=t; m.style.color=e?'#B4432D':'#2a7a3b'; };
+      const reload=async()=>{ try{ list=await S.members(); err=''; }catch(e){ err=e.message; } paint(); };
+      w.querySelector('#spA').onclick=async()=>{ const em=w.querySelector('#spE').value.trim(); if(!em) return; try{ await S.invite(em,w.querySelector('#spR').value); await reload(); w.querySelector('#pgMsg').textContent='Invitation envoyée à '+em; w.querySelector('#pgMsg').style.color='#2a7a3b'; }catch(e){ msg(e.message,true); } };
+      w.querySelectorAll('tr[data-id]').forEach(tr=>{ const id=tr.dataset.id, sel=tr.querySelector('[data-r]'), rm=tr.querySelector('[data-rm]');
+        if(sel) sel.onchange=async()=>{ try{ await S.setRole(id,sel.value); msg('Droit enregistré'); }catch(e){ msg(e.message,true); } };
+        if(rm) rm.onclick=async()=>{ if(!confirm('Retirer cet accès ?')) return; try{ await S.remove(id); await reload(); }catch(e){ msg(e.message,true); } }; });
+    };
+    w.innerHTML=head+'<div class="msg">Chargement…</div>'; bindHead(w);
+    try{ list=await S.members(); }catch(e){ err=e.message; } paint();
   }
   function bindHead(w){
     const s=w.querySelector('#pgSw'); if(s) s.onchange=()=>window.pilotageSwitchProjet(s.value);
@@ -15326,7 +15344,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     if(p){
       try{ if(!state.projet||state.projet.nom!==p.nom||state.projet.id!==p.id){ state.projet=Object.assign({},state.projet||{},{id:p.id,nom:p.nom}); if(typeof persist==='function') persist(); if(window.projChipRefresh) projChipRefresh(); } }catch(e){}
       apply();
-      if(p.role==='admin'){ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); setInterval(()=>{ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); },300000); }
+      if(p.role==='admin'&&!p.sharepoint&&window.PILOTAGE_ADM){ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); setInterval(()=>{ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); },300000); }
       const cur=document.querySelector('.page.active'); if(cur&&cur.id!=='page-dashboard'&&cur.id.startsWith('page-')&&!pgCan(cur.id.slice(5))) showPage('dashboard');
       return;
     }
