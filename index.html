@@ -14758,4 +14758,50 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   window.addEventListener('scroll',top,{passive:true}); window.addEventListener('resize',top);
 })();
 </script>
+<script>
+/* Murs d'une pièce → tâches : à la création d'une pièce, une tâche globale « Murs — pièce » + une sous-tâche par mur (état « fait » par défaut,
+   pour pointer l'avancement sur chantier). Les sous-tâches sont de vraies tâches (pointables, %, sous-sous-tâches). Famille « Murs » dans la bibliothèque. */
+(function(){
+  const kids=id=>(state.tasks||[]).filter(t=>t.parentTaskId===id&&!t.deleted);
+  const depth=t=>{ let d=0,k=t; while(k&&k.parentTaskId&&d<8){ k=taskById(k.parentTaskId); d++; } return d; };
+  const sigK=id=>kids(id).map(x=>x.id+':'+(x.etat||'afaire')+':'+(x.pct||0)).join('|');
+  function agg(t){ const K=kids(t.id); if(!K.length) return null; const p=Math.round(K.reduce((s,x)=>s+tPct(x),0)/K.length);
+    if(K.every(x=>x.etat==='fait')) return {e:'fait',pc:100};
+    if(p>0||K.some(x=>x.etat==='encours')) return {e:'encours',pc:Math.min(95,Math.max(5,Math.round(p/5)*5))};
+    return {e:'afaire',pc:0}; }
+  function setTree(t,e,pc){ kids(t.id).forEach(k=>{ k.etat=e; k.pct=pc; delete k._agg; setTree(k,e,pc); }); }
+  function tick(){ let ch=false; try{ const P=(state.tasks||[]).filter(t=>!t.deleted&&kids(t.id).length).sort((a,b)=>depth(b)-depth(a));
+    P.forEach(t=>{ const a=agg(t), sg=sigK(t.id), cur={e:t.etat||'afaire',pc:t.pct||0};
+      if(!t._agg){ if(cur.e!==a.e||cur.pc!==a.pc){ t.etat=a.e; t.pct=a.pc; ch=true; } t._agg={e:a.e,pc:a.pc}; t._ksig=sg; return; }
+      if(cur.e!==t._agg.e||cur.pc!==t._agg.pc){ /* modifié à la main sur la tâche parente */
+        if(cur.e==='fait'||cur.e==='afaire'){ setTree(t,cur.e,cur.e==='fait'?100:0); } t._agg={e:cur.e,pc:cur.pc}; t._ksig=null; delete t._agg; ch=true; return; }
+      if(sg!==t._ksig){ t._ksig=sg; if(cur.e!==a.e||cur.pc!==a.pc){ t.etat=a.e; t.pct=a.pc; ch=true; } t._agg={e:a.e,pc:a.pc}; ch=true; } });
+  }catch(e){ console.error(e); } if(ch){ try{ persist(); }catch(e){} try{ renderAll(); }catch(e){} try{ window.rtRender&&window.rtRender(); }catch(e){} } }
+  setInterval(tick,1200);
+  function ftMurs(){ let ft=(state.familleTypes||[]).find(f=>!f.estBase&&normK(f.nom)==='murs'); if(!ft){ ft={id:uid('ft'),nom:'Murs',icone:'🧱',items:['Zone sécurisée','Zone propre en fin d’intervention'],lot:null,familleBaseId:(familleTypeById('ft-base-murs')?'ft-base-murs':((state.familleTypes.find(f=>f.estBase)||{}).id||null))}; state.familleTypes.push(ft); } return ft; }
+  window.pieceMursCreer=function(z){ if(!z||!z.poly||!z.poly.pts||z.poly.pts.length<3) return 0; if((state.tasks||[]).some(t=>t.murPiece===z.id)) return 0;
+    const pts=z.poly.pts, n=pts.length, cx=pts.reduce((a,p)=>a+p[0],0)/n, cy=pts.reduce((a,p)=>a+p[1],0)/n, ft=ftMurs(), zf=ensureZoneFamille(ft,z.id,z.niveau), today=todayStr();
+    const base={niveau:z.niveau,zone:z.nom,zoneChantierId:z.id,zoneChantierIds:[z.id],zoneFamilleId:zf?zf.id:null,support:'mur',etat:'fait',pct:100,quand:today,murPiece:z.id};
+    const g=taskBase(nextTaskId(),'Murs — '+z.nom,z.niveau,Object.assign({},base,{pos:{planId:z.poly.planId,x:+cx.toFixed(4),y:+cy.toFixed(4)}})); state.tasks.unshift(g);
+    const used={}; let k=0;
+    for(let i=0;i<n;i++){ const a=pts[i],b=pts[(i+1)%n]; if(Math.hypot(b[0]-a[0],b[1]-a[1])<0.008) continue; k++;
+      const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,dx=mx-cx,dy=my-cy; let c=Math.abs(dy)>=Math.abs(dx)?(dy<0?'nord':'sud'):(dx<0?'ouest':'est'); used[c]=(used[c]||0)+1; const lab=c+(used[c]>1?' '+used[c]:'');
+      const t=taskBase(nextTaskId(),'Mur '+k+' ('+lab+') — '+z.nom,z.niveau,Object.assign({},base,{parentTaskId:g.id,pos:{planId:z.poly.planId,x:+mx.toFixed(4),y:+my.toFixed(4)}})); state.tasks.unshift(t); }
+    persist(); setTimeout(()=>{ try{ renderAll(); window.rtRender&&window.rtRender(); }catch(e){} },0); return k; };
+  const po=window.pieceCreateOk; if(typeof po==='function'){ window.pieceCreateOk=function(){ const n0=(state.zonesChantier||[]).length; const r=po.apply(this,arguments); try{ const L=state.zonesChantier||[]; if(L.length>n0){ const z=L[L.length-1]; if(z.poly){ const k=pieceMursCreer(z); if(k) setTimeout(()=>{ try{ miniAlert('🧱 '+k+' mur'+(k>1?'s':'')+' de « '+z.nom+' » ajouté'+(k>1?'s':'')+' en sous-tâches (tâche globale « Murs — '+z.nom+' », état « fait » par défaut).'); }catch(e){} },300); } } }catch(e){ console.error(e); } return r; }; }
+  /* UI : sous-tâches pointables dans la fiche de la tâche */
+  const e_=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  function row(t,lv){ const e=t.etat||'afaire', K=kids(t.id), pc=tPct(t); return '<div style="margin-left:'+(lv*16)+'px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:3px 0;border-bottom:1px dashed var(--line,#ddd)"><span style="flex:1 1 150px;font-size:13px">'+e_(t.quoi)+(K.length?' <small style="color:#667">('+K.length+')</small>':'')+'</span>'
+    +'<select onchange="ssSet(\''+t.id+'\',this.value)" style="font-size:12px;padding:3px"><option value="afaire"'+(e==='afaire'?' selected':'')+'>À faire</option><option value="encours"'+(e==='encours'?' selected':'')+'>En cours</option><option value="fait"'+(e==='fait'?' selected':'')+'>Fait</option></select>'
+    +(e==='encours'?'<input type="number" min="5" max="95" step="5" value="'+(pc||50)+'" onchange="ssPct(\''+t.id+'\',this.value)" style="width:58px;font-size:12px;padding:3px">%':'')
+    +'<button type="button" class="ghost" style="padding:2px 7px;font-size:12px" onclick="ssAdd(\''+t.id+'\')" title="Ajouter une sous-tâche">＋</button><button type="button" class="ghost" style="padding:2px 7px;font-size:12px" onclick="ssOpen(\''+t.id+'\')" title="Ouvrir la fiche">↗</button><button type="button" class="ghost" style="padding:2px 7px;font-size:12px;color:var(--rust)" onclick="ssDel(\''+t.id+'\')" title="Supprimer">×</button></div>'+K.map(k=>row(k,lv+1)).join(''); }
+  window.ssRender=function(id){ const h=document.getElementById('ssTree'); if(!h) return; const K=kids(id); h.innerHTML=K.length?K.map(k=>row(k,0)).join(''):'<p class="empty-note">Aucune sous-tâche pointable. Chacune se pointe comme une tâche (à faire / en cours + % / fait) et peut avoir ses propres sous-tâches.</p>'; };
+  window.ssSet=function(id,v){ const t=taskById(id); if(!t) return; t.etat=v; t.pct=v==='fait'?100:v==='afaire'?0:(t.pct>=5&&t.pct<=95?t.pct:50); t.pointeAt=Date.now(); delete t._agg; persist(); tick(); ssRender(window._ssCur); };
+  window.ssPct=function(id,v){ const t=taskById(id); if(!t) return; t.pct=Math.max(5,Math.min(95,Math.round((+v||50)/5)*5)); t.etat='encours'; delete t._agg; persist(); tick(); ssRender(window._ssCur); };
+  window.ssAdd=function(pid){ const p=taskById(pid); if(!p) return; miniPrompt('Nouvelle sous-tâche de « '+p.quoi+' » :','',v=>{ v=(v||'').trim(); if(!v) return; const t=taskBase(nextTaskId(),v,p.niveau,{zone:p.zone,zoneChantierId:p.zoneChantierId,zoneChantierIds:(p.zoneChantierIds||[]).slice(),zoneFamilleId:p.zoneFamilleId,support:p.support,metierId:p.metierId,etat:'afaire',pct:0,quand:p.quand||todayStr(),murPiece:p.murPiece,parentTaskId:p.id}); state.tasks.unshift(t); persist(); tick(); ssRender(window._ssCur); try{ renderAll(); }catch(e){} }); };
+  window.ssDel=function(id){ const t=taskById(id); if(!t) return; miniConfirm('Supprimer « '+t.quoi+' » et ses sous-tâches ?',()=>{ const rm=new Set(); (function f(i){ rm.add(i); kids(i).forEach(k=>f(k.id)); })(id); state.tasks=state.tasks.filter(x=>!rm.has(x.id)); persist(); tick(); ssRender(window._ssCur); try{ renderAll(); }catch(e){} }); };
+  window.ssOpen=function(id){ closeModal(); setTimeout(()=>openTaskDetail(id),50); };
+  const od=window.openTaskDetail; if(typeof od==='function'){ window.openTaskDetail=function(id){ const r=od.apply(this,arguments); try{ const mb=document.getElementById('modalBody'), L=mb&&mb.querySelector('#sousTachesList'); if(L&&!mb.querySelector('#ssTree')){ window._ssCur=id; const t=taskById(id); const f=document.createElement('div'); f.className='field'; f.innerHTML='<label>🧱 Sous-tâches pointables'+(t&&t.parentTaskId&&taskById(t.parentTaskId)?' <small style="color:#667">· sous-tâche de « '+e_(taskById(t.parentTaskId).quoi)+' »</small>':'')+'</label><div id="ssTree"></div><button type="button" class="ghost" style="margin-top:6px" onclick="ssAdd(\''+id+'\')">＋ Sous-tâche pointable</button>'; L.closest('.field').after(f); ssRender(id); } }catch(e){ console.error(e); } return r; }; }
+})();
+</script>
 </body></html>
