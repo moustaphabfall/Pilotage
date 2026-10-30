@@ -15140,4 +15140,202 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     const r=h.getBoundingClientRect(); const vis=r.bottom>80&&r.top<innerHeight-40; trig.style.display=vis?'block':'none'; trig.style.left=Math.max(8,Math.min(innerWidth-44,r.right-44))+'px'; trig.style.top=Math.max(60,Math.min(innerHeight-50,r.bottom-44))+'px'; if(pal) place(); },500);
 })();
 </script>
+<script>
+/* ===== Projet : accès, rôles, fonctionnalités, paiement mensuel ===== */
+(function(){
+  const PG_FEATS=[
+    {k:'dashboard',l:'📋 Tableau de bord',subs:[]},
+    {k:'interloc',l:'🎭 Rôles',subs:[]},
+    {k:'travaux',l:'🏗️ Travaux',subs:[
+      {k:'travaux.plan',l:'Plan interactif',sel:'#rtRibPlan,#rtFloat'},
+      {k:'travaux.pieces',l:'Pièces',sel:'#rtRibPieces'},
+      {k:'travaux.cloisons',l:'Cloisons',sel:'#rtRibClo'},
+      {k:'travaux.ouvrages',l:'Ouvrages',sel:'#rtRibBase'},
+      {k:'travaux.avancement',l:'Avancement',sel:'#rtRibLots'},
+      {k:'travaux.journal',l:'Journal',sel:'#jrRib'}]},
+    {k:'planif',l:'🗓️ Planification',subs:[]},
+    {k:'plans',l:'🧠 Études',subs:[]},
+    {k:'refac',l:'💶 Finance',subs:[]},
+    {k:'rex',l:'🧠 Retours d’expérience',subs:[]},
+    {k:'parametres',l:'⚙ Paramètres (niveaux, phase)',subs:[],sel:'.tab[onclick*="projParamEdit"]'}
+  ];
+  window.PG_FEATS=PG_FEATS;
+  const PJ=()=>window.PILOTAGE_PROJET||null;
+  const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const isAdm=()=>{ const p=PJ(); return !!p&&p.role==='admin'; };
+  window.pgCan=function(k){ const p=PJ(); if(!p||p.role==='admin') return true; return !(p.fonctions&&p.fonctions[k]===false); };
+  const cls=k=>'pgx-'+k.replace(/\./g,'_');
+
+  const st=document.createElement('style');
+  st.textContent=`
+  #page-projet{padding:12px}
+  .pgp{max-width:980px;margin:0 auto;font-size:14px}
+  .pgp h2{margin:0 0 4px}.pgp h3{margin:18px 0 8px}
+  .pgp .card{background:#fff;border:1px solid #e3e3e3;border-left:5px solid #F2A900;border-radius:10px;padding:12px;margin:10px 0}
+  .pgp .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+  .pgp input,.pgp select{padding:7px;border:1px solid #ccc;border-radius:6px;font-size:14px}
+  .pgp button{padding:7px 12px;border:0;border-radius:6px;background:#eee;color:#222;font-size:13px;cursor:pointer}
+  .pgp button.p{background:#CC5F00;color:#fff;font-weight:600}.pgp button.d{background:#fbe3df;color:#B4432D}
+  .pgp button:disabled{opacity:.45;cursor:not-allowed}
+  .pgp table{width:100%;border-collapse:collapse}.pgp td,.pgp th{padding:6px 4px;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}
+  .pgp .ok{color:#2a7a3b;font-weight:600}.pgp .warn{color:#B86E00;font-weight:600}.pgp .ko{color:#B4432D;font-weight:600}
+  .pgp .cred{background:#fff7e0;border:1px dashed #F2A900;border-radius:8px;padding:10px;white-space:pre-wrap;user-select:all}
+  .pgp .nt{background:#fff3e0;border:1px solid #F2A900;border-radius:10px;padding:10px;margin:8px 0}
+  .pgp .mx{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;margin:8px 0}
+  .pgp .mx .g{border:1px solid #eee;border-radius:8px;padding:6px 8px}
+  .pgp .sw{display:flex;align-items:center;gap:8px;margin:3px 0;cursor:pointer}
+  .pgp .sw input{display:none}.pgp .sw i{width:34px;height:19px;border-radius:19px;background:#c9c9c9;position:relative;flex:none;transition:.15s}
+  .pgp .sw i:after{content:"";position:absolute;left:2px;top:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.15s}
+  .pgp .sw input:checked+i{background:#2a7a3b}.pgp .sw input:checked+i:after{left:17px}
+  .pgp .sub{margin-left:18px;font-size:13px}
+  .pgp .msg{min-height:18px;font-size:13px}
+  #pgBadge{display:inline-block;min-width:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:#CC5F00;color:#fff;font-size:11px;text-align:center}
+  `;
+  document.head.appendChild(st);
+
+  /* bouton de menu + page */
+  function install(){
+    const nav=document.getElementById('tabMenu'), dash=nav&&nav.querySelector('.tab[data-page="dashboard"]');
+    if(!nav||!dash||document.getElementById('tabProjet')) return;
+    const b=document.createElement('button'); b.className='tab'; b.id='tabProjet'; b.dataset.page='projet'; b.setAttribute('onclick',"showPage('projet')"); b.innerHTML='🗂 Projet<span id="pgBadge" hidden></span>';
+    dash.parentNode.insertBefore(b,dash);
+    if(!document.getElementById('page-projet')){ const pg=document.createElement('div'); pg.className='page'; pg.id='page-projet'; pg.innerHTML='<div class="pgp" id="pgWrap"></div>'; document.getElementById('page-rex').parentNode.insertBefore(pg,document.getElementById('page-rex')); }
+  }
+  install();
+
+  /* masquage des fonctionnalités désactivées (interface) */
+  function apply(){
+    const p=PJ(); const css=[]; document.body.className=document.body.className.split(/\s+/).filter(c=>!c.startsWith('pgx-')).join(' ');
+    if(p&&p.role!=='admin'){
+      PG_FEATS.forEach(f=>{
+        if(!pgCan(f.k)){ document.body.classList.add(cls(f.k)); if(f.sel) css.push('body.'+cls(f.k)+' '+f.sel.split(',').join(',body.'+cls(f.k)+' ')+'{display:none!important}'); else css.push('body.'+cls(f.k)+' .tab[data-page="'+f.k+'"]{display:none!important}'); }
+        f.subs.forEach(s=>{ if(!pgCan(s.k)){ document.body.classList.add(cls(s.k)); css.push('body.'+cls(s.k)+' '+s.sel.split(',').join(',body.'+cls(s.k)+' ')+'{display:none!important}'); } });
+      });
+    }
+    let el=document.getElementById('pgxCss'); if(!el){ el=document.createElement('style'); el.id='pgxCss'; document.head.appendChild(el); } el.textContent=css.join('\n');
+    const tp=document.getElementById('tabProjet'); if(tp) tp.style.display=PJ()||true?'':'none';
+  }
+  window.pgApply=apply;
+
+  /* garde de navigation */
+  const sp0=window.showPage;
+  window.showPage=function(p){
+    if(p!=='projet'&&p!=='chantier'&&p!=='tours'&&!pgCan(p)){ const f=PG_FEATS.find(x=>x.k!=='parametres'&&pgCan(x.k)); p=f?f.k:'projet'; }
+    const r=sp0.apply(this,arguments.length?[p]:[p]);
+    if(p==='projet') render();
+    return r;
+  };
+
+  const adm=b=>window.PILOTAGE_ADM(Object.assign({projet:PJ().id},b));
+  const fmt=d=>d?d.split('-').reverse().join('/'):'—';
+  function statut(m,today){
+    if(!m.actif) return '<span class="ko">désactivé</span>';
+    if(m.role==='admin'&&!m.valide_jusqu) return '<span class="ok">sans échéance</span>';
+    if(!m.valide_jusqu) return '<span class="ok">sans échéance</span>';
+    if(m.valide_jusqu<today) return '<span class="ko">expiré le '+fmt(m.valide_jusqu)+'</span>';
+    const d=Math.round((new Date(m.valide_jusqu)-new Date(today))/864e5);
+    return '<span class="'+(d<=5?'warn':'ok')+'">jusqu’au '+fmt(m.valide_jusqu)+' ('+d+' j)</span>';
+  }
+  function matrix(prefix,fonctions){
+    return '<div class="mx">'+PG_FEATS.map(f=>{
+      const on=fonctions[f.k]!==false;
+      return '<div class="g"><label class="sw"><input type="checkbox" data-f="'+f.k+'" '+(on?'checked':'')+'><i></i><b>'+esc(f.l)+'</b></label>'
+        +f.subs.map(s=>'<label class="sw sub"><input type="checkbox" data-f="'+s.k+'" '+(fonctions[s.k]!==false?'checked':'')+'><i></i>'+esc(s.l)+'</label>').join('')+'</div>';
+    }).join('')+'</div>';
+  }
+  function readMatrix(root){ const o={}; root.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) o[i.dataset.f]=false; }); return o; }
+  const wrap=()=>document.getElementById('pgWrap');
+  let cache=null, openF=null, cred='', headHtml='';
+
+  async function render(){
+    const w=wrap(); if(!w) return; const p=PJ();
+    if(!p){
+      w.innerHTML='<h2>🗂 Projet</h2><div class="card">Projet <b>'+esc((state.projet&&state.projet.nom)||'SM')+'</b>.<br><br>La gestion des accès (identifiants, rôles, fonctionnalités, paiement mensuel) est disponible dans l’application hébergée, une fois connecté avec un compte administrateur.</div>';
+      return;
+    }
+    const head='<h2>🗂 Projet « '+esc(p.nom)+' »</h2><div class="row"><span>Votre rôle : <b>'+({admin:'Administrateur',editeur:'Éditeur',lecteur:'Lecteur'})[p.role]+'</b></span>'
+      +(p.valide_jusqu?'<span>· accès valable jusqu’au <b>'+fmt(p.valide_jusqu)+'</b></span>':'')
+      +(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')
+      +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')
+      +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div>';
+    if(p.role!=='admin'){
+      const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
+      w.innerHTML=head+'<div class="card">Fonctionnalités désactivées pour vous : '+(off.length?off.map(esc).join(', '):'aucune')+'</div>';
+      bindHead(w); return;
+    }
+    headHtml=head; w.innerHTML=head+'<div class="msg">Chargement…</div>'; bindHead(w);
+    try{ cache=await adm({action:'p_members'}); }catch(e){ w.innerHTML=head+'<div class="card ko">'+esc(e.message)+'</div>'; bindHead(w); return; }
+    draw();
+  }
+  function bindHead(w){
+    const s=w.querySelector('#pgSw'); if(s) s.onchange=()=>window.pilotageSwitchProjet(s.value);
+    const r=w.querySelector('#pgRen'); if(r) r.onclick=async()=>{ const v=prompt('Nom du projet :',PJ().nom); if(v===null||!v.trim()) return; try{ await adm({action:'p_projet_rename',nom:v.trim()}); PJ().nom=v.trim(); if(state.projet){ state.projet.nom=v.trim(); persist&&persist(); } render(); }catch(e){ alert(e.message); } };
+    const n=w.querySelector('#pgNewP'); if(n) n.onclick=async()=>{ const id=prompt('Identifiant court du nouveau projet (lettres/chiffres) :'); if(!id) return; const nom=prompt('Nom du projet :',id)||id; try{ await window.PILOTAGE_ADM({action:'p_projet_create',id,nom}); alert('Projet créé. Choisissez-le dans la liste pour y créer des accès.'); window.pilotageSwitchProjet(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'')); }catch(e){ alert(e.message); } };
+  }
+  function badge(){ const b=document.getElementById('pgBadge'); if(!b) return; const n=cache?cache.notifs.length:0; b.hidden=!n; b.textContent=n; }
+
+  function draw(){
+    const w=wrap(); const p=PJ(), today=cache.today, M=cache.members, N=cache.notifs;
+    const hd=headHtml;
+    const body=[];
+    if(N.length){ body.push('<h3>🔔 Échéances à traiter</h3>'+N.map(n=>'<div class="nt" data-nu="'+n.user_id+'"><b>'+esc(n.nom||n.email)+'</b> — '+(n.type==='expire'?'accès <span class="ko">expiré</span> depuis le ':'accès qui expire le ')+fmt(n.echeance)+'.<br>Prolonger d’un mois ?'
+      +'<div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+n.user_id+'" disabled>Prolonger 1 mois</button><button data-lapse="'+n.user_id+'">Laisser expirer</button></div></div>').join('')); }
+    body.push('<h3>👥 Accès du projet</h3><div class="card" style="overflow:auto"><table><tr><th>Utilisateur</th><th>Rôle</th><th>Validité</th><th>Actif</th><th></th></tr>'
+      +M.map(m=>'<tr data-u="'+m.user_id+'"><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+(m.moi?' (vous)':'')+'</small></td>'
+      +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
+      +'<td>'+statut(m,today)+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
+      +'<td><label class="sw"><input type="checkbox" data-act '+(m.actif?'checked':'')+' '+(m.moi?'disabled':'')+'><i></i></label></td>'
+      +'<td>'+(m.role==='admin'?'':'<button data-fn>Fonctionnalités</button> ')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw>Mot de passe</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
+      +'<tr data-fr="'+m.user_id+'" '+(openF===m.user_id?'':'hidden')+'><td colspan="5">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
+      +'<tr data-pp="'+m.user_id+'" hidden><td colspan="5"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')
+      +'</table></div>');
+    body.push('<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><input id="nP" value="'+esc(window.PILOTAGE_GENPW())+'"><select id="nR"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du projet</option></select></div>'
+      +'<details><summary>Fonctionnalités accordées (tout activé par défaut)</summary>'+matrix('n',{})+'</details>'
+      +'<div class="row"><input type="number" min="0" step="any" id="nM" placeholder="Montant" style="width:110px"><input id="nRf" placeholder="Référence du paiement"><label><input type="checkbox" id="nV"> paiement reçu et validé</label></div>'
+      +'<div class="row"><button class="p" id="nC" disabled>Créer l’accès (valable 1 mois)</button><small>Sans paiement validé, l’accès ne peut pas être créé.</small></div>'
+      +(cred?'<div class="cred">'+esc(cred)+'</div><small>Sélectionnez, copiez et envoyez ce texte à la personne.</small>':'')+'<div class="msg" id="pgMsg"></div></div>');
+    w.innerHTML=hd+body.join('');
+    bindHead(w); badge(); bind(w);
+  }
+  function bind(w){
+    const msg=(t,e)=>{ const m=w.querySelector('#pgMsg'); if(m){ m.textContent=t||''; m.style.color=e?'#B4432D':'#2a7a3b'; } else if(e) alert(t); };
+    const run=async(fn)=>{ try{ await fn(); cache=await adm({action:'p_members'}); draw(); }catch(e){ msg(e.message,true); } };
+    w.querySelectorAll('[data-pr]').forEach(c=>c.onchange=()=>{ const r=c.closest('.row'); r.querySelector('[data-prolong]').disabled=!c.checked; });
+    w.querySelectorAll('[data-prolong]').forEach(b=>b.onclick=()=>{ const r=b.closest('.row'), mt=r.querySelector('[data-mt]').value; run(()=>adm({action:'p_prolong',user_id:b.dataset.prolong,paiement:{valide:true,montant:mt?Number(mt):null}})); });
+    w.querySelectorAll('[data-lapse]').forEach(b=>b.onclick=()=>run(()=>adm({action:'p_expire',user_id:b.dataset.lapse})));
+    w.querySelectorAll('tr[data-u]').forEach(tr=>{ const id=tr.dataset.u, fr=w.querySelector('tr[data-fr="'+id+'"]'), pp=w.querySelector('tr[data-pp="'+id+'"]');
+      tr.querySelector('[data-role]').onchange=e=>run(()=>adm({action:'p_update',user_id:id,role:e.target.value}));
+      tr.querySelector('[data-act]').onchange=e=>run(()=>adm({action:'p_update',user_id:id,actif:e.target.checked}));
+      const fn=tr.querySelector('[data-fn]'); if(fn) fn.onclick=()=>{ openF=openF===id?null:id; fr.hidden=openF!==id; };
+      const fs=fr.querySelector('[data-fsave]'); if(fs) fs.onclick=()=>run(async()=>{ await adm({action:'p_update',user_id:id,fonctions:readMatrix(fr)}); msg('Fonctionnalités enregistrées'); });
+      tr.querySelector('[data-rp]').onclick=()=>{ pp.hidden=!pp.hidden; };
+      const pw=tr.querySelector('[data-pw]'); if(pw) pw.onclick=async()=>{ const m=cache.members.find(x=>x.user_id===id), np=window.PILOTAGE_GENPW(); try{ await adm({action:'p_password',user_id:id,password:np}); cred='Nouveau mot de passe de '+m.email+' : '+np; draw(); }catch(e){ msg(e.message,true); } };
+      const rm=tr.querySelector('[data-rm]'); if(rm) rm.onclick=()=>{ const m=cache.members.find(x=>x.user_id===id); if(confirm('Retirer l’accès de '+(m.nom||m.email)+' à ce projet ?')) run(()=>adm({action:'p_remove',user_id:id})); };
+    });
+    const v=w.querySelector('#nV'), c=w.querySelector('#nC'); if(v) v.onchange=()=>{ c.disabled=!v.checked; };
+    if(c) c.onclick=()=>{ const g=id=>w.querySelector(id).value.trim(); const email=g('#nE'), pw=g('#nP'), nom=g('#nN');
+      const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details'));
+      run(async()=>{ const r=await adm({action:'p_create',nom,email,password:pw,role:g('#nR'),fonctions:fonc,paiement:{valide:true,montant:mt?Number(mt):null,reference:g('#nRf')||null}});
+        cred='Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nProjet : '+PJ().nom+'\nIdentifiant : '+email+(r.existant?'\n(compte existant : mot de passe inchangé)':'\nMot de passe : '+pw)+'\nValable jusqu’au '+fmt(r.valide_jusqu); }); };
+  }
+
+  /* initialisation : attend la connexion (mode hébergé) */
+  let tries=0;
+  (function wait(){
+    const p=PJ();
+    if(p){
+      try{ if(!state.projet||state.projet.nom!==p.nom||state.projet.id!==p.id){ state.projet=Object.assign({},state.projet||{},{id:p.id,nom:p.nom}); if(typeof persist==='function') persist(); if(window.projChipRefresh) projChipRefresh(); } }catch(e){}
+      apply();
+      if(p.role==='admin'){ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); setInterval(()=>{ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); },300000); }
+      const cur=document.querySelector('.page.active'); if(cur&&cur.id!=='page-dashboard'&&cur.id.startsWith('page-')&&!pgCan(cur.id.slice(5))) showPage('dashboard');
+      return;
+    }
+    if(++tries<120) setTimeout(wait,500);
+  })();
+  /* renommage du projet depuis la pastille : synchronisé avec le serveur pour les administrateurs */
+  const pr0=window.projRename;
+  window.projRename=function(){ const p=PJ(); if(p){ if(p.role==='admin') showPage('projet'); else showPage('projet'); return; } return pr0&&pr0.apply(this,arguments); };
+})();
+</script>
+
 </body></html>

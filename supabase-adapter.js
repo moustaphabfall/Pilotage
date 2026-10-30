@@ -4,7 +4,7 @@
   const cfg = window.PILOTAGE_CONFIG || {};
   if(!cfg.url || !cfg.anonKey || !window.supabase){ console.info('Pilotage : mode local (Supabase non configuré)'); return; }
   const sb = window.supabase.createClient(cfg.url, cfg.anonKey, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
-  let me = null, ready = null, lastTs = null;
+  let me = null, ready = null, lastTs = null, PJ = null;
 
   const css = document.createElement('style');
   css.textContent = '#pgAuth{position:fixed;inset:0;z-index:99999;background:#2B2F33;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif}#pgAuth form,#pgAuth .box{background:#fff;border-top:6px solid #F2A900;border-radius:10px;padding:22px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}#pgAuth h2{margin:0;font-size:20px}#pgAuth input{padding:11px;border:1px solid #ccc;border-radius:6px;font-size:16px}#pgAuth button{padding:12px;border:0;border-radius:6px;background:#CC5F00;color:#fff;font-size:16px;font-weight:600}#pgAuth button.l{background:#eee;color:#222}#pgAuth .e{color:#B4432D;font-size:13px;min-height:16px}#pgAuth small{color:#666}';
@@ -48,13 +48,37 @@
     }
   }
 
+  /* Projet : chaque utilisateur appartient à un ou plusieurs projets (rôle, fonctionnalités et validité propres à chacun). */
+  async function chooseProjet(){
+    const today = new Date().toISOString().slice(0,10), glob = me.role==='admin';
+    let projets = [], mem = {};
+    { const r = await sb.from('projets').select('id,nom').order('created_at'); projets = r.data||[]; }
+    { const r = await sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif').eq('user_id', me.id); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
+    projets = projets.filter(p=>glob || (mem[p.id] && mem[p.id].actif));
+    if(!projets.length){
+      await new Promise(()=>{ const d = screen('<div class="box"><h2>🚫 Aucun projet</h2><p>Votre compte n’est rattaché à aucun projet actif. Contactez l’administrateur.</p><button class="l" id="pgOut">Se déconnecter</button></div>'); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); }; });
+    }
+    let id = null; try{ id = localStorage.getItem('pg_projet'); }catch(e){}
+    const okP = p=>glob || (mem[p.id] && (mem[p.id].role==='admin' || !mem[p.id].valide_jusqu || mem[p.id].valide_jusqu>=today));
+    let pr = projets.find(p=>p.id===id && okP(p)) || projets.find(okP);
+    if(!pr){
+      const p0 = projets[0], m = mem[p0.id];
+      await new Promise(()=>{ const d = screen('<div class="box"><h2>⌛ Accès expiré</h2><p>Votre accès au projet « '+esc(p0.nom)+' » a expiré le '+esc(m.valide_jusqu)+'. Contactez l’administrateur pour le prolonger.</p><button id="pgRe">Vérifier</button><button class="l" id="pgOut">Se déconnecter</button></div>'); d.querySelector('#pgRe').onclick = ()=>location.reload(); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); }; });
+    }
+    const m = mem[pr.id] || {role:'admin', fonctions:{}, valide_jusqu:null};
+    PJ = {id:pr.id, nom:pr.nom, role: glob ? 'admin' : m.role, fonctions: (glob || m.role==='admin') ? {} : (m.fonctions||{}), valide_jusqu: m.valide_jusqu||null, global:glob, projets:projets.filter(okP)};
+    window.PILOTAGE_PROJET = PJ;
+    window.PILOTAGE_ADM = adm; window.PILOTAGE_GENPW = genPw;
+    window.pilotageSwitchProjet = id2=>{ try{ localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
+  }
   async function ensure(){
     let {data:{session}} = await sb.auth.getSession();
     if(!session){ await loginUI(); ({data:{session}} = await sb.auth.getSession()); }
     await profile(session.user);
+    await chooseProjet();
     close();
     window.PILOTAGE_USER = {id:me.id, nom:me.nom};
-    if(me.role==='lecteur') window.PILOTAGE_RO = true;
+    if(PJ.role==='lecteur') window.PILOTAGE_RO = true;
     try{ if(typeof userChipRender==='function') userChipRender(); }catch(e){}
     startWatch(); addMenu();
     return db;
@@ -66,22 +90,22 @@
   const toURL = blob => new Promise((res,rej)=>{ const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
   window.PILOTAGE_BLOBS = {
     async upload(blob){ const url = await toURL(blob), id = await sha(url);
-      const {error} = await sb.from('media').upsert({id, data:url}, {onConflict:'id', ignoreDuplicates:true}); if(error) throw error; return {id}; },
-    async fetch(id){ const {data, error} = await sb.from('media').select('data').eq('id', id).maybeSingle();
+      const {error} = await sb.from('media').upsert({projet_id:PJ.id, id, data:url}, {onConflict:'projet_id,id', ignoreDuplicates:true}); if(error) throw error; return {id}; },
+    async fetch(id){ const {data, error} = await sb.from('media').select('data').eq('projet_id', PJ.id).eq('id', id).maybeSingle();
       if(error || !data) return {ok:false}; const b = await (await fetch(data.data)).blob(); return {ok:true, blob:async()=>b}; }
   };
 
   const db = { doc(path){ return {
-    async get(){ const {data, error} = await sb.from('docs').select('data').eq('path', path).maybeSingle(); if(error) throw error; return {exists:!!data, data:()=>data.data}; },
-    async set(obj){ const {error} = await sb.from('docs').upsert({path, data:obj}); if(error) throw error; },
-    async delete(){ const {error} = await sb.from('docs').delete().eq('path', path); if(error) throw error; }
+    async get(){ const {data, error} = await sb.from('docs').select('data').eq('projet_id', PJ.id).eq('path', path).maybeSingle(); if(error) throw error; return {exists:!!data, data:()=>data.data}; },
+    async set(obj){ const {error} = await sb.from('docs').upsert({projet_id:PJ.id, path, data:obj}, {onConflict:'projet_id,path'}); if(error) throw error; },
+    async delete(){ const {error} = await sb.from('docs').delete().eq('projet_id', PJ.id).eq('path', path); if(error) throw error; }
   }; } };
 
   /* Collaboration : si un autre utilisateur a enregistré et que je n'ai rien en attente, je recharge pour récupérer ses modifications. */
   function startWatch(){
     const check = async ()=>{
       try{
-        const {data} = await sb.from('docs').select('data,updated_by').eq('path','pilotage/meta').maybeSingle(); if(!data) return;
+        const {data} = await sb.from('docs').select('data,updated_by').eq('projet_id', PJ.id).eq('path','pilotage/meta').maybeSingle(); if(!data) return;
         const ts = data.data && data.data.ts;
         if(lastTs===null){ lastTs = ts; return; }
         if(ts && ts!==lastTs){ lastTs = ts; if(data.updated_by!==me.id){ let dirty = false; try{ dirty = localStorage.getItem('pilotage_dirty')==='1'; }catch(e){} if(!dirty && document.visibilityState==='visible') location.reload(); } }
@@ -97,7 +121,7 @@
     const m = document.getElementById('dataMenu'); if(!m){ setTimeout(addMenu, 600); return; }
     if(m.querySelector('[data-pg]')) return;
     const mk = (txt, fn)=>{ const b = document.createElement('button'); b.type = 'button'; b.dataset.pg = '1'; b.textContent = txt; b.onclick = ()=>{ try{ dataMenuClose(); }catch(e){} fn(); }; m.appendChild(b); };
-    if(me.role==='admin') mk('🔑 Gérer les accès', adminUI);
+    if(PJ.role==='admin') mk('🔑 Gérer les accès', ()=>{ try{ showPage('projet'); }catch(e){ adminUI(); } });
     mk('🚪 Se déconnecter ('+me.nom+')', ()=>window.pilotageLogout());
   }
   async function adm(body){
