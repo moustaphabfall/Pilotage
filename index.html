@@ -14836,4 +14836,60 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   setInterval(()=>{ const b=document.getElementById('apcxBar'); if(b&&!document.getElementById('apcxPhoto')){ const x=document.createElement('button'); x.type='button'; x.id='apcxPhoto'; x.textContent='📷 Nom par photo'; x.title='Nommer la prochaine pièce à partir d’une photo (OCR)'; x.onclick=()=>apcxNamePhoto(); const q=b.querySelector('#apcxQuit'); if(q) q.before(x); else b.appendChild(x); } },600);
 })();
 </script>
+<script>
+/* ===== Plan métrique X, Y, Z : le plan (image) est recalé en mètres à partir des surfaces saisies pour chaque pièce ===== */
+(function(){
+  const e_=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const f1=(n,d)=>(Math.round(n*Math.pow(10,d))/Math.pow(10,d)).toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const num=v=>{ const n=parseFloat(String(v).replace(',','.')); return isFinite(n)?n:null; };
+  const dims=pl=>({w:(pl&&pl.w)||2224,h:(pl&&pl.h)||1121});
+  const areaN=q=>Math.abs(q.reduce((a,p,i)=>{ const n=q[(i+1)%q.length]; return a+(p[0]*n[1]-n[0]*p[1]); },0))/2;
+  const rooms=pl=>(state.zonesChantier||[]).filter(z=>z.poly&&z.poly.planId===pl.id&&z.poly.pts&&z.poly.pts.length>=3);
+  function echelle(pl){ if(!pl) return null; const D=dims(pl), R=rooms(pl).filter(z=>z.surface>0); if(!R.length) return null;
+    let sa=0,aa=0; R.forEach(z=>{ const A=areaN(z.poly.pts)*D.w*D.h; sa+=z.surface*A; aa+=A*A; }); const k=Math.sqrt(sa/aa); if(!isFinite(k)||k<=0) return null;
+    const lines=R.map(z=>{ const A=areaN(z.poly.pts)*D.w*D.h, calc=k*k*A; return {z,surf:z.surface,calc,ecart:(calc-z.surface)/z.surface}; });
+    const rms=Math.sqrt(lines.reduce((s,l)=>s+l.ecart*l.ecart,0)/lines.length); return {k,n:R.length,rms,lines,D}; }
+  const cotes=()=>(state.niveauCotes=state.niveauCotes||{});
+  function zBase(niv){ const c=cotes()[niv]; return c&&c.cote!=null?c.cote:null; }
+  function hauteur(z){ let k=z,g=0; while(k&&g++<8){ if(k.hauteur>0) return k.hauteur; k=k.parentId?zoneById(k.parentId):null; } const c=cotes()[z.niveau]; return c&&c.haut>0?c.haut:null; }
+  const toM=(E,x,y)=>[+(x*E.D.w*E.k).toFixed(3),+((1-y)*E.D.h*E.k).toFixed(3)];
+  function murs(z,E){ const P=z.poly.pts,n=P.length,o=[]; for(let i=0;i<n;i++){ const a=P[i],b=P[(i+1)%n],A=toM(E,a[0],a[1]),B=toM(E,b[0],b[1]),L=Math.hypot(B[0]-A[0],B[1]-A[1]); o.push({de:A,a:B,longueur:+L.toFixed(2)}); } return o; }
+  function curPl(){ try{ const m=document.getElementById('page-travaux'); if(window.rtCurPlan&&m&&m.classList.contains('active')) return window.rtCurPlan(); }catch(e){} try{ return planById(planSel)||(window.rtCurPlan&&window.rtCurPlan()); }catch(e){ return null; } }
+  window.MET={echelle,hauteur,zBase,murs,toM,rooms};
+  window.metSurface=function(id,v){ const z=zoneById(id); if(!z) return; const n=num(v); if(n&&n>0) z.surface=+n.toFixed(2); else delete z.surface; persist(); };
+  window.metHaut=function(id,v){ const z=zoneById(id); if(!z) return; const n=num(v); if(n&&n>0) z.hauteur=+n.toFixed(2); else delete z.hauteur; persist(); };
+  window.metHautSel=function(){ const ids=[...(window.pieceChkSet?window.pieceChkSet():[])]; };
+  function block(z){ const pl=planById(z.poly&&z.poly.planId), E=echelle(pl), h=hauteur(z); let calc=''; if(E){ const A=areaN(z.poly.pts)*E.D.w*E.D.h*E.k*E.k; calc=' <small style="color:#667">· calculée '+f1(A,1)+' m²</small>'; }
+    const M=E?murs(z,E).map(m=>f1(m.longueur,2)).join(' · '):''; const zb=zBase(z.niveau);
+    return '<div class="met-blk" style="margin-top:6px;padding:6px 8px;border:1px dashed var(--line,#ccc);border-radius:6px;font-size:12px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label style="margin:0">📐 Surface <input type="text" inputmode="decimal" value="'+(z.surface||'')+'" placeholder="m²" style="width:70px;padding:3px" onchange="metSurface(\''+z.id+'\',this.value);metRefresh()"> m²</label><label style="margin:0">↕ Hauteur <input type="text" inputmode="decimal" value="'+(z.hauteur||'')+'" placeholder="'+(h?f1(h,2):'m')+'" style="width:64px;padding:3px" onchange="metHaut(\''+z.id+'\',this.value);metRefresh()"> m</label>'+calc+'</div>'
+      +(E?'<div style="margin-top:4px;color:#445">Murs (m) : '+M+(h?' · Z '+(zb!=null?f1(zb,2)+' → '+f1(zb+h,2)+' m':'hauteur '+f1(h,2)+' m'):'')+'</div>':'<div style="margin-top:4px;color:#778">Renseignez la surface de quelques pièces : le plan est recalé en mètres (X, Y, Z).</div>')+'</div>'; }
+  window.metRefresh=function(){ document.querySelectorAll('.met-blk').forEach(b=>b.remove()); document.querySelectorAll('.pz-detail[data-met]').forEach(d=>d.removeAttribute('data-met')); scan(); };
+  function scan(){ document.querySelectorAll('.pz-detail:not([data-met])').forEach(d=>{ const nm=d.querySelector('.pz-name'); const m=nm&&/planPieceInline\(this,'([^']+)'/.exec(nm.getAttribute('onclick')||''); if(!m) return; const z=zoneById(m[1]); if(!z||!z.poly) return; d.dataset.met='1'; d.insertAdjacentHTML('beforeend',block(z)); });
+    document.querySelectorAll('.pz-tb:not([data-met])').forEach(t=>{ t.dataset.met='1'; const b=document.createElement('button'); b.type='button'; b.className='ghost'; b.textContent='📐 Plan métrique X·Y·Z'; b.title='Échelle déduite des surfaces, hauteurs, export des coordonnées'; b.onclick=()=>metOpen(); b.style.cssText='margin-left:auto'; t.appendChild(b); }); }
+  setInterval(scan,700);
+  /* Champ surface à la création de la pièce */
+  const pf=window.pacPrefill; window.pacPrefill=function(pl){ setTimeout(()=>{ const a=document.querySelector('#modalBody .modal-actions'); if(a&&!document.getElementById('pc-surf')&&document.getElementById('pc-nom')){ a.insertAdjacentHTML('beforebegin','<div class="field"><label>Surface (m²) — facultatif</label><input type="text" inputmode="decimal" id="pc-surf" placeholder="ex. 24,5 (lue sur le plan architecte)"><div class="empty-note">Les surfaces servent à recaler le plan en mètres (X, Y, Z).</div></div>'); } },20); if(typeof pf==='function') return pf.apply(this,arguments); };
+  const po=window.pieceCreateOk; window.pieceCreateOk=function(){ const sv=(document.getElementById('pc-surf')||{}).value; const n0=(state.zonesChantier||[]).length; const r=po.apply(this,arguments); try{ const L=state.zonesChantier||[]; if(L.length>n0){ const z=L[L.length-1], n=num(sv); if(n&&n>0&&z.poly){ z.surface=+n.toFixed(2); persist(); } } }catch(e){} return r; };
+  /* Fenêtre plan métrique */
+  window.metOpen=function(){ const pl=curPl(); if(!pl){ miniAlert('Ouvrez un plan.'); return; } const E=echelle(pl), D=dims(pl), niv=pl.niveau, c=cotes()[niv]||{};
+    let h='<button class="close-x" onclick="closeModal()">×</button><h3>📐 Plan métrique — '+e_(pl.nom||'')+'</h3>';
+    if(!E) h+='<p style="font-size:13px">Aucune surface renseignée. Dessinez les pièces puis saisissez leur surface (m²) : l’échelle du plan est déduite automatiquement.</p>';
+    else{ const q=E.rms<0.05?'bonne':E.rms<0.15?'moyenne':'faible'; h+='<p style="font-size:13px"><b>Échelle :</b> 1 px = '+f1(E.k*100,2)+' cm · plan ≈ '+f1(D.w*E.k,1)+' × '+f1(D.h*E.k,1)+' m<br><b>Fiabilité :</b> '+q+' (écart moyen '+f1(E.rms*100,1)+' % sur '+E.n+' pièce'+(E.n>1?'s':'')+')</p>'
+      +'<div style="max-height:200px;overflow:auto;font-size:12px"><table style="width:100%;border-collapse:collapse"><tr style="text-align:left"><th>Pièce</th><th>Saisie</th><th>Calculée</th><th>Écart</th></tr>'+E.lines.map(l=>'<tr style="'+(Math.abs(l.ecart)>0.15?'color:var(--rust);font-weight:600':'')+'"><td>'+e_(l.z.nom)+'</td><td>'+f1(l.surf,1)+'</td><td>'+f1(l.calc,1)+'</td><td>'+(l.ecart>0?'+':'')+f1(l.ecart*100,1)+' %</td></tr>').join('')+'</table></div><p class="empty-note">Une pièce en rouge (écart &gt; 15 %) : contour mal tracé ou surface mal saisie.</p>'; }
+    h+='<div class="field"><label>Niveau '+e_(niv)+' — Z</label><div style="display:flex;gap:8px;flex-wrap:wrap;font-size:13px"><label style="margin:0">Cote du plancher <input type="text" id="met-cote" inputmode="decimal" value="'+(c.cote!=null?c.cote:'')+'" style="width:72px"> m</label><label style="margin:0">Hauteur sous plafond par défaut <input type="text" id="met-haut" inputmode="decimal" value="'+(c.haut||'')+'" style="width:72px"> m</label></div><div class="empty-note">Une hauteur peut aussi être réglée par pièce (fiche pièce) ou par zone (champ hauteur de la zone).</div></div>'
+      +'<div class="modal-actions"><button class="primary" onclick="metSaveNiv(\''+e_(niv)+'\')">Enregistrer le niveau</button><button class="ghost" onclick="metExport()" '+(E?'':'disabled')+'>⬇ Exporter X·Y·Z (JSON)</button><button class="ghost" onclick="closeModal()">Fermer</button></div>'; openModal(h); };
+  window.metSaveNiv=function(niv){ const c=num(document.getElementById('met-cote').value), h=num(document.getElementById('met-haut').value); cotes()[niv]={cote:c,haut:h}; persist(); closeModal(); metRefresh(); miniAlert('Niveau « '+niv+' » enregistré.'); };
+  window.metExport=function(){ const pl=curPl(), E=echelle(pl); if(!E) return; const out={plan:pl.nom,niveau:pl.niveau,unite:'m',origine:'coin bas-gauche du plan, X vers la droite, Y vers le haut, Z vers le haut',echelle_cm_par_pixel:+(E.k*100).toFixed(3),dimensions_m:[+(E.D.w*E.k).toFixed(2),+(E.D.h*E.k).toFixed(2)],ecart_surfaces_moyen_pct:+(E.rms*100).toFixed(1),
+      pieces:rooms(pl).map(z=>{ const zb=zBase(z.niveau), h=hauteur(z); return {id:z.id,nom:z.nom,zone:z.parentId?zonePath(z.parentId):'',surface_saisie_m2:z.surface||null,surface_calculee_m2:+(areaN(z.poly.pts)*E.D.w*E.D.h*E.k*E.k).toFixed(2),z_bas:zb,hauteur:h,z_haut:(zb!=null&&h)?+(zb+h).toFixed(2):null,polygone:z.poly.pts.map(p=>toM(E,p[0],p[1])),murs:murs(z,E)}; })};
+    const blob=new Blob([JSON.stringify(out,null,1)],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='plan-metrique-'+String(pl.niveau||'').replace(/[^\w+-]/g,'_')+'.json'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },500); };
+  /* Lecture des coordonnées sous le curseur */
+  let bd=null; document.addEventListener('pointermove',ev=>{ const host=ev.target.closest&&ev.target.closest('#rtPlan,.plan-inner'); if(!host||(document.getElementById('modalBody')&&document.getElementById('modalBody').children.length&&document.getElementById('overlay')&&document.getElementById('overlay').classList.contains('open'))){ if(bd) bd.style.display='none'; return; }
+    const pl=host.id==='rtPlan'?(window.rtCurPlan&&window.rtCurPlan()):planById(planSel); const E=echelle(pl); if(!E){ if(bd) bd.style.display='none'; return; }
+    const r=host.getBoundingClientRect(), x=(ev.clientX-r.left)/r.width, y=(ev.clientY-r.top)/r.height; if(x<0||x>1||y<0||y>1){ if(bd) bd.style.display='none'; return; }
+    const m=toM(E,x,y); let zt=''; try{ const pz=pieceAt(pl,x,y); if(pz){ const zb=zBase(pz.niveau), h=hauteur(pz); zt=' · Z '+(zb!=null?f1(zb,2)+(h?' → '+f1(zb+h,2):''):(h?'h '+f1(h,2):'—'))+' m'; } else if(zBase(pl.niveau)!=null) zt=' · Z '+f1(zBase(pl.niveau),2)+' m'; }catch(e){}
+    if(!bd){ bd=document.createElement('div'); bd.style.cssText='position:fixed;z-index:990;pointer-events:none;background:rgba(22,35,43,.88);color:#fff;font:600 11px/1.3 system-ui,sans-serif;padding:3px 7px;border-radius:5px;white-space:nowrap'; document.body.appendChild(bd); }
+    bd.textContent='X '+f1(m[0],2)+' · Y '+f1(m[1],2)+zt; bd.style.display='block'; bd.style.left=Math.min(innerWidth-190,ev.clientX+14)+'px'; bd.style.top=(ev.clientY+16)+'px'; },true);
+  document.addEventListener('pointerleave',()=>{ if(bd) bd.style.display='none'; },true);
+})();
+</script>
 </body></html>
