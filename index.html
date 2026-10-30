@@ -15256,7 +15256,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     const head='<h2>🗂 Projet « '+esc(p.nom)+' »</h2><div class="row"><span>Votre rôle : <b>'+({admin:'Administrateur',editeur:'Éditeur',lecteur:'Lecteur'})[p.role]+'</b></span>'
       +(p.valide_jusqu?'<span>· accès valable jusqu’au <b>'+fmt(p.valide_jusqu)+'</b></span>':'')
       +(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')
-      +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')
+      +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')+'<button id="pgOutB">🚪 Se déconnecter</button>'
       +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div>';
     if(p.role!=='admin'){
       const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
@@ -15273,6 +15273,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     else { const mm=(await S.members()).find(x=>x.email===String(email).toLowerCase()&&!x.herite&&x.role!=='admin'); if(mm){ if(kind==='role') await S.setRole(mm.id,role==='lecteur'?'lecteur':'editeur'); else if(kind==='remove') await S.remove(mm.id); } }
   }catch(e){ const m=document.getElementById('pgMsg'); if(m){ m.textContent='Droits chez l’hébergeur non mis à jour : '+e.message; m.style.color='#B4432D'; } } }
   function bindHead(w){
+    const lo=w.querySelector('#pgOutB'); if(lo) lo.onclick=()=>window.pilotageLogout&&window.pilotageLogout();
     const s=w.querySelector('#pgSw'); if(s) s.onchange=()=>window.pilotageSwitchProjet(s.value);
     const r=w.querySelector('#pgRen'); if(r) r.onclick=async()=>{ const v=prompt('Nom du projet :',PJ().nom); if(v===null||!v.trim()) return; try{ await adm({action:'p_projet_rename',nom:v.trim()}); PJ().nom=v.trim(); if(state.projet){ state.projet.nom=v.trim(); persist&&persist(); } render(); }catch(e){ alert(e.message); } };
     const n=w.querySelector('#pgNewP'); if(n) n.onclick=async()=>{ const id=prompt('Identifiant court du nouveau projet (lettres/chiffres) :'); if(!id) return; const nom=prompt('Nom du projet :',id)||id; try{ await window.PILOTAGE_ADM({action:'p_projet_create',id,nom}); alert('Projet créé. Choisissez-le dans la liste pour y créer des accès.'); window.pilotageSwitchProjet(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'')); }catch(e){ alert(e.message); } };
@@ -15339,13 +15340,21 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
         cred='Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nProjet : '+pn+'\nIdentifiant : '+email+(w.querySelector('#nSo').checked?'\nConnexion : bouton « Continuer avec Google » ou « Microsoft », avec cette adresse e-mail':(r.existant?'\n(compte existant : mot de passe inchangé)':'\nMot de passe : '+pw))+'\nValable jusqu’au '+fmt(r.valide_jusqu); }); };
   }
 
+  /* bouton de déconnexion toujours visible dans le menu latéral (mode hébergé) */
+  function addLogout(){
+    const nav=document.getElementById('tabMenu'); if(!nav||document.getElementById('tabLogout')||!window.pilotageLogout) return;
+    const b=document.createElement('button'); b.type='button'; b.className='tab'; b.id='tabLogout';
+    b.textContent='🚪 Se déconnecter'+((window.PILOTAGE_USER&&window.PILOTAGE_USER.nom)?' ('+window.PILOTAGE_USER.nom+')':'');
+    b.onclick=()=>{ try{ closeTabMenu(); }catch(e){} window.pilotageLogout(); };
+    nav.appendChild(b);
+  }
   /* initialisation : attend la connexion (mode hébergé) */
   let tries=0;
   (function wait(){
     const p=PJ();
     if(p){
       try{ if(!state.projet||state.projet.nom!==p.nom||state.projet.id!==p.id){ state.projet=Object.assign({},state.projet||{},{id:p.id,nom:p.nom}); if(typeof persist==='function') persist(); if(window.projChipRefresh) projChipRefresh(); } }catch(e){}
-      apply();
+      apply(); addLogout();
       if(p.role==='admin'&&window.PILOTAGE_ADM){ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); setInterval(()=>{ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); },300000); }
       const cur=document.querySelector('.page.active'); if(cur&&cur.id!=='page-dashboard'&&cur.id.startsWith('page-')&&!pgCan(cur.id.slice(5))) showPage('dashboard');
       return;
