@@ -69,6 +69,10 @@ body.plan-fs-on .ur-float{bottom:96px;}
 #rtFloat.docked{position:static;display:flex;width:auto;max-height:46vh;margin:6px 8px 8px;box-shadow:none;z-index:auto}
 #rtFloat.docked .rf-h{cursor:default}
 #baseDerogRib.lp-arm>summary{background:#FFF3CF!important}
+#rtFloat.folded .rf-tabs,#rtFloat.folded .rf-body{display:none!important}
+#rtFloat.folded{max-height:none;width:min(92vw,280px)}
+#rtFloat.folded .rf-h{border-radius:5px}
+#rtFloat .rf-h{cursor:pointer}
 #baseDerogPage{display:none!important}
 </style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script>window.OCR_LOCAL="ocr/";</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="supabase-adapter.js"></script></head><body>
 <!DOCTYPE html>
@@ -14746,7 +14750,14 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   function floatAt(x,y){ mode='float'; const f=fl(); apply(); f.style.left=Math.max(4,Math.min(innerWidth-f.offsetWidth-4,x-40))+'px'; f.style.top=Math.max(4,Math.min(innerHeight-80,y))+'px'; try{ localStorage.setItem('pilotage_rtfloat',JSON.stringify({x:parseInt(f.style.left),y:parseInt(f.style.top)})); }catch(e){} }
   function init(){ const r=rib(),f=fl(); if(!r||!f||r._dk) return; r._dk=1;
     r.addEventListener('toggle',()=>{ if(!r.open) mode='float'; apply(); top(); });
-    f.querySelector('.rf-x').addEventListener('click',e=>{ e.stopImmediatePropagation(); if(r.open){ mode='dock'; apply(); } else f.classList.remove('on'); },true);
+    const fx=f.querySelector('.rf-x'), hd=f.querySelector('.rf-h'); fx.textContent='▾'; fx.title='Replier / déplier'; fx.style.fontSize='18px';
+    const foldSet=v=>{ f.classList.toggle('folded',v); fx.textContent=v?'▸':'▾'; try{ localStorage.setItem('pilotage_rtfold',v?'1':'0'); }catch(e){} };
+    try{ if(localStorage.getItem('pilotage_rtfold')==='1') foldSet(true); }catch(e){}
+    fx.addEventListener('click',e=>{ e.stopImmediatePropagation(); foldSet(!f.classList.contains('folded')); },true);
+    const dk=document.createElement('button'); dk.type='button'; dk.className='rf-dk'; dk.textContent='⤓'; dk.title='Ancrer dans le ruban (appui long sur le bandeau du ruban pour la rendre volante)'; dk.style.cssText='border:0;background:none;color:#fff;font-size:16px;cursor:pointer'; fx.before(dk); dk.addEventListener('pointerdown',e=>e.stopPropagation()); dk.addEventListener('click',e=>{ e.stopPropagation(); if(r.open){ mode='dock'; apply(); } });
+    /* un clic (sans glisser) sur le bandeau replie / déplie */
+    let hs=null; hd.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; hs={x:e.clientX,y:e.clientY}; },true);
+    hd.addEventListener('pointerup',e=>{ if(!hs) return; const d=Math.hypot(e.clientX-hs.x,e.clientY-hs.y); hs=null; if(d<5&&!e.target.closest('button')) foldSet(!f.classList.contains('folded')); },true);
     const sm=r.querySelector(':scope>summary'); let st=null,tm=null;
     sm.addEventListener('pointerdown',e=>{ if(!r.open||mode!=='dock') return; st={x:e.clientX,y:e.clientY,ok:false,id:e.pointerId}; tm=setTimeout(()=>{ if(st){ st.ok=true; r.classList.add('lp-arm'); if(navigator.vibrate) try{navigator.vibrate(25)}catch(_){} } },450); });
     document.addEventListener('pointermove',e=>{ if(!st) return; const d=Math.hypot(e.clientX-st.x,e.clientY-st.y); if(!st.ok){ if(d>10){ clearTimeout(tm); st=null; } return; } if(d>8){ const x=e.clientX,y=e.clientY; clearTimeout(tm); st=null; r.classList.remove('lp-arm'); r._noClick=Date.now(); floatAt(x,y); } },true);
@@ -14787,7 +14798,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     const used={}; let k=0;
     for(let i=0;i<n;i++){ const a=pts[i],b=pts[(i+1)%n]; if(Math.hypot(b[0]-a[0],b[1]-a[1])<0.008) continue; k++;
       const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,dx=mx-cx,dy=my-cy; let c=Math.abs(dy)>=Math.abs(dx)?(dy<0?'nord':'sud'):(dx<0?'ouest':'est'); used[c]=(used[c]||0)+1; const lab=c+(used[c]>1?' '+used[c]:'');
-      const t=taskBase(nextTaskId(),'Mur '+k+' ('+lab+') — '+z.nom,z.niveau,Object.assign({},base,{parentTaskId:g.id,pos:{planId:z.poly.planId,x:+mx.toFixed(4),y:+my.toFixed(4)}})); state.tasks.unshift(t); }
+      const t=taskBase(nextTaskId(),'Mur '+k+' ('+lab+') — '+z.nom,z.niveau,Object.assign({},base,{parentTaskId:g.id,murIdx:i,pos:{planId:z.poly.planId,x:+mx.toFixed(4),y:+my.toFixed(4)}})); state.tasks.unshift(t); }
     persist(); setTimeout(()=>{ try{ renderAll(); window.rtRender&&window.rtRender(); }catch(e){} },0); return k; };
   const po=window.pieceCreateOk; if(typeof po==='function'){ window.pieceCreateOk=function(){ const n0=(state.zonesChantier||[]).length; const r=po.apply(this,arguments); try{ const L=state.zonesChantier||[]; if(L.length>n0){ const z=L[L.length-1]; if(z.poly){ const k=pieceMursCreer(z); if(k) setTimeout(()=>{ try{ miniAlert('🧱 '+k+' mur'+(k>1?'s':'')+' de « '+z.nom+' » ajouté'+(k>1?'s':'')+' en sous-tâches (tâche globale « Murs — '+z.nom+' », état « fait » par défaut).'); }catch(e){} },300); } } }catch(e){ console.error(e); } return r; }; }
   /* UI : sous-tâches pointables dans la fiche de la tâche */
@@ -14799,7 +14810,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   window.ssRender=function(id){ const h=document.getElementById('ssTree'); if(!h) return; const K=kids(id); h.innerHTML=K.length?K.map(k=>row(k,0)).join(''):'<p class="empty-note">Aucune sous-tâche pointable. Chacune se pointe comme une tâche (à faire / en cours + % / fait) et peut avoir ses propres sous-tâches.</p>'; };
   window.ssSet=function(id,v){ const t=taskById(id); if(!t) return; t.etat=v; t.pct=v==='fait'?100:v==='afaire'?0:(t.pct>=5&&t.pct<=95?t.pct:50); t.pointeAt=Date.now(); delete t._agg; persist(); tick(); ssRender(window._ssCur); };
   window.ssPct=function(id,v){ const t=taskById(id); if(!t) return; t.pct=Math.max(5,Math.min(95,Math.round((+v||50)/5)*5)); t.etat='encours'; delete t._agg; persist(); tick(); ssRender(window._ssCur); };
-  window.ssAdd=function(pid){ const p=taskById(pid); if(!p) return; miniPrompt('Nouvelle sous-tâche de « '+p.quoi+' » :','',v=>{ v=(v||'').trim(); if(!v) return; const t=taskBase(nextTaskId(),v,p.niveau,{zone:p.zone,zoneChantierId:p.zoneChantierId,zoneChantierIds:(p.zoneChantierIds||[]).slice(),zoneFamilleId:p.zoneFamilleId,support:p.support,metierId:p.metierId,etat:'afaire',pct:0,quand:p.quand||todayStr(),murPiece:p.murPiece,parentTaskId:p.id}); state.tasks.unshift(t); persist(); tick(); ssRender(window._ssCur); try{ renderAll(); }catch(e){} }); };
+  window.ssAdd=function(pid){ const p=taskById(pid); if(!p) return; miniPrompt('Nouvelle sous-tâche de « '+p.quoi+' » :','',v=>{ v=(v||'').trim(); if(!v) return; const t=taskBase(nextTaskId(),v,p.niveau,{zone:p.zone,zoneChantierId:p.zoneChantierId,zoneChantierIds:(p.zoneChantierIds||[]).slice(),zoneFamilleId:p.zoneFamilleId,support:p.support,metierId:p.metierId,etat:'afaire',pct:0,quand:p.quand||todayStr(),murPiece:p.murPiece,parentTaskId:p.id,auto:true}); state.tasks.unshift(t); persist(); tick(); ssRender(window._ssCur); try{ renderAll(); }catch(e){} }); };
   window.ssDel=function(id){ const t=taskById(id); if(!t) return; miniConfirm('Supprimer « '+t.quoi+' » et ses sous-tâches ?',()=>{ const rm=new Set(); (function f(i){ rm.add(i); kids(i).forEach(k=>f(k.id)); })(id); state.tasks=state.tasks.filter(x=>!rm.has(x.id)); persist(); tick(); ssRender(window._ssCur); try{ renderAll(); }catch(e){} }); };
   window.ssOpen=function(id){ closeModal(); setTimeout(()=>openTaskDetail(id),50); };
   const od=window.openTaskDetail; if(typeof od==='function'){ window.openTaskDetail=function(id){ const r=od.apply(this,arguments); try{ const mb=document.getElementById('modalBody'), L=mb&&mb.querySelector('#sousTachesList'); if(L&&!mb.querySelector('#ssTree')){ window._ssCur=id; const t=taskById(id); const f=document.createElement('div'); f.className='field'; f.innerHTML='<label>🧱 Sous-tâches pointables'+(t&&t.parentTaskId&&taskById(t.parentTaskId)?' <small style="color:#667">· sous-tâche de « '+e_(taskById(t.parentTaskId).quoi)+' »</small>':'')+'</label><div id="ssTree"></div><button type="button" class="ghost" style="margin-top:6px" onclick="ssAdd(\''+id+'\')">＋ Sous-tâche pointable</button>'; L.closest('.field').after(f); ssRender(id); } }catch(e){ console.error(e); } return r; }; }
@@ -14920,6 +14931,51 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     if(!bd){ bd=document.createElement('div'); bd.style.cssText='position:fixed;z-index:990;pointer-events:none;background:rgba(22,35,43,.88);color:#fff;font:600 11px/1.3 system-ui,sans-serif;padding:3px 7px;border-radius:5px;white-space:nowrap'; document.body.appendChild(bd); }
     bd.textContent='X '+f1(m[0],2)+' · Y '+f1(m[1],2)+zt; bd.style.display='block'; bd.style.left=Math.min(innerWidth-190,ev.clientX+14)+'px'; bd.style.top=(ev.clientY+16)+'px'; },true);
   document.addEventListener('pointerleave',()=>{ if(bd) bd.style.display='none'; },true);
+})();
+</script>
+<script>
+/* Réseau de tâches sur le plan : tâche globale de la pièce ⇄ tâches des murs ⇄ sous-tâches, reliées comme un réseau de neurones.
+   Les tâches de mur sont ancrées à leur mur (elles suivent le contour quand il bouge), les sous-tâches suivent leur tâche mère. */
+(function(){
+  const NS='http://www.w3.org/2000/svg';
+  const kids=id=>(state.tasks||[]).filter(t=>t.parentTaskId===id&&!t.deleted);
+  const COL={fait:'#2E9E5B',encours:'#F2A900',afaire:'#8A949B'};
+  const dimsOf=pl=>({w:(pl&&pl.w)||2224,h:(pl&&pl.h)||1121});
+  const planOf=z=>planById(z.poly.planId);
+  function roomMin(z){ const D=dimsOf(planOf(z)), P=z.poly.pts, xs=P.map(p=>p[0]), ys=P.map(p=>p[1]); return Math.max(10,Math.min((Math.max(...xs)-Math.min(...xs))*D.w,(Math.max(...ys)-Math.min(...ys))*D.h)); }
+  function pin(z,nx,ny,fromX,fromY){ /* ramène un point à l'intérieur de la pièce */ const P=z.poly.pts; if(ptInPoly(nx,ny,P)) return [nx,ny]; for(let k=1;k<=6;k++){ const f=1-k/7, x=fromX+(nx-fromX)*f, y=fromY+(ny-fromY)*f; if(ptInPoly(x,y,P)) return [x,y]; } return [fromX,fromY]; }
+  function centre(z){ const P=z.poly.pts, n=P.length, cx=P.reduce((q,p)=>q+p[0],0)/n, cy=P.reduce((q,p)=>q+p[1],0)/n; if(ptInPoly(cx,cy,P)) return [cx,cy]; let best=null,bd=1e9,xs=P.map(p=>p[0]),ys=P.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys); for(let a=0;a<=20;a++)for(let b=0;b<=20;b++){ const x=x0+(x1-x0)*a/20,y=y0+(y1-y0)*b/20; if(!ptInPoly(x,y,P)) continue; const d=Math.hypot(x-cx,y-cy); if(d<bd){ bd=d; best=[x,y]; } } return best||[cx,cy]; }
+  function normal(z,i){ const P=z.poly.pts,a=P[i],b=P[(i+1)%P.length],D=dimsOf(planOf(z)); const ex=(b[0]-a[0])*D.w, ey=(b[1]-a[1])*D.h, L=Math.hypot(ex,ey)||1; let n=[-ey/L,ex/L]; const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2; if(!ptInPoly(mx+n[0]*3/D.w,my+n[1]*3/D.h,P)) n=[-n[0],-n[1]]; return {n,L,mx,my,D}; }
+  function wallPos(z,i){ const q=normal(z,i), inset=0.075*roomMin(z); return [+(q.mx+q.n[0]*inset/q.D.w).toFixed(4),+(q.my+q.n[1]*inset/q.D.h).toFixed(4)]; }
+  function sync(){ let ch=false; try{
+    (state.tasks||[]).forEach(t=>{ if(t.deleted||!t.murPiece) return; const z=zoneById(t.murPiece); if(!z||!z.poly||!z.poly.pts||z.poly.pts.length<3) return; const P=z.poly.pts, pid=z.poly.planId;
+      if(t.murIdx!=null&&t.parentTaskId){ const a=P[t.murIdx], b=P[(t.murIdx+1)%P.length]; if(!a||!b) return; const sg=a.join(',')+'|'+b.join(','); if(t._gs!==sg||!t.pos){ const wasNew=t._gs===undefined; t._gs=sg; if(wasNew&&t.pos&&t._moved){ return; } const w=wallPos(z,t.murIdx); t.pos={planId:pid,x:w[0],y:w[1]}; ch=true; } }
+      else if(!t.parentTaskId){ const sg=P.map(p=>p.join(',')).join('|'); if(t._gs!==sg||!t.pos){ t._gs=sg; const c=centre(z); t.pos={planId:pid,x:+c[0].toFixed(4),y:+c[1].toFixed(4)}; ch=true; } } });
+    /* sous-tâches : en éventail depuis le mur vers l'intérieur de la pièce, puis elles suivent leur mère */
+    (state.tasks||[]).forEach(t=>{ if(t.deleted||!t.auto||!t.parentTaskId) return; const p=taskById(t.parentTaskId); if(!p||!p.pos) return;
+      if(!t.pos){ const z=t.murPiece&&zoneById(t.murPiece); const sib=kids(p.id).filter(x=>x.auto), i=sib.indexOf(t); let ang=Math.PI/2, D=dimsOf(planById(p.pos.planId)), Rpx=60;
+        if(z&&z.poly&&z.poly.pts){ Rpx=0.2*roomMin(z); const gp=p.parentTaskId&&taskById(p.parentTaskId); if(p.murIdx!=null){ const q=normal(z,p.murIdx); ang=Math.atan2(q.n[1]*D.h,q.n[0]*D.w); } else if(gp&&gp.pos){ ang=Math.atan2((p.pos.y-gp.pos.y)*D.h,(p.pos.x-gp.pos.x)*D.w); } }
+        const th=ang+(i-(sib.length-1)/2)*0.95; let x=p.pos.x+Rpx*Math.cos(th)/D.w, y=p.pos.y+Rpx*Math.sin(th)/D.h;
+        if(z&&z.poly){ const r=pin(z,x,y,p.pos.x,p.pos.y); x=r[0]; y=r[1]; } t.pos={planId:p.pos.planId,x:+x.toFixed(4),y:+y.toFixed(4)}; t._pp=[p.pos.x,p.pos.y]; ch=true; return; }
+      if(t._pp&&(t._pp[0]!==p.pos.x||t._pp[1]!==p.pos.y)){ let x=t.pos.x+p.pos.x-t._pp[0], y=t.pos.y+p.pos.y-t._pp[1]; const z=t.murPiece&&zoneById(t.murPiece); if(z&&z.poly){ const r=pin(z,x,y,p.pos.x,p.pos.y); x=r[0]; y=r[1]; } t.pos={planId:t.pos.planId,x:+x.toFixed(4),y:+y.toFixed(4)}; t._pp=[p.pos.x,p.pos.y]; ch=true; } else if(!t._pp){ t._pp=[p.pos.x,p.pos.y]; } });
+  }catch(e){ console.error(e); } if(ch){ try{ persist(); }catch(e){} try{ window.rtRender&&window.rtRender(); }catch(e){} } }
+  /* Taille des pastilles : le mur est le plus gros point, les sous-tâches plus petites ; proportionnelle à la pièce (zoom = plus gros), plancher fin mais visible */
+  const depthOf=t=>{ let d=0,k=t; while(k&&k.parentTaskId&&d<8){ k=taskById(k.parentTaskId); d++; } return d; };
+  function size(host){ const W=host.clientWidth||1, H=host.clientHeight||1; host.querySelectorAll('.rt-pin[data-rtw]').forEach(pn=>{ const t=taskById(pn.dataset.rtw); if(!t||!t.murPiece){ if(pn.dataset.msz){ pn.style.removeProperty('--rt-ps'); pn.dataset.msz=''; } return; } const z=zoneById(t.murPiece); if(!z||!z.poly||!z.poly.pts) return;
+      const P=z.poly.pts, xs=P.map(p=>p[0]), ys=P.map(p=>p[1]), mn=Math.min((Math.max(...xs)-Math.min(...xs))*W,(Math.max(...ys)-Math.min(...ys))*H), dp=depthOf(t), f=dp===0?0.85:dp===1?1:dp===2?0.55:0.4; let d=0.13*mn*f;
+      if(t.murIdx!=null&&t.parentTaskId){ const a=P[t.murIdx],b=P[(t.murIdx+1)%P.length],L=Math.hypot((b[0]-a[0])*W,(b[1]-a[1])*H); d=Math.min(d,L*0.5); }
+      d=Math.max(dp>=2?6:8,Math.round(d)); const v=d+'px'; if(pn.style.getPropertyValue('--rt-ps')!==v){ pn.style.setProperty('--rt-ps',v); } pn.dataset.msz='1'; }); }
+  function draw(){ const host=document.getElementById('rtPlan'); if(!host) return; let pl=null; try{ pl=window.rtCurPlan&&window.rtCurPlan(); }catch(e){} let sv=host.querySelector(':scope>svg.met-net');
+    if(!pl){ if(sv) sv.remove(); return; }
+    const live=new Set([...host.querySelectorAll('.rt-pin[data-rtw]')].map(x=>x.dataset.rtw)); const E=[]; (state.tasks||[]).forEach(t=>{ if(t.deleted||!t.parentTaskId||!t.pos||t.pos.planId!==pl.id||!live.has(t.id)) return; const p=taskById(t.parentTaskId); if(!p||!p.pos||p.pos.planId!==pl.id||!live.has(p.id)) return; E.push([p,t]); });
+    const sig=pl.id+'#'+E.map(([p,t])=>[p.pos.x,p.pos.y,t.pos.x,t.pos.y,t.etat].join(',')).join(';'); if(sv&&sv.dataset.sig===sig){ hubs(host); return; }
+    if(!sv){ sv=document.createElementNS(NS,'svg'); sv.setAttribute('class','met-net'); sv.setAttribute('viewBox','0 0 1 1'); sv.setAttribute('preserveAspectRatio','none'); sv.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:2'; if(getComputedStyle(host).position==='static') host.style.position='relative'; host.appendChild(sv); }
+    sv.dataset.sig=sig; sv.innerHTML=E.map(([p,t])=>{ const x1=p.pos.x,y1=p.pos.y,x2=t.pos.x,y2=t.pos.y,mx=(x1+x2)/2+(y2-y1)*0.12,my=(y1+y2)/2-(x2-x1)*0.12,c=COL[t.etat||'afaire']||COL.afaire; const deep=!!(taskById(t.parentTaskId)||{}).parentTaskId;
+      return '<path d="M'+x1+' '+y1+' Q'+mx.toFixed(4)+' '+my.toFixed(4)+' '+x2+' '+y2+'" fill="none" stroke="'+c+'" stroke-width="'+(deep?1.4:2)+'" stroke-opacity=".75" '+(deep?'stroke-dasharray="4 3" ':'')+'vector-effect="non-scaling-stroke" stroke-linecap="round"/>'; }).join(''); hubs(host); }
+  function hubs(host){ size(host); host.querySelectorAll('.rt-pin[data-rtw]').forEach(pn=>{ const t=taskById(pn.dataset.rtw), k=t?kids(t.id).length:0; const on=k>0; if(on!==(pn.dataset.hub==='1')){ pn.dataset.hub=on?'1':''; pn.style.boxShadow=on?'0 0 0 4px rgba(242,169,0,.35), 0 0 0 7px rgba(242,169,0,.15)':''; } }); }
+  setInterval(()=>{ sync(); draw(); },700);
+  try{ const h=document.getElementById('rtPlan'); if(h){ new ResizeObserver(()=>size(h)).observe(h); new MutationObserver(()=>size(h)).observe(h,{childList:true,subtree:false}); } }catch(e){}
+  setTimeout(()=>{ try{ const h=document.getElementById('rtPlan'); if(h){ new ResizeObserver(()=>size(h)).observe(h); new MutationObserver(()=>size(h)).observe(h,{childList:true,subtree:true}); } }catch(e){} },2500);
 })();
 </script>
 </body></html>
