@@ -69,6 +69,15 @@ body.plan-fs-on .ur-float{bottom:96px;}
 #rtFloat.docked{position:static;display:flex;width:auto;max-height:46vh;margin:6px 8px 8px;box-shadow:none;z-index:auto}
 #rtFloat.docked .rf-h{cursor:default}
 #baseDerogRib.lp-arm>summary{background:#FFF3CF!important}
+#cmdPal{position:fixed;z-index:100001;left:50%;transform:translateX(-50%);bottom:18px;background:rgba(27,29,31,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);color:#fff;border:2px solid rgba(242,169,0,.75);border-radius:12px;padding:6px 8px;font:600 12px system-ui,sans-serif;max-width:min(94vw,760px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#cmdPal input{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:5px 9px;font:600 13px system-ui,sans-serif;width:100%;box-sizing:border-box;margin-bottom:5px;outline:none}
+#cmdPal input::placeholder{color:rgba(255,255,255,.55)}
+#cmdPal .cp-l{display:flex;flex-wrap:wrap;gap:5px}
+#cmdPal .cp-c{background:rgba(242,169,0,.92);color:#1B1D1F;border:0;border-radius:7px;padding:5px 9px;font:800 12px system-ui,sans-serif;cursor:pointer}
+#cmdPal .cp-c.on{outline:2px solid #fff}
+#cmdPal .cp-h{font-weight:500;opacity:.75;margin-top:4px;font-size:11px}
+#cmdTrig{position:fixed;z-index:99990;width:34px;height:34px;border-radius:50%;border:2px solid rgba(242,169,0,.8);background:rgba(27,29,31,.55);color:#fff;font-size:16px;cursor:pointer;opacity:.25;transition:opacity .2s;display:none;padding:0}
+#cmdTrig:hover,#cmdTrig.near{opacity:1}
 #apcxBar{background:rgba(27,29,31,.55)!important;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border:2px solid rgba(242,169,0,.7)!important;border-radius:11px!important;padding:5px 9px!important;font:600 12px system-ui,sans-serif!important;gap:6px 8px!important;box-shadow:0 6px 18px rgba(0,0,0,.3)!important;max-width:min(94vw,820px)!important;transition:opacity .25s}
 #apcxBar button{padding:4px 8px!important;font-size:11.5px!important;border-radius:7px!important;background:rgba(242,169,0,.92)!important}
 #apcxBar>*{font-size:12px}
@@ -14998,6 +15007,52 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   setInterval(()=>{ if(document.body.classList.contains('apcx-on')){ place(); } },400);
   window.addEventListener('resize',place);
   let lastTxt=''; setInterval(()=>{ const b=document.getElementById('apcxBar'); if(!b){ lastTxt=''; return; } const t=b.textContent; if(lastTxt&&t!==lastTxt) peek(); lastTxt=t; },500);
+})();
+</script>
+<script>
+/* Saisie intuitive sur le plan : on tape « pièce » et les commandes correspondantes sont proposées dans une barre ; Entrée ou un clic lance la commande */
+(function(){
+  const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const hostEl=()=>{ const c=[document.getElementById('rtPlan'),document.querySelector('#planView .plan-inner')]; return c.find(h=>h&&h.offsetParent!==null&&h.getBoundingClientRect().width>200)||null; };
+  const btn=id=>()=>{ const b=document.getElementById(id); if(b&&!b.hidden) b.click(); };
+  const hasBtn=id=>()=>{ const b=document.getElementById(id); return !!(b&&!b.hidden&&b.offsetParent!==null); };
+  const CMD=[
+    {l:'🪄 Pièce auto',k:'piece auto automatique contour revit detecter',ok:()=>typeof window.apcxStart==='function',run:()=>window.apcxStart()},
+    {l:'⬠ Tracer une pièce',k:'piece tracer dessiner polygone creer',ok:()=>true,run:()=>{ if(hasBtn('rtDrawBtn')()) btn('rtDrawBtn')(); else if(typeof planSetMode==='function') planSetMode('piece'); }},
+    {l:'✏ Contour virtuel',k:'contour virtuel ligne fermer limite porte',ok:()=>typeof window.apcxVirtStart==='function',run:()=>window.apcxVirtStart()},
+    {l:'〰 Tracer une cloison',k:'cloison mur tracer trait',ok:hasBtn('rtCloBtn'),run:btn('rtCloBtn')},
+    {l:'✨ Plan net',k:'plan net image nettoyer traits nets nettete',ok:hasBtn('rtNetBtn'),run:btn('rtNetBtn')},
+    {l:'📷 Nom par photo',k:'nom photo ocr surface camera galerie capture lire',ok:()=>typeof window.apcxNamePhoto==='function',run:()=>window.apcxNamePhoto()},
+    {l:'📐 Plan métrique X·Y·Z',k:'metrique echelle surface hauteur xyz export coordonnees',ok:()=>typeof window.metOpen==='function',run:()=>window.metOpen()},
+    {l:'＋ Ouvrage / Prestation',k:'ouvrage prestation ajouter placer tache',ok:hasBtn('rtAddFloat'),run:btn('rtAddFloat')},
+    {l:'📤 Export PDF',k:'export pdf envoyer partager sms mail',ok:hasBtn('rtExpBtn'),run:btn('rtExpBtn')},
+    {l:'⤢ Ajuster le plan',k:'ajuster largeur zoom cadrer centrer',ok:hasBtn('rtZfit'),run:btn('rtZfit')},
+    {l:'⛶ Plein écran',k:'plein ecran agrandir',ok:hasBtn('rtFsBtn'),run:btn('rtFsBtn')},
+    {l:'⚠ Conflits',k:'conflits problemes alertes',ok:hasBtn('rtConfBtn'),run:btn('rtConfBtn')},
+    {l:'● Pastilles plus grandes',k:'pastille puce taille grande agrandir plus',ok:hasBtn('rtPinPlus'),run:btn('rtPinPlus')},
+    {l:'● Pastilles plus petites',k:'pastille puce taille petite reduire moins',ok:hasBtn('rtPinMinus'),run:btn('rtPinMinus')}
+  ];
+  let pal=null, sel=0, list=[], tmr=null;
+  function match(q){ const T=norm(q).split(/\s+/).filter(Boolean); const A=CMD.filter(c=>{ try{ return c.ok(); }catch(e){ return false; } }); if(!T.length) return A.slice(0,6);
+    return A.map(c=>{ const h=norm(c.l+' '+c.k), lab=norm(c.l); let sc=0; for(const t of T){ if(!h.includes(t)) return null; sc+=lab.includes(t)?3:1; if(lab.split(/[^a-z0-9]+/).some(w=>w.startsWith(t))) sc+=2; } return {c,sc}; }).filter(Boolean).sort((a,b)=>b.sc-a.sc).map(o=>o.c).slice(0,7); }
+  function place(){ if(!pal) return; const h=hostEl(); if(!h) return; const r=h.getBoundingClientRect(); const cx=Math.max(160,Math.min(innerWidth-160,(Math.max(r.left,0)+Math.min(r.right,innerWidth))/2)); pal.style.left=cx+'px'; pal.style.bottom=Math.max(8,Math.min(innerHeight-90,innerHeight-Math.min(r.bottom,innerHeight)+12))+'px'; }
+  function render(){ const q=pal.querySelector('input').value; list=match(q); if(sel>=list.length) sel=0; const L=pal.querySelector('.cp-l'); L.innerHTML=list.length?list.map((c,i)=>'<button type="button" class="cp-c'+(i===sel?' on':'')+'" data-i="'+i+'">'+c.l+'</button>').join(''):'<span style="opacity:.8">Aucune commande pour « '+q.replace(/[<>&]/g,'')+' »</span>'; }
+  function close(){ if(pal){ pal.remove(); pal=null; } clearTimeout(tmr); }
+  function run(i){ const c=list[i]; if(!c) return; close(); try{ c.run(); }catch(e){ console.error(e); } }
+  function open(first){ if(pal){ if(first){ const i=pal.querySelector('input'); i.value+=first; i.focus(); render(); } return; }
+    pal=document.createElement('div'); pal.id='cmdPal'; pal.innerHTML='<input type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Tapez une commande : pièce, cloison, net, photo…"><div class="cp-l"></div><div class="cp-h">Entrée = lancer · ← → = choisir · Échap = fermer</div>'; document.body.appendChild(pal);
+    const inp=pal.querySelector('input'); inp.value=first||''; place(); render(); inp.focus(); try{ inp.setSelectionRange(inp.value.length,inp.value.length); }catch(e){}
+    inp.addEventListener('input',()=>{ sel=0; render(); reset(); });
+    inp.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); run(sel); } else if(e.key==='Escape'){ e.preventDefault(); close(); } else if(e.key==='ArrowRight'||e.key==='ArrowDown'||(e.key==='Tab'&&!e.shiftKey)){ e.preventDefault(); sel=(sel+1)%Math.max(1,list.length); render(); } else if(e.key==='ArrowLeft'||e.key==='ArrowUp'||(e.key==='Tab'&&e.shiftKey)){ e.preventDefault(); sel=(sel-1+list.length)%Math.max(1,list.length); render(); } reset(); });
+    pal.querySelector('.cp-l').addEventListener('click',e=>{ const b=e.target.closest('.cp-c'); if(b) run(+b.dataset.i); });
+    reset(); }
+  function reset(){ clearTimeout(tmr); tmr=setTimeout(close,12000); }
+  document.addEventListener('keydown',e=>{ if(e.ctrlKey||e.metaKey||e.altKey||e.key.length!==1||e.key===' ') return; const t=e.target, tg=t&&t.tagName; if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT'||(t&&t.isContentEditable)) return;
+    const mb=document.getElementById('modalBody'); if(mb&&mb.children.length&&document.getElementById('overlay')&&document.getElementById('overlay').classList.contains('open')) return; if(!hostEl()) return; e.preventDefault(); open(e.key); },true);
+  document.addEventListener('pointerdown',e=>{ if(pal&&!e.target.closest('#cmdPal')) close(); },true);
+  /* bouton ⌕ discret (tactile / sans clavier) en bas à droite du plan, plus visible à l'approche */
+  let trig=null; setInterval(()=>{ const h=hostEl(); if(!h){ if(trig) trig.style.display='none'; return; } if(!trig){ trig=document.createElement('button'); trig.id='cmdTrig'; trig.type='button'; trig.textContent='⌕'; trig.title='Commandes du plan (ou tapez directement au clavier)'; trig.onclick=()=>open(''); document.body.appendChild(trig); document.addEventListener('pointermove',ev=>{ const r=trig.getBoundingClientRect(); trig.classList.toggle('near',Math.hypot(ev.clientX-(r.left+r.width/2),ev.clientY-(r.top+r.height/2))<90); },true); }
+    const r=h.getBoundingClientRect(); const vis=r.bottom>80&&r.top<innerHeight-40; trig.style.display=vis?'block':'none'; trig.style.left=Math.max(8,Math.min(innerWidth-44,r.right-44))+'px'; trig.style.top=Math.max(60,Math.min(innerHeight-50,r.bottom-44))+'px'; if(pal) place(); },500);
 })();
 </script>
 </body></html>
