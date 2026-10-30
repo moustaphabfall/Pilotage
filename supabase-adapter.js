@@ -130,6 +130,7 @@
     if(!session){ await loginUI(banner); ({data:{session}} = await sb.auth.getSession()); }
     await profile(session.user);
     await chooseProjet();
+    try{ window.PILOTAGE_USER_EMAIL = session.user.email; }catch(e){}
     await openStore();
     close();
     window.PILOTAGE_USER = {id:me.id, nom:me.nom};

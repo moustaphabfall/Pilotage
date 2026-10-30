@@ -18,10 +18,12 @@
   async function connect(){
     if(!app){ app = new msal.PublicClientApplication({auth:{clientId:cfg.msClientId, authority:'https://login.microsoftonline.com/'+(cfg.msTenant||'organizations'), redirectUri:cfg.msRedirect||(location.origin+location.pathname.replace(/[^/]*$/,''))}, cache:{cacheLocation:'localStorage'}}); await app.initialize(); await app.handleRedirectPromise().catch(()=>null); }
     acct = app.getActiveAccount() || app.getAllAccounts()[0] || null;
+    const hint = window.PILOTAGE_USER_EMAIL || undefined;   /* même adresse que la connexion à l'outil : connexion Microsoft silencieuse si possible */
+    if(!acct && hint){ try{ acct = (await app.ssoSilent({scopes:SCOPES, loginHint:hint})).account; }catch(e){ acct = null; } }
     if(!acct){
       await new Promise(done=>{
         const d = screen('<div class="box"><h2>☁ Hébergement des données</h2><p>Les données de ce projet sont hébergées sur Microsoft 365. Connectez-vous avec votre compte professionnel : une fenêtre Microsoft s’ouvre (identifiant, mot de passe, puis « Accepter »).</p><div class="e" id="e"></div><button id="ms">Se connecter avec Microsoft</button></div>');
-        d.querySelector('#ms').onclick = async ()=>{ try{ acct = (await app.loginPopup({scopes:SCOPES})).account; done(); }catch(e){ d.querySelector('#e').textContent = e.message||'Connexion annulée'; } };
+        d.querySelector('#ms').onclick = async ()=>{ try{ acct = (await app.loginPopup({scopes:SCOPES, loginHint:hint})).account; done(); }catch(e){ d.querySelector('#e').textContent = e.message||'Connexion annulée'; } };
       });
       close();
     }
