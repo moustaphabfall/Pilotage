@@ -64,6 +64,11 @@ body.plan-fs-on .ur-float{bottom:96px;}
 .pl-rib>summary::before{color:#667}
 .ruban .rib-ico g,.ruban svg g{stroke:#1B1D1F!important}
 #rtRibPlan>#baseDerogRib{border-color:var(--line,#ddd)}
+#baseDerogRib[open]{position:sticky;top:var(--rtst,76px);z-index:58;background:#fff;box-shadow:0 6px 14px rgba(22,35,43,.2);max-height:calc(100vh - var(--rtst,76px) - 10px);overflow:auto}
+#baseDerogRib>summary{touch-action:pan-y;user-select:none}
+#rtFloat.docked{position:static;display:flex;width:auto;max-height:46vh;margin:6px 8px 8px;box-shadow:none;z-index:auto}
+#rtFloat.docked .rf-h{cursor:default}
+#baseDerogRib.lp-arm>summary{background:#FFF3CF!important}
 </style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="supabase-adapter.js"></script></head><body>
 <!DOCTYPE html>
 <html lang="fr">
@@ -14492,7 +14497,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
 /* ===== Pièce auto (comme Revit) : le curseur approche une zone fermée, son contour est proposé comme pièce ===== */
 (function(){
 const A={on:false,cur:null,pend:null,raf:0,lastEv:null,lastType:'mouse',cache:{}};
-const V={on:false,pts:[],pl:null,host:null};
+const V={on:false,pts:[],pl:null,host:null,sel:null,drag:null};
 function vsig(pl){ return (pl.virt||[]).map(v=>(v.closed?'c':'o')+v.pts.map(p=>p[0].toFixed(3)+','+p[1].toFixed(3)).join(';')).join('|'); }
 const ST=document.createElement('style');
 ST.textContent='.apcx-on #rtPlan,.apcx-on .plan-inner{cursor:crosshair!important}#apcxBar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:100000;background:#1B1D1F;color:#fff;border:3px solid #F2A900;border-radius:14px;padding:10px 16px;font:600 14px system-ui,sans-serif;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:94vw;flex-wrap:wrap}#apcxBar b{color:#F2A900}#apcxBar button{background:#F2A900;color:#1B1D1F;border:0;border-radius:9px;padding:7px 12px;font-weight:800;cursor:pointer}#apcxOv{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99999}#apcxTip{position:fixed;z-index:100000;pointer-events:none;background:#F2A900;color:#1B1D1F;font:800 13px system-ui,sans-serif;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35)}#apcxTip.no{background:#555;color:#fff}';
@@ -14630,12 +14635,16 @@ document.addEventListener('keydown',ev=>{ if(A.on&&ev.key==='Escape'&&!modalOn()
 function barUpd(){ const b=document.getElementById('apcxHint'); if(!b) return;
   if(V.on) b.innerHTML='✏ <b>Contour virtuel</b> : cliquez les points · <b>double-clic</b> ou <b>Entrée</b> = terminer · re-cliquez le 1er point = fermer · <b>Échap</b> = annuler';
   else b.innerHTML=A.lastType!=='mouse'?'Touchez une zone fermée : le contour est proposé, touchez-la encore pour créer la pièce.':'Approchez le curseur d’une zone fermée : son contour est proposé · <b>clic</b> = créer la pièce · <b>Échap</b> = quitter';
-  const vb=document.getElementById('apcxVirt'); if(vb) vb.textContent=V.on?'✔ Terminer le contour':'✏ Contour virtuel'; }
+  if(V.sel&&!V.on&&!A.on) b.innerHTML='✏ <b>Contour virtuel sélectionné</b> : glissez un point pour le modifier · <b>double-clic</b> sur le trait = ajouter un point · <b>Suppr</b> = supprimer';
+  else if(V.sel&&V.on&&!V.pts.length) b.innerHTML='✏ <b>Contour sélectionné</b> · glissez un point · <b>Suppr</b> = supprimer · ou cliquez ailleurs pour tracer un nouveau contour';
+  const vb=document.getElementById('apcxVirt'); if(vb) vb.textContent=V.on?'✔ Terminer le contour':'✏ Contour virtuel';
+  const vd=document.getElementById('apcxVDel'); if(vd) vd.style.display=V.sel?'':'none'; }
 function activePlan(){ try{ const onP=document.getElementById('page-plans')&&document.getElementById('page-plans').classList.contains('active'); return onP?planById(planSel):(window.rtCurPlan&&window.rtCurPlan()); }catch(e){ return null; } }
 function bar(){ let b=document.getElementById('apcxBar'); if(b){ barUpd(); return; } b=document.createElement('div'); b.id='apcxBar';
-  b.innerHTML='<span>🪄 <b>Pièce auto</b></span><span id="apcxHint"></span><button type="button" id="apcxVirt">✏ Contour virtuel</button><button type="button" id="apcxVUndo" title="Supprimer le dernier contour virtuel du plan">↶ Dernier contour</button><button type="button" id="apcxVClr" title="Supprimer tous les contours virtuels du plan">🗑 Tout effacer</button><button type="button" id="apcxQuit">Quitter</button>';
+  b.innerHTML='<span>🪄 <b>Pièce auto</b></span><span id="apcxHint"></span><button type="button" id="apcxVirt">✏ Contour virtuel</button><button type="button" id="apcxVUndo" title="Supprimer le dernier contour virtuel du plan">↶ Dernier contour</button><button type="button" id="apcxVDel" style="display:none" title="Supprimer le contour sélectionné (Suppr)">🗑 Supprimer le contour</button><button type="button" id="apcxVClr" title="Supprimer tous les contours virtuels du plan">🗑 Tout effacer</button><button type="button" id="apcxQuit">Quitter</button>';
   document.body.appendChild(b);
   b.querySelector('#apcxQuit').onclick=()=>apcxStop();
+  b.querySelector('#apcxVDel').onclick=()=>delSelVirt();
   b.querySelector('#apcxVirt').onclick=()=>{ if(V.on){ if(V.pts.length>=2) vFinish(false); else { V.on=false; V.pts=[]; document.body.classList.toggle('apcx-on',A.on); barUpd(); renderVirt(); } } else { vStart(); } };
   b.querySelector('#apcxVUndo').onclick=()=>{ const pl=activePlan(); if(pl&&pl.virt&&pl.virt.length){ pl.virt.pop(); persist(); A.cur=null; renderVirt(); } };
   b.querySelector('#apcxVClr').onclick=()=>{ const pl=activePlan(); if(!pl||!(pl.virt||[]).length) return; miniConfirm('Supprimer tous les contours virtuels de ce plan ?',()=>{ pl.virt=[]; persist(); A.cur=null; renderVirt(); }); };
@@ -14643,14 +14652,37 @@ function bar(){ let b=document.getElementById('apcxBar'); if(b){ barUpd(); retur
 /* ---- contours virtuels ---- */
 function hostList(){ const out=[]; const rt=document.getElementById('rtPlan'); if(rt&&rt.offsetWidth>0) out.push({el:rt,kind:'rt'}); const pi=document.querySelector('#planView .plan-inner'); if(pi&&pi.offsetWidth>0) out.push({el:pi,kind:'plans'}); return out; }
 function polyline(a,cl,solid){ return '<polyline points="'+a.map(p=>p[0].toFixed(4)+','+p[1].toFixed(4)).join(' ')+(cl?' '+a[0][0].toFixed(4)+','+a[0][1].toFixed(4):'')+'" fill="none" stroke="#B5179E" stroke-width="2.5" stroke-dasharray="'+(solid?'1 0':'9 5')+'" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>'; }
-function renderVirt(cursor){ hostList().forEach(h=>{ const pl=curPlan(h.kind); let sv=h.el.querySelector(':scope>svg.apcx-virt'); if(!pl){ if(sv) sv.remove(); return; }
-  const cur=(V.on&&V.pl&&V.pl.id===pl.id&&V.host&&V.host.el===h.el)?V.pts:[]; const sig=vsig(pl)+'#'+cur.map(p=>p.join(',')).join(';')+'#'+(cursor&&cur.length?cursor.join(','):''); if(sv&&sv.dataset.sig===sig) return;
+function renderVirt(cursor){ hostList().forEach(h=>{ const pl=curPlan(h.kind); let sv=h.el.querySelector(':scope>svg.apcx-virt'), hd=h.el.querySelector(':scope>div.apcx-hds'); if(!pl){ if(sv) sv.remove(); if(hd) hd.remove(); return; }
+  const cur=(V.on&&V.pl&&V.pl.id===pl.id&&V.host&&V.host.el===h.el)?V.pts:[]; const selId=(V.sel&&V.sel.plId===pl.id)?V.sel.id:'';
+  const sig=vsig(pl)+'#'+cur.map(p=>p.join(',')).join(';')+'#'+(cursor&&cur.length?cursor.join(','):'')+'#'+selId; if(sv&&sv.dataset.sig===sig) return;
   if(!sv){ sv=document.createElementNS(NS,'svg'); sv.setAttribute('class','apcx-virt'); sv.setAttribute('viewBox','0 0 1 1'); sv.setAttribute('preserveAspectRatio','none'); sv.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:7'; if(getComputedStyle(h.el).position==='static') h.el.style.position='relative'; h.el.appendChild(sv); }
-  sv.dataset.sig=sig; let html=''; (pl.virt||[]).forEach(v=>{ html+=polyline(v.pts,v.closed,false); }); if(cur.length){ html+=polyline(cursor?cur.concat([cursor]):cur,false,true); cur.forEach(p=>{ html+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="0.004" fill="#fff" stroke="#B5179E" stroke-width="2" vector-effect="non-scaling-stroke"/>'; }); } sv.innerHTML=html; }); }
+  if(!hd){ hd=document.createElement('div'); hd.className='apcx-hds'; hd.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:8'; h.el.appendChild(hd); }
+  sv.dataset.sig=sig; let html='',hh=''; (pl.virt||[]).forEach(v=>{ if(v.id===selId){ html+='<polyline points="'+v.pts.map(p=>p[0].toFixed(4)+','+p[1].toFixed(4)).join(' ')+(v.closed?' '+v.pts[0][0].toFixed(4)+','+v.pts[0][1].toFixed(4):'')+'" fill="none" stroke="#F2A900" stroke-width="6" opacity=".55" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>'; v.pts.forEach(p=>{ hh+='<div style="position:absolute;left:'+(p[0]*100)+'%;top:'+(p[1]*100)+'%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;border:3px solid #F2A900;box-sizing:border-box"></div>'; }); } html+=polyline(v.pts,v.closed,false); });
+  if(cur.length){ html+=polyline(cursor?cur.concat([cursor]):cur,false,true); cur.forEach(p=>{ hh+='<div style="position:absolute;left:'+(p[0]*100)+'%;top:'+(p[1]*100)+'%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#fff;border:2px solid #B5179E;box-sizing:border-box"></div>'; }); }
+  sv.innerHTML=html; hd.innerHTML=hh; }); }
 setInterval(()=>{ try{ renderVirt(); }catch(e){} },700);
 function snap(pl,h,x,y){ const r=h.el.getBoundingClientRect(); let best=null,bd=12; const cand=[]; (pl.virt||[]).forEach(v=>v.pts.forEach(p=>cand.push(p))); V.pts.forEach(p=>cand.push(p)); cand.forEach(p=>{ const d=Math.hypot((p[0]-x)*r.width,(p[1]-y)*r.height); if(d<bd){ bd=d; best=p; } }); return best?[best[0],best[1]]:[x,y]; }
-function vFinish(closed){ if(!V.pl||V.pts.length<2){ V.pts=[]; renderVirt(); return; } const pl=V.pl; pl.virt=pl.virt||[]; pl.virt.push({id:(typeof uid==='function'?uid('V'):'V'+Date.now()),pts:V.pts.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]),closed:!!closed}); V.pts=[]; try{ persist(); }catch(e){} A.cur=null; renderVirt(); }
+function vFinish(closed){ if(!V.pl||V.pts.length<2){ V.pts=[]; renderVirt(); return; } const pl=V.pl; pl.virt=pl.virt||[]; pl.virt.push({id:(typeof uid==='function'?uid('V'):'V'+Date.now()),pts:V.pts.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]),closed:!!closed}); V.pts=[]; try{ persist(); }catch(e){} A.cur=null; try{ V.sel={id:pl.virt[pl.virt.length-1].id,plId:pl.id}; }catch(e){} barUpd(); renderVirt(); }
 function vStart(){ A.cur=null; V.on=true; V.pts=[]; document.body.classList.add('apcx-on'); hide(); bar(); barUpd(); }
+function distSeg(px,py,a,b){ const dx=b[0]-a[0],dy=b[1]-a[1],l=dx*dx+dy*dy; let t=l?((px-a[0])*dx+(py-a[1])*dy)/l:0; t=Math.max(0,Math.min(1,t)); return {d:Math.hypot(px-a[0]-t*dx,py-a[1]-t*dy),t}; }
+function hitVirt(pl,h,ev){ const r=h.el.getBoundingClientRect(),px=ev.clientX-r.left,py=ev.clientY-r.top; let best=null,bd=10; (pl.virt||[]).forEach(v=>{ const P=v.pts.map(p=>[p[0]*r.width,p[1]*r.height]),n=P.length; for(let i=0;i<(v.closed?n:n-1);i++){ const q=distSeg(px,py,P[i],P[(i+1)%n]); if(q.d<bd){ bd=q.d; best={v,i,t:q.t}; } } }); return best; }
+function hitVertex(v,h,ev){ const r=h.el.getBoundingClientRect(); for(let i=0;i<v.pts.length;i++){ if(Math.hypot(ev.clientX-r.left-v.pts[i][0]*r.width,ev.clientY-r.top-v.pts[i][1]*r.height)<=12) return i; } return -1; }
+function selVirt(id,plId){ V.sel=id?{id,plId}:null; if(V.sel){ bar(); } barUpd(); renderVirt(); if(!V.sel&&!A.on&&!V.on){ const b=document.getElementById('apcxBar'); if(b) b.remove(); document.body.classList.remove('apcx-on'); } }
+function selectedVirt(){ if(!V.sel) return null; const pl=planById?null:null; let found=null; hostList().forEach(h=>{ const pl=curPlan(h.kind); if(pl&&pl.id===V.sel.plId){ const v=(pl.virt||[]).find(x=>x.id===V.sel.id); if(v) found={v,pl,h}; } }); return found; }
+function delSelVirt(){ const f=selectedVirt(); if(!f) return; f.pl.virt=f.pl.virt.filter(x=>x.id!==f.v.id); try{ persist(); }catch(e){} A.cur=null; selVirt(null); }
+document.addEventListener('click',ev=>{
+  if(ev.target.closest&&ev.target.closest('#apcxBar')) return; if(modalOn()) return; if(V.drag) return;
+  if(A.on&&!V.on) return; if(V.on&&V.pts.length) return;
+  const h=hostAt(ev.target); if(!h) return; const pl=curPlan(h.kind); if(!pl) return;
+  const hit=(pl.virt||[]).length?hitVirt(pl,h,ev):null;
+  if(hit){ ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+    if(ev.detail>=2&&V.sel&&V.sel.id===hit.v.id){ const r=h.el.getBoundingClientRect(); const np=[+((ev.clientX-r.left)/r.width).toFixed(4),+((ev.clientY-r.top)/r.height).toFixed(4)]; hit.v.pts.splice(hit.i+1,0,np); try{ persist(); }catch(e){} A.cur=null; renderVirt(); return; }
+    selVirt(hit.v.id,pl.id); return; }
+  if(V.sel&&!V.on) selVirt(null); else if(V.sel&&V.on&&!V.pts.length){ V.sel=null; barUpd(); renderVirt(); } },true);
+document.addEventListener('pointerdown',ev=>{ if(!V.sel||modalOn()) return; const f=selectedVirt(); if(!f) return; const h=hostAt(ev.target); if(!h||h.el!==f.h.el) return; const k=hitVertex(f.v,h,ev); if(k<0) return; ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); V.drag={v:f.v,k,pl:f.pl,h}; },true);
+document.addEventListener('pointermove',ev=>{ if(!V.drag) return; ev.preventDefault(); const r=V.drag.h.el.getBoundingClientRect(); V.drag.v.pts[V.drag.k]=[Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height))]; renderVirt(); },true);
+document.addEventListener('pointerup',()=>{ if(!V.drag) return; const d=V.drag; d.v.pts=d.v.pts.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]); try{ persist(); }catch(e){} A.cur=null; setTimeout(()=>{ V.drag=null; },60); renderVirt(); },true);
+document.addEventListener('keydown',ev=>{ if(!V.sel||modalOn()) return; const t=ev.target&&ev.target.tagName; if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT') return; if(ev.key==='Delete'||ev.key==='Backspace'){ ev.preventDefault(); ev.stopPropagation(); delSelVirt(); } else if(ev.key==='Escape'&&!V.on&&!A.on){ selVirt(null); } },true);
 document.addEventListener('click',ev=>{ if(!V.on) return; if(ev.target.closest&&ev.target.closest('#apcxBar')) return; if(modalOn()) return; const h=hostAt(ev.target); if(!h) return;
   ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); const pl=curPlan(h.kind); if(!pl) return;
   if(V.pl&&(V.pl.id!==pl.id||(V.host&&V.host.el!==h.el))) V.pts=[]; V.pl=pl; V.host=h;
@@ -14668,7 +14700,7 @@ window.apcxStart=function(){
   try{ const pl=activePlan(); if(pl) prep(pl,()=>{}); }catch(_){}
 };
 window.apcxVirtStart=function(){ try{ if(window.rtDrawState&&window.rtDrawState().on){ const bt=document.getElementById('rtDrawBtn'); if(bt) bt.click(); } }catch(_){} vStart(); };
-window.apcxStop=function(){ A.on=false; V.on=false; V.pts=[]; A.cur=null; A.pend=null; document.body.classList.remove('apcx-on'); hide(); const b=document.getElementById('apcxBar'); if(b) b.remove(); try{ renderVirt(); }catch(_){} };
+window.apcxStop=function(){ A.on=false; V.on=false; V.pts=[]; V.sel=null; V.drag=null; A.cur=null; A.pend=null; document.body.classList.remove('apcx-on'); hide(); const b=document.getElementById('apcxBar'); if(b) b.remove(); try{ renderVirt(); }catch(_){} };
 window.apcxState=()=>({on:A.on,cur:A.cur,virt:V.on});
 document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('#rtAutoBtn'); if(b){ ev.preventDefault(); if(A.on&&!V.on) apcxStop(); else apcxStart(); return; } const v=ev.target.closest&&ev.target.closest('#rtVirtBtn'); if(v){ ev.preventDefault(); if(V.on) apcxStop(); else apcxVirtStart(); } },false);
 })();
@@ -14696,6 +14728,34 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   }
   /* à l'ouverture de l'application : la vue affichée a elle aussi tous ses rubans fermés */
   setTimeout(()=>{ try{ const a=document.querySelector('.page.active'); if(a&&a.id) closeRibbons(a.id.replace('page-','')); }catch(e){} },1500);
+})();
+</script>
+<script>
+/* Ruban « Sols, murs, plafonds » : collé en haut au défilement (comme la Plage de temps), bulle volante par défaut,
+   × = ancrer la bulle dans le ruban, appui long + mouvement sur le bandeau = redevient volante ; fermer = retour au cycle par défaut */
+(function(){
+  let mode='float';
+  const rib=()=>document.getElementById('baseDerogRib'), fl=()=>document.getElementById('rtFloat');
+  function top(){ const w=document.getElementById('tvWrap'); const t=w?Math.max(0,Math.round(w.getBoundingClientRect().bottom))+6:6; const v=Math.max(6,Math.min(t,200)); document.documentElement.style.setProperty('--rtst',v+'px'); }
+  function apply(){ const r=rib(),f=fl(); if(!r||!f) return; const want=r.open&&document.getElementById('rtRibPlan').open&&document.getElementById('page-travaux')&&document.getElementById('page-travaux').classList.contains('active')!==false;
+    if(!r.open){ mode='float'; }
+    if(r.open&&mode==='dock'){ if(f.parentNode!==r){ r.appendChild(f); } f.classList.add('docked','on'); f.style.left=f.style.top=''; }
+    else { if(f.parentNode===r){ document.body.appendChild(f); } f.classList.remove('docked'); if(f.dataset.hid==='1'){} f.classList.toggle('on',!!r.open&&mode==='float'); if(r.open&&mode==='float'&&!f.style.left){ f.style.left=Math.max(4,innerWidth-420)+'px'; f.style.top='130px'; } }
+  }
+  function floatAt(x,y){ mode='float'; const f=fl(); apply(); f.style.left=Math.max(4,Math.min(innerWidth-f.offsetWidth-4,x-40))+'px'; f.style.top=Math.max(4,Math.min(innerHeight-80,y))+'px'; try{ localStorage.setItem('pilotage_rtfloat',JSON.stringify({x:parseInt(f.style.left),y:parseInt(f.style.top)})); }catch(e){} }
+  function init(){ const r=rib(),f=fl(); if(!r||!f||r._dk) return; r._dk=1;
+    r.addEventListener('toggle',()=>{ if(!r.open) mode='float'; apply(); top(); });
+    f.querySelector('.rf-x').addEventListener('click',e=>{ e.stopImmediatePropagation(); if(r.open){ mode='dock'; apply(); } else f.classList.remove('on'); },true);
+    const sm=r.querySelector(':scope>summary'); let st=null,tm=null;
+    sm.addEventListener('pointerdown',e=>{ if(!r.open||mode!=='dock') return; st={x:e.clientX,y:e.clientY,ok:false,id:e.pointerId}; tm=setTimeout(()=>{ if(st){ st.ok=true; r.classList.add('lp-arm'); if(navigator.vibrate) try{navigator.vibrate(25)}catch(_){} } },450); });
+    document.addEventListener('pointermove',e=>{ if(!st) return; const d=Math.hypot(e.clientX-st.x,e.clientY-st.y); if(!st.ok){ if(d>10){ clearTimeout(tm); st=null; } return; } if(d>8){ const x=e.clientX,y=e.clientY; clearTimeout(tm); st=null; r.classList.remove('lp-arm'); r._noClick=Date.now(); floatAt(x,y); } },true);
+    const end=()=>{ clearTimeout(tm); r.classList.remove('lp-arm'); st=null; };
+    document.addEventListener('pointerup',end,true); document.addEventListener('pointercancel',end,true);
+    sm.addEventListener('click',e=>{ if(r._noClick&&Date.now()-r._noClick<500){ e.preventDefault(); } },true);
+    sm.addEventListener('contextmenu',e=>{ if(mode==='dock') e.preventDefault(); });
+    sm.title='Appui long puis déplacer = bulle volante'; }
+  setInterval(()=>{ init(); top(); const r=rib(),f=fl(); if(r&&f&&r._dk){ const pl=document.getElementById('rtRibPlan'); if(!pl.open){ f.classList.remove('on'); } else apply(); } },600);
+  window.addEventListener('scroll',top,{passive:true}); window.addEventListener('resize',top);
 })();
 </script>
 </body></html>
