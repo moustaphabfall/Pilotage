@@ -13,15 +13,25 @@
   function screen(html){ let d = document.getElementById('pgAuth'); if(!d){ d = document.createElement('div'); d.id = 'pgAuth'; document.body.appendChild(d); } d.innerHTML = html; return d; }
   function close(){ const d = document.getElementById('pgAuth'); if(d) d.remove(); }
 
+  /* Connexion par un autre service (Google / Gmail, Microsoft / Outlook / compte professionnel) : proposée si activée côté serveur. */
+  const SOCIAL = {google:'Continuer avec Google (Gmail)', azure:'Continuer avec Microsoft (Outlook / pro)'};
+  async function socialList(){
+    if(cfg.oauth===false) return [];
+    try{ const r = await fetch(cfg.url+'/auth/v1/settings', {headers:{apikey:cfg.anonKey}}); const j = await r.json(); const ext = j.external||{};
+      return Object.keys(SOCIAL).filter(k=>ext[k] && (!Array.isArray(cfg.oauth) || cfg.oauth.includes(k))); }catch(e){ return []; }
+  }
   function loginUI(){
-    return new Promise(res=>{
+    return new Promise(async res=>{
+      const social = await socialList();
       let mode = 'in';
       const draw = (err)=>{
         const d = screen(`<form><h2>🏗 Pilotage chantier</h2><small>${mode==='in'?'Connexion':'Créer mon accès (à valider par un administrateur)'}</small>
           ${mode==='up'?'<input name="nom" placeholder="Votre nom (signe vos modifications)" required autocomplete="name">':''}
           <input name="email" type="email" placeholder="E-mail" required autocomplete="email"><input name="pw" type="password" placeholder="Mot de passe (8 caractères min.)" minlength="8" required autocomplete="${mode==='in'?'current-password':'new-password'}">
+          ${mode==='in'&&social.length?social.map(k=>'<button type="button" class="l" data-oa="'+k+'">'+SOCIAL[k]+'</button>').join('')+'<small style="text-align:center">ou avec votre identifiant :</small>':''}
           <div class="e">${err||''}</div><button type="submit">${mode==='in'?'Se connecter':'Créer mon accès'}</button>
           <button type="button" class="l" id="pgSw">${mode==='in'?'Première fois ? Créer mon accès':'J’ai déjà un accès'}</button></form>`);
+        d.querySelectorAll('[data-oa]').forEach(b=>b.onclick = async ()=>{ const {error} = await sb.auth.signInWithOAuth({provider:b.dataset.oa, options:{redirectTo:location.origin+location.pathname, scopes:b.dataset.oa==='azure'?'email':undefined}}); if(error) draw(error.message); });
         d.querySelector('#pgSw').onclick = ()=>{ mode = mode==='in'?'up':'in'; draw(); };
         d.querySelector('form').onsubmit = async ev=>{
           ev.preventDefault(); const f = new FormData(ev.target), email = f.get('email'), pw = f.get('pw');
