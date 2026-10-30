@@ -1179,6 +1179,8 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
         <button class="rt-btn" id="rtFsBtn" title="Travailler le plan en plein écran (Échap pour quitter)">⛶ Plein écran</button><span class="pz-viewbar rt-pzv"></span>
         <button class="rt-btn" id="rtConfBtn" title="Ouvrir le gestionnaire de conflits">⚠ Conflits (0)</button>
         <button class="rt-btn" id="rtDrawBtn" title="Tracer une pièce (polygone) sur ce plan">⬠ Tracer une pièce</button>
+        <button class="rt-btn" id="rtNetBtn" title="Traiter l’image du plan : traits nets, fond blanc">✨ Plan net</button>
+        <button class="rt-btn" id="rtAutoBtn" title="Pièce automatique : approchez le curseur d’une zone fermée, son contour est proposé comme pièce (comme Revit)">🪄 Pièce auto</button>
         <button class="rt-btn" data-undo="1">↶ Annuler</button><button class="rt-btn" data-redo="1" title="Rétablir (Ctrl+Y)">↷ Rétablir</button><button class="rt-btn" id="rtCloBtn" title="Tracer une cloison (mur) sur ce plan">〰 Tracer une cloison</button><span id="rtOuvTools" hidden style="display:inline-flex; gap:4px;"><button class="rt-btn" id="rtOuvUndo">↶ Point</button><button class="rt-btn" id="rtOuvClose">✔ Fermer l'ouvrage</button></span><span id="rtCloTools" hidden style="display:inline-flex; gap:4px;"><button class="rt-btn on" id="rtCloLine" title="Un clic sur un trait crée la cloison le long de ce trait, même très fin">🧲 Suivre le trait : non (points)</button><button class="rt-btn" id="rtCloUndo">↶ Point</button><button class="rt-btn" id="rtCloEnd">✔ Terminer</button></span><span id="rtDrawTools" hidden style="display:inline-flex; gap:4px;"><button class="rt-btn" id="rtUndo">↶ Point</button><button class="rt-btn" id="rtClose">✔ Fermer la pièce</button></span>
       </div>
       <section class="rt-sheet">
@@ -3924,7 +3926,7 @@ function planBankHtml(){
             <small>${p.batiment?'🏢 '+esc(p.batiment)+' · ':''}${z?'📍 '+esc(zonePath(z.id)):'Niveau entier'}</small>
             <small>v${p.version||1}${p.date?' · '+esc(p.date):''} · ⬠ ${np} · ● ${no}</small>
             <small>Lot : <select style="font-size:11px;padding:1px 3px;max-width:140px" onclick="event.stopPropagation()" onchange="event.stopPropagation();planSetLot('${p.id}',this.value)">${lotOpts(p.lot)}</select></small>
-            <div class="pb-act"><button class="ghost" title="Nouvelle version du plan (les pièces sont conservées)" onclick="event.stopPropagation(); planStartUpdate('${p.id}')">⟳ Mettre à jour</button>${p.prev?`<button class="ghost" title="Revenir à la version précédente" onclick="event.stopPropagation(); planRestorePrev('${p.id}')">↶</button>`:''}<button class="ghost" title="Modifier bâtiment / niveau / zone" onclick="event.stopPropagation(); planEditInfo('${p.id}')">✎</button><button class="ghost" style="color:var(--rust); border-color:var(--rust);" title="Supprimer" onclick="event.stopPropagation(); planDeleteById('${p.id}')">×</button></div>
+            <div class="pb-act"><button class="ghost" title="Nouvelle version du plan (les pièces sont conservées)" onclick="event.stopPropagation(); planStartUpdate('${p.id}')">⟳ Mettre à jour</button><button class="ghost" title="Rendre les traits du plan nets (contours détectables)" onclick="event.stopPropagation(); planNetExisting('${p.id}')">✨ Net</button>${p.prev?`<button class="ghost" title="Revenir à la version précédente" onclick="event.stopPropagation(); planRestorePrev('${p.id}')">↶</button>`:''}<button class="ghost" title="Modifier bâtiment / niveau / zone" onclick="event.stopPropagation(); planEditInfo('${p.id}')">✎</button><button class="ghost" style="color:var(--rust); border-color:var(--rust);" title="Supprimer" onclick="event.stopPropagation(); planDeleteById('${p.id}')">×</button></div>
           </div></div>`;
       }).join('') + '</div></div>';
     }).join('') + '</div></details>';
@@ -5069,6 +5071,7 @@ function pieceShapeAsk(cb, fromFlow){
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>Créer une pièce</h3>
     <p class="empty-note" style="margin-bottom:10px">Que souhaitez-vous créer ?</p>
     <div style="display:flex;flex-direction:column;gap:10px">
+      ${stairFlow?'':`<button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="closeModal(); _pieceShapeCb=null; apcxStart()">🪄 Contour automatique (comme Revit)<br><small style="font-weight:400">Approchez le curseur d’une zone fermée : son contour est proposé, un clic crée la pièce.</small></button>`}
       ${(stairFlow||window.zoneFlow)?'':`<button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="closeModal(); _pieceShapeCb=null; zoneStart()">▦ Compartiment (zone)<br><small style="font-weight:400">Découpez le niveau en zones (Z1, Z2…) avec des traits de séparation.</small></button>`}
       ${stairFlow?'':`<button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="closeModal(); _pieceShapeCb=null; stairStart([], stairDefaultNiv(), 'Escalier')">🪜 Escalier<br><small style="font-weight:400">Pièce spéciale sur plusieurs niveaux : vous choisissez les niveaux desservis, puis le même escalier est repris d'un niveau à l'autre.</small></button>`}
       <button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="_pieceKind='circulation'; pieceShapePick('free')">🚶 Circulation<br><small style="font-weight:400">Couloir ou palier : tracez le contour, le nom « Circulation » est pré-rempli.</small></button>
@@ -14386,5 +14389,243 @@ setInterval(projChipRefresh,1500); document.addEventListener('DOMContentLoaded',
   setInterval(()=>{ const n=(state.tasks||[]).filter(taskPointe).length; if(lastN>=0&&n<lastN) refresh(); lastN=n; mark(); },30000);
   setInterval(mark,1500);
 })();
+</script>
+<script>
+/* ===== Traitement d'image des plans : traits nets (seuillage adaptatif + anti-bruit) ===== */
+(function(){
+const DEF={k:0.12,thick:0,maxSide:4200};
+function mask(px,W,H,opt){
+  opt=Object.assign({},DEF,opt||{});
+  const N=W*H, gray=new Float32Array(N);
+  for(let i=0;i<N;i++){ gray[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2]; }
+  /* image intégrale -> moyenne locale */
+  const r=Math.max(7,Math.round(Math.min(W,H)/90)), W1=W+1, ii=new Float64Array(W1*(H+1));
+  for(let y=0;y<H;y++){ let row=0; for(let x=0;x<W;x++){ row+=gray[y*W+x]; ii[(y+1)*W1+x+1]=ii[y*W1+x+1]+row; } }
+  const ink=new Uint8Array(N);
+  for(let y=0;y<H;y++){ const y0=Math.max(0,y-r),y1=Math.min(H,y+r+1);
+    for(let x=0;x<W;x++){ const x0=Math.max(0,x-r),x1=Math.min(W,x+r+1);
+      const sum=ii[y1*W1+x1]-ii[y0*W1+x1]-ii[y1*W1+x0]+ii[y0*W1+x0], mean=sum/((x1-x0)*(y1-y0)), g=gray[y*W+x];
+      ink[y*W+x]=(g<105||(g<228&&g<mean*(1-opt.k)))?1:0; } }
+  /* anti-bruit : supprime les petits points isolés (poussière, compression) */
+  const lab=new Int32Array(N), stack=new Int32Array(N), minA=Math.max(5,Math.round(N/450000));
+  for(let s=0;s<N;s++){ if(!ink[s]||lab[s]) continue; let sp=0,cnt=0,minx=W,maxx=0,miny=H,maxy=0; const list=[]; stack[sp++]=s; lab[s]=1;
+    while(sp){ const i=stack[--sp]; list.push(i); cnt++; const x=i%W,y=(i/W)|0; if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy) continue; const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=W||ny>=H) continue; const j=ny*W+nx; if(ink[j]&&!lab[j]){ lab[j]=1; stack[sp++]=j; } } }
+    if(cnt<minA && Math.max(maxx-minx,maxy-miny)<9){ for(const i of list) ink[i]=0; } }
+  /* épaisseur : renforce les traits trop fins */
+  let out=ink; for(let t=0;t<(opt.thick|0);t++){ const nx=out.slice(); for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){ const i=y*W+x; if(out[i]) continue; if(out[i-1]||out[i+1]||out[i-W]||out[i+W]) nx[i]=1; } out=nx; }
+  return out;
+}
+function load(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error('image illisible')); im.src=src; }); }
+function draw(img,maxSide){ const sc=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight)), W=Math.round(img.naturalWidth*sc), H=Math.round(img.naturalHeight*sc);
+  const c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d',{willReadFrequently:true}); g.fillStyle='#fff'; g.fillRect(0,0,W,H); g.drawImage(img,0,0,W,H); return {c,g,W,H}; }
+async function render(src,opt){
+  opt=Object.assign({},DEF,opt||{}); const img=await load(src), {c,g,W,H}=draw(img,opt.maxSide);
+  const id=g.getImageData(0,0,W,H), m=mask(id.data,W,H,opt), d=id.data;
+  for(let i=0;i<W*H;i++){ const v=m[i]?0:255; d[i*4]=v; d[i*4+1]=v; d[i*4+2]=v; d[i*4+3]=255; }
+  g.putImageData(id,0,0);
+  return {src:c.toDataURL('image/png'),w:W,h:H,canvas:c};
+}
+window.PNET={mask,render,load,draw,DEF};
+
+/* ---- aperçu avant / après (zone centrale agrandie) ---- */
+function patch(cv,srcImg,sw,sh){ const pw=cv.width,ph=cv.height; const iw=srcImg.naturalWidth||srcImg.width, ih=srcImg.naturalHeight||srcImg.height;
+  const cw=Math.min(iw,Math.round(pw/2)), ch=Math.min(ih,Math.round(ph/2)); const sx=Math.round(iw*0.5-cw/2), sy=Math.round(ih*0.5-ch/2);
+  const g=cv.getContext('2d'); g.imageSmoothingEnabled=false; g.fillStyle='#fff'; g.fillRect(0,0,pw,ph); g.drawImage(srcImg,sx,sy,cw,ch,0,0,pw,ph); }
+function boxHtml(id,checked){ return `<div id="${id}" style="border:1px solid var(--line,#ccc);border-radius:10px;padding:10px;margin:10px 0;background:rgba(242,169,0,.08)">
+  <label style="display:flex;gap:8px;align-items:center;justify-content:flex-start;font-weight:700;width:auto;margin:0"><input type="checkbox" style="width:18px;height:18px;flex:none;margin:0" id="${id}-on" ${checked?'checked':''}> ✨ Rendre les traits nets <small style="font-weight:400">(recommandé pour détecter les pièces)</small></label>
+  <div style="display:flex;gap:10px;margin:8px 0;flex-wrap:wrap"><div><div style="font-size:11px;color:#777">Avant</div><canvas id="${id}-a" width="300" height="190" style="border:1px solid #bbb;border-radius:6px;background:#fff"></canvas></div><div><div style="font-size:11px;color:#777">Après</div><canvas id="${id}-b" width="300" height="190" style="border:1px solid #bbb;border-radius:6px;background:#fff"></canvas></div></div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px"><label>Sensibilité <input type="range" style="width:150px;vertical-align:middle" id="${id}-k" min="6" max="34" value="12"></label><label>Épaisseur des traits <select id="${id}-t" style="width:auto;display:inline-block"><option value="0">Normale</option><option value="1">Renforcée</option><option value="2">Épaisse</option></select></label></div>
+  <div id="${id}-m" style="font-size:12px;color:#777;margin-top:4px">Traitement…</div></div>`; }
+/* branche l'aperçu ; onApply(res|null) reçoit le plan net (ou null si décoché) */
+async function wire(id,origSrc,onApply){
+  const $=x=>document.getElementById(id+x); if(!$('')) return; let img0; try{ img0=await load(origSrc); }catch(e){ $('-m').textContent='Aperçu indisponible.'; return; }
+  patch($('-a'),img0); let tok=0, last=null;
+  async function run(){ const my=++tok; $('-m').textContent='Traitement…'; await new Promise(r=>setTimeout(r,30));
+    try{ const res=await render(origSrc,{k:(+$('-k').value)/100,thick:+$('-t').value}); if(my!==tok||!$('')) return; last=res; patch($('-b'),res.canvas); $('-m').textContent='Plan net : '+res.w+'×'+res.h+' px · ~'+Math.round(res.src.length*0.75/1024)+' Ko'; if($('-on').checked) onApply(res); }
+    catch(e){ $('-m').textContent='Traitement impossible : '+e.message; } }
+  $('-on').onchange=()=>{ if($('-on').checked){ if(last) onApply(last); else run(); } else onApply(null); };
+  let deb=0; const re=()=>{ clearTimeout(deb); deb=setTimeout(run,250); }; $('-k').oninput=re; $('-t').onchange=run;
+  run();
+}
+window.PNET.box=boxHtml; window.PNET.wire=wire;
+
+/* ---- à l'import : openPlanForm / planUpdateConfirm proposent le plan net (coché par défaut) ---- */
+const _opf=window.openPlanForm, _puc=window.planUpdateConfirm;
+function inject(origSrc,w,h){
+  const acts=[...document.querySelectorAll('#modalBody .modal-actions')].pop(); if(!acts) return;
+  const holder=document.createElement('div'); holder.innerHTML=boxHtml('pnetImp',true); acts.parentNode.insertBefore(holder.firstElementChild,acts);
+  wire('pnetImp',origSrc,res=>{ if(typeof planPendingImg==='undefined'||!planPendingImg) return; if(res){ planPendingImg.src=res.src; planPendingImg.w=res.w; planPendingImg.h=res.h; planPendingImg.net=true; } else { planPendingImg.src=origSrc; planPendingImg.w=w; planPendingImg.h=h; planPendingImg.net=false; } });
+}
+if(typeof _opf==='function') window.openPlanForm=function(src,w,h,nom){ const r=_opf.apply(this,arguments); try{ if(!window.planUpdateTarget && typeof planUpdateTarget==='undefined'||!planUpdateTarget) inject(src,w,h); }catch(e){ console.error(e); } return r; };
+if(typeof _puc==='function') window.planUpdateConfirm=function(src,w,h){ const r=_puc.apply(this,arguments); try{ inject(src,w,h); }catch(e){ console.error(e); } return r; };
+/* savePlan / planUpdateApply lisent planPendingImg : l'indicateur « net » est conservé */
+const _sp=window.savePlan; if(typeof _sp==='function') window.savePlan=function(){ const was=planPendingImg&&planPendingImg.net; const n=state.plans.length; const r=_sp.apply(this,arguments); try{ if(was&&state.plans.length>n){ state.plans[state.plans.length-1].net=true; persist(); } }catch(e){} return r; };
+const _pua=window.planUpdateApply; if(typeof _pua==='function') window.planUpdateApply=function(){ const was=planPendingImg&&planPendingImg.net, id=planUpdateTarget; const r=_pua.apply(this,arguments); try{ const p=planById(id); if(p){ p.net=!!was; persist(); } }catch(e){} return r; };
+
+/* ---- sur un plan déjà déposé : « ✨ Rendre net » (l'ancienne version reste restaurable) ---- */
+window.planNetExisting=function(id){
+  const pl=planById(id); if(!pl) return; const src=planSrc(pl); if(!src){ miniAlert('Plan indisponible.'); return; }
+  let cur=null;
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>✨ Rendre net « ${esc(pl.nom)} »</h3>
+    <p class="empty-note">Les traits sont nettoyés (fond blanc, traits noirs francs, bruit supprimé). Les pièces, cloisons et ouvrages sont conservés. L’ancienne version reste restaurable (↶).</p>
+    ${boxHtml('pnetEx',true)}
+    <div class="modal-actions"><button class="primary" id="pnetExOk">Appliquer au plan</button><button class="ghost" onclick="closeModal()">Annuler</button></div>`);
+  wire('pnetEx',src,res=>{ cur=res; });
+  document.getElementById('pnetExOk').onclick=()=>{ if(!cur){ closeModal(); return; }
+    pl.prev={src:pl.src,w:pl.w,h:pl.h,date:pl.date||'',version:pl.version||1}; pl.src=cur.src; pl.w=cur.w; pl.h=cur.h; pl.version=(pl.version||1)+1; pl.date=todayStr(); pl.net=true;
+    persist(); closeModal(); try{ renderPlans(true); renderAll(); }catch(e){} if(window.rtRender) try{ window.rtRender(); }catch(e){} };
+};
+document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('#rtNetBtn'); if(!b) return; ev.preventDefault(); const pl=window.rtCurPlan&&window.rtCurPlan(); if(!pl||pl.id==='__none'){ miniAlert('Aucun plan pour ce niveau.'); return; } planNetExisting(pl.id); });
+})();
+
+</script>
+<script>
+/* ===== Pièce auto (comme Revit) : le curseur approche une zone fermée, son contour est proposé comme pièce ===== */
+(function(){
+const A={on:false,cur:null,pend:null,raf:0,lastEv:null,lastType:'mouse',cache:{}};
+const ST=document.createElement('style');
+ST.textContent='.apcx-on #rtPlan,.apcx-on .plan-inner{cursor:crosshair!important}#apcxBar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:100000;background:#1B1D1F;color:#fff;border:3px solid #F2A900;border-radius:14px;padding:10px 16px;font:600 14px system-ui,sans-serif;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:94vw;flex-wrap:wrap}#apcxBar b{color:#F2A900}#apcxBar button{background:#F2A900;color:#1B1D1F;border:0;border-radius:9px;padding:7px 12px;font-weight:800;cursor:pointer}#apcxOv{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99999}#apcxTip{position:fixed;z-index:100000;pointer-events:none;background:#F2A900;color:#1B1D1F;font:800 13px system-ui,sans-serif;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35)}#apcxTip.no{background:#555;color:#fff}';
+document.head.appendChild(ST);
+const NS='http://www.w3.org/2000/svg';
+function hostAt(t){ if(!t||!t.closest) return null; const rt=t.closest('#rtPlan'); if(rt) return {el:rt,kind:'rt'}; const pi=t.closest('.plan-inner'); if(pi) return {el:pi,kind:'plans'}; return null; }
+function curPlan(kind){ try{ return kind==='rt' ? (window.rtCurPlan&&window.rtCurPlan()) : planById(planSel); }catch(e){ return null; } }
+function area(q){ return Math.abs(q.reduce((a,p,i)=>{ const n=q[(i+1)%q.length]; return a+(p[0]*n[1]-n[0]*p[1]); },0))/2; }
+function prep(pl,cb){
+  let src=''; try{ src=planSrc(pl); }catch(e){}
+  if(!src||pl.id==='__none'){ cb(null); return; }
+  const key=pl.id+'|'+(pl.version||'')+'|'+src.length;
+  const c=A.cache[key]; if(c){ if(c.ready) cb(c); else c.q.push(cb); return; }
+  const e=A.cache[key]={ready:false,q:[cb],dil:{}};
+  const img=new Image();
+  img.onload=()=>{
+    const sc=Math.min(1,2000/Math.max(img.naturalWidth,img.naturalHeight)), W=Math.max(2,Math.round(img.naturalWidth*sc)), H=Math.max(2,Math.round(img.naturalHeight*sc));
+    const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d',{willReadFrequently:true}); g.fillStyle='#fff'; g.fillRect(0,0,W,H); g.drawImage(img,0,0,W,H);
+    const px=g.getImageData(0,0,W,H).data, wall=new Uint8Array(W*H); const TH=(typeof PDET_TH==='number'?PDET_TH:190);
+    if(window.PNET){ wall.set(PNET.mask(px,W,H,{})); } else { for(let i=0;i<W*H;i++) wall[i]=px[i*4+1]<TH?1:0; }
+    e.W=W; e.H=H; e.wall=wall; e.vis=new Uint32Array(W*H); e.stamp=0; e.stack=new Int32Array(W*H); e.ready=true;
+    const q=e.q; e.q=[]; q.forEach(f=>f(e));
+  };
+  img.onerror=()=>{ delete A.cache[key]; const q=e.q; q.forEach(f=>f(null)); };
+  img.src=src;
+}
+function dil(e,R){
+  if(e.dil[R]) return e.dil[R]; const W=e.W,H=e.H; let cur=e.wall;
+  for(let r=0;r<R;r++){ const nx=new Uint8Array(W*H); for(let y=1;y<H-1;y++){ for(let x=1;x<W-1;x++){ const i=y*W+x; if(cur[i]||cur[i-1]||cur[i+1]||cur[i-W]||cur[i+W]) nx[i]=1; } } cur=nx; }
+  return e.dil[R]=cur;
+}
+function apcxOrtho(p){
+  if(p.length>1&&p[0][0]===p[p.length-1][0]&&p[0][1]===p[p.length-1][1]) p=p.slice(0,-1);
+  const n=p.length; if(n<4) return p; const q=p.map(v=>v.slice()), T=Math.tan(7*Math.PI/180);
+  for(let i=0;i<n;i++){ const a=q[i],b=q[(i+1)%n],dx=Math.abs(b[0]-a[0]),dy=Math.abs(b[1]-a[1]);
+    if(dy<=dx*T&&dx>3){ const y=(a[1]+b[1])/2; a[1]=y; b[1]=y; } else if(dx<=dy*T&&dy>3){ const x=(a[0]+b[0])/2; a[0]=x; b[0]=x; } }
+  const out=[]; for(let i=0;i<n;i++){ const a=out.length?out[out.length-1]:null,c=q[i]; if(a&&Math.hypot(a[0]-c[0],a[1]-c[1])<3) continue; out.push(c); }
+  if(out.length>1&&Math.hypot(out[0][0]-out[out.length-1][0],out[0][1]-out[out.length-1][1])<3) out.pop();
+  /* supprime les sommets alignés */
+  let ch=true; while(ch&&out.length>3){ ch=false; for(let i=0;i<out.length;i++){ const a=out[(i+out.length-1)%out.length],b=out[i],c=out[(i+1)%out.length]; const cr=Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])); if(cr<Math.hypot(c[0]-a[0],c[1]-a[1])*1.8){ out.splice(i,1); ch=true; break; } } }
+  return out;
+}
+function regionAt(e,nx,ny,pl){
+  const W=e.W,H=e.H,px=Math.round(nx*W),py=Math.round(ny*H);
+  if(px<2||py<2||px>=W-2||py>=H-2) return null;
+  const cap=W*H*0.10; let sawWall=false;
+  for(const R of [3,8,15]){
+    const d=dil(e,R); let sx=px,sy=py;
+    if(d[sy*W+sx]){ let f=false;
+      for(let rr=1;rr<=8&&!f;rr++){ for(let dy=-rr;dy<=rr&&!f;dy++){ for(let dx=-rr;dx<=rr;dx++){ if(Math.max(Math.abs(dx),Math.abs(dy))!==rr) continue; const x=px+dx,y=py+dy; if(x>0&&y>0&&x<W-1&&y<H-1&&!d[y*W+x]){ sx=x;sy=y;f=true;break; } } } }
+      if(!f){ sawWall=true; continue; } }
+    const st=++e.stamp, vis=e.vis, stack=e.stack; let sp=0,cnt=0,minx=W,miny=H,maxx=0,maxy=0,bad=false;
+    stack[sp++]=sy*W+sx; vis[sy*W+sx]=st;
+    while(sp){ const i=stack[--sp]; const x=i%W,y=(i/W)|0; cnt++; if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      if(x<=1||y<=1||x>=W-2||y>=H-2||cnt>cap){ bad=true; break; }
+      const a=i-1,b=i+1,c=i-W,dd=i+W;
+      if(!d[a]&&vis[a]!==st){ vis[a]=st; stack[sp++]=a; } if(!d[b]&&vis[b]!==st){ vis[b]=st; stack[sp++]=b; }
+      if(!d[c]&&vis[c]!==st){ vis[c]=st; stack[sp++]=c; } if(!d[dd]&&vis[dd]!==st){ vis[dd]=st; stack[sp++]=dd; } }
+    if(bad) continue;
+    if(cnt<W*H*0.0004) return {tiny:true};
+    const mg=R+14, x0=Math.max(0,minx-mg), y0=Math.max(0,miny-mg), mw=Math.min(W,maxx+mg+1)-x0, mh=Math.min(H,maxy+mg+1)-y0, m=new Uint8Array(mw*mh);
+    for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){ if(vis[(y+y0)*W+x+x0]===st&&!d[(y+y0)*W+x+x0]) m[y*mw+x]=1; }
+    for(let it=0;it<R;it++){ const m2=m.slice(); for(let y=1;y<mh-1;y++)for(let x=1;x<mw-1;x++){ const i=y*mw+x; if(m[i]) continue; if(e.wall[(y+y0)*W+x+x0]) continue; if(m[i-1]||m[i+1]||m[i-mw]||m[i+mw]) m2[i]=1; } m.set(m2); }
+    /* fermeture : absorbe le mobilier collé aux murs et les crénelages, pour un contour de pièce propre */
+    let mc=m; const CL=8; for(let it=0;it<CL;it++){ const n2=mc.slice(); for(let y=1;y<mh-1;y++)for(let x=1;x<mw-1;x++){ const i=y*mw+x; if(!mc[i]&&(mc[i-1]||mc[i+1]||mc[i-mw]||mc[i+mw])) n2[i]=1; } mc=n2; }
+    for(let it=0;it<CL;it++){ const n2=mc.slice(); for(let y=1;y<mh-1;y++)for(let x=1;x<mw-1;x++){ const i=y*mw+x; if(mc[i]&&!(mc[i-1]&&mc[i+1]&&mc[i-mw]&&mc[i+mw])) n2[i]=0; } mc=n2; }
+    for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){ if(!m[y*mw+x]&&mc[y*mw+x]&&e.wall[(y+y0)*W+x+x0]&&false) mc[y*mw+x]=0; }
+    let pts=pdetTrace(mc,mw,mh).map(p=>[p[0]+x0+0.5,p[1]+y0+0.5]);
+    let eps=4; pts=pdetSimplify(pts,eps); pts=apcxOrtho(pts); while(pts.length>40&&eps<24){ eps+=2; pts=apcxOrtho(pdetSimplify(pts,eps)); }
+    if(pts.length>1&&pts[0][0]===pts[pts.length-1][0]&&pts[0][1]===pts[pts.length-1][1]) pts.pop();
+    if(pts.length<3) return null;
+    const poly=pts.map(p=>[p[0]/W,p[1]/H]); const ar=area(poly);
+    let nom=''; try{ const T=pl.texts||[]; const inn=T.filter(t=>pdetPip(t.x,t.y,poly)&&/[A-Za-zÀ-ÿ]{2,}/.test(t.s)); nom=inn.length?inn.sort((a,b)=>a.y-b.y||a.x-b.x).map(t=>t.s).join(' ').slice(0,40):''; }catch(_){}
+    let exists=null; try{ const cx=poly.reduce((a,p)=>a+p[0],0)/poly.length, cy=poly.reduce((a,p)=>a+p[1],0)/poly.length;
+      (state.zonesChantier||[]).forEach(z=>{ if(z.poly&&z.poly.planId===pl.id&&z.poly.pts.length>=3){ const za=area(z.poly.pts); if(pdetPip(cx,cy,z.poly.pts)&&za>ar*0.75&&za<ar*1.33) exists=z; } }); }catch(_){}
+    return {ok:true,poly,area:ar,nom,exists,plId:pl.id};
+  }
+  return sawWall?{wall:true}:{open:true};
+}
+let ov=null,tip=null;
+function ensureOv(){ if(!ov){ ov=document.createElementNS(NS,'svg'); ov.id='apcxOv'; document.body.appendChild(ov); tip=document.createElement('div'); tip.id='apcxTip'; document.body.appendChild(tip); } }
+function hide(){ if(ov){ ov.innerHTML=''; } if(tip) tip.style.display='none'; }
+function draw(h,res,ev){
+  ensureOv(); ov.innerHTML=''; const r=h.el.getBoundingClientRect();
+  let txt='',no=false;
+  if(res&&res.ok){
+    const pg=document.createElementNS(NS,'polygon'); pg.setAttribute('points',res.poly.map(p=>(r.left+p[0]*r.width).toFixed(1)+','+(r.top+p[1]*r.height).toFixed(1)).join(' '));
+    pg.setAttribute('fill',res.exists?'rgba(120,120,120,.25)':'rgba(242,169,0,.38)'); pg.setAttribute('stroke',res.exists?'#777':'#F2A900'); pg.setAttribute('stroke-width','3'); pg.setAttribute('stroke-dasharray',res.exists?'4 4':'8 5'); ov.appendChild(pg);
+    res.poly.forEach(p=>{ const c=document.createElementNS(NS,'circle'); c.setAttribute('cx',r.left+p[0]*r.width); c.setAttribute('cy',r.top+p[1]*r.height); c.setAttribute('r','4'); c.setAttribute('fill','#fff'); c.setAttribute('stroke','#F2A900'); c.setAttribute('stroke-width','2'); ov.appendChild(c); });
+    const touch=A.lastType!=='mouse';
+    if(res.exists){ txt='Pièce déjà créée : '+(res.exists.nom||''); no=true; }
+    else txt=(touch?'Touchez encore pour créer':'Clic : créer')+(res.nom?' « '+res.nom+' »':' cette pièce');
+  } else if(res&&res.open){ txt='Contour non fermé (porte ouverte ?)'; no=true; }
+  else if(res&&res.tiny){ txt='Zone trop petite'; no=true; }
+  if(!txt){ tip.style.display='none'; return; }
+  tip.textContent=txt; tip.className=no?'no':''; tip.style.display='block'; tip.style.left=Math.min(window.innerWidth-260,(ev?ev.clientX:r.left)+16)+'px'; tip.style.top=((ev?ev.clientY:r.top)+18)+'px';
+}
+function ptIn(h,ev){ const r=h.el.getBoundingClientRect(); return [(ev.clientX-r.left)/r.width,(ev.clientY-r.top)/r.height]; }
+function modalOn(){ try{ return modalOuverte(); }catch(e){ return false; } }
+function update(ev){
+  if(!A.on) return; if(modalOn()){ hide(); return; }
+  const h=hostAt(ev.target); if(!h){ hide(); return; }
+  const pl=curPlan(h.kind); if(!pl){ hide(); return; }
+  const [nx,ny]=ptIn(h,ev);
+  if(A.cur&&A.cur.ok&&A.cur.plId===pl.id&&A.curEl===h.el&&pdetPip(nx,ny,A.cur.poly)){ draw(h,A.cur,ev); return; }
+  prep(pl,e=>{ if(!e){ hide(); return; } const res=regionAt(e,nx,ny,pl); A.cur=res&&res.ok?res:null; A.curEl=h.el; A.pend=null; draw(h,res,ev); });
+}
+document.addEventListener('pointermove',ev=>{ if(!A.on) return; A.lastType=ev.pointerType||'mouse'; A.lastEv=ev; if(A.raf) return; A.raf=setTimeout(()=>{ A.raf=0; if(A.lastEv) update(A.lastEv); },45); },true);
+document.addEventListener('pointerdown',ev=>{ if(A.on) A.lastType=ev.pointerType||'mouse'; },true);
+window.addEventListener('scroll',()=>{ if(A.on&&A.cur&&A.curEl&&document.contains(A.curEl)) draw({el:A.curEl},A.cur,A.lastEv); },true);
+function create(pl,res){
+  const pts=res.poly.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]); hide(); A.cur=null; A.pend=null; barUpd();
+  try{ _pieceKind=''; pieceRect=false; }catch(_){}
+  pieceCreateFlow(pl,pts,z=>{ try{ pzAfterEdit(); }catch(e){ console.error(e); } });
+  setTimeout(()=>{ const i=document.getElementById('pc-nom'); if(i&&!i.value&&res.nom){ i.value=res.nom; } },80);
+}
+document.addEventListener('click',ev=>{
+  if(!A.on) return; if(ev.target.closest&&ev.target.closest('#apcxBar')) return; if(modalOn()) return;
+  const h=hostAt(ev.target); if(!h) return;
+  ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+  const pl=curPlan(h.kind); if(!pl) return; const [nx,ny]=ptIn(h,ev); A.lastEv=ev;
+  const go=res=>{
+    if(!res||!res.ok){ draw(h,res,ev); return; }
+    if(res.exists){ draw(h,res,ev); return; }
+    if(A.lastType!=='mouse'&&!(A.pend&&A.pend.ok&&pdetPip(nx,ny,A.pend.poly))){ A.cur=res; A.curEl=h.el; A.pend=res; draw(h,res,ev); barUpd(); return; }
+    create(pl,res);
+  };
+  if(A.cur&&A.cur.ok&&A.cur.plId===pl.id&&A.curEl===h.el&&pdetPip(nx,ny,A.cur.poly)) go(A.cur);
+  else prep(pl,e=>{ if(!e){ return; } go(regionAt(e,nx,ny,pl)); });
+},true);
+document.addEventListener('keydown',ev=>{ if(A.on&&ev.key==='Escape'&&!modalOn()) apcxStop(); },true);
+function barUpd(){ const b=document.getElementById('apcxHint'); if(b) b.innerHTML=A.lastType!=='mouse'?'Touchez une zone fermée : le contour est proposé, touchez-la encore pour créer la pièce.':'Approchez le curseur d’une zone fermée : son contour est proposé · <b>clic</b> = créer la pièce · <b>Échap</b> = quitter'; }
+function bar(){ let b=document.getElementById('apcxBar'); if(b) return; b=document.createElement('div'); b.id='apcxBar'; b.innerHTML='<span>🪄 <b>Pièce auto</b></span><span id="apcxHint"></span><button type="button" id="apcxQuit">Quitter</button>'; document.body.appendChild(b); b.querySelector('#apcxQuit').onclick=()=>apcxStop(); barUpd(); }
+window.apcxStart=function(){
+  try{ if(window.rtDrawState&&window.rtDrawState().on){ const bt=document.getElementById('rtDrawBtn'); if(bt) bt.click(); } }catch(_){}
+  try{ if(typeof planMode!=='undefined'&&planMode!=='pieces'){ planMode='pieces'; planPoly=[]; renderPlans(true); } }catch(_){}
+  A.on=true; A.cur=null; A.pend=null; document.body.classList.add('apcx-on'); bar();
+  try{ const onP=document.getElementById('page-plans')&&document.getElementById('page-plans').classList.contains('active'); const pl=onP?planById(planSel):(window.rtCurPlan&&window.rtCurPlan()); if(pl) prep(pl,()=>{}); }catch(_){}
+};
+window.apcxStop=function(){ A.on=false; A.cur=null; A.pend=null; document.body.classList.remove('apcx-on'); hide(); const b=document.getElementById('apcxBar'); if(b) b.remove(); };
+window.apcxState=()=>({on:A.on,cur:A.cur});
+document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('#rtAutoBtn'); if(b){ ev.preventDefault(); if(A.on) apcxStop(); else apcxStart(); } },false);
+})();
+
 </script>
 </body></html>

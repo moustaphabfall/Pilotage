@@ -1,5 +1,5 @@
 /* Service worker : l'application s'ouvre hors ligne (coque en cache) ; Supabase et les polices passent toujours par le réseau. */
-const CACHE = 'pilotage-v5';
+const CACHE = 'pilotage-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './config.js', './supabase-adapter.js', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
