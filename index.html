@@ -15141,6 +15141,62 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
 })();
 </script>
 <script>
+/* ===== Paramètres projet : gestion des niveaux (créer, renommer, dupliquer, supprimer, ordonner) ===== */
+(function(){
+  const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const q=s=>String(s).replace(/'/g,"\\'");
+  /* tous les niveaux du projet (et plus seulement RDC…R+5) sont ordonnables */
+  window.nbNiveaux=function(){
+    const all=(state.niveaux||[]).slice(), std=n=>/^(rdc|r\+?0|r\+[1-5])$/i.test(String(n).trim());
+    const num=n=>{ const m=String(n).match(/(\d)\s*$/); return /rdc/i.test(n)?0:(m?+m[1]:0); };
+    const S=all.filter(std).sort((a,b)=>num(a)-num(b)), O=all.filter(n=>!std(n));
+    return S.concat(O);
+  };
+  function order(){ return (typeof nbOrder==='function')?nbOrder():(state.niveaux||[]).slice(); }
+  function save(ord){ state.perimetre=state.perimetre||{niveaux:[]}; state.perimetre.niveaux=ord; try{ nbApplyOrder(); }catch(e){} persist(); renderAll(); try{ renderTravaux(); }catch(e){} }
+  function lab(n){ try{ return nbLab(n); }catch(e){ return n; } }
+  window.pgNivHtml=function(){
+    const o=order(); const z=n=>(state.zonesChantier||[]).filter(x=>x.niveau===n).length, t=n=>(state.tasks||[]).filter(x=>x.niveau===n).length;
+    return '<h3>🏢 Niveaux</h3><div class="card" id="pgNiv"><small>Créez, renommez, dupliquez, supprimez et ordonnez les niveaux du projet (ordre d’avancement, du plus haut au plus bas ou l’inverse selon votre usage). Cet ordre s’applique à tout l’outil.</small>'
+      +'<table><tr><th>Rang</th><th>Niveau</th><th>Zones</th><th>Tâches</th><th></th></tr>'
+      +o.map((n,i)=>'<tr data-n="'+esc(n)+'"><td>'+(i+1)+'</td><td><b>'+esc(lab(n))+'</b></td><td>'+z(n)+'</td><td>'+t(n)+'</td><td><button data-up '+(i?'':'disabled')+' title="Monter">▲</button> <button data-dn '+(i<o.length-1?'':'disabled')+' title="Descendre">▼</button> <button data-rn>✏️ Renommer</button> <button data-dp>⧉ Dupliquer</button> <button class="d" data-rm>🗑 Supprimer</button></td></tr>').join('')
+      +'</table><div class="row"><input id="nvN" placeholder="Nom du nouveau niveau (ex. R+6, Sous-sol)"><button class="p" id="nvC">➕ Créer le niveau</button></div><div class="msg" id="nvM"></div></div>';
+  };
+  window.pgNivBind=function(root){
+    const box=root.querySelector('#pgNiv'); if(!box) return;
+    const msg=(t,e)=>{ const m=box.querySelector('#nvM'); m.textContent=t||''; m.style.color=e?'#B4432D':'#2a7a3b'; };
+    box.querySelectorAll('tr[data-n]').forEach(tr=>{ const n=tr.dataset.n;
+      const mv=d=>{ const o=order(), i=o.indexOf(n), j=i+d; if(i<0||j<0||j>=o.length) return; o.splice(i,1); o.splice(j,0,n); save(o); };
+      tr.querySelector('[data-up]').onclick=()=>mv(-1); tr.querySelector('[data-dn]').onclick=()=>mv(1);
+      tr.querySelector('[data-rn]').onclick=()=>pgNivRename(n);
+      tr.querySelector('[data-dp]').onclick=()=>duplicateNiveau(n);
+      tr.querySelector('[data-rm]').onclick=()=>ribDeleteNiveau(n); });
+    const c=box.querySelector('#nvC'), inp=box.querySelector('#nvN');
+    const add=()=>{ const nom=inp.value.trim(); if(!nom){ msg('Nom requis',true); return; } if(state.niveaux.some(x=>x.toLowerCase()===nom.toLowerCase())){ msg('Ce niveau existe déjà',true); return; }
+      const o=order(); state.niveaux.push(nom); o.push(nom); save(o); };
+    c.onclick=add; inp.onkeydown=e=>{ if(e.key==='Enter') add(); };
+  };
+  function pgNivRename(n){
+    miniPrompt('Nouveau nom du niveau :', n, v=>{
+      v=(v||'').trim(); if(!v||v===n) return;
+      if(state.niveaux.includes(v)){ miniAlert('Ce niveau existe déjà.'); return; }
+      state.niveaux=state.niveaux.map(x=>x===n?v:x);
+      (state.zonesChantier||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; }); (state.zoneFamilles||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; });
+      (state.plans||[]).forEach(p=>{ if(p.niveau===n) p.niveau=v; }); (state.tasks||[]).forEach(t=>{ if(t.niveau===n) t.niveau=v; });
+      if(state.objectifs&&state.objectifs.datesNiveau&&state.objectifs.datesNiveau[n]!==undefined){ state.objectifs.datesNiveau[v]=state.objectifs.datesNiveau[n]; delete state.objectifs.datesNiveau[n]; }
+      if(state.niveauCotes&&state.niveauCotes[n]!==undefined){ state.niveauCotes[v]=state.niveauCotes[n]; delete state.niveauCotes[n]; }
+      if(state.perimetre&&Array.isArray(state.perimetre.niveaux)) state.perimetre.niveaux=state.perimetre.niveaux.map(x=>x===n?v:x);
+      try{ if(travauxNiveauActif===n) travauxNiveauActif=v; }catch(e){}
+      persist(); renderAll(); try{ renderTravaux(); }catch(e){}
+    });
+  }
+  /* après toute modification des niveaux (ici ou ailleurs), la rubrique se redessine */
+  const ra=window.renderAll;
+  window.renderAll=function(){ const r=ra.apply(this,arguments); try{ const pg=document.getElementById('page-projet'), b=document.getElementById('pgNiv'); if(pg&&pg.classList.contains('active')&&b){ const t=document.createElement('div'); t.innerHTML=pgNivHtml(); b.replaceWith(t.querySelector('#pgNiv')); pgNivBind(document.getElementById('pgWrap')); } }catch(e){} return r; };
+})();
+</script>
+
+<script>
 /* ===== Projet : accès, rôles, fonctionnalités, paiement mensuel ===== */
 (function(){
   const PG_FEATS=[
@@ -15250,7 +15306,8 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   async function render(){
     const w=wrap(); if(!w) return; const p=PJ();
     if(!p){
-      w.innerHTML='<h2>🗂 Projet</h2><div class="card">Projet <b>'+esc((state.projet&&state.projet.nom)||'SM')+'</b>.<br><br>La gestion des accès (identifiants, rôles, fonctionnalités, paiement mensuel) est disponible dans l’application hébergée, une fois connecté avec un compte administrateur.</div>';
+      w.innerHTML='<h2>🗂 Projet</h2><div class="card">Projet <b>'+esc((state.projet&&state.projet.nom)||'SM')+'</b>.<br><br>La gestion des accès (identifiants, rôles, fonctionnalités, paiement mensuel) est disponible dans l’application hébergée, une fois connecté avec un compte administrateur.</div>'+(window.pgNivHtml?pgNivHtml():'');
+      if(window.pgNivBind) pgNivBind(w);
       return;
     }
     const head='<h2>🗂 Projet « '+esc(p.nom)+' »</h2><div class="row"><span>Votre rôle : <b>'+({admin:'Administrateur',editeur:'Éditeur',lecteur:'Lecteur'})[p.role]+'</b></span>'
@@ -15295,6 +15352,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
       +'<tr data-fr="'+m.user_id+'" '+(openF===m.user_id?'':'hidden')+'><td colspan="5">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
       +'<tr data-pp="'+m.user_id+'" hidden><td colspan="5"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')
       +'</table></div>');
+    body.push(window.pgNivHtml?pgNivHtml():'');
     { const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
       body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
         +'<div class="row"><select id="hP"><option value="">Base de l’outil (par défaut)</option>'+Object.keys(PR).map(k=>'<option value="'+k+'"'+(h&&h.provider===k?' selected':'')+(PR[k].available()?'':' disabled')+'>'+esc(PR[k].label)+(PR[k].available()?'':' (non configuré)')+'</option>').join('')+'</select><button class="p" id="hGo">Choisir / changer l’hébergement</button></div>'
@@ -15305,7 +15363,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
       +'<div class="row"><button class="p" id="nC" disabled>Créer l’accès (valable 1 mois)</button><small>Sans paiement validé, l’accès ne peut pas être créé.</small></div>'
       +(cred?'<div class="cred">'+esc(cred)+'</div><small>Sélectionnez, copiez et envoyez ce texte à la personne.</small>':'')+'<div class="msg" id="pgMsg"></div></div>');
     w.innerHTML=hd+body.join('');
-    bindHead(w); badge(); bind(w);
+    bindHead(w); badge(); bind(w); if(window.pgNivBind) pgNivBind(w);
   }
   function bind(w){
     const msg=(t,e)=>{ const m=w.querySelector('#pgMsg'); if(m){ m.textContent=t||''; m.style.color=e?'#B4432D':'#2a7a3b'; } else if(e) alert(t); };

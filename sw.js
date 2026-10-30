@@ -1,5 +1,5 @@
 /* Service worker : l'application s'ouvre hors ligne (coque en cache) ; Supabase et les polices passent toujours par le réseau. */
-const CACHE = 'pilotage-v27';
+const CACHE = 'pilotage-v28';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './config.js', './supabase-adapter.js', './sharepoint-adapter.js', './vendor/msal-browser.min.js', './icons/icon-192.png', './icons/icon-512.png'];
 const OCR = ['./ocr/tesseract.min.js','./ocr/worker.min.js','./ocr/tesseract-core-simd-lstm.wasm.js','./ocr/tesseract-core-lstm.wasm.js','./ocr/fra.traineddata.gz'];  // lecture de texte (OCR) hors connexion
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).then(() => Promise.all(OCR.map(u => c.add(u).catch(() => {}))))).then(() => self.skipWaiting())); });
