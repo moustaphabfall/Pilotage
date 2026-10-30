@@ -15298,7 +15298,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
       body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
         +'<div class="row"><select id="hP"><option value="">Base de l’outil (par défaut)</option>'+Object.keys(PR).map(k=>'<option value="'+k+'"'+(h&&h.provider===k?' selected':'')+(PR[k].available()?'':' disabled')+'>'+esc(PR[k].label)+(PR[k].available()?'':' (non configuré)')+'</option>').join('')+'</select><button class="p" id="hGo">Choisir / changer l’hébergement</button></div>'
         +'<small>Le client (administrateur du projet) autorise l’hébergement avec son propre compte. En tant qu’administrateur de l’outil, vous pouvez le faire à sa place. Les données existantes sont copiées vers le nouvel hébergement, et les membres du projet y sont invités automatiquement.</small><div class="msg" id="hMsg"></div></div>'); }
-    body.push('<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><input id="nP" value="'+esc(window.PILOTAGE_GENPW())+'"><select id="nR"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du projet</option></select></div>'
+    body.push('<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><label><b>Projet :</b> <select id="nPj">'+(p.projets||[{id:p.id,nom:p.nom}]).map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+(p.global?'<option value="__new__">➕ Nouveau projet…</option>':'')+'</select></label><input id="nPn" placeholder="Nom du nouveau projet" hidden></div><small id="nPh" hidden>Le nouveau projet reprend toutes les fonctionnalités de l’outil, sans aucune donnée.</small><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><input id="nP" value="'+esc(window.PILOTAGE_GENPW())+'"><select id="nR"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du projet</option></select></div>'
       +'<details><summary>Fonctionnalités accordées (tout activé par défaut)</summary>'+matrix('n',{})+'</details>'
       +'<div class="row"><input type="number" min="0" step="any" id="nM" placeholder="Montant" style="width:110px"><input id="nRf" placeholder="Référence du paiement"><label><input type="checkbox" id="nV"> paiement reçu et validé</label></div>'
       +'<div class="row"><button class="p" id="nC" disabled>Créer l’accès (valable 1 mois)</button><small>Sans paiement validé, l’accès ne peut pas être créé.</small></div>'
@@ -15326,12 +15326,16 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
         say('Copie des données…'); await window.PILOTAGE_SET_HOST(nh,(n,t)=>say('Copie des données : '+n+'/'+t));
         if(nh){ try{ const S=await window.PILOTAGE_PROVIDERS[nh.provider].open(nh); for(const m of cache.members){ if(m.moi||!m.email) continue; try{ await S.invite(m.email,m.role==='lecteur'?'lecteur':'editeur'); }catch(e){} } }catch(e){} }
         say('Hébergement enregistré. Rechargement…'); setTimeout(()=>location.reload(),900); }catch(e){ say(e.message,true); } };
+    const pj=w.querySelector('#nPj'); if(pj) pj.onchange=()=>{ const nw=pj.value==='__new__'; w.querySelector('#nPn').hidden=!nw; w.querySelector('#nPh').hidden=!nw; };
     const v=w.querySelector('#nV'), c=w.querySelector('#nC'); if(v) v.onchange=()=>{ c.disabled=!v.checked; };
     if(c) c.onclick=()=>{ const g=id=>w.querySelector(id).value.trim(); const email=g('#nE'), pw=g('#nP'), nom=g('#nN');
       const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details'));
-      run(async()=>{ const r=await adm({action:'p_create',nom,email,password:pw,role:g('#nR'),fonctions:fonc,paiement:{valide:true,montant:mt?Number(mt):null,reference:g('#nRf')||null}});
-        hostSync('add',email,g('#nR'));
-        cred='Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nProjet : '+PJ().nom+'\nIdentifiant : '+email+(r.existant?'\n(compte existant : mot de passe inchangé)':'\nMot de passe : '+pw)+'\nValable jusqu’au '+fmt(r.valide_jusqu); }); };
+      run(async()=>{ let pid=w.querySelector('#nPj').value, pnom=null;
+        if(pid==='__new__'){ pnom=g('#nPn'); const id=pnom.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,'').slice(0,16); if(!id) throw new Error('Nom du nouveau projet requis'); await window.PILOTAGE_ADM({action:'p_projet_create',id,nom:pnom}); pid=id; (PJ().projets=PJ().projets||[]).push({id,nom:pnom}); }
+        const r=await adm({action:'p_create',projet:pid,nom,email,password:pw,role:g('#nR'),fonctions:fonc,paiement:{valide:true,montant:mt?Number(mt):null,reference:g('#nRf')||null}});
+        const pn=(PJ().projets.find(x=>x.id===pid)||{}).nom||pid;
+        if(pid===PJ().id) hostSync('add',email,g('#nR'));
+        cred='Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nProjet : '+pn+'\nIdentifiant : '+email+(r.existant?'\n(compte existant : mot de passe inchangé)':'\nMot de passe : '+pw)+'\nValable jusqu’au '+fmt(r.valide_jusqu); }); };
   }
 
   /* initialisation : attend la connexion (mode hébergé) */
