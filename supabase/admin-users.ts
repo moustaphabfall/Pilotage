@@ -43,12 +43,6 @@ Deno.serve(async (req) => {
         if (error) return J({ error: error.message }, 400);
         return J({ ok: true });
       }
-      if (b.action === 'password') {
-        if (String(b.password || '').length < 8) return J({ error: 'Mot de passe : 8 caractères min.' }, 400);
-        const { error } = await admin.auth.admin.updateUserById(b.id, { password: String(b.password) });
-        if (error) return J({ error: error.message }, 400);
-        return J({ ok: true });
-      }
       if (b.action === 'delete') {
         if (b.id === user.id) return J({ error: 'Vous ne pouvez pas supprimer votre propre compte' }, 400);
         const { error } = await admin.auth.admin.deleteUser(b.id);
@@ -105,7 +99,7 @@ Deno.serve(async (req) => {
     }
     if (b.action === 'p_create') {
       if (!b.paiement || b.paiement.valide !== true) return J({ error: 'Paiement non validé : l’accès ne peut pas être créé' }, 400);
-      const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || '');
+      const email = String(b.email || '').trim().toLowerCase();
       if (!email) return J({ error: 'E-mail (identifiant) requis' }, 400);
       const role = ROLES.includes(b.role) ? b.role : 'editeur';
       let uid: string | null = null;
@@ -118,8 +112,8 @@ Deno.serve(async (req) => {
         uid = data.user!.id;
         await admin.from('profiles').upsert({ id: uid, nom: b.nom || email, role: 'editeur', approuve: true });
       } else {
-        if (password.length < 8) return J({ error: 'Mot de passe : 8 caractères min.' }, 400);
-        const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { nom: b.nom || email } });
+        const rnd = crypto.randomUUID() + crypto.randomUUID();   // jamais communiqué à personne
+        const { data, error } = await admin.auth.admin.createUser({ email, password: rnd, email_confirm: true, user_metadata: { nom: b.nom || email } });
         if (error) return J({ error: error.message }, 400);
         uid = data.user!.id;
         await admin.from('profiles').upsert({ id: uid, nom: b.nom || email, role: 'editeur', approuve: true });
@@ -137,7 +131,7 @@ Deno.serve(async (req) => {
       if (!m) return J({ error: 'Membre introuvable' }, 404);
       const { data: gu, error: ge } = await admin.auth.admin.getUserById(b.user_id);
       if (ge || !gu?.user?.email) return J({ error: 'Utilisateur introuvable' }, 404);
-      if (gu.user.email_confirmed_at) return J({ error: 'Ce compte est déjà activé : la personne peut utiliser « Mot de passe oublié » sur l’écran de connexion.' }, 400);
+      if (gu.user.email_confirmed_at) return J({ error: 'Ce compte est déjà activé : utilisez « Réinitialiser le compte » pour que la personne choisisse un nouveau mot de passe.' }, 400);
       const { error } = await admin.auth.admin.inviteUserByEmail(gu.user.email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: gu.user.user_metadata?.nom || gu.user.email } });
       if (error) return J({ error: 'Invitation non renvoyée : ' + error.message }, 400);
       return J({ ok: true });
@@ -171,13 +165,15 @@ Deno.serve(async (req) => {
       await admin.from('projet_notifs').update({ lu: true }).eq('projet_id', pid);
       return J({ ok: true });
     }
-    if (b.action === 'p_password') {
-      if (String(b.password || '').length < 8) return J({ error: 'Mot de passe : 8 caractères min.' }, 400);
+    if (b.action === 'p_reset') {
+      /* l'administrateur ne voit ni ne choisit jamais un mot de passe : il déclenche seulement l'envoi d'un lien de réinitialisation à la personne */
       const { data: m } = await admin.from('projet_membres').select('user_id').eq('projet_id', pid).eq('user_id', b.user_id).maybeSingle();
       if (!m) return J({ error: 'Membre introuvable' }, 404);
-      const { error } = await admin.auth.admin.updateUserById(b.user_id, { password: String(b.password) });
-      if (error) return J({ error: error.message }, 400);
-      return J({ ok: true });
+      const { data: gu, error: ge } = await admin.auth.admin.getUserById(b.user_id);
+      if (ge || !gu?.user?.email) return J({ error: 'Utilisateur introuvable' }, 404);
+      const { error } = await admin.auth.resetPasswordForEmail(gu.user.email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined });
+      if (error) return J({ error: 'E-mail non envoyé : ' + error.message }, 400);
+      return J({ ok: true, email: gu.user.email });
     }
     if (b.action === 'p_remove') {
       if (b.user_id === user.id) return J({ error: 'Vous ne pouvez pas retirer votre propre accès' }, 400);

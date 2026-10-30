@@ -5,6 +5,8 @@
   if(!cfg.url || !cfg.anonKey || !window.supabase){ console.info('Pilotage : mode local (Supabase non configuré)'); return; }
     /* lien reçu par e-mail (invitation, réinitialisation) : repéré avant que la bibliothèque n'efface l'adresse */
   const RET = /[#&?]type=(invite|recovery|signup|magiclink)/.exec(location.hash+location.search);
+  const DV = new URLSearchParams(location.search).get('dv');   // appareil à valider (lien de vérification reçu par e-mail)
+  let DEV = null; try{ DEV = localStorage.getItem('pg_device'); if(!DEV){ DEV = (crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now())+'-'+Math.random().toString(36).slice(2); localStorage.setItem('pg_device', DEV); } }catch(e){ DEV = 'tmp-'+Math.random().toString(36).slice(2)+Date.now(); }
   const sb = window.supabase.createClient(cfg.url, cfg.anonKey, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
   let me = null, ready = null, lastTs = null, PJ = null, store = null;
 
@@ -22,16 +24,16 @@
     try{ const r = await fetch(cfg.url+'/auth/v1/settings', {headers:{apikey:cfg.anonKey}}); const j = await r.json(); const ext = j.external||{};
       return Object.keys(SOCIAL).filter(k=>ext[k] && (!Array.isArray(cfg.oauth) || cfg.oauth.includes(k))); }catch(e){ return []; }
   }
-  function loginUI(){
+  function loginUI(banner){
     return new Promise(async res=>{
       const social = await socialList();
       let mode = 'in';
-      const draw = (err)=>{
+      const draw = (err, good)=>{
         const d = screen(`<form><h2>🏗 Pilotage chantier</h2><small>${mode==='in'?'Connexion':'Créer mon accès (à valider par un administrateur)'}</small>
           ${mode==='up'?'<input name="nom" placeholder="Votre nom (signe vos modifications)" required autocomplete="name">':''}
           <input name="email" type="email" placeholder="E-mail" required autocomplete="email"><input name="pw" type="password" placeholder="Mot de passe (8 caractères min.)" minlength="8" required autocomplete="${mode==='in'?'current-password':'new-password'}">
           ${mode==='in'&&social.length?social.map(k=>'<button type="button" class="l" data-oa="'+k+'">'+SOCIAL[k]+'</button>').join('')+'<small style="text-align:center">ou avec votre identifiant :</small>':''}
-          <div class="e">${err||''}</div><button type="submit">${mode==='in'?'Se connecter':'Créer mon accès'}</button>
+          <div class="e" ${good?'style="color:#2a7a3b"':''}>${err||''}</div><button type="submit">${mode==='in'?'Se connecter':'Créer mon accès'}</button>
           ${mode==='in'?'<button type="button" class="l" id="pgFg">Mot de passe oublié ?</button>':''}
           <button type="button" class="l" id="pgSw">${mode==='in'?'Première fois ? Créer mon accès':'J’ai déjà un accès'}</button></form>`);
         d.querySelectorAll('[data-oa]').forEach(b=>b.onclick = async ()=>{ const {error} = await sb.auth.signInWithOAuth({provider:b.dataset.oa, options:{redirectTo:location.origin+location.pathname, scopes:b.dataset.oa==='azure'?'email':undefined}}); if(error) draw(error.message); });
@@ -43,11 +45,29 @@
           try{
             if(mode==='up'){ const {error} = await sb.auth.signUp({email, password:pw, options:{data:{nom:f.get('nom')}}}); if(error) throw error; }
             const {error} = await sb.auth.signInWithPassword({email, password:pw}); if(error) throw error;
+            if(!(await verifAppareil(email, pw))){ draw('Connexion annulée.'); return; }
             res();
           }catch(e){ draw(e.message==='Email not confirmed' ? 'Confirmez votre e-mail (lien reçu), puis reconnectez-vous.' : (e.message||'Erreur')); }
         };
       };
-      draw();
+      draw(banner, !!banner);
+    });
+  }
+
+  /* Vérification de l'appareil : au premier appareil et à chaque nouvel appareil, un lien est envoyé à l'adresse e-mail de la personne ; l'accès n'est ouvert qu'après le clic. */
+  async function verifAppareil(email, pw){
+    const {data:{session}} = await sb.auth.getSession(); const uid = session && session.user.id;
+    if(cfg.verifAdmin!==true && uid){ try{ const {data:pf} = await sb.from('profiles').select('role').eq('id', uid).maybeSingle(); if(pf && pf.role==='admin') return true; }catch(e){} }   /* administrateur général exempté : évite un blocage tant que l'envoi d'e-mails n'est pas réglé */
+    try{ const {data:ok} = await sb.rpc('appareil_ok', {p_email:email, p_dev:DEV}); if(ok===true) return true; }catch(e){}
+    await sb.auth.signOut();
+    const send = async()=>{ const {error} = await sb.auth.signInWithOtp({email, options:{shouldCreateUser:false, emailRedirectTo:location.origin+location.pathname+'?dv='+encodeURIComponent(DEV)}}); return error; };
+    const err0 = await send();
+    return new Promise(res=>{
+      let timer = null;
+      const d = screen('<div class="box"><h2>✉ Vérifiez votre adresse e-mail</h2><p>Pour protéger votre compte, un e-mail de vérification a été envoyé à <b>'+esc(email)+'</b>. Cliquez sur le lien qu’il contient : l’accès s’ouvre ensuite automatiquement.</p><small>Nécessaire à la première connexion et à chaque nouvel appareil.</small><div class="e" id="pgVe">'+(err0?esc(err0.message):'')+'</div><button class="l" id="pgVr">Renvoyer l’e-mail</button><button class="l" id="pgVb">Retour</button></div>');
+      d.querySelector('#pgVr').onclick = async ()=>{ const e = await send(); d.querySelector('#pgVe').textContent = e ? e.message : 'E-mail renvoyé.'; };
+      d.querySelector('#pgVb').onclick = ()=>{ clearInterval(timer); res(false); };
+      timer = setInterval(async()=>{ try{ const {data:ok} = await sb.rpc('appareil_ok', {p_email:email, p_dev:DEV}); if(ok===true){ clearInterval(timer); const {error} = await sb.auth.signInWithPassword({email, password:pw}); if(error){ d.querySelector('#pgVe').textContent = error.message; return; } res(true); } }catch(e){} }, 3000);
     });
   }
 
@@ -61,6 +81,7 @@
           if(a!==b){ draw('Les deux mots de passe ne sont pas identiques.'); return; }
           const {error} = await sb.auth.updateUser({password:a}); if(error){ draw(error.message); return; }
           try{ history.replaceState(null,'',location.pathname); }catch(e){}
+          await sb.auth.signOut();   /* la personne se connecte ensuite elle-même avec son nouveau mot de passe */
           res(); };
       };
       draw();
@@ -103,8 +124,10 @@
   }
   async function ensure(){
     let {data:{session}} = await sb.auth.getSession();
-    if(!session){ await loginUI(); ({data:{session}} = await sb.auth.getSession()); }
-    if(RET && /invite|recovery/.test(RET[1])) await passwordUI();
+    let banner = null;
+    if(session && RET && /invite|recovery/.test(RET[1])){ await passwordUI(); session = null; banner = 'Mot de passe enregistré. Connectez-vous avec votre e-mail et ce nouveau mot de passe.'; }
+    if(session && DV){ try{ await sb.rpc('appareil_valider', {p_dev:DV}); await sb.rpc('appareil_valider', {p_dev:DEV}); }catch(e){} try{ history.replaceState(null,'',location.pathname); }catch(e){} }   /* lien de vérification cliqué : cet appareil (et celui qui attend) sont validés */
+    if(!session){ await loginUI(banner); ({data:{session}} = await sb.auth.getSession()); }
     await profile(session.user);
     await chooseProjet();
     await openStore();
@@ -188,7 +211,7 @@
     const m = document.getElementById('dataMenu'); if(!m){ setTimeout(addMenu, 600); return; }
     if(m.querySelector('[data-pg]')) return;
     const mk = (txt, fn)=>{ const b = document.createElement('button'); b.type = 'button'; b.dataset.pg = '1'; b.textContent = txt; b.onclick = ()=>{ try{ dataMenuClose(); }catch(e){} fn(); }; m.appendChild(b); };
-    if(PJ.role==='admin') mk('🔑 Gérer les accès', ()=>{ try{ showPage('projet'); }catch(e){ adminUI(); } });
+    if(PJ.role==='admin') mk('🔑 Gérer les accès', ()=>{ try{ showPage('projet'); }catch(e){} });
     mk('🚪 Se déconnecter ('+me.nom+')', ()=>window.pilotageLogout());
   }
   async function adm(body){
@@ -198,31 +221,6 @@
   }
   const esc = t=>String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const genPw = ()=>{ const c='abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let o=''; const a=new Uint32Array(10); crypto.getRandomValues(a); a.forEach(n=>o+=c[n%c.length]); return o; };
-  async function adminUI(){
-    const css2 = document.getElementById('pgAdmCss') || Object.assign(document.createElement('style'), {id:'pgAdmCss', textContent:'#pgAdm{position:fixed;inset:0;z-index:99998;background:rgba(22,35,43,.6);display:flex;align-items:center;justify-content:center;padding:12px;font-family:system-ui,sans-serif}#pgAdm .bx{background:#fff;border-top:6px solid #F2A900;border-radius:14px;padding:18px;width:100%;max-width:820px;max-height:92vh;overflow:auto}#pgAdm h3{margin:0 0 10px}#pgAdm table{width:100%;border-collapse:collapse;font-size:13px}#pgAdm td,#pgAdm th{padding:6px 4px;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}#pgAdm input,#pgAdm select{padding:7px;border:1px solid #ccc;border-radius:6px;font-size:14px}#pgAdm button{padding:7px 12px;border:0;border-radius:6px;background:#eee;color:#222;font-size:13px;cursor:pointer}#pgAdm button.p{background:#CC5F00;color:#fff;font-weight:600}#pgAdm button.d{background:#fbe3df;color:#B4432D}#pgAdm .row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}#pgAdm .msg{font-size:13px;min-height:18px;margin:6px 0}#pgAdm .cred{background:#fff7e0;border:1px dashed #F2A900;border-radius:8px;padding:10px;font-size:13px;user-select:all;white-space:pre-wrap}'});
-    if(!css2.parentNode) document.head.appendChild(css2);
-    document.getElementById('pgAdm')?.remove();
-    const ov = document.createElement('div'); ov.id = 'pgAdm'; document.body.appendChild(ov);
-    const msg = (t,err)=>{ const m = ov.querySelector('.msg'); if(m){ m.textContent = t||''; m.style.color = err?'#B4432D':'#2a7a3b'; } };
-    async function draw(cred){
-      let users = []; try{ users = (await adm({action:'list'})).users; }catch(e){ ov.innerHTML = '<div class="bx"><h3>Accès</h3><p>'+esc(e.message)+'</p><button id="x">Fermer</button></div>'; ov.querySelector('#x').onclick = ()=>ov.remove(); return; }
-      const roleSel = (id,r,dis)=>'<select data-role="'+id+'" '+(dis?'disabled':'')+'>'+['admin','editeur','lecteur'].map(x=>'<option value="'+x+'"'+(x===r?' selected':'')+'>'+({admin:'Administrateur',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[x]+'</option>').join('')+'</select>';
-      ov.innerHTML = '<div class="bx"><h3>🔑 Gestion des accès</h3>'
-        +'<table><tr><th>Nom / e-mail</th><th>Rôle</th><th>Accès</th><th></th></tr>'+users.map(u=>'<tr><td><b>'+esc(u.nom)+'</b><br><small>'+esc(u.email)+(u.moi?' (vous)':'')+'</small></td><td>'+roleSel(u.id,u.role,u.moi)+'</td><td><label><input type="checkbox" data-ap="'+u.id+'" '+(u.approuve?'checked':'')+' '+(u.moi?'disabled':'')+'> autorisé</label></td><td>'+(u.moi?'':'<button data-pw="'+u.id+'">Nouveau mot de passe</button> <button class="d" data-del="'+u.id+'">Supprimer</button>')+'</td></tr>').join('')+'</table>'
-        +'<h3 style="margin-top:18px">➕ Créer un compte</h3><div class="row"><input id="aN" placeholder="Nom"><input id="aE" type="email" placeholder="E-mail (identifiant)"><input id="aP" placeholder="Mot de passe" value="'+genPw()+'"><select id="aR"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur</option></select><button class="p" id="aC">Créer le compte</button></div>'
-        +(cred?'<div class="cred">'+esc(cred)+'</div><small>Sélectionnez ce texte, copiez-le et envoyez-le à la personne.</small>':'')
-        +'<div class="msg"></div><div class="row" style="justify-content:flex-end"><button id="aX">Fermer</button></div></div>';
-      ov.querySelector('#aX').onclick = ()=>ov.remove();
-      ov.querySelector('#aC').onclick = async ()=>{ const nom = ov.querySelector('#aN').value.trim(), email = ov.querySelector('#aE').value.trim(), pw = ov.querySelector('#aP').value, role = ov.querySelector('#aR').value; msg('Création…');
-        try{ await adm({action:'create', nom, email, password:pw, role}); await draw('Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nIdentifiant : '+email+'\nMot de passe : '+pw+'\n(Changez-le dès la première connexion si besoin.)'); }catch(e){ msg(e.message,true); } };
-      ov.querySelectorAll('[data-role]').forEach(el=>el.onchange = async ()=>{ try{ await adm({action:'update', id:el.dataset.role, role:el.value}); msg('Rôle enregistré'); }catch(e){ msg(e.message,true); } });
-      ov.querySelectorAll('[data-ap]').forEach(el=>el.onchange = async ()=>{ try{ await adm({action:'update', id:el.dataset.ap, approuve:el.checked}); msg(el.checked?'Accès autorisé':'Accès retiré'); }catch(e){ msg(e.message,true); } });
-      ov.querySelectorAll('[data-pw]').forEach(el=>el.onclick = async ()=>{ const u = users.find(x=>x.id===el.dataset.pw), pw = genPw(); try{ await adm({action:'password', id:u.id, password:pw}); await draw('Nouveau mot de passe de '+u.email+' : '+pw); }catch(e){ msg(e.message,true); } });
-      ov.querySelectorAll('[data-del]').forEach(el=>el.onclick = async ()=>{ const u = users.find(x=>x.id===el.dataset.del); if(!confirm('Supprimer le compte '+u.email+' ?')) return; try{ await adm({action:'delete', id:u.id}); await draw(); }catch(e){ msg(e.message,true); } });
-    }
-    draw();
-  }
-
   window.PILOTAGE_SB = ()=> (ready = ready || ensure());
   window.pilotageLogout = async ()=>{ await sb.auth.signOut(); location.reload(); };
 })();
