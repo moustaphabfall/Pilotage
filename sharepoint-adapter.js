@@ -5,9 +5,9 @@
    Disponible si config.js contient msClientId. Un projet = un dossier « Pilotage/<projet> » d'une bibliothèque SharePoint. */
 (function(){
   const cfg = window.PILOTAGE_CONFIG || {};
-  (window.PILOTAGE_PROVIDERS = window.PILOTAGE_PROVIDERS || {}).sharepoint = {label:'Microsoft 365 / SharePoint', available:()=>!!(cfg.msClientId && window.msal), setup, open};
-  const GRAPH = 'https://graph.microsoft.com/v1.0', SCOPES = ['User.Read','Files.ReadWrite.All','Sites.ReadWrite.All'], ROOT = cfg.msFolder || 'Pilotage';
-  let app = null, acct = null;
+  (window.PILOTAGE_PROVIDERS = window.PILOTAGE_PROVIDERS || {}).sharepoint = {label:'Microsoft (OneDrive / SharePoint)', available:()=>!!(cfg.msClientId && window.msal), setup, open};
+  const GRAPH = 'https://graph.microsoft.com/v1.0', BASE_SCOPES = ['User.Read','Files.ReadWrite.All'], ROOT = cfg.msFolder || 'Pilotage';
+  let app = null, acct = null, SCOPES = BASE_SCOPES;   /* Sites.ReadWrite.All demandé seulement si on choisit un site SharePoint */
   const esc = t=>String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const css = document.createElement('style');
   css.textContent = '#pgSp{position:fixed;inset:0;z-index:99999;background:rgba(22,35,43,.85);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif}#pgSp .box{background:#fff;border-top:6px solid #F2A900;border-radius:10px;padding:22px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:10px;max-height:90vh;overflow:auto}#pgSp h2{margin:0;font-size:20px}#pgSp button{padding:12px;border:0;border-radius:6px;background:#CC5F00;color:#fff;font-size:16px;font-weight:600;cursor:pointer}#pgSp button.l{background:#eee;color:#222;font-weight:500;text-align:left}#pgSp .e{color:#B4432D;font-size:13px}#pgSp small{color:#666}#pgSp input{padding:11px;border:1px solid #ccc;border-radius:6px;font-size:16px}';
@@ -16,7 +16,7 @@
   const close = ()=>{ const d = document.getElementById('pgSp'); if(d) d.remove(); };
 
   async function connect(){
-    if(!app){ app = new msal.PublicClientApplication({auth:{clientId:cfg.msClientId, authority:'https://login.microsoftonline.com/'+(cfg.msTenant||'organizations'), redirectUri:cfg.msRedirect||(location.origin+location.pathname.replace(/[^/]*$/,''))}, cache:{cacheLocation:'localStorage'}}); await app.initialize(); await app.handleRedirectPromise().catch(()=>null); }
+    if(!app){ app = new msal.PublicClientApplication({auth:{clientId:cfg.msClientId, authority:'https://login.microsoftonline.com/'+(cfg.msTenant||'common'), redirectUri:cfg.msRedirect||(location.origin+location.pathname.replace(/[^/]*$/,''))}, cache:{cacheLocation:'localStorage'}}); await app.initialize(); await app.handleRedirectPromise().catch(()=>null); }
     acct = app.getActiveAccount() || app.getAllAccounts()[0] || null;
     const hint = window.PILOTAGE_USER_EMAIL || undefined;   /* même adresse que la connexion à l'outil : connexion Microsoft silencieuse si possible */
     if(!acct && hint){ try{ acct = (await app.ssoSilent({scopes:SCOPES, loginHint:hint})).account; }catch(e){ acct = null; } }
@@ -35,35 +35,43 @@
   const enc = p=>p.split('/').map(encodeURIComponent).join('/');
 
   /* ---- paramétrage (administrateur) : choisir le SharePoint puis créer ou rouvrir le dossier du projet ---- */
+  function notice(html){ return new Promise(done=>{ const d = screen(html); d.querySelector('#b').onclick = ()=>done(); }); }
+
   async function setup(nomProjet){
     await connect();
-    let sites = [];
-    try{ sites = (await gj('/sites?search=*&$top=50')).value || []; }catch(e){}
-    try{ ((await gj('/me/followedSites')).value||[]).forEach(s=>{ if(!sites.find(x=>x.id===s.id)) sites.push(s); }); }catch(e){}
     for(;;){
-      const root = await new Promise(done=>{
-        const d = screen('<div class="box"><h2>🏢 Quel SharePoint héberge ce projet ?</h2><small>Compte connecté : '+esc(acct.username)+'</small>'
-          +sites.map((x,i)=>'<button class="l" data-i="'+i+'">'+esc(x.displayName||x.name)+'<br><small>'+esc(x.webUrl||'')+'</small></button>').join('')
-          +'<button class="l" data-od="1">☁ Mon OneDrive (test personnel)</button><button class="l" data-back="1">Annuler</button><div class="e" id="e"></div></div>');
-        const go = async(b,label)=>{ try{ const dr = await gj(b+'/drive'); done({base:b+'/drive', label}); }catch(e){ d.querySelector('#e').textContent = 'Accès impossible : '+e.message; } };
-        d.querySelectorAll('[data-i]').forEach(b=>b.onclick = ()=>go('/sites/'+sites[+b.dataset.i].id, sites[+b.dataset.i].displayName||sites[+b.dataset.i].name));
-        d.querySelector('[data-od]').onclick = ()=>go('/me','OneDrive'); d.querySelector('[data-back]').onclick = ()=>done('cancel');
+      const choix = await new Promise(done=>{
+        const d = screen('<div class="box"><h2>☁ Hébergement Microsoft</h2><small>Compte connecté : '+esc(acct.username)+'</small><p>Où enregistrer les données du projet ?</p>'
+          +'<button id="od">☁ Dans mon OneDrive (recommandé : aucun réglage)</button>'
+          +'<button class="l" id="sp">🏢 Dans un site SharePoint de mon entreprise</button><button class="l" id="no">Annuler</button><div class="e" id="e"></div></div>');
+        d.querySelector('#od').onclick = ()=>done('od'); d.querySelector('#sp').onclick = ()=>done('sp'); d.querySelector('#no').onclick = ()=>done(null);
       });
-      if(root==='cancel'){ close(); return null; }
-      let kids = []; try{ kids = ((await gj(root.base+'/root:/'+encodeURIComponent(ROOT)+':/children')).value||[]).filter(x=>x.folder); }catch(e){}
-      const pick = await new Promise(done=>{
-        const d = screen('<div class="box"><h2>🗂 Dossier du projet</h2>'+(kids.length?'<small>Dossiers existants</small>'+kids.map((x,i)=>'<button class="l" data-k="'+i+'">'+esc(x.name)+'</button>').join(''):'')
-          +'<small>Créer un dossier pour ce projet</small><input id="n" value="'+esc(nomProjet||'')+'"><button id="c">Créer le dossier</button><button class="l" id="b">← Retour</button><div class="e" id="e"></div></div>');
-        d.querySelectorAll('[data-k]').forEach(b=>b.onclick = ()=>done({exist:kids[+b.dataset.k]}));
-        d.querySelector('#b').onclick = ()=>done(null);
-        d.querySelector('#c').onclick = async ()=>{ const nom = d.querySelector('#n').value.trim().replace(/[\\/:*?"<>|#%]/g,''); if(!nom){ d.querySelector('#e').textContent = 'Nom requis'; return; }
-          try{ if(kids.find(x=>x.name.toLowerCase()===nom.toLowerCase())) throw new Error('Ce dossier existe déjà : choisissez-le dans la liste.');
-            const r = await g(root.base+'/root:/'+enc(ROOT+'/'+nom+'/LISEZ-MOI.txt')+':/content?@microsoft.graph.conflictBehavior=replace', {method:'PUT', headers:{'Content-Type':'text/plain'}, body:'Données de l’application Pilotage chantier (projet '+nom+'). Ne pas renommer ni supprimer ces fichiers.'}); if(!r.ok) throw new Error('Création refusée ('+r.status+')');
-            done({exist:await gj(root.base+'/root:/'+enc(ROOT+'/'+nom))}); }catch(e){ d.querySelector('#e').textContent = e.message; } };
-      });
-      if(!pick) continue;
-      close(); const f = pick.exist;
-      return {provider:'sharepoint', driveId:f.parentReference.driveId, itemId:f.id, nom:f.name, site:root.label, compte:acct.username};
+      if(!choix){ close(); return null; }
+      let root = null;
+      if(choix==='od'){ root = {base:'/me/drive', label:'OneDrive'}; try{ await gj('/me/drive'); }catch(e){ await notice('<div class="box"><h2>OneDrive indisponible</h2><p>'+esc(e.message)+'</p><button id="b">Retour</button></div>'); continue; } }
+      else {
+        SCOPES = BASE_SCOPES.concat(['Sites.ReadWrite.All']);
+        try{ await app.acquireTokenPopup({scopes:SCOPES, account:acct}); }catch(e){ SCOPES = BASE_SCOPES; await notice('<div class="box"><h2>Autorisation SharePoint</h2><p>'+esc(e.message||'Autorisation refusée')+'</p><p><small>Votre entreprise doit peut-être autoriser l’application : demandez à votre administrateur Microsoft 365 de l’approuver.</small></p><button id="b">Retour</button></div>'); continue; }
+        let sites = [];
+        try{ sites = (await gj('/sites?search=*&$top=50')).value || []; }catch(e){}
+        try{ ((await gj('/me/followedSites')).value||[]).forEach(s2=>{ if(!sites.find(x=>x.id===s2.id)) sites.push(s2); }); }catch(e){}
+        root = await new Promise(done=>{
+          const d = screen('<div class="box"><h2>🏢 Quel site SharePoint ?</h2>'+sites.map((x,i)=>'<button class="l" data-i="'+i+'">'+esc(x.displayName||x.name)+'<br><small>'+esc(x.webUrl||'')+'</small></button>').join('')+'<button class="l" data-back="1">← Retour</button><div class="e" id="e"></div></div>');
+          d.querySelectorAll('[data-i]').forEach(b=>b.onclick = async ()=>{ const st = sites[+b.dataset.i]; try{ await gj('/sites/'+st.id+'/drive'); done({base:'/sites/'+st.id+'/drive', label:st.displayName||st.name}); }catch(e){ d.querySelector('#e').textContent = 'Accès impossible : '+e.message; } });
+          d.querySelector('[data-back]').onclick = ()=>done(null);
+        });
+        if(!root) continue;
+      }
+      /* dossier du projet : rouvert s'il existe, sinon créé automatiquement (aucune question) */
+      const nom = (nomProjet||'Projet').trim().replace(/[\\/:*?"<>|#%]/g,'') || 'Projet';
+      try{
+        let f = null; const r0 = await g(root.base+'/root:/'+enc(ROOT+'/'+nom));
+        if(r0.ok) f = await r0.json();
+        else if(r0.status===404){ const r = await g(root.base+'/root:/'+enc(ROOT+'/'+nom+'/LISEZ-MOI.txt')+':/content?@microsoft.graph.conflictBehavior=replace', {method:'PUT', headers:{'Content-Type':'text/plain'}, body:'Données de l’application Pilotage chantier (projet '+nom+'). Ne pas renommer ni supprimer ces fichiers.'}); if(!r.ok) throw new Error('Création du dossier refusée ('+r.status+')'); f = await gj(root.base+'/root:/'+enc(ROOT+'/'+nom)); }
+        else throw new Error('Erreur '+r0.status);
+        close(); SCOPES = BASE_SCOPES;
+        return {provider:'sharepoint', driveId:f.parentReference.driveId, itemId:f.id, nom:f.name, site:root.label, compte:acct.username};
+      }catch(e){ await notice('<div class="box"><h2>Dossier non créé</h2><p>'+esc(e.message)+'</p><button id="b">Réessayer</button></div>'); }
     }
   }
 
