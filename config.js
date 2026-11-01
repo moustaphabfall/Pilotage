@@ -7,3 +7,4 @@ window.PILOTAGE_CONFIG = {
    Microsoft 365 / SharePoint : enregistrer UNE FOIS l'application chez Microsoft (Entra ID → Inscriptions d'applications → « Application monopage », URI de redirection = l'adresse de l'application), puis coller l'ID de l'application ici. */
 window.PILOTAGE_CONFIG.msClientId = '8c2f5e1a-445b-41dd-800c-60957f3d4add';      // ex. 00000000-0000-0000-0000-000000000000
 // window.PILOTAGE_CONFIG.backend = 'supabase';
+window.PILOTAGE_CONFIG.inactiviteMin = 30;   // déconnexion automatique après N minutes sans activité (5 minimum)
