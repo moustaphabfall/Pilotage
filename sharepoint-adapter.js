@@ -41,7 +41,7 @@
     await connect();
     for(;;){
       const choix = await new Promise(done=>{
-        const d = screen('<div class="box"><h2>☁ Hébergement Microsoft</h2><small>Compte connecté : '+esc(acct.username)+'</small><p>Où enregistrer les données du projet ?</p>'
+        const d = screen('<div class="box"><h2>☁ Hébergement Microsoft</h2><small>Compte connecté : '+esc(acct.username)+'</small><p>Où enregistrer les données du projet ?</p><p><small>Microsoft va vous demander l’accès à vos fichiers. Pilotage Chantier n’utilise que le dossier « Pilotage » qu’il crée chez vous : rien d’autre n’est lu ni modifié, et rien n’est envoyé à l’éditeur. Vous pouvez retirer l’accès à tout moment. <a href="confidentialite.html" target="_blank" rel="noopener">En savoir plus</a></small></p>'
           +'<button id="od">☁ Dans mon OneDrive (recommandé : aucun réglage)</button>'
           +'<button class="l" id="sp">🏢 Dans un site SharePoint de mon entreprise</button><button class="l" id="no">Annuler</button><div class="e" id="e"></div></div>');
         d.querySelector('#od').onclick = ()=>done('od'); d.querySelector('#sp').onclick = ()=>done('sp'); d.querySelector('#no').onclick = ()=>done(null);
