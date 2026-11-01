@@ -48,7 +48,7 @@
       });
       if(!choix){ close(); return null; }
       let root = null;
-      if(choix==='od'){ root = {base:'/me/drive', label:'OneDrive'}; try{ await gj('/me/drive'); }catch(e){ await notice('<div class="box"><h2>OneDrive indisponible</h2><p>'+esc(e.message)+'</p><button id="b">Retour</button></div>'); continue; } }
+      if(choix==='od'){ root = {base:'/me/drive', label:'OneDrive'}; try{ await gj('/me/drive'); }catch(e){ await notice('<div class="box"><h2>OneDrive indisponible</h2><p>Ce compte Microsoft ne dispose pas d’un OneDrive. C’est fréquent avec un compte professionnel sans licence Microsoft 365 (la connexion, elle, a bien fonctionné).</p><p><small>Solutions : vous connecter avec un compte Microsoft personnel (outlook.com, hotmail.com…), ou demander à l’administrateur Microsoft 365 d’attribuer une licence incluant OneDrive à ce compte, ou choisir un site SharePoint.<br>Détail technique : '+esc(e.message)+'</small></p><button id="b">Retour</button></div>'); continue; } }
       else {
         SCOPES = BASE_SCOPES.concat(['Sites.ReadWrite.All']);
         try{ await app.acquireTokenPopup({scopes:SCOPES, account:acct}); }catch(e){ SCOPES = BASE_SCOPES; await notice('<div class="box"><h2>Autorisation SharePoint</h2><p>'+esc(e.message||'Autorisation refusée')+'</p><p><small>Votre entreprise doit peut-être autoriser l’application : demandez à votre administrateur Microsoft 365 de l’approuver.</small></p><button id="b">Retour</button></div>'); continue; }
