@@ -542,6 +542,26 @@ body.db-resizing{cursor:col-resize; user-select:none;}
 .pz-fam{display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 0; border-top:1px solid var(--line); font-size:12.5px;}
 .pm.fait::after{content:'✓'; position:absolute; right:-7px; top:-9px; font-size:13px; color:var(--moss); text-shadow:0 0 2px #fff,0 0 2px #fff;}
 .pl-seg button{border-radius:0;}
+.pb-board{position:relative;}
+.pb-board .plan-view{max-height:none !important; height:calc(100vh - 210px); min-height:420px;}
+.plans-layout.plan-fs .pb-board .plan-view{height:calc(100vh - 60px);}
+.pb-tools{position:absolute; left:10px; top:10px; z-index:5; display:flex; flex-direction:column; gap:4px; background:var(--panel,#fff); border:1px solid var(--line); border-radius:12px; padding:6px; box-shadow:0 2px 10px rgba(0,0,0,.18);}
+.pb-tool{display:flex; flex-direction:column; align-items:center; gap:1px; min-width:54px; padding:6px 4px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--ink); cursor:pointer; font:inherit;}
+.pb-tool span{font-size:20px; line-height:1;} .pb-tool small{font-size:10.5px;}
+.pb-tool:hover{background:rgba(128,128,128,.14);} .pb-tool.on{background:var(--ink,#222); color:#fff;}
+.pb-drawwrap{position:relative;}
+.pb-fly{display:none; position:absolute; left:calc(100% + 8px); top:0; min-width:190px; flex-direction:column; gap:2px; background:var(--panel,#fff); border:1px solid var(--line); border-radius:10px; padding:6px; box-shadow:0 4px 16px rgba(0,0,0,.25);}
+.pb-fly.open{display:flex;} .pb-fly button{text-align:left; border:0; background:transparent; padding:8px 10px; border-radius:6px; cursor:pointer; font:inherit; color:var(--ink); white-space:nowrap;} .pb-fly button:hover{background:rgba(128,128,128,.16);}
+.pb-ctx{position:absolute; left:84px; right:84px; top:10px; z-index:4; display:flex; gap:6px; flex-wrap:wrap; align-items:center; justify-content:center; pointer-events:none;}
+.pb-ctx button{pointer-events:auto; box-shadow:0 1px 6px rgba(0,0,0,.2);}
+.pb-hint{pointer-events:none; font-size:11.5px; color:var(--ink-soft); background:rgba(255,255,255,.88); border-radius:8px; padding:3px 8px; max-width:100%;}
+.pb-zoom{position:absolute; right:22px; bottom:22px; z-index:5; display:flex; align-items:center; gap:4px; flex-wrap:wrap; justify-content:flex-end; background:var(--panel,#fff); border:1px solid var(--line); border-radius:12px; padding:5px 8px; box-shadow:0 2px 10px rgba(0,0,0,.18);} .pb-zoom #planZoomLbl{font-size:12px; min-width:40px; text-align:center;}
+.plans-layout .pl-dock.pb-drawer{display:none; position:fixed; top:64px; right:10px; bottom:10px; width:min(400px,94vw); z-index:960; overflow:auto; grid-template-columns:minmax(0,1fr); background:var(--paper,#fff); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:0 6px 24px rgba(0,0,0,.3); align-content:start;}
+.plans-layout .pl-dock.pb-drawer.open{display:grid;}
+@media (min-width:700px){ .plans-layout:has(.pl-dock.open) .pb-zoom{right:430px;} }
+.pb-dh{display:flex; justify-content:space-between; align-items:center; position:sticky; top:-10px; background:var(--paper,#fff); padding:4px 0; z-index:2;}
+.plans-layout.plan-fs{grid-template-columns:minmax(0,1fr) !important;}
+@media (max-width:640px){ .pb-tool{min-width:44px;} .pb-ctx{left:70px; right:8px; justify-content:flex-start;} }
 .pl-seg button.on{background:var(--ink); color:#fff;}
 .coll-card{border:1px solid var(--line); background:var(--paper); border-radius:6px; padding:8px 10px; margin-bottom:8px;}
 .coll-card.active{border-color:var(--ink); box-shadow:0 0 0 1px var(--ink);}
@@ -4998,6 +5018,15 @@ function ensureRdcPlan(){
   return pl;
 }
 function planSrc(pl){ return pl.src==='@rdc' ? (window.RT_PLAN_SRC||'') : pl.src; }
+/* Affichage du tableau : l'image est décodée UNE fois (adresse blob mémorisée) au lieu d'être réinjectée en base64 à chaque clic ou re-rendu */
+var _pvCache = {};
+function planSrcView(pl){
+  const raw = planSrc(pl) || ''; if(!/^data:image\//.test(raw) || !window.URL || !URL.createObjectURL) return raw;
+  const key = pl.id+'|'+raw.length+'|'+raw.slice(-48); if(_pvCache[key]) return _pvCache[key];
+  try{ const i = raw.indexOf(','), bin = atob(raw.slice(i+1)), u8 = new Uint8Array(bin.length); for(let k=0;k<bin.length;k++) u8[k] = bin.charCodeAt(k);
+    const u = URL.createObjectURL(new Blob([u8], {type: raw.slice(5, raw.indexOf(';'))||'image/png'})); Object.keys(_pvCache).forEach(k=>{ if(k.startsWith(pl.id+'|')){ try{ URL.revokeObjectURL(_pvCache[k]); }catch(e){} delete _pvCache[k]; } }); _pvCache[key] = u; return u; }catch(e){ return raw; }
+}
+function planImgFallback(img, id){ img.onerror = null; const pl = planById(id); if(pl) img.src = planSrc(pl); }
 let planRibOpen = {pieces:false, cloisons:false}, planFs = false;
 document.addEventListener('keydown', e=>{ if(e.key!=='Escape') return; if(planFs){ planFs=false; planFsApply(); } const r=document.getElementById('rtRoot'); if(r && r.classList.contains('rt-fs')){ r.classList.remove('rt-fs'); document.body.classList.remove('plan-fs-on'); const b=document.getElementById('rtFsBtn'); if(b) b.textContent='⛶ Plein écran'; } });
 function planRib(key, title, count, inner){
@@ -5750,6 +5779,17 @@ function renderConception(wrap){
     <input type="search" placeholder="🔍 Filtrer une famille ou une règle…" value="${esc(concFiltre)}" oninput="concFiltre=this.value; clearTimeout(window._concT); window._concT=setTimeout(()=>{ renderPlans(); const i=document.querySelector('#plansWrap input[type=search]'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } },250)" style="margin-bottom:12px;">
     ${body||'<p class="empty-note">Aucun résultat.</p>'}`;
 }
+var planDrawer = false, _pbSel = '';
+function planDrawerToggle(){ planDrawer = !planDrawer; const d = document.querySelector('.plans-layout .pl-dock'); if(d) d.classList.toggle('open', planDrawer || !planById(planSel)); }
+function planDrawMenuToggle(ev){ if(ev) ev.stopPropagation(); const f = document.getElementById('pbFly'); if(f) f.classList.toggle('open'); }
+function planDrawPick(k){
+  const f = document.getElementById('pbFly'); if(f) f.classList.remove('open');
+  if(k==='piece' || k==='cloison'){ planSetMode(k); return; }
+  if(k==='auto'){ apcxStart(); return; }
+  if(k==='virt'){ apcxVirtStart(); return; }
+  if(k==='zone'){ planZoneCreate((planById(planSel)||{}).niveau||state.niveaux[0],''); }
+}
+document.addEventListener('click', e=>{ const f = document.getElementById('pbFly'); if(f && f.classList.contains('open') && !e.target.closest('.pb-drawwrap')) f.classList.remove('open'); });
 function renderPlans(keepScroll){
   const wrap = document.getElementById('plansWrap'); if(!wrap) return;
   if(etudesMode==='conception'){ renderConception(wrap); return; }
@@ -5759,9 +5799,9 @@ function renderPlans(keepScroll){
   if(plans.length && !planById(planSel)) planSel = plans[0].id;
   const pl = planById(planSel);
   const mem = Math.round(plans.reduce((a,p)=>a+(p.src==='@rdc'?0:(p.src||'').length)+(p.prev&&p.prev.src&&p.prev.src!=='@rdc'?p.prev.src.length:0),0)*0.75/1024/1024*10)/10;
-  const head = etudesToggleHtml()+`<div class="section-head"><h2>Banque de plans</h2>
+  const head = etudesToggleHtml()+`<div class="section-head"><h2>Tableau plan</h2>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-      <button class="ghost" onclick="planZoneCreate((planById(planSel)||{}).niveau||state.niveaux[0],'')">+ Zone</button>
+      <button class="ghost" type="button" onclick="planDrawerToggle()">☰ Panneaux</button>
       <button class="ghost" onclick="pdbOuvrir()">🏠 Liste des ouvrages</button>
     </div></div>`;
   const collsHtml = (state.collections||[]).map(c=>{
@@ -5781,7 +5821,7 @@ function renderPlans(keepScroll){
       </div></div>`;
   }).join('') || '<p class="empty-note">Aucune collection. Créez-en une (ex. « Portes »), puis cliquez sur le plan pour placer les objets.</p>';
   const filtOpts = '<option value="">Toutes les familles</option>'+state.familleTypes.filter(f=>!f.estBase && state.collections.some(c=>c.familleTypeId===f.id)).map(f=>`<option value="${f.id}" ${f.id===planFilterFt?'selected':''}>${esc(famTypeLabel(f))}</option>`).join('');
-  let viewer;
+  let viewer, legendHtml = '';
   if(!pl){
     viewer = `<div class="empty-note" style="padding:30px; text-align:center;">Aucun plan. Utilisez « ⬆ Dépôt » sur un ruban de lot pour importer un plan (image PNG/JPG ou PDF).</div>`;
   } else {
@@ -5792,19 +5832,35 @@ function renderPlans(keepScroll){
       idx[c.id] = (idx[c.id]||0)+1;
       return `<div class="pm ${o.etat==='fait'?'fait':''}" style="left:${o.x*100}%; top:${o.y*100}%; background:${c.color};" title="${esc(c.nom)} n°${idx[c.id]} — ${o.etat==='fait'?'fait':'à faire'}${pieceOfObjet(o)?' — dans : '+esc(pieceOfObjet(o).nom):''}" data-drag="o:${o.id}" data-px="${o.x}" data-py="${o.y}" onclick="planMarkerClick(event,'${o.id}')">${idx[c.id]}</div>`;
     }).join('');
-    const seg = (m,l)=>`<button class="ghost ${planMode===m?'on':''}" onclick="planSetMode('${m}')">${l}</button>`;
-    viewer = `<h3 style="font-size:14px; margin-bottom:6px;">${esc(pl.batiment?pl.batiment+' › ':'')}${esc(pl.niveau)}${pl.zoneId&&zoneById(pl.zoneId)?' › '+esc(zonePath(pl.zoneId)):''} — ${esc(pl.nom)} <small style="font-weight:400; color:var(--ink-soft);">v${pl.version||1}</small></h3><div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
-        <div class="pl-seg" style="display:inline-flex;">${seg('piece','⬠ Pièce')}${seg('cloison','〰 Cloison')}${seg('pieces','🏠 Pièces')}</div>
-        ${planMode==='cloison'?`<span style="display:inline-flex; gap:4px;"><button class="ghost" onclick="planPolyUndo()" ${planPoly.length?'':'disabled'}>↶ Point</button><button class="ghost" onclick="planCloClose()" ${planPoly.length>=2?'':'disabled'}>✔ Terminer la cloison</button><button class="ghost" onclick="planPolyCancel()" ${planPoly.length?'':'disabled'}>Annuler</button></span>`:''}
-        ${planMode==='piece'?`<span style="display:inline-flex; gap:4px;"><button class="ghost" onclick="planPolyUndo()" ${planPoly.length?'':'disabled'}>↶ Point</button><button class="ghost" onclick="planPolyClose()" ${planPoly.length>=3?'':'disabled'}>✔ Fermer la pièce</button><button class="ghost" onclick="planPolyCancel()" ${planPoly.length?'':'disabled'}>Annuler</button></span>`:''}
-        <button class="ghost" type="button" onclick="apcxStart()" title="Pièce automatique : approchez le curseur d’une zone fermée">🪄 Pièce auto</button><button class="ghost" type="button" onclick="apcxVirtStart()" title="Tracer un contour virtuel pour fermer une zone ouverte">✏ Contour virtuel</button><span style="display:inline-flex; gap:4px; align-items:center;"><button class="ghost clip-btn" type="button" data-clip="c" title="Copier la pièce ou la cloison sélectionnée (Ctrl+C)">📋 Copier</button><button class="ghost clip-btn" type="button" data-clip="v" title="Coller sur ce plan (Ctrl+V)">📥 Coller</button><button class="ghost" onclick="planZoomBy(-20)">−</button><span id="planZoomLbl" style="font-size:12px; min-width:40px; text-align:center;">${planZoom}%</span><button class="ghost" onclick="planZoomBy(20)">+</button><button class="ghost" onclick="planZoomFit()" title="Ajuster à la largeur">Ajuster</button><button class="ghost" id="planFsBtn" onclick="planFsToggle()" title="Travailler le plan en plein écran (Échap pour quitter)">⛶ Plein écran</button><button class="ghost" onclick="planPinBy(.8)" title="Pastilles plus petites">●−</button><button class="ghost" onclick="planPinBy(1.25)" title="Pastilles plus grandes">●+</button></span>
-        <span style="font-size:12px; color:var(--ink-soft);">${planMode==='cloison'?'Cloison = une ligne : cliquez le 1er point, puis le 2e point':planMode==='piece'?(pieceRect?'Cliquez 2 coins (un côté) puis la largeur : le rectangle se ferme à angle droit':'Cliquez les sommets de la pièce ; re-cliquez le 1er point (ou ✔ Fermer) pour terminer'):planMode==='pieces'?'Cliquez une pièce pour la sélectionner : glissez ses sommets, ◇ = ajouter un point, double-clic sommet = supprimer, glisser l\'intérieur = déplacer, double-clic = renommer':'Cliquez un objet pour le supprimer'} · glisser = déplacer, Ctrl + molette ou pincement = zoom</span>
-      </div>
-      <div class="plan-view" id="planView" style="--ps:${planPinSize()}px;"><div class="plan-inner" style="width:${planZoom}%;" onclick="planClick(event)"><img src="${planSrc(pl)}" style="width:100%;" alt="${esc(pl.nom)}" draggable="false">${planSvgHtml(pl)}</div></div>
-      <div class="fam-legend" style="margin-top:8px;"><div style="font:600 12px 'Space Grotesk',sans-serif; margin-bottom:3px;">Légende — familles du niveau ${esc(pl.niveau)}</div>${famLegendHtml(pl.niveau,'data-pfam',null)}</div>`;
+    const dIc = planMode==='piece'?'⬠':planMode==='cloison'?'〰':'✏', dLb = planMode==='piece'?'Pièce':planMode==='cloison'?'Cloison':'Dessiner', dOn = (planMode==='piece'||planMode==='cloison');
+    const hint = planMode==='cloison'?'Cloison = une ligne : cliquez le 1er point, puis le 2e point':planMode==='piece'?(pieceRect?'Cliquez 2 coins (un côté) puis la largeur : le rectangle se ferme à angle droit':'Cliquez les sommets de la pièce ; re-cliquez le 1er point (ou ✔ Fermer) pour terminer'):planMode==='pieces'?'Cliquez une pièce pour la sélectionner : glissez ses sommets, ◇ = ajouter un point, double-clic sommet = supprimer, glisser l\'intérieur = déplacer, double-clic = renommer':'Cliquez un objet pour le supprimer';
+    const ctxBtns = planMode==='cloison'?`<button class="ghost" onclick="planPolyUndo()" ${planPoly.length?'':'disabled'}>↶ Point</button><button class="ghost" onclick="planCloClose()" ${planPoly.length>=2?'':'disabled'}>✔ Terminer la cloison</button><button class="ghost" onclick="planPolyCancel()" ${planPoly.length?'':'disabled'}>Annuler</button>`:planMode==='piece'?`<button class="ghost" onclick="planPolyUndo()" ${planPoly.length?'':'disabled'}>↶ Point</button><button class="ghost" onclick="planPolyClose()" ${planPoly.length>=3?'':'disabled'}>✔ Fermer la pièce</button><button class="ghost" onclick="planPolyCancel()" ${planPoly.length?'':'disabled'}>Annuler</button>`:'';
+    viewer = `<h3 style="font-size:14px; margin-bottom:6px;">${esc(pl.batiment?pl.batiment+' › ':'')}${esc(pl.niveau)}${pl.zoneId&&zoneById(pl.zoneId)?' › '+esc(zonePath(pl.zoneId)):''} — ${esc(pl.nom)} <small style="font-weight:400; color:var(--ink-soft);">v${pl.version||1}</small></h3>
+      <div class="pb-board">
+        <div class="pb-tools" role="toolbar" aria-label="Outils du tableau plan">
+          <div class="pb-drawwrap">
+            <button type="button" class="pb-tool ${dOn?'on':''}" id="pbDrawBtn" onclick="planDrawMenuToggle(event)" title="Outils de dessin"><span>${dIc}</span><small>${dLb}</small></button>
+            <div class="pb-fly" id="pbFly">
+              <button type="button" onclick="planDrawPick('piece')">⬠ Pièce</button>
+              <button type="button" onclick="planDrawPick('cloison')">〰 Cloison</button>
+              <button type="button" onclick="planDrawPick('auto')" title="Pièce automatique : approchez le curseur d’une zone fermée">🪄 Pièce auto</button>
+              <button type="button" onclick="planDrawPick('virt')" title="Tracer un contour virtuel pour fermer une zone ouverte">✏ Contour virtuel</button>
+              <button type="button" onclick="planDrawPick('zone')">＋ Zone</button>
+            </div>
+          </div>
+          <button type="button" class="pb-tool ${planMode==='pieces'?'on':''}" onclick="planSetMode('pieces')" title="Sélectionner et modifier les pièces"><span>🏠</span><small>Pièces</small></button>
+          <button type="button" class="pb-tool clip-btn" data-clip="c" title="Copier la pièce ou la cloison sélectionnée (Ctrl+C)"><span>📋</span><small>Copier</small></button>
+          <button type="button" class="pb-tool clip-btn" data-clip="v" title="Coller sur ce plan (Ctrl+V)"><span>📥</span><small>Coller</small></button>
+        </div>
+        ${(ctxBtns||true)?`<div class="pb-ctx">${ctxBtns}<span class="pb-hint">${hint} · glisser = déplacer, Ctrl + molette ou pincement = zoom</span></div>`:''}
+        <div class="pb-zoom"><button class="ghost" onclick="planZoomBy(-20)">−</button><span id="planZoomLbl">${planZoom}%</span><button class="ghost" onclick="planZoomBy(20)">+</button><button class="ghost" onclick="planZoomFit()" title="Ajuster à la largeur">Ajuster</button><button class="ghost" id="planFsBtn" onclick="planFsToggle()" title="Travailler le plan en plein écran (Échap pour quitter)">⛶ Plein écran</button><button class="ghost" onclick="planPinBy(.8)" title="Pastilles plus petites">●−</button><button class="ghost" onclick="planPinBy(1.25)" title="Pastilles plus grandes">●+</button></div>
+        <div class="plan-view" id="planView" style="--ps:${planPinSize()}px;"><div class="plan-inner" style="width:${planZoom}%;" onclick="planClick(event)"><img src="${planSrcView(pl)}" onerror="planImgFallback(this,'${pl.id}')" decoding="async" style="width:100%;" alt="${esc(pl.nom)}" draggable="false">${planSvgHtml(pl)}</div></div>
+      </div>`;
+    legendHtml = `<div class="fam-legend" style="margin-top:8px;"><div style="font:600 12px 'Space Grotesk',sans-serif; margin-bottom:3px;">Légende — familles du niveau ${esc(pl.niveau)}</div>${famLegendHtml(pl.niveau,'data-pfam',null)}</div>`;
   }
-  wrap.innerHTML = head + planBankHtml() + `<div class="plans-layout"><div>${viewer}</div>
-    <div class="pl-dock">${piecePanelHtml(pl)}${cloisonPanelHtml(pl)}
+  const _sk = (planPieceSel||'')+'|'+(typeof planCloSel!=='undefined'?planCloSel||'':''); if(_sk!==_pbSel){ if(planPieceSel||(typeof planCloSel!=='undefined'&&planCloSel)) planDrawer = true; _pbSel = _sk; }
+  wrap.innerHTML = head + `<div class="plans-layout"><div>${viewer}</div>
+    <div class="pl-dock pb-drawer ${(planDrawer||!pl)?'open':''}"><div class="pb-dh"><b>Panneaux</b><button type="button" class="ghost" onclick="planDrawerToggle()">✕ Fermer</button></div>${planBankHtml()}${legendHtml}${piecePanelHtml(pl)}${cloisonPanelHtml(pl)}
     <p class="empty-note" style="margin-top:8px;">Stockage des plans : ${mem} Mo (limite du navigateur ≈ 5 Mo ; utilisez des plans légers).</p></div></div>` + pieceDbHtml();
   const v2 = document.getElementById('planView'); if(v2) panZoomInit(v2, ()=>planZoom, planApplyZoom, 30, 1500, true);
   planFsApply();
