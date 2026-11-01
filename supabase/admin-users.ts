@@ -54,6 +54,10 @@ Deno.serve(async (req) => {
 
     /* ---------- Actions par projet ---------- */
     const pid = String(b.projet || 'SM');
+    /* contexte affiché à la personne invitée : application, projet, administrateur qui l'invite */
+    const { data: _ap } = await admin.from('profiles').select('nom').eq('id', user.id).maybeSingle();
+    const { data: _pj } = await admin.from('projets').select('nom').eq('id', pid).maybeSingle();
+    const invMeta = { app: 'Pilotage Chantier', projet: _pj?.nom || pid, invite_par: _ap?.nom || user.email || '', invite_par_email: user.email || '' };
     if (b.action === 'p_projets') {
       if (isGlobal) { const { data } = await admin.from('projets').select('id,nom').order('created_at'); return J({ projets: data || [] }); }
       const { data } = await admin.from('projet_membres').select('projet_id,projets(id,nom)').eq('user_id', user.id).eq('actif', true);
@@ -107,7 +111,7 @@ Deno.serve(async (req) => {
       const ex = us?.users.find((u) => (u.email || '').toLowerCase() === email);
       if (ex) { uid = ex.id; }
       else if (b.invite === true) {
-        const { data, error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: b.nom || email } });
+        const { data, error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: b.nom || email, ...invMeta } });
         if (error) return J({ error: 'Invitation non envoyée : ' + error.message }, 400);
         uid = data.user!.id;
         await admin.from('profiles').upsert({ id: uid, nom: b.nom || email, role: 'editeur', approuve: true });
@@ -132,7 +136,7 @@ Deno.serve(async (req) => {
       const { data: gu, error: ge } = await admin.auth.admin.getUserById(b.user_id);
       if (ge || !gu?.user?.email) return J({ error: 'Utilisateur introuvable' }, 404);
       if (gu.user.email_confirmed_at) return J({ error: 'Ce compte est déjà activé : utilisez « Réinitialiser le compte » pour que la personne choisisse un nouveau mot de passe.' }, 400);
-      const { error } = await admin.auth.admin.inviteUserByEmail(gu.user.email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: gu.user.user_metadata?.nom || gu.user.email } });
+      const { error } = await admin.auth.admin.inviteUserByEmail(gu.user.email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: gu.user.user_metadata?.nom || gu.user.email, ...invMeta } });
       if (error) return J({ error: 'Invitation non renvoyée : ' + error.message }, 400);
       return J({ ok: true });
     }

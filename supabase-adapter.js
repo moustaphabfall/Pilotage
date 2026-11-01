@@ -72,10 +72,13 @@
   }
 
   /* arrivée par le lien de l'e-mail : l'adresse est ainsi vérifiée ; la personne choisit son mot de passe */
-  function passwordUI(){
+  async function passwordUI(){
+    let md = {}, mail = ''; try{ const g = await sb.auth.getSession(); const u = g.data && g.data.session && g.data.session.user; md = (u && u.user_metadata) || {}; mail = (u && u.email) || ''; }catch(e){}
+    const H = t=>String(t||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const who = md.invite_par ? '<p><b>'+H(md.invite_par)+'</b> vous a invité(e) à rejoindre <b>Pilotage Chantier</b>'+(md.projet?' sur le projet <b>'+H(md.projet)+'</b>':'')+'.</p>' : '<p>Vous avez été invité(e) à rejoindre <b>Pilotage Chantier</b>.</p>';
     return new Promise(res=>{
       const draw = err=>{
-        const d = screen('<form><h2>🔐 Choisissez votre mot de passe</h2><small>Votre adresse e-mail est vérifiée. Choisissez maintenant votre mot de passe (8 caractères minimum).</small>'
+        const d = screen('<form><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>🔐 Créez votre compte</h2>'+who+(mail?'<small>Identifiant : '+H(mail)+'</small><br>':'')+'<small>Votre adresse e-mail est vérifiée. Choisissez maintenant votre mot de passe (8 caractères minimum) : personne d’autre ne le verra, pas même l’administrateur.</small>'
           +'<input name="p1" type="password" placeholder="Nouveau mot de passe" minlength="8" required autocomplete="new-password"><input name="p2" type="password" placeholder="Confirmer le mot de passe" minlength="8" required autocomplete="new-password"><div class="e">'+(err||'')+'</div><button type="submit">Enregistrer et entrer</button></form>');
         d.querySelector('form').onsubmit = async ev=>{ ev.preventDefault(); const f = new FormData(ev.target), a = f.get('p1'), b = f.get('p2');
           if(a!==b){ draw('Les deux mots de passe ne sont pas identiques.'); return; }
