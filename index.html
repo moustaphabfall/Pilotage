@@ -15811,7 +15811,7 @@ const PG_FEATS=[
   }
   /* saisie d'adresse assistée : base nationale d'adresses (api publique, sans clé) ; en cas d'échec, saisie libre */
   function addrAuto(inp){ const wrap=inp.parentElement; if(!wrap) return; wrap.style.position='relative'; inp.setAttribute('autocomplete','off');
-    const box=document.createElement('div'); box.className='nt-ac'; box.hidden=true; wrap.appendChild(box); let tm=null, seq=0, items=[], cur=-1;
+    const box=document.createElement('div'); box.className='nt-addr'; box.hidden=true; wrap.appendChild(box); let tm=null, seq=0, items=[], cur=-1;
     const hide=()=>{ box.hidden=true; cur=-1; };
     const pick=i=>{ if(!items[i]) return; inp.value=items[i]; hide(); inp.dispatchEvent(new Event('change',{bubbles:true})); };
     const mark=()=>[...box.children].forEach((c,i)=>c.classList.toggle('on',i===cur));
@@ -15831,7 +15831,7 @@ const PG_FEATS=[
   /* ---------- répartition des effectifs sur plan (pastilles) ---------- */
   function inPoly(x,y,pts){ let c=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1]; if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) c=!c; } return c; }
   function repText(rp){ const g={}; rp.forEach(r=>{ const k=(r.niveau||'—')+(r.zone?' · '+r.zone:''); g[k]=(g[k]||0)+r.n; }); const tot=rp.reduce((a,r)=>a+r.n,0); return Object.keys(g).map(k=>'• '+esc(k)+' : <b>'+g[k]+'</b>').join('<br>')+'<br><b>Total : '+tot+' agent(s)</b>'; }
-  function repWidget(o,rep,opt){ opt=opt||{}; const ctl={setSign(){},onChange:null};
+  function repWidget(o,rep,opt){ opt=opt||{}; const ctl={setSign(){},setAssign(){},refresh(){},onChange:null};
     const host=o.querySelector('#dRep'); if(!host) return ctl;
     const S_=(typeof state!=='undefined'&&state)||{}, plans=S_.plans||[], zs=S_.zonesChantier||[], P=window.PILOTAGE_PROJET, cur=P&&P.id||'', list=(P&&P.projets&&P.projets.length)?P.projets:[{id:cur,nom:(P&&P.nom)||'Ce projet'}];
     host.innerHTML='<div class="nt-rep"><b>'+(opt.title||'📍 Répartition des effectifs sur plan')+'</b>'
@@ -15857,10 +15857,11 @@ const PG_FEATS=[
     const TOOL=SV('<path d="M14.5 6.5a4 4 0 0 0-5 5L3 18l3 3 6.5-6.5a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z"/>');
     const curType=()=>{ const e=o.querySelector('#dTy'); return (e&&e.value)||opt.type||'Autre'; };
     const HEAD='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="currentColor"><circle cx="12" cy="7.5" r="4"/><path d="M4 21c.5-4.6 3.8-7 8-7s7.5 2.4 8 7z"/></svg>';
-    const dotH=r=>HEAD+'<em>'+(TIC[curType()]||TOOL)+'</em>'+(r.n>1?'<b>'+r.n+'</b>':'');
+    const dotH=r=>{ if(assign){ const t=assign(r); return HEAD+'<span class="nt-nm'+(t?'':' un')+'">'+esc(t||'à affecter')+'</span>'; } return HEAD+'<em>'+(TIC[curType()]||TOOL)+'</em>'+(r.n>1?'<b>'+r.n+'</b>':''); };
     const eff=()=>ctrl?-sign:sign;
     const paintMode=()=>{ const e=eff(); st.classList.toggle('add',e>0); st.classList.toggle('rem',e<0); if(bA){ bA.classList.toggle('on',sign>0); bR.classList.toggle('on',sign<0); } };
-    const setSign=v=>{ sign=v; paintMode(); }; ctl.setSign=setSign;
+    const setSign=v=>{ sign=v; paintMode(); }; ctl.setSign=setSign; let assign=null;
+    ctl.setAssign=cb=>{ assign=cb; const tb=host.querySelector('#rpMode'); if(tb) tb.hidden=!!cb; const hh=host.querySelector('.nt-rh'); if(hh) hh.hidden=!!cb; draw(); }; ctl.refresh=()=>draw();
     const apply=()=>{ const inn=st.querySelector('.nt-pl'); if(inn){ inn.style.transform='translate('+tf.x+'px,'+tf.y+'px) scale('+tf.k+')'; inn.style.setProperty('--k',tf.k); } };
     const fit=()=>{ const vp=st.querySelector('.nt-vp'), im=st.querySelector('img'); if(!vp||!im) return; const w=vp.clientWidth, h=im.naturalWidth?w*im.naturalHeight/im.naturalWidth:vp.clientHeight; tf.k=Math.min(1,vp.clientHeight/Math.max(h,1)); tf.x=(w-w*tf.k)/2; tf.y=0; apply(); };
     const zoomAt=(f,cx,cy)=>{ const k2=Math.max(.4,Math.min(10,tf.k*f)), r=k2/tf.k; tf.x=cx-(cx-tf.x)*r; tf.y=cy-(cy-tf.y)*r; tf.k=k2; apply(); };
@@ -15871,8 +15872,8 @@ const PG_FEATS=[
         +rep.filter(r=>r.planId===curPlan.id).map(r=>'<span class="nt-dot" data-i="'+rep.indexOf(r)+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%" title="'+esc((r.zone||'')+(r.zone?' · ':'')+r.n+' personne(s)')+'">'+dotH(r)+'</span>').join('')+'</div></div>';
       paintMode(); apply(); const im=st.querySelector('img'); if(!tf.init){ tf.init=1; if(im.complete) fit(); else im.onload=fit; }
       const vp=st.querySelector('.nt-vp'), inn=st.querySelector('.nt-pl'), ptr=new Map(); let g=null, pinch=null;
-      const tap=(e,dot)=>{ if(dot){ if(opt.long) return; bump(+dot.dataset.i,eff()); return; }
-        if(eff()<0) return; const b=inn.getBoundingClientRect(), x=+((e.clientX-b.left)/b.width).toFixed(4), y=+((e.clientY-b.top)/b.height).toFixed(4); if(x<0||x>1||y<0||y>1) return;
+      const tap=(e,dot)=>{ if(dot){ if(opt.long) return; if(assign){ if(ctl.onDot) ctl.onDot(rep[+dot.dataset.i]); return; } bump(+dot.dataset.i,eff()); return; }
+        if(assign||eff()<0) return; const b=inn.getBoundingClientRect(), x=+((e.clientX-b.left)/b.width).toFixed(4), y=+((e.clientY-b.top)/b.height).toFixed(4); if(x<0||x>1||y<0||y>1) return;
         const z=zz.find(q=>inPoly(x,y,q.poly.pts)); rep.push({id:uid(),projetId:cur,planId:curPlan.id,niveau:curPlan.niveau||'—',zone:z?z.nom:'',x,y,n:1}); draw(); sumUp(); };
       vp.addEventListener('pointerdown',e=>{ if(e.button>0) return; ctrl=e.ctrlKey||e.metaKey; paintMode(); const onDot=e.target.closest&&e.target.closest('.nt-dot'); if(onDot&&opt.long) return;
         try{ vp.setPointerCapture(e.pointerId); }catch(_){} ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -15885,7 +15886,7 @@ const PG_FEATS=[
       const end=e=>{ const had=ptr.has(e.pointerId); ptr.delete(e.pointerId); if(ptr.size<2) pinch=null; if(!had||!g) { vp.classList.remove('grab'); return; } clearTimeout(g.tm); const tapOk=!g.moved&&!g.long&&e.type==='pointerup'; const gg=g; g=null; vp.classList.remove('grab'); if(tapOk) tap(e,gg.dot); };
       vp.addEventListener('pointerup',end); vp.addEventListener('pointercancel',end);
       vp.addEventListener('wheel',e=>{ e.preventDefault(); const r=vp.getBoundingClientRect(); zoomAt(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top); },{passive:false});
-      vp.addEventListener('contextmenu',e=>{ const dot=e.target.closest('.nt-dot'); e.preventDefault(); if(dot&&!opt.long) bump(+dot.dataset.i,-1); });
+      vp.addEventListener('contextmenu',e=>{ const dot=e.target.closest('.nt-dot'); e.preventDefault(); if(dot&&!opt.long&&!assign) bump(+dot.dataset.i,-1); });
     };
     const kd=e=>{ if(!document.body.contains(host)){ window.removeEventListener('keydown',kd); window.removeEventListener('keyup',ku); return; } const c=e.ctrlKey||e.metaKey; if(c!==ctrl){ ctrl=c; paintMode(); } }, ku=kd; window.addEventListener('keydown',kd); window.addEventListener('keyup',ku);
     { const te=o.querySelector('#dTy'); if(te) te.addEventListener('change',()=>draw()); }
@@ -15899,6 +15900,7 @@ const PG_FEATS=[
   function demandeForm(d){
     const n = net(), nw = !d; d = d || {statut:'recue', type:'Nettoyage', urgence:'Normale', nb:1, debut:today(), fin:today(), hDebut:'08:00', hFin:'16:00'};
     modal('<h3>'+(nw?'➕ Nouvelle demande client':'✏️ Demande n° '+esc(d.num))+'</h3>'
+      +(nw?'':'<label>Statut<select id="dSt">'+opt(STAT,d.statut,x=>x)+'</select></label>')
       +'<label>Client<select id="dCl">'+opt(n.clients,d.clientId,c=>[c.id,c.nom])+'<option value="__new">➕ Nouveau client…</option></select></label>'
       +'<div id="dClNew" class="nt-inl" hidden><label>Nom du client<input id="dClNm" placeholder="ex. Société Durand"></label><label>Contact (facultatif)<input id="dClCt" placeholder="nom, téléphone, e-mail"></label><button type="button" class="pri" id="dClOk">Créer le client</button></div>'
       +'<label>Projet du client<select id="dPj"></select></label>'
@@ -15906,11 +15908,12 @@ const PG_FEATS=[
       +'<div class="nt-adr" id="dAdr"></div><input id="dSi" type="hidden" value="'+esc(d.site||'')+'">'
       +'<div class="nt-r"><label>Prestation<select id="dTy">'+opt(TYPES,d.type,t=>[t,t])+'</select></label><label>Urgence<select id="dUr">'+opt(URG,d.urgence,t=>[t,t])+'</select></label><label>Agents demandés<input id="dNb" type="number" min="1" value="'+(d.nb||1)+'"></label></div>'
       +'<div class="nt-r"><label>Du<input id="dDe" type="date" value="'+esc(d.debut||'')+'"></label><label>Au<input id="dFi" type="date" value="'+esc(d.fin||'')+'"></label><label>De<input id="dHd" type="time" value="'+esc(d.hDebut||'')+'"></label><label>À<input id="dHf" type="time" value="'+esc(d.hFin||'')+'"></label></div>'
-      +'<div id="dRep"></div>'
+      +'<div id="dRep"></div><div id="afBox" hidden></div>'
       +'<label>Description / consignes<textarea id="dDs" rows="3" placeholder="Nature des tâches, accès, matériel, risques…">'+esc(d.desc||'')+'</textarea></label>'
-      +'<div class="nt-b"><button data-x>Annuler</button><button class="pri" id="dOk">Enregistrer</button></div>',
+      +(nw?'':'<p class="nt-s"><b>Historique :</b> '+(d.histo||[]).map(h=>fr(h.d)+' · '+esc(stLbl(h.s))+(h.p?' ('+esc(h.p)+')':'')).join(' → ')+'</p>')
+      +'<div class="nt-b">'+(nw?'':'<button class="del" id="dDel">Supprimer</button>'+(d.valide?'<button id="dAv">✏ Avenant</button>':'')+'<button id="dTr">🛠 Devis / traitement</button><button class="pri" id="dAf" style="background:#2e9e4f;border-color:#2e9e4f;color:#fff">👥 Affecter du personnel</button>')+'<button data-x>Annuler</button><button class="pri" id="dOk">Enregistrer</button></div>',
     o=>{
-      const repArr=(d.repart||[]).map(x=>Object.assign({},x)); repWidget(o,repArr);
+      const repArr=(d.repart||[]).map(x=>Object.assign({},x)); const rw=repWidget(o,repArr);
       const sCl=o.querySelector('#dCl'), sPj=o.querySelector('#dPj'), adr=o.querySelector('#dAdr'), bxC=o.querySelector('#dClNew'), bxP=o.querySelector('#dPjNew');
       const fillPj=(sel)=>{ const c=by(n.clients,sCl.value); const L=c?projsOf(c).filter(x=>x.statut!=='termine'):[]; sPj.disabled=!c;
         sPj.innerHTML=(c?(L.length?'':'<option value="">— aucun projet en cours —</option>'):'<option value="">— choisissez d’abord un client —</option>')+L.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.nom)+'</option>').join('')+(c?'<option value="__new">➕ Nouveau projet…</option>':'');
@@ -15922,17 +15925,52 @@ const PG_FEATS=[
       o.querySelector('#dClOk').onclick=()=>{ if(mkClient()) fillPj(); };
       o.querySelector('#dPjOk').onclick=()=>{ const c=by(n.clients,val(o,'dPjCl')); const nm=val(o,'dPjNm'); if(!c){ alert('Choisissez le client du projet.'); return; } if(!nm){ alert('Indiquez le nom du projet.'); return; } const pj={id:uid(),nom:nm,adresse:val(o,'dPjAd'),statut:'encours'}; projsOf(c).push(pj); save(); sCl.value=c.id; bxC.hidden=true; fillPj(pj.id); o.querySelector('#dPjNm').value=''; o.querySelector('#dPjAd').value=''; };
       if(!n.clients.length||!d.clientId&&!n.clients.length){ sCl.value='__new'; bxC.hidden=false; sPj.disabled=true; } else { if(!d.clientId) sCl.selectedIndex=0; fillPj(d.projetId); }
-      o.querySelector('#dOk').onclick=()=>{
-        if(sCl.value==='__new'&&val(o,'dClNm')){ if(!mkClient()) return; fillPj(); }
+      const commit=()=>{
+        if(sCl.value==='__new'&&val(o,'dClNm')){ if(!mkClient()) return false; fillPj(); }
         if(sPj.value==='__new'&&val(o,'dPjNm')) o.querySelector('#dPjOk').click();
-        const cl=val(o,'dCl'); if(!cl||cl==='__new'){ alert('Choisissez ou créez un client.'); return; }
+        const cl=val(o,'dCl'); if(!cl||cl==='__new'){ alert('Choisissez ou créez un client.'); return false; }
         const pjId=val(o,'dPj'), cObj=by(n.clients,cl), pjObj=cObj&&projsOf(cObj).find(x=>x.id===pjId);
-        if(!pjObj&&!(d.site&&!d.projetId&&cl===d.clientId)){ alert('Choisissez ou créez le projet du client.'); return; }
+        if(!pjObj&&!(d.site&&!d.projetId&&cl===d.clientId)){ alert('Choisissez ou créez le projet du client.'); return false; }
         const r={clientId:cl, projetId:pjObj?pjObj.id:(d.projetId||''), site:pjObj?(pjObj.adresse||pjObj.nom):val(o,'dSi'), type:val(o,'dTy'), urgence:val(o,'dUr'), nb:Math.max(1,+val(o,'dNb')||1), debut:val(o,'dDe'), fin:val(o,'dFi')||val(o,'dDe'), hDebut:val(o,'dHd'), hFin:val(o,'dHf'), desc:val(o,'dDs'), repart:repArr};
-        if(!r.debut){ alert('Indiquez la date de début.'); return; }
+        if(!r.debut){ alert('Indiquez la date de début.'); return false; }
         if(nw){ const num='D'+String(n.demandes.length+1).padStart(4,'0'); n.demandes.push(Object.assign({id:uid(),num,statut:'recue',cree:today(),par:who(),histo:[{d:today(),s:'recue',p:who()}]},r)); }
-        else Object.assign(d,r);
-        save(); o.remove(); render('net-demandes'); };
+        else { Object.assign(d,r); const sv=val(o,'dSt'); if(sv&&sv!==d.statut){ d.statut=sv; (d.histo=d.histo||[]).push({d:today(),s:sv,p:who()}); } }
+        save(); return true; };
+      o.querySelector('#dOk').onclick=()=>{ if(commit()){ o.remove(); render('net-demandes'); } };
+      if(!nw){
+        const q=x=>o.querySelector(x), box=q('#afBox'); let mode=false, pickSlot=null, selR=null;
+        const nmOf=a=>{ const g=by(n.agents,a.agentId); return g?g.nom:'?'; };
+        const slotsR=r=>slotsOf(d).filter(x=>x.r&&x.r.id===r.id);
+        const namesOf=r=>{ const ss=slotsR(r), nm=[]; ss.forEach(x=>slotCov(d,x).aff.forEach(a=>{ const t=nmOf(a); if(!nm.includes(t)) nm.push(t); })); return nm.length?(nm[0]+(nm.length>1?' +'+(nm.length-1):'')):''; };
+        const hm=a=>esc(a.hDebut||'')+'–'+esc(a.hFin||'');
+        const load=(g,need)=>{ const mine=n.affectations.filter(a=>a.agentId===g.id), free=[], busy=[], info=[]; need.forEach(day=>{ const c=mine.find(m=>daysOf(m).includes(day)&&ovl(m,d)); if(c){ busy.push(day); const dd=by(n.demandes,c.demandeId); const t=(dd?(dd.site||dd.num):'autre mission')+' '+(c.hDebut||'')+'–'+(c.hFin||''); if(!info.includes(t)) info.push(t); } else free.push(day); }); return {free,busy,info}; };
+        const paint=()=>{ const S=slotsOf(d), pr=progress(d), pct=Math.round(pr*100);
+          let h='<h4>👥 Liste d’affectation — '+esc(d.num)+'</h4><div class="nt-pg"><div class="nt-pgb"><i style="width:'+pct+'%"></i></div><b>'+pct+' %</b> <span class="nt-s">Cliquez sur une pastille (ou une personne ci-dessous) pour choisir le personnel.</span></div>';
+          h+='<div class="af-sl">'+S.map(x=>{ const k=slotCov(d,x), full=k.all.size&&k.cov.size>=k.all.size, on=pickSlot===x.id||(selR&&x.r===selR&&!pickSlot);
+            return '<div class="af-sc'+(on?' on':'')+'"><button type="button" data-s="'+x.id+'">👤 '+esc(x.label)+(x.n>1?' <small>('+(x.k+1)+'/'+x.n+')</small>':'')+'<br><small>'+(full?'✔ couvert':k.cov.size?k.cov.size+'/'+k.all.size+' jours':'à affecter')+'</small></button>'+k.aff.map(a=>'<span class="af-ch">'+esc(nmOf(a))+' · '+fr(a.du)+(a.au!==a.du?'→'+fr(a.au):'')+' <i data-u="'+a.id+'" title="Retirer">✕</i></span>').join('')+'</div>'; }).join('')+'</div>';
+          if(pickSlot){ const x=S.find(z=>z.id===pickSlot); if(x){ const k=slotCov(d,x), need=[...k.all].filter(z=>!k.cov.has(z));
+            h+='<h4>Personnel disponible pour « '+esc(x.label)+' »'+(x.n>1?' (personne '+(x.k+1)+'/'+x.n+')':'')+'</h4><p class="nt-s">Horaires : '+esc(d.hDebut||'')+'–'+esc(d.hFin||'')+' · à couvrir : '+(need.length?rng(need,[...k.all]).map(fmtR).join(' · '):'tout est couvert')+'</p>';
+            const L=n.agents.map(g=>({g,v:load(g,need)})).sort((a,b)=>b.v.free.length-a.v.free.length);
+            h+=L.map(({g,v})=>{ const st=!need.length||v.free.length===need.length?'ok':v.free.length?'part':'ko';
+              return '<div class="af-ag '+st+'"><div><b>'+esc(g.nom)+'</b>'+(g.metier?' <small style="display:inline">· '+esc(g.metier)+'</small>':'')+'<br>'+(st==='ok'?'<span class="af-g">Disponible '+esc(d.hDebut||'')+'–'+esc(d.hFin||'')+' sur toute la période</span>':st==='part'?'<span class="af-o">Disponible '+rng(v.free,need).map(fmtR).join(' · ')+' ('+esc(d.hDebut||'')+'–'+esc(d.hFin||'')+')</span><br><span class="af-r">Occupé : '+rng(v.busy,need).map(fmtR).join(' · ')+'</span>':'<span class="af-r">Occupé sur toute la période</span>')+(v.info.length?'<small>Actuellement : '+esc(v.info.join(' ; '))+'</small>':'')+'</div>'+(st==='ko'?'':'<button type="button" class="pri" data-g="'+g.id+'">'+(st==='ok'?'Choisir':'Choisir (partiel)')+'</button>')+'</div>'; }).join('')||'<p class="nt-w">Aucun agent : créez-en dans l’onglet Affectations.</p>'; } }
+          h+='<div class="nt-b"><button type="button" id="afNo">Fermer le mode affectation</button><button type="button" class="pri" id="afOk">✔ Valider la liste d’affectation</button></div>';
+          box.innerHTML=h; bindAf(); rw.refresh(); };
+        const bindAf=()=>{ const qa=x=>box.querySelectorAll(x);
+          qa('[data-s]').forEach(b=>b.onclick=()=>{ pickSlot=b.dataset.s; selR=null; paint(); });
+          qa('[data-u]').forEach(i=>i.onclick=e=>{ e.stopPropagation(); n.affectations=n.affectations.filter(a=>a.id!==i.dataset.u); save(); paint(); });
+          qa('[data-g]').forEach(b=>b.onclick=()=>{ const g=by(n.agents,b.dataset.g), x=slotsOf(d).find(z=>z.id===pickSlot); if(!g||!x) return; const k=slotCov(d,x), need=[...k.all].filter(z=>!k.cov.has(z)), v=load(g,need);
+            rng(v.free,need).forEach(r2=>{ n.affectations.push({id:uid(),demandeId:d.id,agentId:g.id,du:r2.a,au:r2.b,jours:d.jours||'lv',hDebut:d.hDebut,hFin:d.hFin,poste:x.label,slotId:x.id}); });
+            if(d.statut==='recue'){ d.statut='traitement'; (d.histo=d.histo||[]).push({d:today(),s:'traitement',p:who()}); const se=q('#dSt'); if(se) se.value='traitement'; } save(); pickSlot=null; paint(); });
+          q('#afNo').onclick=()=>setMode(false);
+          q('#afOk').onclick=()=>{ const pr=progress(d); if(pr<0.999&&!confirm('Il reste du personnel à affecter ('+Math.round(pr*100)+' % couvert). Valider quand même la liste d’affectation ?')) return;
+            d.statut=pr>=0.999?'planifiee':'traitement'; (d.histo=d.histo||[]).push({d:today(),s:d.statut,p:who()}); save(); o.remove(); render('net-demandes'); }; };
+        const setMode=on=>{ if(on&&!n.agents.length){ alert('Créez d’abord au moins un agent (onglet Affectations).'); return; } if(on&&!commit()) return; mode=on; pickSlot=null; selR=null; box.hidden=!on; q('#dAf').textContent=on?'↩ Quitter l’affectation':'👥 Affecter du personnel';
+          if(on){ rw.onDot=r=>{ const ss=slotsR(r); if(!ss.length) return; const x=ss.find(z=>{ const k=slotCov(d,z); return k.cov.size<k.all.size; })||ss[0]; pickSlot=x.id; selR=r; paint(); box.scrollIntoView({block:'nearest',behavior:'smooth'}); }; rw.setAssign(namesOf); paint(); } else { rw.setAssign(null); box.innerHTML=''; } };
+        q('#dAf').onclick=()=>setMode(!mode);
+        q('#dTr').onclick=()=>{ if(!commit()) return; o.remove(); traiter(d.id); };
+        const av=q('#dAv'); if(av) av.onclick=()=>{ o.remove(); avenant(d.id); };
+        q('#dDel').onclick=()=>{ if(!confirm('Supprimer cette demande, ses affectations et ses pointages ?')) return; const ids=new Set(n.affectations.filter(a=>a.demandeId===d.id).map(a=>a.id)); n.affectations=n.affectations.filter(a=>a.demandeId!==d.id); n.pointages=n.pointages.filter(p=>!ids.has(p.affId)); n.demandes=n.demandes.filter(x=>x.id!==d.id); save(); o.remove(); render('net-demandes'); };
+      }
     });
   }
   function demandeDetail(id){
@@ -16047,7 +16085,7 @@ const PG_FEATS=[
         :'<p class="nt-e">Aucune demande'+(fStat?' avec ce statut':' pour l’instant')+'. Cliquez sur « Nouvelle demande » pour enregistrer celle d’un client.</p>')+'</div>';
     w.querySelector('#ntNew').onclick=()=>demandeForm(); w.querySelector('#ntAv').onclick=()=>avenantPick();
     w.querySelectorAll('.nt-chips button').forEach(b=>b.onclick=()=>{ fStat=b.dataset.s; render('net-demandes'); });
-    w.querySelectorAll('tr[data-id]').forEach(r=>r.onclick=()=>demandeDetail(r.dataset.id));
+    w.querySelectorAll('tr[data-id]').forEach(r=>r.onclick=()=>demandeForm(by(n.demandes,r.dataset.id)));
   }
 
   /* ---------- Affectations & agents ---------- */
@@ -16287,7 +16325,10 @@ const PG_FEATS=[
     .nt-act{white-space:nowrap} .nt-act button{margin:0 2px 2px 0} .nt-tar{width:78px}
     .nt-rep{border:1px solid #d8d3c8;border-radius:10px;padding:10px;margin:8px 0;background:#faf8f3} .nt-rp{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0;font-size:13px} .nt-rp label{display:flex !important;flex-direction:row !important;align-items:center;gap:6px;font-weight:500} .nt-rp input{width:auto !important} .nt-rp .off{opacity:.55} .nt-rh{font-size:12px;color:#5b6770;margin:6px 0} .nt-rh button{margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid #16232B;background:#fff;cursor:pointer} .nt-rh button.neg{background:#c0392b;color:#fff;border-color:#c0392b}
     .nt-pl{position:relative;line-height:0;border:1px solid #d8d3c8;border-radius:8px;overflow:hidden;cursor:crosshair;user-select:none;touch-action:manipulation} .nt-pl img{width:100%;display:block} .nt-pl svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none} .nt-pl polygon{fill:rgba(242,169,0,.14);stroke:#F2A900;stroke-width:.0025;vector-effect:non-scaling-stroke}
-.nt-ac{display:block !important;position:absolute;left:0;right:auto;width:max(100%,320px);top:100%;z-index:50;background:#fff;border:1px solid #d8d4c8;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden;margin-top:2px} .nt-ac[hidden]{display:none !important} .nt-ac div{display:block;padding:9px 12px;font:400 13.5px/1.3 'Space Grotesk',system-ui,sans-serif;cursor:pointer;color:#16232B;white-space:normal} .nt-ac div:hover,.nt-ac div.on{background:#fdf1cf}
+.nt-addr{display:block !important;position:absolute;left:0;right:auto;width:max(100%,320px);top:100%;z-index:50;background:#fff;border:1px solid #d8d4c8;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden;margin-top:2px} .nt-addr[hidden]{display:none !important} .nt-addr div{display:block;padding:9px 12px;font:400 13.5px/1.3 'Space Grotesk',system-ui,sans-serif;cursor:pointer;color:#16232B;white-space:normal} .nt-addr div:hover,.nt-addr div.on{background:#fdf1cf}
+    .nt-vp .nt-dot .nt-nm{font:700 12px/1 'Space Grotesk',system-ui,sans-serif;color:#fff;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px} .nt-vp .nt-dot .nt-nm.un{color:#F2A900;font-weight:600}
+    .af-box{margin:10px 0;padding:12px;border:2px solid #2e9e4f;border-radius:14px;background:#f2faf4} .af-box h4{margin:0 0 6px} .af-sl{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0} .af-sc{border:1px solid #cfd8d2;border-radius:12px;padding:6px 8px;background:#fff} .af-sc.on{border-color:#2e9e4f;box-shadow:0 0 0 2px rgba(46,158,79,.25)} .af-sc>button{display:block;width:100%;text-align:left;background:none;border:0;padding:2px;font-weight:700;cursor:pointer;color:#16232B} .af-ch{display:inline-block;margin:3px 4px 0 0;padding:2px 8px;border-radius:12px;background:#16232B;color:#fff;font-size:12px} .af-ch i{cursor:pointer;margin-left:6px;font-style:normal;opacity:.8}
+    .af-ag{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid #d8d4c8;border-radius:12px;padding:8px 10px;margin:6px 0;background:#fff} .af-ag.ok{border-left:5px solid #2e9e4f} .af-ag.part{border-left:5px solid #e08a00} .af-ag.ko{border-left:5px solid #d03030;opacity:.75} .af-ag small{color:#5b6770;display:block} .af-g{color:#1f7a3a} .af-o{color:#b36a00} .af-r{color:#b02020}
     .nt-dot{position:absolute;transform:translate(-50%,-50%);min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:#16232B;color:#fff;border:2px solid #F2A900;font:700 13px/22px 'Space Grotesk',system-ui,sans-serif;text-align:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.35)}
     .nt-av{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0} .nt-av button{padding:8px 14px;border-radius:10px;border:1px solid #16232B;background:#fff;color:#16232B;cursor:pointer;font-weight:600} .nt-av button.on{background:#16232B;color:#fff}
     .nt-dcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin:6px 0 12px} .nt-dc{border:1px solid #d8d3c8;border-radius:10px;padding:8px 10px;background:#fff;font-size:13.5px} .nt-dc.on{border-color:#3c9d5d;cursor:pointer;background:#f4fbf6} .nt-dc.on:hover{box-shadow:0 0 0 2px rgba(60,157,93,.35)}
