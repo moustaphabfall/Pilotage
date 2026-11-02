@@ -15255,7 +15255,9 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
 <script>
 /* ===== Projet : accès, rôles, fonctionnalités, paiement mensuel ===== */
 (function(){
-  const PG_TYPES={entreprise_generale:'Entreprise générale', nettoyage:'Nettoyage & services (logistique, gardiennage)'};
+  /* Type d'espace : détermine la configuration des vues. null = toutes les vues actuelles ; à affiner type par type. */
+  const PG_TYPES={entreprise_generale:'Entreprise générale', gros_oeuvre:'Corps d’état — gros œuvre', second_oeuvre:'Corps d’état — second œuvre', bureau_etudes:'Bureau d’études', nettoyage:'Nettoyage industriel (logistique, gardiennage)'};
+  window.PG_TYPES=PG_TYPES;
   window.pilotageType=function(){ const p=window.PILOTAGE_PROJET; return (p&&p.type) || (typeof state!=='undefined'&&state&&state.projet&&state.projet.type) || 'entreprise_generale'; };
   window.pilotageModuleName=function(){ return pilotageType()==='nettoyage' ? 'Pilotage Nettoyage' : 'Pilotage Chantier'; };
   /* message important (ton positif, pas d'alerte rouge) : renvoie une promesse true (continuer) / false (annuler) */
@@ -15375,7 +15377,8 @@ const PG_FEATS=[
   }
   function readMatrix(root){ const o={}; root.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) o[i.dataset.f]=false; }); return o; }
   const wrap=()=>document.getElementById('pgWrap');
-  let cache=null, openF=null, cred='', headHtml='', rtok=0, rtry=0;
+  let cache=null, caches={}, mF='', openF=null, cred='', headHtml='', rtok=0, rtry=0;
+  async function loadAll(){ const p=PJ(), ids=selProjets(), res={}; for(const id of ids){ try{ res[id]=await adm({action:'p_members',projet:id}); }catch(e){ if(id===p.id) throw e; res[id]=null; } } caches=res; cache=res[p.id]||cache; }
 
   async function render(){
     const w=wrap(); if(!w) return; const p=PJ();
@@ -15394,7 +15397,7 @@ const PG_FEATS=[
       +(p.valide_jusqu?'<span>· accès valable jusqu’au <b>'+fmt(p.valide_jusqu)+'</b></span>':'')
       +(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')
       +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')+'<button id="pgOutB">🚪 Se déconnecter</button>'
-      +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div><div class="row"><span>Type de projet : <b>'+esc(PG_TYPES[pilotageType()]||pilotageType())+'</b></span>'+(p.global?'<select id="pgTy">'+typeOpts(pilotageType())+'</select>':'')+'</div>';
+      +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div><div class="row"><span>Type de projet : <b>'+esc(PG_TYPES[pilotageType()]||pilotageType())+'</b></span>'+(selProjets().length>1?'<span>· projets paramétrés : <b>'+esc(selProjets().map(id=>((p.projets||[]).find(x=>x.id===id)||{}).nom||id).join(', '))+'</b></span>':'')+(p.global?'<select id="pgTy">'+typeOpts(pilotageType())+'</select>':'')+'</div>';
     if(p.role!=='admin'){
       const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
       w.innerHTML=head+'<div class="card">Fonctionnalités désactivées pour vous : '+(off.length?off.map(esc).join(', '):'aucune')+'</div>';
@@ -15402,7 +15405,7 @@ const PG_FEATS=[
     }
     headHtml=head; w.innerHTML=head+'<div class="msg">Chargement…</div>'; bindHead(w);
     let ok=false, err=null;
-    for(let i=0;i<3&&!ok;i++){ try{ cache=await adm({action:'p_members'}); ok=true; }catch(e){ err=e; if(tk!==rtok) return; await new Promise(r=>setTimeout(r,900)); } }
+    for(let i=0;i<3&&!ok;i++){ try{ await loadAll(); ok=true; }catch(e){ err=e; if(tk!==rtok) return; await new Promise(r=>setTimeout(r,900)); } }
     if(tk!==rtok) return;
     if(!ok){ w.innerHTML=head+'<div class="card ko">'+esc((err&&err.message)||'Erreur')+'<br><button id="pgRetry">Réessayer</button></div>'+(window.pgNivHtml?pgNivHtml():''); bindHead(w); const rb=w.querySelector('#pgRetry'); if(rb) rb.onclick=()=>render(); if(window.pgNivBind) pgNivBind(w); return; }
     draw();
@@ -15422,20 +15425,26 @@ const PG_FEATS=[
   function badge(){ const b=document.getElementById('pgBadge'); if(!b) return; const n=cache?cache.notifs.length:0; b.hidden=!n; b.textContent=n; }
 
   function draw(){
-    const w=wrap(); const p=PJ(), today=cache.today, M=cache.members, N=cache.notifs;
+    const w=wrap(); const p=PJ();
     const hd=headHtml;
     const body=[];
-    if(N.length){ body.push('<h3>🔔 Échéances à traiter</h3>'+N.map(n=>'<div class="nt" data-nu="'+n.user_id+'"><b>'+esc(n.nom||n.email)+'</b> — '+(n.type==='expire'?'accès <span class="ko">expiré</span> depuis le ':'accès qui expire le ')+fmt(n.echeance)+'.<br>Prolonger d’un mois ?'
+    const sels=selProjets().map(id=>(p.projets||[]).find(x=>x.id===id)||{id,nom:id}), multi=sels.length>1;
+    const sectionHtml=(pj)=>{ const c=caches[pj.id]; if(!c) return '<div class="pgs" data-pj="'+esc(pj.id)+'"><div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div><div class="card">Données indisponibles pour ce projet (droits insuffisants ?).</div></div>'; const today=c.today, M=c.members, N=c.notifs, out=[];
+    if(N.length){ out.push('<h3>🔔 Échéances à traiter</h3>'+N.map(n=>'<div class="nt" data-nu="'+n.user_id+'"><b>'+esc(n.nom||n.email)+'</b> — '+(n.type==='expire'?'accès <span class="ko">expiré</span> depuis le ':'accès qui expire le ')+fmt(n.echeance)+'.<br>Prolonger d’un mois ?'
       +'<div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+n.user_id+'" disabled>Prolonger 1 mois</button><button data-lapse="'+n.user_id+'">Laisser expirer</button></div></div>').join('')); }
-    body.push('<h3>👥 Accès du projet</h3><div class="card" style="overflow:auto"><table><tr><th>Utilisateur</th><th>Rôle</th><th>Validité</th><th>Actif</th><th></th></tr>'
+    out.push('<h3 class="pgAcc">👥 Accès du projet</h3><div class="card" style="overflow:auto"><table><tr><th>Utilisateur</th><th>Rôle</th><th>Validité</th><th>Actif</th><th></th></tr>'
       +M.map(m=>'<tr data-u="'+m.user_id+'"><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+(m.moi?' (vous)':'')+'</small></td>'
       +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
       +'<td>'+statut(m,today)+(m.confirme===false?'<br><span class="warn">⏳ invitation envoyée, pas encore activée</span>':'')+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
       +'<td><label class="sw"><input type="checkbox" data-act '+(m.actif?'checked':'')+' '+(m.moi?'disabled':'')+'><i></i></label></td>'
       +'<td>'+(m.role==='admin'?'':'<button data-fn>Fonctionnalités</button> ')+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">Réinitialiser le compte</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
-      +'<tr data-fr="'+m.user_id+'" '+(openF===m.user_id?'':'hidden')+'><td colspan="5">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
+      +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="5">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
       +'<tr data-pp="'+m.user_id+'" hidden><td colspan="5"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')
       +'</table></div>');
+      return '<div class="pgs" data-pj="'+esc(pj.id)+'">'+(multi?'<div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div>':'')+out.join('')+'</div>'; };
+    if(multi){ if(mF&&!sels.find(x=>x.id===mF)) mF=''; body.push('<div class="pgs-f"><b>Filtrer par projet :</b> <button type="button" data-mf=""'+(!mF?' class="on"':'')+'>Tous ('+sels.length+')</button>'+sels.map(x=>'<button type="button" data-mf="'+esc(x.id)+'"'+(mF===x.id?' class="on"':'')+'>'+esc(x.nom)+'</button>').join('')+'</div>'); }
+    else mF='';
+    body.push(sels.filter(x=>!mF||x.id===mF).map(sectionHtml).join(''));
     body.push(window.pgNivHtml?pgNivHtml():'');
     { const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
       body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
@@ -15451,20 +15460,24 @@ const PG_FEATS=[
   }
   function bind(w){
     const msg=(t,e)=>{ const m=w.querySelector('#pgMsg'); if(m){ m.textContent=t||''; m.style.color=e?'#B4432D':'#2a7a3b'; } else if(e) alert(t); };
-    const run=async(fn)=>{ try{ await fn(); cache=await adm({action:'p_members'}); draw(); }catch(e){ msg(e.message,true); } };
-    w.querySelectorAll('[data-pr]').forEach(c=>c.onchange=()=>{ const r=c.closest('.row'); r.querySelector('[data-prolong]').disabled=!c.checked; });
-    w.querySelectorAll('[data-prolong]').forEach(b=>b.onclick=()=>{ const r=b.closest('.row'), mt=r.querySelector('[data-mt]').value; run(()=>adm({action:'p_prolong',user_id:b.dataset.prolong,paiement:{valide:true,montant:mt?Number(mt):null}})); });
-    w.querySelectorAll('[data-lapse]').forEach(b=>b.onclick=()=>run(()=>adm({action:'p_expire',user_id:b.dataset.lapse})));
-    w.querySelectorAll('tr[data-u]').forEach(tr=>{ const id=tr.dataset.u, fr=w.querySelector('tr[data-fr="'+id+'"]'), pp=w.querySelector('tr[data-pp="'+id+'"]');
-      tr.querySelector('[data-role]').onchange=e=>run(async()=>{ await adm({action:'p_update',user_id:id,role:e.target.value}); const m=cache.members.find(x=>x.user_id===id); hostSync('role',m&&m.email,e.target.value); });
-      tr.querySelector('[data-act]').onchange=e=>run(()=>adm({action:'p_update',user_id:id,actif:e.target.checked}));
-      const fn=tr.querySelector('[data-fn]'); if(fn) fn.onclick=()=>{ openF=openF===id?null:id; fr.hidden=openF!==id; };
-      const fs=fr.querySelector('[data-fsave]'); if(fs) fs.onclick=()=>run(async()=>{ await adm({action:'p_update',user_id:id,fonctions:readMatrix(fr)}); msg('Fonctionnalités enregistrées'); });
-      const rs=tr.querySelector('[data-rs]'); if(rs) rs.onclick=()=>run(async()=>{ await adm({action:'p_resend',user_id:id,redirectTo:location.origin+location.pathname}); msg('Invitation renvoyée'); });
+    const run=async(fn)=>{ try{ await fn(); await loadAll(); draw(); }catch(e){ msg(e.message,true); } };
+    const admP=(pj)=>b=>adm(Object.assign({projet:pj},b));
+    w.querySelectorAll('.pgs').forEach(sec=>{ const pj=sec.dataset.pj, admP0=admP(pj); const admP_=admP0;
+    sec.querySelectorAll('[data-pr]').forEach(c=>c.onchange=()=>{ const r=c.closest('.row'); r.querySelector('[data-prolong]').disabled=!c.checked; });
+    sec.querySelectorAll('[data-prolong]').forEach(b=>b.onclick=()=>{ const r=b.closest('.row'), mt=r.querySelector('[data-mt]').value; run(()=>admP_({action:'p_prolong',user_id:b.dataset.prolong,paiement:{valide:true,montant:mt?Number(mt):null}})); });
+    sec.querySelectorAll('[data-lapse]').forEach(b=>b.onclick=()=>run(()=>admP_({action:'p_expire',user_id:b.dataset.lapse})));
+    sec.querySelectorAll('tr[data-u]').forEach(tr=>{ const id=tr.dataset.u, key=pj+'|'+id, fr=sec.querySelector('tr[data-fr="'+id+'"]'), pp=sec.querySelector('tr[data-pp="'+id+'"]');
+      tr.querySelector('[data-role]').onchange=e=>run(async()=>{ await admP_({action:'p_update',user_id:id,role:e.target.value}); const m=(caches[pj]||{members:[]}).members.find(x=>x.user_id===id); if(pj===PJ().id) hostSync('role',m&&m.email,e.target.value); });
+      tr.querySelector('[data-act]').onchange=e=>run(()=>admP_({action:'p_update',user_id:id,actif:e.target.checked}));
+      const fn=tr.querySelector('[data-fn]'); if(fn) fn.onclick=()=>{ openF=openF===key?null:key; fr.hidden=openF!==key; };
+      const fs=fr.querySelector('[data-fsave]'); if(fs) fs.onclick=()=>run(async()=>{ await admP_({action:'p_update',user_id:id,fonctions:readMatrix(fr)}); msg('Fonctionnalités enregistrées'); });
+      const rs=tr.querySelector('[data-rs]'); if(rs) rs.onclick=()=>run(async()=>{ await admP_({action:'p_resend',user_id:id,redirectTo:location.origin+location.pathname}); msg('Invitation renvoyée'); });
       tr.querySelector('[data-rp]').onclick=()=>{ pp.hidden=!pp.hidden; };
-      const pw=tr.querySelector('[data-pw]'); if(pw) pw.onclick=()=>{ const m=cache.members.find(x=>x.user_id===id); if(!confirm('Envoyer à '+(m.nom||m.email)+' un e-mail pour choisir un nouveau mot de passe ?')) return; run(async()=>{ await adm({action:'p_reset',user_id:id,redirectTo:location.origin+location.pathname}); msg('E-mail de réinitialisation envoyé à '+m.email); }); };
-      const rm=tr.querySelector('[data-rm]'); if(rm) rm.onclick=()=>{ const m=cache.members.find(x=>x.user_id===id); if(confirm('Retirer l’accès de '+(m.nom||m.email)+' à ce projet ?')) run(async()=>{ await adm({action:'p_remove',user_id:id}); hostSync('remove',m.email); }); };
+      const pw=tr.querySelector('[data-pw]'); if(pw) pw.onclick=()=>{ const m=(caches[pj]||{members:[]}).members.find(x=>x.user_id===id); if(!confirm('Envoyer à '+(m.nom||m.email)+' un e-mail pour choisir un nouveau mot de passe ?')) return; run(async()=>{ await admP_({action:'p_reset',user_id:id,redirectTo:location.origin+location.pathname}); msg('E-mail de réinitialisation envoyé à '+m.email); }); };
+      const rm=tr.querySelector('[data-rm]'); if(rm) rm.onclick=()=>{ const m=(caches[pj]||{members:[]}).members.find(x=>x.user_id===id); if(confirm('Retirer l’accès de '+(m.nom||m.email)+' à ce projet ?')) run(async()=>{ await admP_({action:'p_remove',user_id:id}); if(pj===PJ().id) hostSync('remove',m.email); }); };
     });
+    });
+    w.querySelectorAll('[data-mf]').forEach(b=>b.onclick=()=>{ mF=b.dataset.mf; draw(); });
     const hg=w.querySelector('#hGo'); if(hg) hg.onclick=async()=>{ const k=w.querySelector('#hP').value, hm=w.querySelector('#hMsg'), say=(t,e)=>{ hm.textContent=t; hm.style.color=e?'#B4432D':'#2a7a3b'; };
       try{ let nh=null; if(k){
           const mod=pilotageModuleName();
@@ -15478,22 +15491,19 @@ const PG_FEATS=[
     const v=w.querySelector('#nV'), c=w.querySelector('#nC'); if(v) v.onchange=()=>{ c.disabled=!v.checked; };
     if(c) c.onclick=()=>{ const g=id=>w.querySelector(id).value.trim(); const email=g('#nE'), nom=g('#nN');
       const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details'));
-      run(async()=>{ let pid=w.querySelector('#nPj').value, pnom=null;
+      let say2=''; run(async()=>{ let pid=w.querySelector('#nPj').value, pnom=null;
         if(pid==='__new__'){ pnom=g('#nPn'); const id=pnom.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,'').slice(0,16); if(!id) throw new Error('Nom du nouveau projet requis'); await window.PILOTAGE_ADM({action:'p_projet_create',id,nom:pnom}); const ty=g('#nPt')||'entreprise_generale'; if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(id,ty); pid=id; (PJ().projets=PJ().projets||[]).push({id,nom:pnom,type:ty}); }
-        const mode=w.querySelector('#nMo').value; const r=await adm({action:'p_create',projet:pid,nom,email,invite:mode==='invite',redirectTo:location.origin+location.pathname,role:g('#nR'),fonctions:fonc,paiement:{valide:true,montant:mt?Number(mt):null,reference:g('#nRf')||null}});
+        const mode=w.querySelector('#nMo').value; const _sel=(pid===w.querySelector('#nPj').value&&pid!=='__new__'&&selProjets().includes(pid)&&selProjets().length>1)?selProjets():[pid];
+        const mkb=(pj)=>({action:'p_create',projet:pj,nom,email,invite:mode==='invite',redirectTo:location.origin+location.pathname,role:g('#nR'),fonctions:fonc,paiement:{valide:true,montant:mt?Number(mt):null,reference:g('#nRf')||null}});
+        const r=await adm(mkb(_sel[0])); const autres=[]; for(const pj of _sel.slice(1)){ try{ await adm(mkb(pj)); }catch(e){ autres.push((((PJ().projets||[]).find(x=>x.id===pj)||{}).nom||pj)+' : '+e.message); } }
+        if(_sel.length>1) say2=' (ajouté à '+_sel.length+' projets'+(autres.length?' ; erreurs : '+autres.join(' | '):'')+')'; pid=_sel[0];
         const pn=(PJ().projets.find(x=>x.id===pid)||{}).nom||pid;
         if(pid===PJ().id) hostSync('add',email,g('#nR'));
-        cred='Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nProjet : '+pn+'\nIdentifiant : '+email+(r.invitation?'\n✉ Un e-mail d’invitation vient d’être envoyé à '+email+' : la personne clique sur le lien, vérifie ainsi son adresse et choisit son mot de passe.':(mode==='social'?'\nConnexion : bouton « Continuer avec Google » ou « Microsoft », avec cette adresse e-mail':(r.existant?'\n(compte existant : mot de passe inchangé, aucun e-mail envoyé)':'')))+'\nValable jusqu’au '+fmt(r.valide_jusqu); }); };
+        cred='Application Pilotage chantier\nLien : '+location.origin+location.pathname.replace(/index\.html$/,'')+'\nProjet : '+pn+'\nIdentifiant : '+email+(r.invitation?'\n✉ Un e-mail d’invitation vient d’être envoyé à '+email+' : la personne clique sur le lien, vérifie ainsi son adresse et choisit son mot de passe.':(mode==='social'?'\nConnexion : bouton « Continuer avec Google » ou « Microsoft », avec cette adresse e-mail':(r.existant?'\n(compte existant : mot de passe inchangé, aucun e-mail envoyé)':'')))+'\nValable jusqu’au '+fmt(r.valide_jusqu)+say2; }); };
   }
 
   /* bouton de déconnexion toujours visible dans le menu latéral (mode hébergé) */
-  function addLogout(){
-    const nav=document.getElementById('tabMenu'); if(!nav||document.getElementById('tabLogout')||!window.pilotageLogout) return;
-    const b=document.createElement('button'); b.type='button'; b.className='tab'; b.id='tabLogout';
-    { const w=who(); b.classList.add('pgrow'); b.innerHTML=avatar(w.nm,28)+'<span class="pgt"><b>'+esc(w.nm||'Mon profil')+'</b><small>'+esc(w.role)+'</small></span>'; }
-    b.onclick=e=>{ e.stopPropagation(); openProfile(); };
-    nav.appendChild(b);
-  }
+  function addLogout(){ /* le profil et la déconnexion sont dans la carte de profil (en-tête de l’espace) */ }
   /* profil de l'utilisateur façon Miro / Notion : pastille ronde (initiales) en haut à droite et ligne en bas du menu ; les deux ouvrent la même carte */
   const RL={admin:'Administrateur',editeur:'Éditeur',lecteur:'Lecteur'}, RC={super:['#ede9fe','#5b21b6'],admin:['#dbeafe','#1e40af'],editeur:['#dcfce7','#166534'],lecteur:['#e5e7eb','#374151']};
   const AVC=['#2563eb','#7c3aed','#db2777','#ea580c','#16a34a','#0891b2','#ca8a04','#4b5563'];
@@ -15517,6 +15527,65 @@ const PG_FEATS=[
     setTimeout(()=>{ const off=e=>{ if(!c.contains(e.target)&&!e.target.closest('#pgWho,#tabLogout')){ closeProfile(); document.removeEventListener('click',off,true); } }; document.addEventListener('click',off,true); },0);
   }
   window.pilotageProfile=openProfile;
+  /* ----- barre latérale : en-tête (initiale + nom de l'espace + type), actions d'administration, pages, liste des projets ----- */
+  const ICO_SB='<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="M7.5 3.5v13"/><path d="M5 7.5h.01M5 10h.01" stroke-width="2"/></svg>';
+  const ICO_GEAR='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+  const ICO_USERS='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 5.2a3 3 0 0 1 0 5.6M18.5 14.3c1.7.8 2.9 2.6 2.9 5.7"/></svg>';
+  const ICO_USER_GEAR='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8" r="3.2"/><path d="M3.5 20c0-3.4 2.9-6 6.5-6 1.1 0 2.100.2 3 .7"/><circle cx="18" cy="17" r="2"/><path d="M18 13.2v1.1M18 19.7v1.1M14.700 17h1.100M20.200 17h1.100"/></svg>';
+  function goPg(sel){ showPage('projet'); let n=0; const t=setInterval(()=>{ const e=document.querySelector(sel); if(e||++n>40){ clearInterval(t); if(e){ e.scrollIntoView({behavior:'smooth',block:'start'}); if(/^(INPUT|SELECT)$/.test(e.tagName)) try{ e.focus(); }catch(_){} } } },150); try{ closeTabMenu(); }catch(_){} }
+  /* projets cochés = ceux que l'on paramètre (le projet ouvert reste toujours coché) */
+  function selProjets(){ const p=PJ(); if(!p) return []; let a=[]; try{ a=JSON.parse(localStorage.getItem('pg_sel')||'[]'); }catch(e){} const ids=new Set((p.projets||[]).map(x=>x.id)); a=a.filter(x=>ids.has(x)); if(!a.includes(p.id)) a.unshift(p.id); return a; }
+  function setSel(a){ try{ localStorage.setItem('pg_sel',JSON.stringify(a)); }catch(e){} }
+  window.pilotageSelProjets=selProjets;
+  function buildSidebar(){
+    const nav=document.getElementById('tabMenu'); if(!nav) return; const head=nav.querySelector('.sb-head'); if(!head) return;
+    const p=PJ(), w=who(), local=(window.state&&state.projet)||{}, nom=(p&&p.nom)||local.nom||'Mon espace', ty=PG_TYPES[pilotageType()]||'';
+    const first=(w.nm||nom||'?').trim().split(/\s+/)[0]||'?', ini=first[0].toUpperCase();
+    let mb=document.getElementById('menuBtn'); if(!mb) return;
+    head.className='sb-head sb-ws-wrap'; head.innerHTML='';
+    const ws=document.createElement('button'); ws.type='button'; ws.id='sbWs'; ws.title='Mon profil'; ws.innerHTML='<span class="sb-ini">'+esc(ini)+'</span><span class="sb-wt"><b>'+esc(nom)+'</b><small>'+esc(ty)+'</small></span>';
+    ws.onclick=e=>{ e.stopPropagation(); if(p) openProfile(); };
+    mb.innerHTML=ICO_SB; mb.title='Replier le volet latéral'; head.appendChild(ws); head.appendChild(mb);
+    ['sbAct','sbProj'].forEach(id=>{ const o=document.getElementById(id); if(o) o.remove(); });
+    const adm=!!p&&(p.global||p.role==='admin');
+    if(adm){ const a=document.createElement('div'); a.className='sb-box'; a.id='sbAct';
+      a.innerHTML='<button type="button" data-g="#pgWrap h2">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-g="#pgNew">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-g=".pgAcc">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button>';
+      a.querySelectorAll('button').forEach(b=>b.onclick=()=>goPg(b.dataset.g)); head.after(a); }
+    const L=(p&&p.projets&&p.projets.length)?p.projets:[{id:(p&&p.id)||'SM',nom:nom,type:pilotageType()}], sel=p?selProjets():[L[0].id];
+    const pr=document.createElement('div'); pr.className='sb-box sb-pl'; pr.id='sbProj';
+    const sum=sel.length===1?(L.find(x=>x.id===sel[0])||{}).nom||'1 projet':sel.length+' projets sélectionnés';
+    pr.innerHTML='<div class="sb-t">Liste des projets</div><button type="button" class="sb-dd" id="sbDd"><span class="sb-ddl">'+esc(sum)+'</span><span class="sb-car">▾</span></button>'
+      +'<div class="sb-list" id="sbList" hidden>'+(L.length>1?'<button type="button" class="sb-all" id="sbAll">Tout sélectionner</button>':'')+L.map(x=>'<label class="sb-it'+(p&&x.id===p.id?' cur':'')+'"><input type="checkbox" data-id="'+esc(x.id)+'" '+(sel.includes(x.id)?'checked':'')+'><span class="sb-pt"><b>'+esc(x.nom)+(p&&x.id===p.id?' · ouvert':'')+'</b><small>'+esc(PG_TYPES[x.type||'entreprise_generale']||'')+'</small></span>'+(p&&x.id!==p.id?'<button type="button" class="sb-go" data-open="'+esc(x.id)+'" title="Ouvrir ce projet">↗</button>':'')+'</label>').join('')+'</div>'
+      +(sel.length>1?'<small class="sb-hint">Les paramètres et invitations s’appliquent aux '+sel.length+' projets cochés.</small>':'');
+    const dd=pr.querySelector('#sbDd'), ls=pr.querySelector('#sbList');
+    dd.onclick=()=>{ ls.hidden=!ls.hidden; pr.classList.toggle('open',!ls.hidden); };
+    const upd=()=>{ const ids=[...pr.querySelectorAll('input[type=checkbox]:checked')].map(i=>i.dataset.id); const cur=p&&p.id; if(cur&&!ids.includes(cur)){ ids.unshift(cur); const ci=pr.querySelector('input[data-id="'+cur+'"]'); if(ci) ci.checked=true; } setSel(ids); pr.querySelector('.sb-ddl').textContent=ids.length===1?((L.find(x=>x.id===ids[0])||{}).nom||'1 projet'):ids.length+' projets sélectionnés'; const h=pr.querySelector('.sb-hint'); if(h) h.remove(); if(ids.length>1){ const hh=document.createElement('small'); hh.className='sb-hint'; hh.textContent='Les paramètres et invitations s’appliquent aux '+ids.length+' projets cochés.'; pr.appendChild(hh); } try{ if(document.getElementById('page-projet').classList.contains('active')) render(); }catch(e){} };
+    pr.querySelectorAll('input[type=checkbox]').forEach(i=>i.onchange=upd);
+    const all=pr.querySelector('#sbAll'); if(all) all.onclick=()=>{ pr.querySelectorAll('input[type=checkbox]').forEach(i=>i.checked=true); upd(); };
+    pr.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{ e.preventDefault(); e.stopPropagation(); if(window.pilotageSwitchProjet) window.pilotageSwitchProjet(b.dataset.open); });
+    nav.appendChild(pr);
+    if(!document.getElementById('sbCss')){ const st=document.createElement('style'); st.id='sbCss'; st.textContent=`
+      #menuLbl{display:none !important}
+      nav.tab-menu .sb-head.sb-ws-wrap{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 2px 10px;text-transform:none;letter-spacing:0}
+      #sbWs{display:flex;align-items:center;gap:10px;flex:1;min-width:0;background:none;border:0;padding:4px 6px;border-radius:8px;cursor:pointer;text-align:left;color:#fff}
+      #sbWs:hover{background:rgba(255,255,255,.1)}
+      .sb-ini{flex:none;width:38px;height:38px;border-radius:9px;background:#F2A900;color:#16232B;font:700 20px/38px 'Space Grotesk',system-ui,sans-serif;text-align:center;border:2px solid rgba(255,255,255,.85)}
+      .sb-wt{display:flex;flex-direction:column;min-width:0;line-height:1.25} .sb-wt b{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff} .sb-wt small{font-size:11.5px;color:#aeb4b9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      nav.tab-menu .sb-head .menu-btn{flex:none;color:#d9dbdd;display:inline-flex;align-items:center;justify-content:center;padding:6px;border-radius:8px;border:0;background:transparent}
+      nav.tab-menu .sb-head .menu-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+      .sb-box{border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:6px;margin:4px 0 10px;display:flex;flex-direction:column;gap:2px}
+      .sb-box button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;padding:9px 10px;border-radius:8px;cursor:pointer;color:#e6e8ea;font:600 13.5px 'Space Grotesk',system-ui,sans-serif}
+      .sb-box button:hover{background:rgba(255,255,255,.1);color:#fff} .sb-box button svg{flex:none;color:#F2A900}
+      .sb-pl{margin-top:12px}.sb-t{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#aeb4b9;padding:4px 8px 6px}
+      .sb-pl button{padding:8px 10px}.sb-pl button.on{background:rgba(242,169,0,.16)} .sb-d{flex:none;width:9px;height:9px;border-radius:50%;background:#6b7378} .sb-pl button.on .sb-d{background:#F2A900}
+      .sb-pt{display:flex;flex-direction:column;min-width:0;line-height:1.25} .sb-pt b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .sb-pt small{font-weight:400;font-size:11px;color:#aeb4b9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sb-dd{justify-content:space-between;border:1px solid rgba(255,255,255,.3) !important;border-radius:8px !important;background:rgba(255,255,255,.06) !important} .sb-ddl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .sb-car{flex:none;opacity:.8}
+      .sb-list{display:flex;flex-direction:column;gap:2px;margin-top:6px;max-height:42vh;overflow:auto} .sb-it{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;cursor:pointer;color:#e6e8ea;font-size:13.5px} .sb-it:hover{background:rgba(255,255,255,.08)} .sb-it.cur{background:rgba(242,169,0,.14)} .sb-it input{flex:none;accent-color:#F2A900;width:16px;height:16px}
+      .sb-it .sb-pt{flex:1} .sb-go{flex:none;width:auto !important;padding:2px 8px !important;border:1px solid rgba(255,255,255,.3) !important;border-radius:6px !important;color:#F2A900 !important} .sb-all{font-size:12px !important;color:#F2A900 !important;padding:4px 8px !important} .sb-hint{display:block;color:#F2A900;font-size:11.5px;padding:6px 8px 2px}
+      .menu-open{padding:8px 11px !important} .menu-open .menu-ico{font-size:22px}`; document.head.appendChild(st); }
+  }
+  window.pilotageBuildSidebar=buildSidebar;
+  setTimeout(()=>{ try{ buildSidebar(); }catch(e){ console.error(e); } },1200);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeProfile(); });
   function addWho(){
     const p=PJ(); if(!p||!window.pilotageLogout||document.getElementById('pgWho')) return; const w=who();
@@ -15542,7 +15611,7 @@ const PG_FEATS=[
     const p=PJ();
     if(p){
       try{ if(!state.projet||state.projet.nom!==p.nom||state.projet.id!==p.id){ state.projet=Object.assign({},state.projet||{},{id:p.id,nom:p.nom}); if(typeof persist==='function') persist(); if(window.projChipRefresh) projChipRefresh(); } }catch(e){}
-      apply(); addLogout(); addWho();
+      apply(); addLogout(); addWho(); try{ buildSidebar(); }catch(e){ console.error(e); }
       if(p.role==='admin'&&window.PILOTAGE_ADM){ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); setInterval(()=>{ adm({action:'p_members'}).then(r=>{ cache=r; badge(); }).catch(()=>{}); },300000); }
       const cur=document.querySelector('.page.active'); if(cur&&cur.id!=='page-dashboard'&&cur.id.startsWith('page-')&&!pgCan(cur.id.slice(5))) showPage('dashboard');
       return;
