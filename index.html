@@ -15305,6 +15305,17 @@ const PG_FEATS=[
   const st=document.createElement('style');
   st.textContent=`
   #page-projet{padding:12px}
+  body.pgwin #page-projet.active{position:fixed;inset:0;z-index:9000;background:rgba(22,35,43,.5);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:4vh 12px}
+  #pgWinBox{position:relative;background:#fff;border-top:6px solid #F2A900;border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.35);width:min(980px,100%);padding:14px 16px 18px}
+  #page-projet:not(.active) #pgWinBox{box-shadow:none}
+  #pgWinX{position:sticky;top:0;float:right;z-index:2;padding:6px 12px;border:1px solid #d6d6d6;border-radius:8px;background:#fff;color:#222;font-weight:600;cursor:pointer}
+  #pgProjSel{margin:2px 0 8px;padding:8px 10px;border:1px solid #e3e3e3;border-radius:10px;background:#faf9f6;clear:both}
+  #pgProjSel:empty{display:none}
+  #pgProjSel .ps-t{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px} #pgProjSel button{padding:4px 10px;border:0;border-radius:6px;background:#eee;font-size:12px;cursor:pointer}
+  #pgProjSel .ps-l{display:flex;flex-wrap:wrap;gap:6px 14px} #pgProjSel .ps-i{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer} #pgProjSel small{color:#777} #pgProjSel .ps-h{display:block;margin-top:6px}
+  #sbProj{display:none !important}
+  body[data-pgm=members] #pgProjSel,body[data-pgm=host] #pgProjSel{display:none}
+  .pgs-f{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 10px} .pgs-f button{border-radius:999px !important;padding:5px 12px !important;background:#f1f1ee !important;border:1px solid #e0ded8 !important} .pgs-f button.on{background:#F2A900 !important;border-color:#F2A900 !important;font-weight:700}
   .pgp{max-width:980px;margin:0 auto;font-size:14px}
   .pgp h2{margin:0 0 4px}.pgp h3{margin:18px 0 8px}
   .pgp .card{background:#fff;border:1px solid #e3e3e3;border-left:5px solid #F2A900;border-radius:10px;padding:12px;margin:10px 0}
@@ -15335,7 +15346,7 @@ const PG_FEATS=[
     if(!nav||!dash||document.getElementById('tabProjet')) return;
     const b=document.createElement('button'); b.className='tab'; b.id='tabProjet'; b.dataset.page='projet'; b.setAttribute('onclick',"showPage('projet')"); b.innerHTML='🗂 Projet<span id="pgBadge" hidden></span>';
     dash.parentNode.insertBefore(b,dash);
-    if(!document.getElementById('page-projet')){ const pg=document.createElement('div'); pg.className='page'; pg.id='page-projet'; pg.innerHTML='<div class="pgp" id="pgWrap"></div>'; document.getElementById('page-rex').parentNode.insertBefore(pg,document.getElementById('page-rex')); }
+    if(!document.getElementById('page-projet')){ const pg=document.createElement('div'); pg.className='page'; pg.id='page-projet'; pg.innerHTML='<div id="pgWinBox"><button type="button" id="pgWinX" aria-label="Fermer la fenêtre">✕ Fermer</button><div id="pgProjSel"></div><div class="pgp" id="pgWrap"></div></div>'; document.getElementById('page-rex').parentNode.insertBefore(pg,document.getElementById('page-rex')); }
   }
   install();
 
@@ -15357,10 +15368,19 @@ const PG_FEATS=[
   const sp0=window.showPage;
   window.showPage=function(p){
     if(p!=='projet'&&p!=='chantier'&&p!=='tours'&&!pgCan(p)){ const f=PG_FEATS.find(x=>x.k!=='parametres'&&pgCan(x.k)); p=f?f.k:'projet'; }
-    const r=sp0.apply(this,arguments.length?[p]:[p]);
-    if(p==='projet') render();
-    return r;
+    if(p==='projet'){ const prev=document.querySelector('.page.active:not(#page-projet)'); const r=sp0.apply(this,[p]); if(prev) prev.classList.add('active'); document.body.classList.add('pgwin'); fillSel(); render(); return r; }
+    document.body.classList.remove('pgwin');
+    return sp0.apply(this,arguments.length?[p]:[p]);
   };
+  function closePgWin(){ document.body.classList.remove('pgwin'); const pg=document.getElementById('page-projet'); if(pg) pg.classList.remove('active'); if(!document.querySelector('.page.active')){ const f=PG_FEATS.find(x=>x.k!=='parametres'&&pgCan(x.k)); window.showPage(f?f.k:'dashboard'); } }
+  window.pgCloseWin=closePgWin;
+  function fillSel(){ const box=document.getElementById('pgProjSel'); if(!box) return; const p=PJ(), L=(p&&p.projets)||[]; if(L.length<2){ box.innerHTML=''; return; } const sel=selProjets();
+    box.innerHTML='<div class="ps-t"><b>Projets concernés</b><button type="button" id="pgSelAll">Tout sélectionner</button></div><div class="ps-l">'+L.map(x=>'<label class="ps-i"><input type="checkbox" data-id="'+esc(x.id)+'"'+(sel.includes(x.id)?' checked':'')+'> <span>'+esc(x.nom)+'</span> <small>'+esc(PG_ACR[pgTypeKey(x.type)]||'')+'</small></label>').join('')+'</div><small class="ps-h">Les paramètres et invitations s’appliquent à tous les projets cochés.</small>';
+    const upd=()=>{ const ids=[...box.querySelectorAll('input:checked')].map(i=>i.dataset.id); if(p&&!ids.includes(p.id)){ ids.unshift(p.id); const ci=box.querySelector('input[data-id="'+p.id+'"]'); if(ci) ci.checked=true; } setSel(ids); render(); };
+    box.querySelectorAll('input').forEach(i=>i.onchange=upd);
+    box.querySelector('#pgSelAll').onclick=()=>{ box.querySelectorAll('input').forEach(i=>i.checked=true); upd(); }; }
+  document.addEventListener('click',e=>{ if(!document.body.classList.contains('pgwin')) return; const pg=document.getElementById('page-projet'); if(e.target===pg||(e.target.id==='pgWinX')) closePgWin(); },true);
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&document.body.classList.contains('pgwin')&&![...document.querySelectorAll('#overlay.open,#miniPromptOverlay,.modal,[role=dialog]')].some(x=>x.offsetParent&&!x.closest('#page-projet'))) closePgWin(); });
 
   const adm=b=>window.PILOTAGE_ADM(Object.assign({projet:PJ().id},b));
   const fmt=d=>d?d.split('-').reverse().join('/'):'—';
@@ -15381,8 +15401,9 @@ const PG_FEATS=[
   }
   function readMatrix(root){ const o={}; root.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) o[i.dataset.f]=false; }); return o; }
   const wrap=()=>document.getElementById('pgWrap');
+  let pgMode='settings'; const actIds=()=>{ const p=PJ(); return pgMode==='members'?((p.projets||[]).map(x=>x.id).concat(p.projets&&p.projets.length?[]:[p.id])):selProjets(); };
   let cache=null, caches={}, mF='', openF=null, cred='', headHtml='', rtok=0, rtry=0;
-  async function loadAll(){ const p=PJ(), ids=selProjets(), res={}; for(const id of ids){ try{ res[id]=await adm({action:'p_members',projet:id}); }catch(e){ if(id===p.id) throw e; res[id]=null; } } caches=res; cache=res[p.id]||cache; }
+  async function loadAll(){ const p=PJ(), ids=actIds(), res={}; for(const id of ids){ try{ res[id]=await adm({action:'p_members',projet:id}); }catch(e){ if(id===p.id) throw e; res[id]=null; } } caches=res; cache=res[p.id]||cache; }
 
   async function render(){
     const w=wrap(); if(!w) return; const p=PJ();
@@ -15397,11 +15418,9 @@ const PG_FEATS=[
       const tl=w.querySelector('#pgTyL'); if(tl) tl.onchange=()=>{ state.projet=Object.assign({},state.projet||{},{type:tl.value}); persist(); location.reload(); };
       return;
     }
-    const head='<h2>🗂 Projet « '+esc(p.nom)+' »</h2><div class="row"><span>Votre rôle : <b>'+(p.global?'Super administrateur':({admin:'Administrateur',editeur:'Éditeur',lecteur:'Lecteur'})[p.role])+'</b></span>'
-      +(p.valide_jusqu?'<span>· accès valable jusqu’au <b>'+fmt(p.valide_jusqu)+'</b></span>':'')
-      +(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')
-      +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')+'<button id="pgOutB">🚪 Se déconnecter</button>'
-      +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div><div class="row"><span>Type d’espace de travail : <b>'+esc(PG_ACR[pilotageType()]+' — '+PG_TYPES[pilotageType()])+'</b></span>'+(selProjets().length>1?'<span>· projets paramétrés : <b>'+esc(selProjets().map(id=>((p.projets||[]).find(x=>x.id===id)||{}).nom||id).join(', '))+'</b></span>':'')+(p.global?'<select id="pgTy">'+typeOpts(pilotageType())+'</select>':'')+'</div>';
+    const TT={settings:'⚙ Paramètres du projet',invite:'➕ Inviter un membre',members:'👥 Gérer les membres',host:'☁ Hébergement des données'};
+    const head='<h2>'+TT[pgMode]+(pgMode==='settings'?' « '+esc(p.nom)+' »':'')+'</h2>'
+      +(pgMode==='settings'?'<div class="row">'+(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')+(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')+(p.role==='admin'||p.global?'<button id="pgRen">✏️ Renommer</button>':'')+'</div>':'');
     if(p.role!=='admin'){
       const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
       w.innerHTML=head+'<div class="card">Fonctionnalités désactivées pour vous : '+(off.length?off.map(esc).join(', '):'aucune')+'</div>';
@@ -15432,11 +15451,11 @@ const PG_FEATS=[
     const w=wrap(); const p=PJ();
     const hd=headHtml;
     const body=[];
-    const sels=selProjets().map(id=>(p.projets||[]).find(x=>x.id===id)||{id,nom:id}), multi=sels.length>1;
+    const sels=actIds().map(id=>(p.projets||[]).find(x=>x.id===id)||{id,nom:id}), multi=sels.length>1;
     const sectionHtml=(pj)=>{ const c=caches[pj.id]; if(!c) return '<div class="pgs" data-pj="'+esc(pj.id)+'"><div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div><div class="card">Données indisponibles pour ce projet (droits insuffisants ?).</div></div>'; const today=c.today, M=c.members, N=c.notifs, out=[];
     if(N.length){ out.push('<h3>🔔 Échéances à traiter</h3>'+N.map(n=>'<div class="nt" data-nu="'+n.user_id+'"><b>'+esc(n.nom||n.email)+'</b> — '+(n.type==='expire'?'accès <span class="ko">expiré</span> depuis le ':'accès qui expire le ')+fmt(n.echeance)+'.<br>Prolonger d’un mois ?'
       +'<div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+n.user_id+'" disabled>Prolonger 1 mois</button><button data-lapse="'+n.user_id+'">Laisser expirer</button></div></div>').join('')); }
-    out.push('<h3 class="pgAcc">👥 Accès du projet</h3><div class="card" style="overflow:auto"><table><tr><th>Utilisateur</th><th>Rôle</th><th>Validité</th><th>Actif</th><th></th></tr>'
+    out.push('<h3 class="pgAcc" hidden>👥 Accès du projet</h3><div class="card" style="overflow:auto"><table><tr><th>Utilisateur</th><th>Rôle</th><th>Validité</th><th>Actif</th><th></th></tr>'
       +M.map(m=>'<tr data-u="'+m.user_id+'"><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+(m.moi?' (vous)':'')+'</small></td>'
       +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
       +'<td>'+statut(m,today)+(m.confirme===false?'<br><span class="warn">⏳ invitation envoyée, pas encore activée</span>':'')+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
@@ -15446,15 +15465,15 @@ const PG_FEATS=[
       +'<tr data-pp="'+m.user_id+'" hidden><td colspan="5"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')
       +'</table></div>');
       return '<div class="pgs" data-pj="'+esc(pj.id)+'">'+(multi?'<div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div>':'')+out.join('')+'</div>'; };
-    if(multi){ if(mF&&!sels.find(x=>x.id===mF)) mF=''; body.push('<div class="pgs-f"><b>Filtrer par projet :</b> <button type="button" data-mf=""'+(!mF?' class="on"':'')+'>Tous ('+sels.length+')</button>'+sels.map(x=>'<button type="button" data-mf="'+esc(x.id)+'"'+(mF===x.id?' class="on"':'')+'>'+esc(x.nom)+'</button>').join('')+'</div>'); }
+    if(multi&&pgMode==='members'){ if(mF&&!sels.find(x=>x.id===mF)) mF=''; body.push('<div class="pgs-f"><b>Projets :</b> <button type="button" data-mf=""'+(!mF?' class="on"':'')+'>Tous ('+sels.length+')</button>'+sels.map(x=>'<button type="button" data-mf="'+esc(x.id)+'"'+(mF===x.id?' class="on"':'')+'>'+esc(x.nom)+'</button>').join('')+'</div>'); }
     else mF='';
-    body.push(sels.filter(x=>!mF||x.id===mF).map(sectionHtml).join(''));
-    body.push(window.pgNivHtml?pgNivHtml():'');
-    { const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
+    if(pgMode==='members') body.push(sels.filter(x=>!mF||x.id===mF).map(sectionHtml).join(''));
+    if(pgMode==='settings') body.push(window.pgNivHtml?pgNivHtml():'');
+    if(pgMode==='host'){ const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
       body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
         +'<div class="row"><select id="hP"><option value="">Base de l’outil (par défaut)</option>'+Object.keys(PR).map(k=>'<option value="'+k+'"'+(h&&h.provider===k?' selected':'')+(PR[k].available()?'':' disabled')+'>'+esc(PR[k].label)+(PR[k].available()?'':' (non configuré)')+'</option>').join('')+'</select><button class="p" id="hGo">Choisir / changer l’hébergement</button></div>'
         +'<small>Le client (administrateur du projet) autorise l’hébergement avec son propre compte. En tant qu’administrateur de l’outil, vous pouvez le faire à sa place. Les données existantes sont copiées vers le nouvel hébergement, et les membres du projet y sont invités automatiquement.</small><div class="msg" id="hMsg"></div></div>'); }
-    body.push('<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><label><b>Projet :</b> <select id="nPj">'+(p.projets||[{id:p.id,nom:p.nom}]).map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+(p.global?'<option value="__new__">➕ Nouveau projet…</option>':'')+'</select></label><input id="nPn" placeholder="Nom du nouveau projet" hidden><select id="nPt" hidden title="Type d’espace de travail">'+typeOpts('entreprise_generale')+'</select></div><small id="nPh" hidden>Le nouveau projet reprend toutes les fonctionnalités de l’outil, sans aucune donnée.</small><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><select id="nMo"><option value="invite">✉ Invitation par e-mail (la personne choisit son mot de passe, vous ne le voyez jamais)</option><option value="social">Google / Microsoft (sans mot de passe)</option></select><select id="nR"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du projet</option></select></div>'
+    if(pgMode==='invite') body.push('<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><label><b>Projet :</b> <select id="nPj">'+(p.projets||[{id:p.id,nom:p.nom}]).map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+(p.global?'<option value="__new__">➕ Nouveau projet…</option>':'')+'</select></label><input id="nPn" placeholder="Nom du nouveau projet" hidden><select id="nPt" hidden title="Type d’espace de travail">'+typeOpts('entreprise_generale')+'</select></div><small id="nPh" hidden>Le nouveau projet reprend toutes les fonctionnalités de l’outil, sans aucune donnée.</small><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><select id="nMo"><option value="invite">✉ Invitation par e-mail (la personne choisit son mot de passe, vous ne le voyez jamais)</option><option value="social">Google / Microsoft (sans mot de passe)</option></select><select id="nR"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du projet</option></select></div>'
       +'<details><summary>Fonctionnalités accordées (tout activé par défaut)</summary>'+matrix('n',{})+'</details>'
       +'<div class="row"><input type="number" min="0" step="any" id="nM" placeholder="Montant" style="width:110px"><input id="nRf" placeholder="Référence du paiement"><label><input type="checkbox" id="nV"> paiement reçu et validé</label></div>'
       +'<div class="row"><button class="p" id="nC" disabled>Créer l’accès (valable 1 mois)</button><small>Sans paiement validé, l’accès ne peut pas être créé.</small></div>'
@@ -15536,7 +15555,9 @@ const PG_FEATS=[
   const ICO_GEAR='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
   const ICO_USERS='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 5.2a3 3 0 0 1 0 5.6M18.5 14.3c1.7.8 2.9 2.6 2.9 5.7"/></svg>';
   const ICO_USER_GEAR='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8" r="3.2"/><path d="M3.5 20c0-3.4 2.9-6 6.5-6 1.1 0 2.100.2 3 .7"/><circle cx="18" cy="17" r="2"/><path d="M18 13.2v1.1M18 19.7v1.1M14.700 17h1.100M20.200 17h1.100"/></svg>';
-  function goPg(sel){ showPage('projet'); let n=0; const t=setInterval(()=>{ const e=document.querySelector(sel); if(e||++n>40){ clearInterval(t); if(e){ e.scrollIntoView({behavior:'smooth',block:'start'}); if(/^(INPUT|SELECT)$/.test(e.tagName)) try{ e.focus(); }catch(_){} } } },150); try{ closeTabMenu(); }catch(_){} }
+  function pgOpen(m){ pgMode=m; document.body.dataset.pgm=m; showPage('projet'); try{ closeTabMenu(); }catch(_){} }
+  window.pgOpen=pgOpen;
+  function goPg(sel){ showPage('projet'); let n=0; const t=setInterval(()=>{ const e=document.querySelector(sel); if(e||++n>40){ clearInterval(t); if(e){ const pgw=document.getElementById('page-projet'); if(e.matches('#pgWrap h2')&&pgw) pgw.scrollTop=0; else e.scrollIntoView({behavior:'smooth',block:'start'}); if(/^(INPUT|SELECT)$/.test(e.tagName)) try{ e.focus(); }catch(_){} } } },150); try{ closeTabMenu(); }catch(_){} }
   /* projets cochés = ceux que l'on paramètre (le projet ouvert reste toujours coché) */
   function selProjets(){ const p=PJ(); if(!p) return []; let a=[]; try{ a=JSON.parse(localStorage.getItem('pg_sel')||'[]'); }catch(e){} const ids=new Set((p.projets||[]).map(x=>x.id)); a=a.filter(x=>ids.has(x)); if(!a.includes(p.id)) a.unshift(p.id); return a; }
   function setSel(a){ try{ localStorage.setItem('pg_sel',JSON.stringify(a)); }catch(e){} }
@@ -15570,13 +15591,13 @@ const PG_FEATS=[
       +'<button type="button" class="pv-row" id="pvData"><span class="sb-ic">🗂</span><span>Données</span><em>›</em></button>'
       +(p?'<div class="pv-sec"><div class="pv-l">Projet</div><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small></div>':'')
       +(p&&!adm?'<button type="button" class="pv-row" data-a="proj"><span class="sb-ic">'+ICO_GEAR+'</span><span>Mon projet</span></button>':'')
-      +(adm?'<div class="sb-box" id="sbAct"><button type="button" data-g="#pgWrap h2">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-g="#pgNew">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-g=".pgAcc">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button></div>':'')
+      +(adm?'<div class="sb-box" id="sbAct"><button type="button" data-m="settings">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-m="invite">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-m="members">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button></div>':'')
       +'<div class="sb-pl" id="sbProj"><div class="sb-t">Liste des projets <em class="sb-sum">'+esc(sum)+'</em></div>'
       +(L.length>1?'<button type="button" class="sb-all" id="sbAll">Tout sélectionner</button>':'')
       +'<div class="sb-list" id="sbList">'+L.map(x=>'<label class="sb-it'+(p&&x.id===p.id?' cur':'')+'"><input type="checkbox" data-id="'+esc(x.id)+'" '+(sel.includes(x.id)?'checked':'')+'><span class="sb-pt"><b>'+esc(x.nom)+'</b><small><span class="sb-tag">'+esc(PG_ACR[pgTypeKey(x.type)])+'</span>'+esc(PG_TYPES[pgTypeKey(x.type)])+'</small></span></label>').join('')+'</div>'
       +(sel.length>1?'<small class="sb-hint">Les paramètres et invitations s’appliquent aux '+sel.length+' projets cochés.</small>':'')+'</div>'
       +(p&&p.valide_jusqu?'<div class="pv-sec"><div class="pv-l">Accès</div>valable jusqu’au <b>'+p.valide_jusqu.split('-').reverse().join('/')+'</b></div>':'')
-      +'<div class="pv-sec"><div class="pv-l">Hébergement des données</div>'+(hst?esc((PR[hst.provider]&&PR[hst.provider].label)||hst.provider)+(hst.compte?'<small>'+esc(hst.compte)+'</small>':''):'Base de l’outil')+'<small id="pvSync">'+esc(sync?sync.textContent.replace(/^[●◐○]\s*/,''):'')+'</small></div>'
+      +'<div class="pv-sec pv-host" id="pvHost" role="button" tabindex="0" style="cursor:pointer" title="Modifier l’hébergement"><div class="pv-l">Hébergement des données ›</div>'+(hst?esc((PR[hst.provider]&&PR[hst.provider].label)||hst.provider)+(hst.compte?'<small>'+esc(hst.compte)+'</small>':''):'Base de l’outil')+'<small id="pvSync">'+esc(sync?sync.textContent.replace(/^[●◐○]\s*/,''):'')+'</small></div>'
       +'<button type="button" class="pv-row pv-out" id="pvOut"><span class="sb-ic">🚪</span><span>Se déconnecter</span></button>';
     nav.insertBefore(pv,ft);
     const setView=on=>{ nav.classList.toggle('sb-prof',on); pv.hidden=!on; ft.querySelector('#sbIni').setAttribute('aria-expanded',String(on)); closeDataWin(); };
@@ -15585,8 +15606,9 @@ const PG_FEATS=[
     ft.onclick=e=>{ e.stopPropagation(); setView(pv.hidden); };
     pv.querySelector('#pvBack').onclick=()=>setView(false);
     pv.querySelector('#pvData').onclick=e=>{ e.stopPropagation(); openDataWin(); };
-    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ goPg(b.dataset.g); });
-    const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ showPage('projet'); try{ closeTabMenu(); }catch(_){} };
+    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ pgOpen(b.dataset.m); });
+    const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ pgOpen('settings'); try{ closeTabMenu(); }catch(_){} };
+    { const hb=pv.querySelector('#pvHost'); if(hb&&adm){ hb.onclick=()=>pgOpen('host'); } else if(hb){ hb.style.cursor='default'; } }
     pv.querySelector('#pvOut').onclick=()=>{ if(window.pilotageLogout) window.pilotageLogout(); };
     const pr=pv.querySelector('#sbProj');
     const upd=()=>{ const ids=[...pr.querySelectorAll('input[type=checkbox]:checked')].map(i=>i.dataset.id); const cur=p&&p.id; if(cur&&!ids.includes(cur)){ ids.unshift(cur); const ci=pr.querySelector('input[data-id="'+cur+'"]'); if(ci) ci.checked=true; } setSel(ids); pr.querySelector('.sb-sum').textContent=ids.length===1?'1 projet coché':ids.length+' projets cochés'; const h=pr.querySelector('.sb-hint'); if(h) h.remove(); if(ids.length>1){ const hh=document.createElement('small'); hh.className='sb-hint'; hh.textContent='Les paramètres et invitations s’appliquent aux '+ids.length+' projets cochés.'; pr.appendChild(hh); } try{ if(document.getElementById('page-projet').classList.contains('active')) render(); }catch(e){} };
