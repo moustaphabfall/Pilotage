@@ -106,7 +106,7 @@
   async function chooseProjet(){
     const today = new Date().toISOString().slice(0,10), glob = me.role==='admin';
     let projets = [], mem = {};
-    { const r = await sb.from('projets').select('id,nom,hebergement,type').order('created_at'); projets = r.data||[]; }
+    { const r = await sb.from('projets').select('id,nom,hebergement,type,types_autorises').order('created_at'); projets = r.data||[]; }
     { const r = await sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif').eq('user_id', me.id); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
     projets = projets.filter(p=>glob || (mem[p.id] && mem[p.id].actif));
     if(!projets.length){
@@ -120,10 +120,16 @@
       await new Promise(()=>{ const d = screen('<div class="box"><h2>⌛ Accès expiré</h2><p>Votre accès au projet « '+esc(p0.nom)+' » a expiré le '+esc(m.valide_jusqu)+'. Contactez l’administrateur pour le prolonger.</p><button id="pgRe">Vérifier</button><button class="l" id="pgOut">Se déconnecter</button></div>'); d.querySelector('#pgRe').onclick = ()=>location.reload(); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); }; });
     }
     const m = mem[pr.id] || {role:'admin', fonctions:{}, valide_jusqu:null};
-    PJ = {id:pr.id, nom:pr.nom, type:pr.type||'entreprise_generale', hebergement:pr.hebergement||null, role: glob ? 'admin' : m.role, fonctions: (glob || m.role==='admin') ? {} : (m.fonctions||{}), valide_jusqu: m.valide_jusqu||null, global:glob, projets:projets.filter(okP)};
+    PJ = {id:pr.id, nom:pr.nom, type:pr.type||'entreprise_generale', hebergement:pr.hebergement||null, types_autorises:pr.types_autorises||null, role: glob ? 'admin' : m.role, fonctions: (glob || m.role==='admin') ? {} : (m.fonctions||{}), valide_jusqu: m.valide_jusqu||null, global:glob, projets:projets.filter(okP)};
     window.PILOTAGE_PROJET = PJ;
     window.PILOTAGE_ADM = adm; window.PILOTAGE_GENPW = genPw;
     window.PILOTAGE_SET_TYPE = async (pid, type)=>{ const {error} = await sb.from('projets').update({type}).eq('id', pid); if(error) throw error; };
+    window.PILOTAGE_SET_TYPES_OK = async (pid, arr)=>{ const {error} = await sb.from('projets').update({types_autorises: (arr&&arr.length)?arr:null}).eq('id', pid); if(error) throw error; };
+    window.PILOTAGE_RESET_REQ = {
+      create: async (pid, uid, email, nom)=>{ const {error} = await sb.from('demandes_reset').insert({projet_id:pid, user_id:uid, demandeur:me.id, email:email||null, nom:nom||null, demandeur_email:(me.email||null)}); if(error) throw error; },
+      list: async ()=>{ const {data,error} = await sb.from('demandes_reset').select('*').eq('statut','en_attente').order('cree_le'); if(error) throw error; return data||[]; },
+      done: async (id, ok)=>{ const {error} = await sb.from('demandes_reset').update({statut: ok?'validee':'refusee'}).eq('id', id); if(error) throw error; }
+    };
     window.pilotageSwitchProjet = id2=>{ try{ localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
   }
   async function ensure(){
