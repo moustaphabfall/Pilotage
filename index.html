@@ -15257,6 +15257,21 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
 (function(){
   const PG_TYPES={entreprise_generale:'Entreprise générale', nettoyage:'Nettoyage & services (logistique, gardiennage)'};
   window.pilotageType=function(){ const p=window.PILOTAGE_PROJET; return (p&&p.type) || (typeof state!=='undefined'&&state&&state.projet&&state.projet.type) || 'entreprise_generale'; };
+  window.pilotageModuleName=function(){ return pilotageType()==='nettoyage' ? 'Pilotage Nettoyage' : 'Pilotage Chantier'; };
+  /* message important (ton positif, pas d'alerte rouge) : renvoie une promesse true (continuer) / false (annuler) */
+  window.pilotageNotice=function(o){
+    return new Promise(res=>{
+      const old=document.getElementById('pgNotice'); if(old) old.remove();
+      const d=document.createElement('div'); d.id='pgNotice';
+      d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto';
+      d.innerHTML='<div style="background:#fff;color:#16232B;border-radius:14px;width:min(560px,100%);box-shadow:0 10px 40px rgba(0,0,0,.35);overflow:hidden;font:15px/1.5 system-ui,Arial,sans-serif">'
+        +'<div style="display:flex;gap:12px;align-items:center;background:#eaf2ff;border-bottom:3px solid #2563eb;padding:14px 16px"><span style="flex:none;width:34px;height:34px;border-radius:50%;background:#2563eb;color:#fff;font:700 22px/34px Arial,sans-serif;text-align:center">!</span><b style="font-size:17px">'+o.title+'</b></div>'
+        +'<div style="padding:14px 16px">'+o.html+'</div>'
+        +'<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:0 16px 16px"><button type="button" id="pgNoNo" style="padding:9px 14px;border:1px solid #cfd6da;border-radius:8px;background:#fff;cursor:pointer;font:inherit">Annuler</button><button type="button" id="pgNoOk" style="padding:9px 16px;border:0;border-radius:8px;background:#2563eb;color:#fff;font:inherit;font-weight:700;cursor:pointer">'+(o.ok||'J’ai compris, continuer')+'</button></div></div>';
+      document.body.appendChild(d);
+      d.querySelector('#pgNoOk').onclick=()=>{ d.remove(); res(true); }; d.querySelector('#pgNoNo').onclick=()=>{ d.remove(); res(false); };
+    });
+  };
   const typeOpts=sel=>Object.keys(PG_TYPES).map(k=>'<option value="'+k+'"'+(k===sel?' selected':'')+'>'+PG_TYPES[k]+'</option>').join('');
 const PG_FEATS=[
     {k:'dashboard',l:'📋 Tableau de bord',subs:[]},
@@ -15443,7 +15458,11 @@ const PG_FEATS=[
       const rm=tr.querySelector('[data-rm]'); if(rm) rm.onclick=()=>{ const m=cache.members.find(x=>x.user_id===id); if(confirm('Retirer l’accès de '+(m.nom||m.email)+' à ce projet ?')) run(async()=>{ await adm({action:'p_remove',user_id:id}); hostSync('remove',m.email); }); };
     });
     const hg=w.querySelector('#hGo'); if(hg) hg.onclick=async()=>{ const k=w.querySelector('#hP').value, hm=w.querySelector('#hMsg'), say=(t,e)=>{ hm.textContent=t; hm.style.color=e?'#B4432D':'#2a7a3b'; };
-      try{ let nh=null; if(k){ nh=await window.PILOTAGE_PROVIDERS[k].setup(PJ().nom); if(!nh){ say('Annulé'); return; } }
+      try{ let nh=null; if(k){
+          const mod=pilotageModuleName();
+          const okk=await pilotageNotice({title:'Important : vos données seront chez vous', html:'<p>Vous avez choisi d’héberger <b>vous-même</b> vos données. <b>Toutes les données du projet seront chez vous.</b></p><p>L’administrateur de « '+esc(mod)+' » n’a <b>aucune main</b> sur vos données : il ne les voit pas, ne les traite pas et n’y a pas accès.</p><p>Seuls vous et les personnes que vous invitez au projet y avez accès.</p>', ok:'J’ai compris, continuer'});
+          if(!okk){ say('Annulé'); return; }
+          nh=await window.PILOTAGE_PROVIDERS[k].setup(PJ().nom); if(!nh){ say('Annulé'); return; } }
         say('Copie des données…'); await window.PILOTAGE_SET_HOST(nh,(n,t)=>say('Copie des données : '+n+'/'+t));
         if(nh){ try{ const S=await window.PILOTAGE_PROVIDERS[nh.provider].open(nh); for(const m of cache.members){ if(m.moi||!m.email) continue; try{ await S.invite(m.email,m.role==='lecteur'?'lecteur':'editeur'); }catch(e){} } }catch(e){} }
         say('Hébergement enregistré. Rechargement…'); setTimeout(()=>location.reload(),900); }catch(e){ say(e.message,true); } };
