@@ -15754,7 +15754,7 @@ const PG_FEATS=[
   const STAT = [['recue','Reçue'],['traitement','En traitement'],['planifiee','Planifiée'],['encours','En cours'],['terminee','Terminée'],['annulee','Annulée']];
   const URG = ['Normale','Haute','Urgente'];
   const MODES = {chef:'Chef de chantier', resp:'Responsable opérationnel', confiance:'Personne de confiance'};
-  const PAGES = [['net-demandes','📥 Demandes'],['net-affect','👥 Affectations'],['net-pointage','⏱ Pointage'],['net-rapports','📊 Rapports']];
+  const PAGES = [['net-demandes','📥 Demandes'],['net-clients','🏢 Clients'],['net-affect','👥 Affectations'],['net-pointage','⏱ Pointage'],['net-rapports','📊 Rapports']];
   const HIDE = ['dashboard','interloc','travaux','planif','plans','refac','rex'];
   const esc = t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const uid = ()=>'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -15767,6 +15767,8 @@ const PG_FEATS=[
   const who = ()=>{ try{ const m = pilotageMe(); return m&&m.nom||''; }catch(e){ return ''; } };
   function net(){ const n = state.net = state.net || {}; ['clients','agents','demandes','affectations','pointages'].forEach(k=>{ if(!Array.isArray(n[k])) n[k]=[]; }); return n; }
   const by = (arr,id)=>arr.find(x=>x.id===id);
+  const projsOf = c=>(c&&Array.isArray(c.projets))?c.projets:(c?(c.projets=[]):[]);
+  const projLbl = p=>p?(p.nom+(p.adresse?' — '+p.adresse:'')):'';
   const stLbl = k=>(STAT.find(s=>s[0]===k)||[,k])[1];
   const save = ()=>{ try{ persist(); }catch(e){} };
   /* jours d'une affectation (du/au, lundi-vendredi ou 7j/7) */
@@ -15796,40 +15798,71 @@ const PG_FEATS=[
   function repWidget(o,rep,opt){ opt=opt||{}; const ctl={setSign(){},onChange:null};
     const host=o.querySelector('#dRep'); if(!host) return ctl;
     const S_=(typeof state!=='undefined'&&state)||{}, plans=S_.plans||[], zs=S_.zonesChantier||[], P=window.PILOTAGE_PROJET, cur=P&&P.id||'', list=(P&&P.projets&&P.projets.length)?P.projets:[{id:cur,nom:(P&&P.nom)||'Ce projet'}];
-    const sel=(typeof pilotageSelProjets==='function'?pilotageSelProjets():[cur]);
     host.innerHTML='<div class="nt-rep"><b>'+(opt.title||'📍 Répartition des effectifs sur plan')+'</b>'
       +'<div class="nt-rp">'+list.map(x=>{ const ok=x.id===cur||!cur; return '<label class="'+(ok?'':'off')+'"><input type="checkbox" disabled '+(ok?'checked':'')+'> '+esc(x.nom)+(ok?'':' <small>(plans non chargés — ouvrez ce projet)</small>')+'</label>'; }).join('')+'</div>'
       +(plans.length?'<div class="nt-r"><label>Niveau<select id="rpLv"></select></label><label>Plan<select id="rpPl"></select></label></div>'
-        +'<div class="nt-rh">Cliquez sur le plan pour poser une pastille (1 personne). Cliquez sur une pastille pour ajouter une personne. <button type="button" id="rpMode">Mode : ＋</button></div><div id="rpStage" class="nt-stage"></div>':'<p class="nt-s">Aucun plan dans ce projet : importez un plan dans l’onglet Études pour placer des effectifs.</p>')
+        +'<div class="nt-rh">'+(opt.long?'Touchez une pastille pour l’ajouter ; appui long pour la retirer. ':'Touchez le plan pour poser une pastille ou en ajouter une. ')+'Appui long puis glissement : déplacer le plan. Molette ou deux doigts : zoom.'+(opt.long?'':' <b>Ctrl</b> : retirer.')+'</div>'
+        +'<div class="nt-tb"><span id="rpMode" class="nt-sg"'+(opt.long?' hidden':'')+'><button type="button" class="nt-add on" id="rpAdd">＋ Ajouter une personne</button><button type="button" class="nt-rem" id="rpRem">－ Retirer une personne</button></span><span class="nt-zm"><button type="button" id="rpZo" title="Zoom arrière">－</button><button type="button" id="rpZf" title="Ajuster">Ajuster</button><button type="button" id="rpZi" title="Zoom avant">＋</button></span></div>'
+        +'<div id="rpStage" class="nt-stage add"></div>':'<p class="nt-s">Aucun plan dans ce projet : importez un plan dans l’onglet Études pour placer des effectifs.</p>')
       +'<div id="rpSum" class="nt-s"></div></div>';
     if(!plans.length) return ctl;
-    const lv=host.querySelector('#rpLv'), pl=host.querySelector('#rpPl'), st=host.querySelector('#rpStage'), sm=host.querySelector('#rpSum'), mb=host.querySelector('#rpMode');
-    const levels=[...new Set(plans.map(p=>p.niveau||'—'))]; let sign=1, curPlan=null;
+    const lv=host.querySelector('#rpLv'), pl=host.querySelector('#rpPl'), st=host.querySelector('#rpStage'), sm=host.querySelector('#rpSum'), bA=host.querySelector('#rpAdd'), bR=host.querySelector('#rpRem');
+    const levels=[...new Set(plans.map(p=>p.niveau||'—'))]; let sign=1, curPlan=null, ctrl=false; const tf={k:1,x:0,y:0};
     lv.innerHTML=levels.map(l=>'<option>'+esc(l)+'</option>').join('');
     const first=rep[0]&&plans.find(p=>p.id===rep[0].planId); if(first) lv.value=first.niveau||'—';
     const fillPl=()=>{ const L=plans.filter(p=>(p.niveau||'—')===lv.value); pl.innerHTML=L.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nom||p.id)+'</option>').join(''); if(first&&L.includes(first)) pl.value=first.id; };
     const total=()=>rep.reduce((a,r)=>a+r.n,0);
     const sumUp=()=>{ sm.innerHTML=rep.length?repText(rep):'Aucun effectif placé.'; const nb=o.querySelector('#dNb'); if(nb&&rep.length) nb.value=total(); if(ctl.onChange) ctl.onChange(); };
+    const TIC={'Nettoyage':'🧹','Homme trafic':'🛣️','Gardiennage':'🛡️','Logistique':'📦'};
+    const curType=()=>{ const e=o.querySelector('#dTy'); return (e&&e.value)||opt.type||'Autre'; };
+    const HEAD='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="8" r="4.4" fill="#fff"/><path d="M3.5 21c.6-4.6 4.2-7 8.5-7s7.9 2.4 8.5 7z" fill="#fff"/></svg>';
+    const dotH=r=>HEAD+'<em>'+(TIC[curType()]||'🛠️')+'</em>'+(r.n>1?'<b>'+r.n+'</b>':'');
+    const eff=()=>ctrl?-sign:sign;
+    const paintMode=()=>{ const e=eff(); st.classList.toggle('add',e>0); st.classList.toggle('rem',e<0); if(bA){ bA.classList.toggle('on',sign>0); bR.classList.toggle('on',sign<0); } };
+    const setSign=v=>{ sign=v; paintMode(); }; ctl.setSign=setSign;
+    const apply=()=>{ const inn=st.querySelector('.nt-pl'); if(inn){ inn.style.transform='translate('+tf.x+'px,'+tf.y+'px) scale('+tf.k+')'; inn.style.setProperty('--k',tf.k); } };
+    const fit=()=>{ const vp=st.querySelector('.nt-vp'), im=st.querySelector('img'); if(!vp||!im) return; const w=vp.clientWidth, h=im.naturalWidth?w*im.naturalHeight/im.naturalWidth:vp.clientHeight; tf.k=Math.min(1,vp.clientHeight/Math.max(h,1)); tf.x=(w-w*tf.k)/2; tf.y=0; apply(); };
+    const zoomAt=(f,cx,cy)=>{ const k2=Math.max(.4,Math.min(10,tf.k*f)), r=k2/tf.k; tf.x=cx-(cx-tf.x)*r; tf.y=cy-(cy-tf.y)*r; tf.k=k2; apply(); };
+    const bump=(i,dv)=>{ const r=rep[i]; if(!r) return; r.n+=dv; if(r.n<=0) rep.splice(i,1); draw(); sumUp(); };
     const draw=()=>{ curPlan=plans.find(p=>p.id===pl.value); if(!curPlan){ st.innerHTML=''; return; }
       const zz=zs.filter(z=>z.poly&&z.poly.planId===curPlan.id&&z.poly.pts&&z.poly.pts.length>2);
-      st.innerHTML='<div class="nt-pl"><img src="'+esc(planSrc(curPlan))+'" alt="plan" draggable="false"><svg viewBox="0 0 1 1" preserveAspectRatio="none">'+zz.map(z=>'<polygon points="'+z.poly.pts.map(q=>q[0]+','+q[1]).join(' ')+'"><title>'+esc(z.nom||'')+'</title></polygon>').join('')+'</svg>'
-        +rep.filter(r=>r.planId===curPlan.id).map(r=>'<span class="nt-dot" data-i="'+rep.indexOf(r)+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%" title="'+esc(r.zone||'')+'">'+r.n+'</span>').join('')+'</div>';
-      const box=st.firstChild;
-      box.onclick=e=>{ const dot=e.target.closest('.nt-dot'); if(dot){ if(opt.long) return; const r=rep[+dot.dataset.i]; r.n+=sign; if(r.n<=0) rep.splice(+dot.dataset.i,1); draw(); sumUp(); return; }
-        if(sign<0) return; const b=box.getBoundingClientRect(), x=+((e.clientX-b.left)/b.width).toFixed(4), y=+((e.clientY-b.top)/b.height).toFixed(4);
+      st.innerHTML='<div class="nt-vp"><div class="nt-pl"><img src="'+esc(planSrc(curPlan))+'" alt="plan" draggable="false"><svg viewBox="0 0 1 1" preserveAspectRatio="none">'+zz.map(z=>'<polygon points="'+z.poly.pts.map(q=>q[0]+','+q[1]).join(' ')+'"><title>'+esc(z.nom||'')+'</title></polygon>').join('')+'</svg>'
+        +rep.filter(r=>r.planId===curPlan.id).map(r=>'<span class="nt-dot" data-i="'+rep.indexOf(r)+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%" title="'+esc((r.zone||'')+(r.zone?' · ':'')+r.n+' personne(s)')+'">'+dotH(r)+'</span>').join('')+'</div></div>';
+      paintMode(); apply(); const im=st.querySelector('img'); if(!tf.init){ tf.init=1; if(im.complete) fit(); else im.onload=fit; }
+      const vp=st.querySelector('.nt-vp'), inn=st.querySelector('.nt-pl'), ptr=new Map(); let g=null, pinch=null;
+      const tap=(e)=>{ const dot=e.target.closest&&e.target.closest('.nt-dot'); if(dot){ if(opt.long) return; bump(+dot.dataset.i,eff()); return; }
+        if(eff()<0) return; const b=inn.getBoundingClientRect(), x=+((e.clientX-b.left)/b.width).toFixed(4), y=+((e.clientY-b.top)/b.height).toFixed(4); if(x<0||x>1||y<0||y>1) return;
         const z=zz.find(q=>inPoly(x,y,q.poly.pts)); rep.push({id:uid(),projetId:cur,planId:curPlan.id,niveau:curPlan.niveau||'—',zone:z?z.nom:'',x,y,n:1}); draw(); sumUp(); };
-      box.oncontextmenu=e=>{ const dot=e.target.closest('.nt-dot'); if(!dot) return; e.preventDefault(); const r=rep[+dot.dataset.i]; r.n--; if(r.n<=0) rep.splice(+dot.dataset.i,1); draw(); sumUp(); };
+      vp.addEventListener('pointerdown',e=>{ if(e.button>0) return; ctrl=e.ctrlKey||e.metaKey; paintMode(); const onDot=e.target.closest&&e.target.closest('.nt-dot'); if(onDot&&opt.long) return;
+        try{ vp.setPointerCapture(e.pointerId); }catch(_){} ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
+        if(ptr.size===2){ const a=[...ptr.values()]; pinch={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),k:tf.k}; if(g){ clearTimeout(g.tm); g=null; } return; }
+        g={x0:e.clientX,y0:e.clientY,lx:e.clientX,ly:e.clientY,moved:false,long:false,e}; g.tm=setTimeout(()=>{ if(!g) return; g.long=true; vp.classList.add('grab'); try{ if(navigator.vibrate) navigator.vibrate(15); }catch(_){} },380); });
+      vp.addEventListener('pointermove',e=>{ if(!ptr.has(e.pointerId)){ ctrl=e.ctrlKey||e.metaKey; paintMode(); return; } ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
+        if(pinch&&ptr.size>=2){ const a=[...ptr.values()], d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y), r=vp.getBoundingClientRect(); zoomAt(Math.max(.4,Math.min(10,pinch.k*d/pinch.d))/tf.k,(a[0].x+a[1].x)/2-r.left,(a[0].y+a[1].y)/2-r.top); return; }
+        if(!g) return; const dx=e.clientX-g.lx, dy=e.clientY-g.ly; if(!g.moved&&Math.hypot(e.clientX-g.x0,e.clientY-g.y0)>8){ g.moved=true; clearTimeout(g.tm); vp.classList.add('grab'); }
+        if(g.moved||g.long){ tf.x+=dx; tf.y+=dy; apply(); g.lx=e.clientX; g.ly=e.clientY; } });
+      const end=e=>{ const had=ptr.has(e.pointerId); ptr.delete(e.pointerId); if(ptr.size<2) pinch=null; if(!had||!g) { vp.classList.remove('grab'); return; } clearTimeout(g.tm); const tapOk=!g.moved&&!g.long&&e.type==='pointerup'; const gg=g; g=null; vp.classList.remove('grab'); if(tapOk) tap(e); };
+      vp.addEventListener('pointerup',end); vp.addEventListener('pointercancel',end);
+      vp.addEventListener('wheel',e=>{ e.preventDefault(); const r=vp.getBoundingClientRect(); zoomAt(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top); },{passive:false});
+      vp.addEventListener('contextmenu',e=>{ const dot=e.target.closest('.nt-dot'); e.preventDefault(); if(dot&&!opt.long) bump(+dot.dataset.i,-1); });
     };
-    lv.onchange=()=>{ fillPl(); draw(); }; pl.onchange=draw; mb.onclick=()=>{ sign=-sign; mb.textContent='Mode : '+(sign>0?'＋':'－'); mb.classList.toggle('neg',sign<0); };
-    ctl.setSign=v=>{ sign=v; mb.textContent='Mode : '+(sign>0?'＋':'－'); mb.classList.toggle('neg',sign<0); };
-    if(opt.long){ mb.style.display='none'; const bump=(t,dv)=>{ const r=rep[+t.dataset.i]; if(!r) return; r.n+=dv; if(r.n<=0) rep.splice(+t.dataset.i,1); draw(); sumUp(); }; pressable(st,'.nt-dot',t=>bump(t,sign>0?1:-1),t=>bump(t,-1)); }
+    const kd=e=>{ if(!document.body.contains(host)){ window.removeEventListener('keydown',kd); window.removeEventListener('keyup',ku); return; } const c=e.ctrlKey||e.metaKey; if(c!==ctrl){ ctrl=c; paintMode(); } }, ku=kd; window.addEventListener('keydown',kd); window.addEventListener('keyup',ku);
+    { const te=o.querySelector('#dTy'); if(te) te.addEventListener('change',()=>draw()); }
+    lv.onchange=()=>{ fillPl(); tf.init=0; draw(); }; pl.onchange=()=>{ tf.init=0; draw(); };
+    if(bA){ bA.onclick=()=>setSign(1); bR.onclick=()=>setSign(-1); }
+    const zr=()=>{ const r=st.querySelector('.nt-vp').getBoundingClientRect(); return [r.width/2,r.height/2]; };
+    host.querySelector('#rpZi').onclick=()=>{ const [a,b]=zr(); zoomAt(1.3,a,b); }; host.querySelector('#rpZo').onclick=()=>{ const [a,b]=zr(); zoomAt(1/1.3,a,b); }; host.querySelector('#rpZf').onclick=fit;
+    if(opt.long){ const bumpL=(t,dv)=>bump(+t.dataset.i,dv); pressable(st,'.nt-dot',t=>bumpL(t,sign>0?1:-1),t=>bumpL(t,-1)); }
     fillPl(); draw(); sumUp(); return ctl;
   }
   function demandeForm(d){
     const n = net(), nw = !d; d = d || {statut:'recue', type:'Nettoyage', urgence:'Normale', nb:1, debut:today(), fin:today(), hDebut:'08:00', hFin:'16:00'};
     modal('<h3>'+(nw?'➕ Nouvelle demande client':'✏️ Demande n° '+esc(d.num))+'</h3>'
       +'<label>Client<select id="dCl">'+opt(n.clients,d.clientId,c=>[c.id,c.nom])+'<option value="__new">➕ Nouveau client…</option></select></label>'
-      +'<label>Site / adresse d’intervention<input id="dSi" value="'+esc(d.site||'')+'" placeholder="ex. Entrepôt Nord, 12 rue des Lilas"></label>'
+      +'<div id="dClNew" class="nt-inl" hidden><label>Nom du client<input id="dClNm" placeholder="ex. Société Durand"></label><label>Contact (facultatif)<input id="dClCt" placeholder="nom, téléphone, e-mail"></label><button type="button" class="pri" id="dClOk">Créer le client</button></div>'
+      +'<label>Projet du client<select id="dPj"></select></label>'
+      +'<div id="dPjNew" class="nt-inl" hidden><label>Nom du projet<input id="dPjNm" placeholder="ex. Siège Lyon — lot nettoyage"></label><label>Adresse / site<input id="dPjAd" placeholder="ex. 12 rue des Lilas, 69003 Lyon"></label><button type="button" class="pri" id="dPjOk">Créer le projet</button></div>'
+      +'<div class="nt-adr" id="dAdr"></div><input id="dSi" type="hidden" value="'+esc(d.site||'')+'">'
       +'<div class="nt-r"><label>Prestation<select id="dTy">'+opt(TYPES,d.type,t=>[t,t])+'</select></label><label>Urgence<select id="dUr">'+opt(URG,d.urgence,t=>[t,t])+'</select></label><label>Agents demandés<input id="dNb" type="number" min="1" value="'+(d.nb||1)+'"></label></div>'
       +'<div class="nt-r"><label>Du<input id="dDe" type="date" value="'+esc(d.debut||'')+'"></label><label>Au<input id="dFi" type="date" value="'+esc(d.fin||'')+'"></label><label>De<input id="dHd" type="time" value="'+esc(d.hDebut||'')+'"></label><label>À<input id="dHf" type="time" value="'+esc(d.hFin||'')+'"></label></div>'
       +'<div id="dRep"></div>'
@@ -15837,10 +15870,21 @@ const PG_FEATS=[
       +'<div class="nt-b"><button data-x>Annuler</button><button class="pri" id="dOk">Enregistrer</button></div>',
     o=>{
       const repArr=(d.repart||[]).map(x=>Object.assign({},x)); repWidget(o,repArr);
-      o.querySelector('#dCl').onchange=e=>{ if(e.target.value!=='__new'){ return; } const nm=prompt('Nom du client :'); if(!nm||!nm.trim()){ e.target.selectedIndex=0; return; } const c={id:uid(),nom:nm.trim(),contact:'',tarifs:{}}; n.clients.push(c); save(); const op=document.createElement('option'); op.value=c.id; op.textContent=c.nom; e.target.insertBefore(op,e.target.lastElementChild); e.target.value=c.id; };
+      const sCl=o.querySelector('#dCl'), sPj=o.querySelector('#dPj'), adr=o.querySelector('#dAdr'), bxC=o.querySelector('#dClNew'), bxP=o.querySelector('#dPjNew');
+      const fillPj=(sel)=>{ const c=by(n.clients,sCl.value); const L=c?projsOf(c).filter(x=>x.statut!=='termine'):[]; sPj.disabled=!c;
+        sPj.innerHTML=(c?(L.length?'':'<option value="">— aucun projet en cours —</option>'):'<option value="">— choisissez d’abord un client —</option>')+L.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.nom)+'</option>').join('')+(c?'<option value="__new">➕ Nouveau projet…</option>':'');
+        if(sel&&L.some(x=>x.id===sel)) sPj.value=sel; else if(L.length) sPj.value=L[0].id; else sPj.value=c?'__new':''; showAdr(); };
+      const showAdr=()=>{ const c=by(n.clients,sCl.value), pj=c&&projsOf(c).find(x=>x.id===sPj.value); bxP.hidden=sPj.value!=='__new'; adr.textContent=pj?('📍 '+(pj.adresse||'adresse non renseignée')):((d.site&&!d.projetId&&sCl.value===d.clientId)?'📍 Site actuel : '+d.site:''); };
+      sCl.onchange=()=>{ bxC.hidden=sCl.value!=='__new'; if(sCl.value==='__new'){ sPj.disabled=true; sPj.innerHTML=''; adr.textContent=''; bxP.hidden=true; o.querySelector('#dClNm').focus(); } else fillPj(); };
+      sPj.onchange=showAdr;
+      o.querySelector('#dClOk').onclick=()=>{ const nm=val(o,'dClNm'); if(!nm){ alert('Indiquez le nom du client.'); return; } const c={id:uid(),nom:nm,contact:val(o,'dClCt'),tarifs:{},projets:[]}; n.clients.push(c); save(); const op=document.createElement('option'); op.value=c.id; op.textContent=c.nom; sCl.insertBefore(op,sCl.lastElementChild); sCl.value=c.id; bxC.hidden=true; fillPj(); };
+      o.querySelector('#dPjOk').onclick=()=>{ const c=by(n.clients,sCl.value); const nm=val(o,'dPjNm'); if(!c||!nm){ alert('Indiquez le nom du projet.'); return; } const pj={id:uid(),nom:nm,adresse:val(o,'dPjAd'),statut:'encours'}; projsOf(c).push(pj); save(); fillPj(pj.id); };
+      if(!n.clients.length||!d.clientId&&!n.clients.length){ sCl.value='__new'; bxC.hidden=false; sPj.disabled=true; } else { if(!d.clientId) sCl.selectedIndex=0; fillPj(d.projetId); }
       o.querySelector('#dOk').onclick=()=>{
         const cl=val(o,'dCl'); if(!cl||cl==='__new'){ alert('Choisissez ou créez un client.'); return; }
-        const r={clientId:cl, site:val(o,'dSi'), type:val(o,'dTy'), urgence:val(o,'dUr'), nb:Math.max(1,+val(o,'dNb')||1), debut:val(o,'dDe'), fin:val(o,'dFi')||val(o,'dDe'), hDebut:val(o,'dHd'), hFin:val(o,'dHf'), desc:val(o,'dDs'), repart:repArr};
+        const pjId=val(o,'dPj'), cObj=by(n.clients,cl), pjObj=cObj&&projsOf(cObj).find(x=>x.id===pjId);
+        if(!pjObj&&!(d.site&&!d.projetId&&cl===d.clientId)){ alert('Choisissez ou créez le projet du client.'); return; }
+        const r={clientId:cl, projetId:pjObj?pjObj.id:(d.projetId||''), site:pjObj?(pjObj.adresse||pjObj.nom):val(o,'dSi'), type:val(o,'dTy'), urgence:val(o,'dUr'), nb:Math.max(1,+val(o,'dNb')||1), debut:val(o,'dDe'), fin:val(o,'dFi')||val(o,'dDe'), hDebut:val(o,'dHd'), hFin:val(o,'dHf'), desc:val(o,'dDs'), repart:repArr};
         if(!r.debut){ alert('Indiquez la date de début.'); return; }
         if(nw){ const num='D'+String(n.demandes.length+1).padStart(4,'0'); n.demandes.push(Object.assign({id:uid(),num,statut:'recue',cree:today(),par:who(),histo:[{d:today(),s:'recue',p:who()}]},r)); }
         else Object.assign(d,r);
@@ -16085,7 +16129,7 @@ const PG_FEATS=[
       +'<div class="nt-av"><button type="button" class="on" id="avP">＋ Plus-value</button><button type="button" id="avM">− Moins-value</button></div><div id="dRep"></div><div id="avSum" class="nt-s"></div>'
       +'<div class="nt-b"><button data-x>Annuler</button><button class="pri" id="avOk">✔ Clôturer la modification</button></div>');
     o.firstChild.style.width='min(980px,100%)';
-    const ctl=repWidget(o,wk,{long:true,title:'📍 Effectifs de la demande'}); const P=o.querySelector('#avP'), M=o.querySelector('#avM');
+    const ctl=repWidget(o,wk,{long:true,type:d.type,title:'📍 Effectifs de la demande'}); const P=o.querySelector('#avP'), M=o.querySelector('#avM');
     const mode=s=>{ ctl.setSign(s); P.classList.toggle('on',s>0); M.classList.toggle('on',s<0); }; P.onclick=()=>mode(1); M.onclick=()=>mode(-1);
     const diff=()=>{ let plus=0,moins=0; const ids=new Set([...orig.map(r=>r.id),...wk.map(r=>r.id)]); ids.forEach(i=>{ const a=(orig.find(r=>r.id===i)||{n:0}).n, b=(wk.find(r=>r.id===i)||{n:0}).n; if(b>a) plus+=b-a; else moins+=a-b; }); return {plus,moins}; };
     const upd=()=>{ const x=diff(); o.querySelector('#avSum').innerHTML='Plus-value : <b>+'+x.plus+'</b> personne(s) · Moins-value : <b>−'+x.moins+'</b> personne(s)'; }; ctl.onChange=upd; upd();
@@ -16146,7 +16190,34 @@ const PG_FEATS=[
     w.querySelector('#xCl').onchange=e=>{ rxCl=e.target.value; render('net-rapports'); }; w.querySelector('#xPr').onclick=()=>window.print();
   }
 
-  const RENDER = {'net-demandes':pgDemandes,'net-affect':pgAffect,'net-pointage':pgPointage,'net-rapports':pgRapports};
+  /* ---------- Clients et leurs projets ---------- */
+  function clientForm(c){ const n=net(), nw=!c; c=c||{};
+    modal('<h3>'+(nw?'➕ Nouveau client':'✏️ '+esc(c.nom))+'</h3><label>Nom du client<input id="cNo" value="'+esc(c.nom||'')+'"></label><label>Contact<input id="cCt" value="'+esc(c.contact||'')+'" placeholder="nom, téléphone, e-mail"></label>'
+      +'<div class="nt-b">'+(nw?'':'<button class="del" id="cDel">Supprimer</button>')+'<button data-x>Annuler</button><button class="pri" id="cOk">Enregistrer</button></div>',
+    o=>{ o.querySelector('#cOk').onclick=()=>{ const nm=val(o,'cNo'); if(!nm){ alert('Le nom est requis.'); return; } if(nw) n.clients.push({id:uid(),nom:nm,contact:val(o,'cCt'),tarifs:{},projets:[]}); else { c.nom=nm; c.contact=val(o,'cCt'); } save(); o.remove(); render('net-clients'); };
+      const dl=o.querySelector('#cDel'); if(dl) dl.onclick=()=>{ if(n.demandes.some(d=>d.clientId===c.id)){ alert('Ce client a des demandes : supprimez-les d’abord.'); return; } if(!confirm('Supprimer ce client et ses projets ?')) return; n.clients=n.clients.filter(x=>x.id!==c.id); save(); o.remove(); render('net-clients'); }; });
+  }
+  function projetForm(c,pj){ const n=net(), nw=!pj; pj=pj||{statut:'encours'};
+    modal('<h3>'+(nw?'➕ Nouveau projet — ':'✏️ ')+esc(c.nom)+'</h3><label>Nom du projet<input id="pNo" value="'+esc(pj.nom||'')+'"></label><label>Adresse / site d’intervention<input id="pAd" value="'+esc(pj.adresse||'')+'" placeholder="ex. 12 rue des Lilas, 69003 Lyon"></label>'
+      +'<label>Statut<select id="pSt"><option value="encours"'+(pj.statut!=='termine'?' selected':'')+'>En cours</option><option value="termine"'+(pj.statut==='termine'?' selected':'')+'>Terminé</option></select></label>'
+      +'<div class="nt-b">'+(nw?'':'<button class="del" id="pDel">Supprimer</button>')+'<button data-x>Annuler</button><button class="pri" id="pOk">Enregistrer</button></div>',
+    o=>{ o.querySelector('#pOk').onclick=()=>{ const nm=val(o,'pNo'); if(!nm){ alert('Le nom du projet est requis.'); return; } const r={nom:nm,adresse:val(o,'pAd'),statut:val(o,'pSt')}; if(nw) projsOf(c).push(Object.assign({id:uid()},r)); else Object.assign(pj,r);
+        n.demandes.forEach(d=>{ if(d.projetId===pj.id) d.site=r.adresse||r.nom; }); save(); o.remove(); render('net-clients'); };
+      const dl=o.querySelector('#pDel'); if(dl) dl.onclick=()=>{ if(n.demandes.some(d=>d.projetId===pj.id)){ alert('Ce projet a des demandes : supprimez-les d’abord.'); return; } if(!confirm('Supprimer ce projet ?')) return; c.projets=projsOf(c).filter(x=>x.id!==pj.id); save(); o.remove(); render('net-clients'); }; });
+  }
+  function pgClients(w){
+    const n=net(), nbD=(cid,pid)=>n.demandes.filter(d=>d.clientId===cid&&(!pid||d.projetId===pid)).length;
+    w.innerHTML='<div class="nt"><div class="nt-h"><h2>🏢 Clients</h2><div class="nt-av"><button class="pri" id="clNew">➕ Nouveau client</button></div></div>'
+      +(n.clients.length?n.clients.map(c=>{ const L=projsOf(c);
+        return '<div class="nt-card" data-c="'+c.id+'"><div class="nt-h" style="margin:0 0 6px"><div><b style="font-size:16px">'+esc(c.nom)+'</b>'+(c.contact?'<br><small>'+esc(c.contact)+'</small>':'')+'<br><small>'+nbD(c.id)+' demande(s) · '+L.filter(x=>x.statut!=='termine').length+' projet(s) en cours</small></div><div class="nt-av"><button data-ce="'+c.id+'">✏ Client</button><button class="pri" data-cp="'+c.id+'">➕ Projet</button></div></div>'
+          +(L.length?'<div class="nt-tw"><table class="nt-t"><thead><tr><th>Projet</th><th>Adresse / site</th><th>Statut</th><th>Demandes</th><th></th></tr></thead><tbody>'+L.map(x=>'<tr><td><b>'+esc(x.nom)+'</b></td><td>'+esc(x.adresse||'—')+'</td><td><span class="nt-st '+(x.statut==='termine'?'s-terminee':'s-encours')+'">'+(x.statut==='termine'?'Terminé':'En cours')+'</span></td><td>'+nbD(c.id,x.id)+'</td><td class="nt-act"><button data-pe="'+c.id+'|'+x.id+'">✏</button></td></tr>').join('')+'</tbody></table></div>':'<p class="nt-s" style="margin:0">Aucun projet : ajoutez le premier projet de ce client.</p>')+'</div>'; }).join('')
+        :'<p class="nt-e">Aucun client pour l’instant. Cliquez sur « Nouveau client ».</p>')+'</div>';
+    w.querySelector('#clNew').onclick=()=>clientForm();
+    w.querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>clientForm(by(n.clients,b.dataset.ce)));
+    w.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>projetForm(by(n.clients,b.dataset.cp)));
+    w.querySelectorAll('[data-pe]').forEach(b=>{ const [cid,pid]=b.dataset.pe.split('|'), c=by(n.clients,cid); b.onclick=()=>projetForm(c,projsOf(c).find(x=>x.id===pid)); });
+  }
+  const RENDER = {'net-clients':pgClients,'net-demandes':pgDemandes,'net-affect':pgAffect,'net-pointage':pgPointage,'net-rapports':pgRapports};
   const later=p=>setTimeout(()=>render(p),0);
   function render(p){ const w=document.getElementById('netWrap-'+p); if(w&&RENDER[p]) RENDER[p](w); }
   window.netRender = render;
@@ -16186,6 +16257,17 @@ const PG_FEATS=[
     .nt-ag{display:flex;flex-direction:column;gap:6px;max-height:48vh;overflow:auto} .nt-ac{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #d8d3c8;border-radius:10px;padding:8px 10px;background:#fff} .nt-ac.ko{background:#eee;color:#8a8f93;filter:grayscale(1)} .nt-ac.part{background:#fff8e6;border-color:#F2A900} .nt-ac.ok{border-color:#3c9d5d} .nt-g{color:#2f8a4f;font-weight:600} .nt-o{color:#b36b00;font-weight:600} .nt-r2{color:#b03a2e}
     .nt-box .nt-tdot{background:#16232B !important;color:#fff !important;border:2px solid #F2A900 !important} .nt-box .nt-tdot.full{background:#2f8a4f !important} .nt-box .nt-tdot.part{background:#b36b00 !important}
     #netDevis{position:fixed;inset:0;z-index:2500;background:#e9e6df;overflow:auto} .nt-dvbar{position:sticky;top:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:#16232B;color:#fff;z-index:2} .nt-dvbar input{padding:4px 8px;border-radius:6px;border:0} .nt-dvbar button{padding:6px 12px;border-radius:8px;border:0;cursor:pointer}
+    .nt-vp{position:relative;height:min(62vh,560px);overflow:hidden;background:#fff;border:1px solid #d8d3c8;border-radius:8px;touch-action:none;user-select:none;-webkit-user-select:none}
+    .nt-vp .nt-pl{position:absolute;left:0;top:0;width:100%;transform-origin:0 0;border:0;border-radius:0;overflow:visible;cursor:inherit;touch-action:none}
+    .nt-vp .nt-dot{transform:translate(-50%,-50%) scale(calc(1 / var(--k,1)));cursor:inherit}
+    .nt-stage.add .nt-vp{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34'><g stroke='%232e9e4f' stroke-width='2'><line x1='15' y1='1' x2='15' y2='29'/><line x1='1' y1='15' x2='29' y2='15'/></g><circle cx='26' cy='26' r='7' fill='%232e9e4f'/><path d='M26 22v8M22 26h8' stroke='white' stroke-width='2.4'/></svg>") 15 15,crosshair}
+    .nt-stage.rem .nt-vp{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34'><g stroke='%23d03030' stroke-width='2'><line x1='15' y1='1' x2='15' y2='29'/><line x1='1' y1='15' x2='29' y2='15'/></g><circle cx='26' cy='26' r='7' fill='%23d03030'/><path d='M22 26h8' stroke='white' stroke-width='2.4'/></svg>") 15 15,crosshair}
+    .nt-stage .nt-vp.grab{cursor:grabbing !important}
+    .nt-tb{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin:8px 0} .nt-sg,.nt-zm{display:inline-flex;gap:6px;flex-wrap:wrap}
+    #netModal .nt-add,#netModal .nt-rem{font-weight:700;background:#fff} #netModal .nt-add{border:2px solid #2e9e4f;color:#1f7a3a} #netModal .nt-add.on{background:#2e9e4f;color:#fff} #netModal .nt-rem{border:2px solid #d03030;color:#b02020} #netModal .nt-rem.on{background:#d03030;color:#fff}
+    .nt-inl{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;padding:8px;border:1px dashed #d8d3c8;border-radius:8px;background:#faf8f3;margin-top:6px} .nt-inl label{flex:1 1 160px}
+    .nt-adr{font-size:13px;color:#5b6a72;margin:2px 0 0}
+    .nt-vp .nt-dot{display:inline-flex;align-items:center;gap:3px;height:30px;min-width:0;padding:0 8px 0 6px;border-radius:16px;line-height:1;font-size:15px} .nt-vp .nt-dot em{font-style:normal;font-size:15px} .nt-vp .nt-dot b{font:700 12px/1 'Space Grotesk',system-ui,sans-serif;background:#F2A900;color:#16232B;border-radius:9px;padding:2px 6px}
     @media print{ body>*:not(#netDevis){display:none !important} #netDevis{position:static !important;background:#fff} .nt-dvbar{display:none !important} }
     #netModal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 10px;overflow:auto} .nt-box{background:#fff;color:#16232B;border-radius:12px;padding:16px;width:min(620px,100%);display:flex;flex-direction:column;gap:10px} .nt-box h3{margin:0} .nt-box label{display:flex;flex-direction:column;gap:3px;font-size:13px;font-weight:600;flex:1;min-width:120px} .nt-box textarea{width:100%;box-sizing:border-box} .nt-r{display:flex;gap:8px;flex-wrap:wrap} .nt-b{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
     @media print{ body.net-mode .cartouche,body.net-mode .tab-menu,.nt-noprint,#userChip,#pgWho{display:none !important} }`;
