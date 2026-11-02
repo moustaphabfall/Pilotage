@@ -15262,6 +15262,12 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   const PG_LEG={gros_oeuvre:'ces', second_oeuvre:'ces'};   /* anciens noms */
   window.PG_ACR=PG_ACR; window.pgTypeKey=k=>PG_LEG[k]||(PG_TYPES[k]?k:'entreprise_generale');
   window.PG_TYPES=PG_TYPES;
+  const PG_FONCTIONS={
+    nettoyage:['Chef d’équipe','Responsable opérationnel','Compagnon'],
+    entreprise_generale:['Directeur','Responsable travaux principal','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon'],
+    ces:['Directeur','Chargé d’affaires','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon']
+  };
+  window.PG_FONCTIONS=PG_FONCTIONS;
   window.pilotageType=function(){ const p=window.PILOTAGE_PROJET; return pgTypeKey((p&&p.type) || (typeof state!=='undefined'&&state&&state.projet&&state.projet.type) || 'entreprise_generale'); };
   window.pilotageModuleName=function(){ return pilotageType()==='nettoyage' ? 'Pilotage Nettoyage' : 'Pilotage Chantier'; };
   /* message important (ton positif, pas d'alerte rouge) : renvoie une promesse true (continuer) / false (annuler) */
@@ -15315,6 +15321,7 @@ const PG_FEATS=[
   #pgProjSel .ps-l{display:flex;flex-wrap:wrap;gap:6px 14px} #pgProjSel .ps-i{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer} #pgProjSel small{color:#777} #pgProjSel .ps-h{display:block;margin-top:6px}
   #sbProj{display:none !important}
   th.mth{cursor:pointer;user-select:none;white-space:nowrap} th.mth i{font-style:normal;opacity:.6;font-size:11px} th.mth.on{color:#F2A900} th.mth.on i{opacity:1}
+  .fn-sel{max-width:170px;padding:5px 6px !important;border-radius:8px !important}
   .ty-btn{padding:5px 10px !important;border:1px solid #d6d6d6 !important;border-radius:8px !important;background:#fff !important;font-weight:600;white-space:nowrap}
   .pgs-f2{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px} .pgs-f2 input,.pgs-f2 select{width:auto !important;flex:0 1 210px;padding:7px 10px;border:1px solid #d6d6d6;border-radius:8px;background:#fff;font-size:13px}
   .pj-tag{display:inline-block;padding:2px 10px;border-radius:999px;background:#f1f1ee;border:1px solid #e0ded8;font-weight:700;font-size:12.5px;white-space:nowrap}
@@ -15409,9 +15416,9 @@ const PG_FEATS=[
   }
   function readMatrix(root){ const o={}; root.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) o[i.dataset.f]=false; }); return o; }
   const wrap=()=>document.getElementById('pgWrap');
-  let FL={pj:new Set(),u:'',role:new Set(),val:new Set(),act:new Set(),ty:new Set()}, memTypes={}, colOpen=null; let pgMode='settings'; const actIds=()=>{ const p=PJ(); return pgMode==='members'?((p.projets||[]).map(x=>x.id).concat(p.projets&&p.projets.length?[]:[p.id])):selProjets(); };
+  let FL={pj:new Set(),u:'',fn:new Set(),role:new Set(),val:new Set(),act:new Set(),ty:new Set()}, memTypes={}, memFn={}, colOpen=null; let pgMode='settings'; const actIds=()=>{ const p=PJ(); return pgMode==='members'?((p.projets||[]).map(x=>x.id).concat(p.projets&&p.projets.length?[]:[p.id])):selProjets(); };
   let cache=null, caches={}, mF='', openF=null, cred='', headHtml='', rtok=0, rtry=0;
-  async function loadAll(){ const p=PJ(), ids=actIds(), res={}; for(const id of ids){ try{ res[id]=await adm({action:'p_members',projet:id}); }catch(e){ if(id===p.id) throw e; res[id]=null; } } caches=res; cache=res[p.id]||cache; memTypes={}; if(pgMode==='members'&&window.PILOTAGE_MEMBER_TYPES){ for(const id of ids){ try{ memTypes[id]=await window.PILOTAGE_MEMBER_TYPES.get(id); }catch(e){ memTypes[id]={}; } } } }
+  async function loadAll(){ const p=PJ(), ids=actIds(), res={}; for(const id of ids){ try{ res[id]=await adm({action:'p_members',projet:id}); }catch(e){ if(id===p.id) throw e; res[id]=null; } } caches=res; cache=res[p.id]||cache; memTypes={}; memFn={}; if(pgMode==='members'&&window.PILOTAGE_MEMBER_FN){ for(const id of ids){ try{ memFn[id]=await window.PILOTAGE_MEMBER_FN.get(id); }catch(e){ memFn[id]={}; } } } if(pgMode==='members'&&window.PILOTAGE_MEMBER_TYPES){ for(const id of ids){ try{ memTypes[id]=await window.PILOTAGE_MEMBER_TYPES.get(id); }catch(e){ memTypes[id]={}; } } } }
 
   async function render(){
     const w=wrap(); if(!w) return; const p=PJ();
@@ -15480,21 +15487,22 @@ const PG_FEATS=[
       const vk=m=>{ if(!m.valide_jusqu) return 'sans'; if(m.valide_jusqu<td) return 'expire'; const d=Math.round((new Date(m.valide_jusqu)-new Date(td))/864e5); return d<=5?'bientot':'ok'; };
       const ALLT=Object.keys(PG_TYPES), VL={ok:'Valide',bientot:'Expire bientôt (≤ 5 j)',expire:'Expirée',sans:'Sans échéance'}, RLb={admin:'Administrateur du projet',editeur:'Éditeur',lecteur:'Lecteur'};
       const tOf=(pid,uid)=>{ const a=(memTypes[pid]||{})[uid]; return (a&&a.length)?a:ALLT; };
-      const okRow=(m,pid)=>{ const q=FL.u.trim().toLowerCase(); if(q&&!((m.nom||'')+' '+(m.email||'')).toLowerCase().includes(q)) return false; if(FL.pj.size&&!FL.pj.has(pid)) return false; if(FL.role.size&&!FL.role.has(m.role)) return false; if(FL.val.size&&!FL.val.has(vk(m))) return false; if(FL.act.size&&!FL.act.has(m.actif?'1':'0')) return false; if(FL.ty.size){ const t=tOf(pid,m.user_id); if(![...FL.ty].some(x=>t.includes(x))) return false; } return true; };
-      window.__mfOpts={pj:sels.map(x=>[x.id,x.nom]),role:Object.entries(RLb),val:Object.entries(VL),act:[['1','Actif'],['0','Inactif']],ty:ALLT.map(k=>[k,PG_ACR[k]+' — '+PG_TYPES[k]])};
+      const okRow=(m,pid)=>{ const q=FL.u.trim().toLowerCase(); if(q&&!((m.nom||'')+' '+(m.email||'')).toLowerCase().includes(q)) return false; if(FL.pj.size&&!FL.pj.has(pid)) return false; if(FL.role.size&&!FL.role.has(m.role)) return false; if(FL.fn.size&&!FL.fn.has((memFn[pid]||{})[m.user_id]||'')) return false; if(FL.val.size&&!FL.val.has(vk(m))) return false; if(FL.act.size&&!FL.act.has(m.actif?'1':'0')) return false; if(FL.ty.size){ const t=tOf(pid,m.user_id); if(![...FL.ty].some(x=>t.includes(x))) return false; } return true; };
+      window.__mfOpts={fn:[['','(non définie)']].concat([...new Set(Object.values(PG_FONCTIONS).flat())].map(f=>[f,f])),pj:sels.map(x=>[x.id,x.nom]),role:Object.entries(RLb),val:Object.entries(VL),act:[['1','Actif'],['0','Inactif']],ty:ALLT.map(k=>[k,PG_ACR[k]+' — '+PG_TYPES[k]])};
       const th=(k,l)=>'<th class="mth'+((k==='u'?FL.u:FL[k].size)?' on':'')+'" data-col="'+k+'" tabindex="0">'+l+' <i>▾</i></th>';
       const vis=sels;
       body.push(vis.map(pj=>{ const c=caches[pj.id]; if(!c||!c.notifs||!c.notifs.length) return ''; return '<div class="pgs" data-pj="'+esc(pj.id)+'"><div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div>'+c.notifs.map(n=>'<div class="nt" data-nu="'+n.user_id+'"><b>'+esc(n.nom||n.email)+'</b> — '+(n.type==='expire'?'accès <span class="ko">expiré</span> depuis le ':'accès qui expire le ')+fmt(n.echeance)+'.<br>Prolonger d’un mois ?<div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+n.user_id+'" disabled>Prolonger 1 mois</button><button data-lapse="'+n.user_id+'">Laisser expirer</button></div></div>').join('')+'</div>'; }).join(''));
-      const bodies=vis.map(pj=>{ const c=caches[pj.id]; if(!c) return '<tbody class="pgs" data-pj="'+esc(pj.id)+'"><tr><td colspan="7"><b>'+esc(pj.nom)+'</b> : données indisponibles (droits insuffisants ?)</td></tr></tbody>'; const M=c.members.filter(m=>okRow(m,pj.id)), today2=c.today;
+      const bodies=vis.map(pj=>{ const c=caches[pj.id]; if(!c) return '<tbody class="pgs" data-pj="'+esc(pj.id)+'"><tr><td colspan="8"><b>'+esc(pj.nom)+'</b> : données indisponibles (droits insuffisants ?)</td></tr></tbody>'; const M=c.members.filter(m=>okRow(m,pj.id)), today2=c.today;
         return '<tbody class="pgs" data-pj="'+esc(pj.id)+'">'+M.map(m=>'<tr data-u="'+m.user_id+'"><td><span class="pj-tag">'+esc(pj.nom)+'</span></td><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+(m.moi?' (vous)':'')+'</small></td>'
+          +'<td>'+(()=>{ const lst=PG_FONCTIONS[pgTypeKey(pj.type)]||[], cur=(memFn[pj.id]||{})[m.user_id]||''; if(!lst.length) return '<span class="pj-tag">—</span>'; return window.PILOTAGE_MEMBER_FN?'<select class="fn-sel" data-fn2="'+esc(pj.id)+'|'+m.user_id+'"><option value="">— à définir —</option>'+lst.map(f=>'<option'+(f===cur?' selected':'')+'>'+esc(f)+'</option>').join('')+'</select>':esc(cur||'—'); })()+'</td>'
           +'<td>'+(()=>{ const a=(memTypes[pj.id]||{})[m.user_id]; const t=(a&&a.length)?a:null; const lab=t?t.map(k=>PG_ACR[k]).join(' · '):'Tous'; return PJ().global&&window.PILOTAGE_MEMBER_TYPES?'<button type="button" class="ty-btn" data-ty="'+esc(pj.id)+'|'+m.user_id+'">'+esc(lab)+' <i>▾</i></button>':'<span class="pj-tag">'+esc(lab)+'</span>'; })()+'</td>'
           +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
           +'<td>'+statut(m,today2)+(m.confirme===false?'<br><span class="warn">⏳ invitation envoyée, pas encore activée</span>':'')+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
           +'<td><label class="sw"><input type="checkbox" data-act '+(m.actif?'checked':'')+' '+(m.moi?'disabled':'')+'><i></i></label></td>'
           +'<td>'+(m.role==='admin'?'':'<button data-fn>Fonctionnalités</button> ')+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">'+(PJ().global?'Réinitialiser le compte':'Demander la réinitialisation')+'</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
-          +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="7">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
-          +'<tr data-pp="'+m.user_id+'" hidden><td colspan="7"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')+'</tbody>'; }).join('');
-      body.push('<div class="card" style="overflow:auto"><table class="mtab"><thead><tr>'+th('pj','Projet')+th('u','Utilisateur')+'<th>Types d’espace autorisés</th>'+th('role','Rôle')+th('val','Validité')+th('act','Actif')+'<th>Actions</th></tr></thead>'+bodies+'</table></div>'); }
+          +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="8">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
+          +'<tr data-pp="'+m.user_id+'" hidden><td colspan="8"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')+'</tbody>'; }).join('');
+      body.push('<div class="card" style="overflow:auto"><table class="mtab"><thead><tr>'+th('pj','Projet')+th('u','Utilisateur')+th('fn','Fonction')+'<th>Types d’espace autorisés</th>'+th('role','Rôle')+th('val','Validité')+th('act','Actif')+'<th>Actions</th></tr></thead>'+bodies+'</table></div>'); }
     if(pgMode==='settings') body.push(window.pgNivHtml?pgNivHtml():'');
     if(pgMode==='host'){ const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
       body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
@@ -15532,6 +15540,7 @@ const PG_FEATS=[
     w.querySelectorAll('[data-mf]').forEach(b=>b.onclick=()=>{ mF=b.dataset.mf; draw(); });
     w.querySelectorAll('th.mth').forEach(h=>h.onclick=e=>{ e.stopPropagation(); mfPop(h); });
     w.querySelectorAll('.ty-btn').forEach(b=>b.onclick=e=>{ e.stopPropagation(); tyPop(b); });
+    w.querySelectorAll('.fn-sel').forEach(se=>se.onchange=async()=>{ const [pid,uid]=se.dataset.fn2.split('|'); try{ await window.PILOTAGE_MEMBER_FN.set(pid,uid,se.value); (memFn[pid]=memFn[pid]||{})[uid]=se.value; if(uid&&PJ()&&pid===PJ().id&&cache&&cache.members){ const me=cache.members.find(x=>x.user_id===uid); if(me&&me.moi){ PJ().fonction=se.value||null; try{ buildSidebar(); }catch(_){} } } }catch(e){ alert(e.message); } });
     const hg=w.querySelector('#hGo'); if(hg) hg.onclick=async()=>{ const k=w.querySelector('#hP').value, hm=w.querySelector('#hMsg'), say=(t,e)=>{ hm.textContent=t; hm.style.color=e?'#B4432D':'#2a7a3b'; };
       try{ let nh=null; if(k){
           const mod=pilotageModuleName();
@@ -15635,14 +15644,14 @@ const PG_FEATS=[
     const L=(p&&p.projets&&p.projets.length)?p.projets:[{id:(p&&p.id)||'SM',nom:nom,type:pilotageType()}], sel=p?selProjets():[L[0].id];
     /* pied de barre : un seul bouton rond (initiale) + nom de l'espace + tag du type ; un clic remplace le menu par le profil */
     const ft=document.createElement('div'); ft.id='sbFoot';
-    ft.innerHTML='<button type="button" class="sb-ini" id="sbIni" title="Mon profil" aria-expanded="false">'+esc(ini)+'</button><span class="sb-wt"><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small></span>';
+    ft.innerHTML='<button type="button" class="sb-ini" id="sbIni" title="Mon profil" aria-expanded="false">'+esc(ini)+'</button><span class="sb-wt"><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc((p&&p.fonction)||w.role||ty)+'</small></span>';
     nav.appendChild(ft);
     const col=RC[w.key]||RC.lecteur, hst=window.PILOTAGE_HOST_CFG||(p&&p.hebergement)||null, PR=window.PILOTAGE_PROVIDERS||{};
     const sync=document.getElementById('syncStatus');
     const pv=document.createElement('div'); pv.id='sbProfView'; pv.hidden=true;
     const sum=sel.length===1?'1 projet coché':sel.length+' projets cochés';
     pv.innerHTML='<button type="button" class="pv-back" id="pvBack">‹ Retour au menu</button>'
-      +'<div class="pv-head"><span class="sb-ini big">'+esc(ini)+'</span><div class="pv-n"><b>'+esc(w.nm||(w.email||'Utilisateur').split('@')[0])+'</b>'+(w.email?'<small>'+esc(w.email)+'</small>':'')+(w.role?'<span class="pv-role" id="pvRole" style="background:'+col[0]+';color:'+col[1]+'">'+esc(w.role)+'</span>':'')+'</div></div>'
+      +'<div class="pv-head"><span class="sb-ini big">'+esc(ini)+'</span><div class="pv-n"><b>'+esc(w.nm||(w.email||'Utilisateur').split('@')[0])+'</b>'+(w.email?'<small>'+esc(w.email)+'</small>':'')+(p&&p.fonction?'<span class="pv-role" style="background:#fff3d0;color:#7a4a00">'+esc(p.fonction)+'</span>':'')+(w.role?'<span class="pv-role" id="pvRole" style="background:'+col[0]+';color:'+col[1]+'">'+esc(w.role)+'</span>':'')+'</div></div>'
       +'<button type="button" class="pv-row" id="pvData"><span class="sb-ic">🗂</span><span>Données</span><em>›</em></button>'
       +(p?'<div class="pv-sec pv-proj"><div class="pv-l">Projet</div>'
         +(L.length>1?'<select id="pvPj" class="pv-sel" aria-label="Projet affiché">'+L.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'<b>'+esc(nom)+'</b>')
@@ -15753,7 +15762,7 @@ const PG_FEATS=[
   const TYPES = ['Nettoyage','Logistique','Gardiennage','Homme trafic','Autre'];
   const STAT = [['recue','Reçue'],['traitement','En traitement'],['planifiee','Planifiée'],['encours','En cours'],['terminee','Terminée'],['annulee','Annulée']];
   const URG = ['Normale','Haute','Urgente'];
-  const MODES = {chef:'Chef de chantier', resp:'Responsable opérationnel', confiance:'Personne de confiance'};
+  const MODES = {chef:'Chef d’équipe', resp:'Responsable opérationnel', confiance:'Compagnon'};
   const PAGES = [['net-demandes','📥 Demandes'],['net-clients','🏢 Clients'],['net-affect','👥 Affectations'],['net-pointage','⏱ Pointage'],['net-rapports','📊 Rapports']];
   const HIDE = ['dashboard','interloc','travaux','planif','plans','refac','rex'];
   const esc = t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
