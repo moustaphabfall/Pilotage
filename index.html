@@ -15680,6 +15680,7 @@ const PG_FEATS=[
     pv.innerHTML='<button type="button" class="pv-back" id="pvBack">‹ Retour au menu</button>'
       +'<div class="pv-head"><span class="sb-ini big">'+esc(ini)+'</span><div class="pv-n"><b>'+esc(w.nm||(w.email||'Utilisateur').split('@')[0])+'</b>'+(w.email?'<small>'+esc(w.email)+'</small>':'')+(p&&p.fonction?'<span class="pv-role" style="background:#fff3d0;color:#7a4a00" title="Rôle dans le projet">Rôle : '+esc(p.fonction)+'</span>':'')+(w.role?'<span class="pv-role" id="pvRole" title="Droit d’accès" style="background:'+col[0]+';color:'+col[1]+'">Droit d’accès : '+esc(w.role)+'</span>':'')+'</div></div>'
       +'<button type="button" class="pv-row" id="pvData"><span class="sb-ic">🗂</span><span>Données</span><em>›</em></button>'
+      +'<button type="button" class="pv-row" id="pvVox"><span class="sb-ic">🎙</span><span>Voix off</span><em>›</em></button>'
       +(p?'<div class="pv-sec pv-proj"><div class="pv-l">Projet</div>'
         +(L.length>1?'<select id="pvPj" class="pv-sel" aria-label="Projet affiché">'+L.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'<b>'+esc(nom)+'</b>')
         +'<div class="pv-l" style="margin-top:8px">Type d’espace de travail</div>'
@@ -15707,6 +15708,7 @@ const PG_FEATS=[
       const to=pv.querySelector('#pvTyOk'); if(to) to.onclick=e=>{ e.stopPropagation(); pgTypeWin(); }; }
     pv.querySelector('#pvBack').onclick=()=>setView(false); { const bk=pv.querySelector('#pvBack'); bk.textContent='✕ Fermer'; }
     pv.querySelector('#pvData').onclick=e=>{ e.stopPropagation(); openDataWin(); };
+    pv.querySelector('#pvVox').onclick=e=>{ e.stopPropagation(); setView(false); if(window.PILOTAGE_VOIX) PILOTAGE_VOIX.win(); };
     pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); pgOpen(b.dataset.m); });
     const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ pgOpen('settings'); try{ closeTabMenu(); }catch(_){} };
     { const hb=pv.querySelector('#pvHost'); if(hb&&adm){ hb.onclick=()=>{ setView(false); pgOpen('host'); }; } else if(hb){ hb.style.cursor='default'; } }
@@ -15930,6 +15932,58 @@ const PG_FEATS=[
     if(opt.long){ const bumpL=(t,dv)=>bump(+t.dataset.i,dv); pressable(st,'.nt-dot',t=>bumpL(t,sign>0?1:-1),t=>bumpL(t,-1)); }
     fillPl(); draw(); sumUp(); return ctl;
   }
+  /* ---------- Voix off : voix clonée (ElevenLabs) pour lire les titres ---------- */
+  const VX=(()=>{
+    const K='pilotage_voix', ld=()=>{ try{ return JSON.parse(localStorage.getItem(K)||'{}'); }catch(e){ return {}; } }, sv=o=>{ try{ localStorage.setItem(K,JSON.stringify(o)); }catch(e){} };
+    const cache=new Map(); let cur=null, token=0;
+    async function speak(text){
+      const c=ld(); if(!text) return; const my=++token; if(cur){ cur.pause(); cur=null; if(window.speechSynthesis) speechSynthesis.cancel(); }
+      if(c.key&&c.voice){
+        try{ let u=cache.get(text+'|'+c.voice);
+          if(!u){ const r=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(c.voice)+'?output_format=mp3_44100_128',{method:'POST',headers:{'xi-api-key':c.key,'Content-Type':'application/json'},body:JSON.stringify({text,model_id:'eleven_multilingual_v2'})});
+            if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error((j.detail&&(j.detail.message||j.detail))||('Erreur '+r.status)); }
+            u=URL.createObjectURL(await r.blob()); cache.set(text+'|'+c.voice,u); }
+          if(my!==token) return; cur=new Audio(u); await cur.play(); return; }
+        catch(e){ console.warn('Voix off :',e.message); if(c.dbg) alert('Voix off : '+e.message); }
+      }
+      if(window.speechSynthesis&&my===token){ const s=new SpeechSynthesisUtterance(text); s.lang='fr-FR'; speechSynthesis.speak(s); }
+    }
+    function win(){
+      const old=document.getElementById('vxWin'); if(old) old.remove(); const c=ld();
+      const o=document.createElement('div'); o.id='vxWin'; o.style.cssText='position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(10,14,18,.45)';
+      o.innerHTML='<div style="width:min(520px,100%);max-height:90vh;overflow:auto;background:#fff;color:#16232B;border-radius:16px;padding:18px;font:14px/1.45 system-ui,sans-serif"><h3 style="margin:0 0 6px">🎙 Voix off</h3>'
+        +'<p style="margin:0 0 10px;color:#5b6770">Lecture des titres avec votre propre voix (clonée sur ElevenLabs). Sans clé, la voix du navigateur est utilisée.</p>'
+        +'<label style="display:block;margin:8px 0">Clé API ElevenLabs<input id="vxK" type="password" autocomplete="off" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px" value="'+esc(c.key||'')+'" placeholder="sk_…"></label>'
+        +'<div style="border:1px solid #e3e6ea;border-radius:10px;padding:10px;margin:10px 0"><b>1) Enregistrer ma voix</b><div style="color:#5b6770;font-size:13px;margin:4px 0">Lisez un texte à voix haute pendant 1 à 2 minutes, au calme. Texte libre, ce que vous voulez dire en voix off.</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button id="vxRec" style="padding:8px 12px;border-radius:8px;border:0;background:#c0392b;color:#fff;font-weight:700">● Enregistrer</button><span id="vxT" style="font-variant-numeric:tabular-nums">0:00</span><audio id="vxAu" controls hidden style="max-width:100%"></audio></div>'
+        +'<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="vxN" placeholder="Nom de la voix" value="'+esc(c.nom||'Ma voix')+'" style="flex:1;padding:8px;border:1px solid #ccd;border-radius:8px"><button id="vxCl" disabled style="padding:8px 12px;border-radius:8px;border:0;background:#16232B;color:#fff;font-weight:700">Cloner</button></div></div>'
+        +'<label style="display:block;margin:8px 0">2) Identifiant de la voix (rempli après le clonage, ou collez celui d’une voix existante)<input id="vxV" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px" value="'+esc(c.voice||'')+'"></label>'
+        +'<label style="display:flex;gap:8px;align-items:center;justify-content:flex-start;margin:8px 0"><input type="checkbox" id="vxA" style="width:auto;margin:0;flex:none" '+(c.auto?'checked':'')+'> Lire automatiquement le titre à chaque changement de page</label>'
+        +'<div id="vxM" style="min-height:20px;color:#5b6770"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button id="vxTest" style="padding:8px 12px;border-radius:8px;border:1px solid #ccd;background:#fff">🔊 Tester</button><button id="vxOk" style="padding:8px 14px;border-radius:8px;border:0;background:#F2A900;font-weight:700">Enregistrer</button><button id="vxX" style="padding:8px 12px;border-radius:8px;border:1px solid #ccd;background:#fff">Fermer</button></div></div>';
+      document.body.appendChild(o); const q=s=>o.querySelector(s), msg=t=>q('#vxM').innerHTML=t;
+      const store=()=>{ const n=Object.assign(ld(),{key:q('#vxK').value.trim(),voice:q('#vxV').value.trim(),auto:q('#vxA').checked,nom:q('#vxN').value.trim()}); sv(n); return n; };
+      q('#vxX').onclick=()=>o.remove(); o.addEventListener('click',e=>{ if(e.target===o) o.remove(); });
+      q('#vxOk').onclick=()=>{ store(); msg('✔ Enregistré sur cet appareil.'); };
+      q('#vxTest').onclick=()=>{ store(); speak('Bonjour, voici ma voix pour la lecture des titres.'); };
+      let mr=null, chunks=[], blob=null, t0=0, tm=null;
+      q('#vxRec').onclick=async()=>{
+        if(mr&&mr.state==='recording'){ mr.stop(); return; }
+        try{ const st=await navigator.mediaDevices.getUserMedia({audio:true}); chunks=[]; mr=new MediaRecorder(st); mr.ondataavailable=e=>chunks.push(e.data);
+          mr.onstop=()=>{ st.getTracks().forEach(t=>t.stop()); clearInterval(tm); blob=new Blob(chunks,{type:mr.mimeType||'audio/webm'}); const a=q('#vxAu'); a.src=URL.createObjectURL(blob); a.hidden=false; q('#vxRec').textContent='● Réenregistrer'; q('#vxCl').disabled=false; const s=Math.round((Date.now()-t0)/1000); msg(s<60?'<span style="color:#b9770e">Enregistrement court ('+s+' s) : visez au moins 1 minute pour une voix fidèle.</span>':'Enregistrement prêt.'); };
+          mr.start(); t0=Date.now(); q('#vxRec').textContent='■ Arrêter'; tm=setInterval(()=>{ const s=Math.round((Date.now()-t0)/1000); q('#vxT').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); },500); }
+        catch(e){ msg('<span style="color:#c0392b">Micro inaccessible : '+esc(e.message||'')+'</span>'); } };
+      q('#vxCl').onclick=async()=>{ const k=q('#vxK').value.trim(); if(!k){ msg('<span style="color:#c0392b">Renseignez d’abord la clé API.</span>'); return; } if(!blob) return; q('#vxCl').disabled=true; msg('Clonage en cours…');
+        try{ const fd=new FormData(); fd.append('name',q('#vxN').value.trim()||'Ma voix'); fd.append('files',blob,'voix.'+((blob.type.includes('mp4'))?'mp4':'webm')); fd.append('remove_background_noise','true');
+          const r=await fetch('https://api.elevenlabs.io/v1/voices/add',{method:'POST',headers:{'xi-api-key':k},body:fd}); const j=await r.json().catch(()=>({}));
+          if(!r.ok) throw new Error((j.detail&&(j.detail.message||j.detail))||('Erreur '+r.status)); q('#vxV').value=j.voice_id; store(); msg('✔ Voix clonée et enregistrée. Cliquez sur « Tester ».'); }
+        catch(e){ q('#vxCl').disabled=false; msg('<span style="color:#c0392b">Clonage impossible : '+esc(e.message||'')+'. Le clonage demande un abonnement ElevenLabs qui l’inclut.</span>'); } };
+    }
+    /* lecture automatique du titre de la page */
+    let last=''; const lbl=()=>document.getElementById('menuLbl');
+    new MutationObserver(()=>{ const l=lbl(), t=l&&l.textContent.trim(); if(t&&t!==last){ last=t; if(ld().auto) speak(t); } }).observe(document.body,{childList:true,subtree:true,characterData:true});
+    return {speak,win};
+  })();
+  window.PILOTAGE_VOIX=VX;
   /* ---------- Envoi par e-mail : lien de demande au demandeur, devis au client ---------- */
   const openMail=(to,subj,body)=>{ const a=document.createElement('a'); a.href='mailto:'+encodeURIComponent(to||'')+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body); document.body.appendChild(a); a.click(); a.remove(); };
   async function sendLink(d){
