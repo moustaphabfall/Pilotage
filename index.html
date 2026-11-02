@@ -15807,7 +15807,20 @@ const PG_FEATS=[
     let o = document.getElementById('netModal'); if(o) o.remove();
     o = document.createElement('div'); o.id='netModal'; o.innerHTML='<div class="nt-box">'+html+'</div>';
     o.addEventListener('click',e=>{ if(e.target===o||(e.target.closest&&e.target.closest('[data-x]'))) o.remove(); }); document.body.appendChild(o);
-    o.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>o.remove()); if(onReady) onReady(o); return o;
+    o.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>o.remove()); if(onReady) onReady(o); o.querySelectorAll('input[data-addr]').forEach(addrAuto); return o;
+  }
+  /* saisie d'adresse assistée : base nationale d'adresses (api publique, sans clé) ; en cas d'échec, saisie libre */
+  function addrAuto(inp){ const wrap=inp.parentElement; if(!wrap) return; wrap.style.position='relative'; inp.setAttribute('autocomplete','off');
+    const box=document.createElement('div'); box.className='nt-ac'; box.hidden=true; wrap.appendChild(box); let tm=null, seq=0, items=[], cur=-1;
+    const hide=()=>{ box.hidden=true; cur=-1; };
+    const pick=i=>{ if(!items[i]) return; inp.value=items[i]; hide(); inp.dispatchEvent(new Event('change',{bubbles:true})); };
+    const mark=()=>[...box.children].forEach((c,i)=>c.classList.toggle('on',i===cur));
+    const show=L=>{ items=L; cur=-1; if(!L.length){ hide(); return; } box.innerHTML=L.map((t,i)=>'<div data-i="'+i+'">📍 '+esc(t)+'</div>').join(''); box.hidden=false; };
+    box.addEventListener('pointerdown',e=>{ const d=e.target.closest('[data-i]'); if(d){ e.preventDefault(); pick(+d.dataset.i); } });
+    inp.addEventListener('input',()=>{ clearTimeout(tm); const q=inp.value.trim(); if(q.length<3){ hide(); return; } const my=++seq;
+      tm=setTimeout(()=>{ fetch('https://data.geopf.fr/geocodage/search?autocomplete=1&limit=5&q='+encodeURIComponent(q)).then(r=>r.json()).then(j=>{ if(my===seq&&document.activeElement===inp) show((j.features||[]).map(f=>f.properties&&f.properties.label).filter(Boolean)); }).catch(()=>hide()); },250); });
+    inp.addEventListener('keydown',e=>{ if(box.hidden) return; if(e.key==='ArrowDown'){ e.preventDefault(); cur=Math.min(items.length-1,cur+1); mark(); } else if(e.key==='ArrowUp'){ e.preventDefault(); cur=Math.max(0,cur-1); mark(); } else if(e.key==='Enter'&&cur>=0){ e.preventDefault(); pick(cur); } else if(e.key==='Escape'){ e.stopPropagation(); hide(); } });
+    inp.addEventListener('blur',()=>setTimeout(hide,150));
   }
   const val = (o,id)=>{ const e=o.querySelector('#'+id); return e?e.value.trim():''; };
   const opt = (arr,sel,fn)=>arr.map(x=>{ const [v,l]=fn(x); return '<option value="'+esc(v)+'"'+(String(v)===String(sel)?' selected':'')+'>'+esc(l)+'</option>'; }).join('');
@@ -15889,7 +15902,7 @@ const PG_FEATS=[
       +'<label>Client<select id="dCl">'+opt(n.clients,d.clientId,c=>[c.id,c.nom])+'<option value="__new">➕ Nouveau client…</option></select></label>'
       +'<div id="dClNew" class="nt-inl" hidden><label>Nom du client<input id="dClNm" placeholder="ex. Société Durand"></label><label>Contact (facultatif)<input id="dClCt" placeholder="nom, téléphone, e-mail"></label><button type="button" class="pri" id="dClOk">Créer le client</button></div>'
       +'<label>Projet du client<select id="dPj"></select></label>'
-      +'<div id="dPjNew" class="nt-inl" hidden><label>Client<select id="dPjCl"></select></label><label>Nom du projet<input id="dPjNm" placeholder="ex. Siège Lyon — lot nettoyage"></label><label>Adresse / site<input id="dPjAd" placeholder="ex. 12 rue des Lilas, 69003 Lyon"></label><button type="button" class="pri" id="dPjOk">Créer le projet</button></div>'
+      +'<div id="dPjNew" class="nt-inl" hidden><label>Client<select id="dPjCl"></select></label><label>Nom du projet<input id="dPjNm" placeholder="ex. Siège Lyon — lot nettoyage"></label><label>Adresse / site<input id="dPjAd" data-addr placeholder="ex. 12 rue des Lilas, 69003 Lyon"></label><button type="button" class="pri" id="dPjOk">Créer le projet</button></div>'
       +'<div class="nt-adr" id="dAdr"></div><input id="dSi" type="hidden" value="'+esc(d.site||'')+'">'
       +'<div class="nt-r"><label>Prestation<select id="dTy">'+opt(TYPES,d.type,t=>[t,t])+'</select></label><label>Urgence<select id="dUr">'+opt(URG,d.urgence,t=>[t,t])+'</select></label><label>Agents demandés<input id="dNb" type="number" min="1" value="'+(d.nb||1)+'"></label></div>'
       +'<div class="nt-r"><label>Du<input id="dDe" type="date" value="'+esc(d.debut||'')+'"></label><label>Au<input id="dFi" type="date" value="'+esc(d.fin||'')+'"></label><label>De<input id="dHd" type="time" value="'+esc(d.hDebut||'')+'"></label><label>À<input id="dHf" type="time" value="'+esc(d.hFin||'')+'"></label></div>'
@@ -16229,7 +16242,7 @@ const PG_FEATS=[
       const dl=o.querySelector('#cDel'); if(dl) dl.onclick=()=>{ if(n.demandes.some(d=>d.clientId===c.id)){ alert('Ce client a des demandes : supprimez-les d’abord.'); return; } if(!confirm('Supprimer ce client et ses projets ?')) return; n.clients=n.clients.filter(x=>x.id!==c.id); save(); o.remove(); render('net-clients'); }; });
   }
   function projetForm(c,pj){ const n=net(), nw=!pj; pj=pj||{statut:'encours'};
-    modal('<h3>'+(nw?'➕ Nouveau projet — ':'✏️ ')+esc(c.nom)+'</h3><label>Nom du projet<input id="pNo" value="'+esc(pj.nom||'')+'"></label><label>Adresse / site d’intervention<input id="pAd" value="'+esc(pj.adresse||'')+'" placeholder="ex. 12 rue des Lilas, 69003 Lyon"></label>'
+    modal('<h3>'+(nw?'➕ Nouveau projet — ':'✏️ ')+esc(c.nom)+'</h3><label>Nom du projet<input id="pNo" value="'+esc(pj.nom||'')+'"></label><label>Adresse / site d’intervention<input id="pAd" data-addr value="'+esc(pj.adresse||'')+'" placeholder="ex. 12 rue des Lilas, 69003 Lyon"></label>'
       +'<label>Statut<select id="pSt"><option value="encours"'+(pj.statut!=='termine'?' selected':'')+'>En cours</option><option value="termine"'+(pj.statut==='termine'?' selected':'')+'>Terminé</option></select></label>'
       +'<div class="nt-b">'+(nw?'':'<button class="del" id="pDel">Supprimer</button>')+'<button data-x>Annuler</button><button class="pri" id="pOk">Enregistrer</button></div>',
     o=>{ o.querySelector('#pOk').onclick=()=>{ const nm=val(o,'pNo'); if(!nm){ alert('Le nom du projet est requis.'); return; } const r={nom:nm,adresse:val(o,'pAd'),statut:val(o,'pSt')}; if(nw) projsOf(c).push(Object.assign({id:uid()},r)); else Object.assign(pj,r);
@@ -16274,6 +16287,7 @@ const PG_FEATS=[
     .nt-act{white-space:nowrap} .nt-act button{margin:0 2px 2px 0} .nt-tar{width:78px}
     .nt-rep{border:1px solid #d8d3c8;border-radius:10px;padding:10px;margin:8px 0;background:#faf8f3} .nt-rp{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0;font-size:13px} .nt-rp label{display:flex !important;flex-direction:row !important;align-items:center;gap:6px;font-weight:500} .nt-rp input{width:auto !important} .nt-rp .off{opacity:.55} .nt-rh{font-size:12px;color:#5b6770;margin:6px 0} .nt-rh button{margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid #16232B;background:#fff;cursor:pointer} .nt-rh button.neg{background:#c0392b;color:#fff;border-color:#c0392b}
     .nt-pl{position:relative;line-height:0;border:1px solid #d8d3c8;border-radius:8px;overflow:hidden;cursor:crosshair;user-select:none;touch-action:manipulation} .nt-pl img{width:100%;display:block} .nt-pl svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none} .nt-pl polygon{fill:rgba(242,169,0,.14);stroke:#F2A900;stroke-width:.0025;vector-effect:non-scaling-stroke}
+.nt-ac{display:block !important;position:absolute;left:0;right:auto;width:max(100%,320px);top:100%;z-index:50;background:#fff;border:1px solid #d8d4c8;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden;margin-top:2px} .nt-ac[hidden]{display:none !important} .nt-ac div{display:block;padding:9px 12px;font:400 13.5px/1.3 'Space Grotesk',system-ui,sans-serif;cursor:pointer;color:#16232B;white-space:normal} .nt-ac div:hover,.nt-ac div.on{background:#fdf1cf}
     .nt-dot{position:absolute;transform:translate(-50%,-50%);min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:#16232B;color:#fff;border:2px solid #F2A900;font:700 13px/22px 'Space Grotesk',system-ui,sans-serif;text-align:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.35)}
     .nt-av{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0} .nt-av button{padding:8px 14px;border-radius:10px;border:1px solid #16232B;background:#fff;color:#16232B;cursor:pointer;font-weight:600} .nt-av button.on{background:#16232B;color:#fff}
     .nt-dcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin:6px 0 12px} .nt-dc{border:1px solid #d8d3c8;border-radius:10px;padding:8px 10px;background:#fff;font-size:13.5px} .nt-dc.on{border-color:#3c9d5d;cursor:pointer;background:#f4fbf6} .nt-dc.on:hover{box-shadow:0 0 0 2px rgba(60,157,93,.35)}
