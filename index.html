@@ -15256,9 +15256,12 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
 /* ===== Projet : accès, rôles, fonctionnalités, paiement mensuel ===== */
 (function(){
   /* Type d'espace : détermine la configuration des vues. null = toutes les vues actuelles ; à affiner type par type. */
-  const PG_TYPES={entreprise_generale:'Entreprise générale', gros_oeuvre:'Corps d’état — gros œuvre', second_oeuvre:'Corps d’état — second œuvre', bureau_etudes:'Bureau d’études', nettoyage:'Nettoyage industriel (logistique, gardiennage)'};
+  const PG_TYPES={architecte:'Architecte', bureau_etudes:'Bureau d’études', entreprise_generale:'Entreprise générale', ces:'Corps d’état secondaire', nettoyage:'Nettoyage industriel'};
+  const PG_ACR={architecte:'ARC', bureau_etudes:'BE', entreprise_generale:'EG', ces:'CES', nettoyage:'NET'};
+  const PG_LEG={gros_oeuvre:'ces', second_oeuvre:'ces'};   /* anciens noms */
+  window.PG_ACR=PG_ACR; window.pgTypeKey=k=>PG_LEG[k]||(PG_TYPES[k]?k:'entreprise_generale');
   window.PG_TYPES=PG_TYPES;
-  window.pilotageType=function(){ const p=window.PILOTAGE_PROJET; return (p&&p.type) || (typeof state!=='undefined'&&state&&state.projet&&state.projet.type) || 'entreprise_generale'; };
+  window.pilotageType=function(){ const p=window.PILOTAGE_PROJET; return pgTypeKey((p&&p.type) || (typeof state!=='undefined'&&state&&state.projet&&state.projet.type) || 'entreprise_generale'); };
   window.pilotageModuleName=function(){ return pilotageType()==='nettoyage' ? 'Pilotage Nettoyage' : 'Pilotage Chantier'; };
   /* message important (ton positif, pas d'alerte rouge) : renvoie une promesse true (continuer) / false (annuler) */
   window.pilotageNotice=function(o){
@@ -15274,7 +15277,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
       d.querySelector('#pgNoOk').onclick=()=>{ d.remove(); res(true); }; d.querySelector('#pgNoNo').onclick=()=>{ d.remove(); res(false); };
     });
   };
-  const typeOpts=sel=>Object.keys(PG_TYPES).map(k=>'<option value="'+k+'"'+(k===sel?' selected':'')+'>'+PG_TYPES[k]+'</option>').join('');
+  const typeOpts=sel=>Object.keys(PG_TYPES).map(k=>'<option value="'+k+'"'+(k===sel?' selected':'')+'>'+PG_ACR[k]+' — '+PG_TYPES[k]+'</option>').join('');
 const PG_FEATS=[
     {k:'dashboard',l:'📋 Tableau de bord',subs:[]},
     {k:'interloc',l:'🎭 Rôles',subs:[]},
@@ -15397,7 +15400,7 @@ const PG_FEATS=[
       +(p.valide_jusqu?'<span>· accès valable jusqu’au <b>'+fmt(p.valide_jusqu)+'</b></span>':'')
       +(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')
       +(p.global?'<button id="pgNewP">➕ Nouveau projet</button>':'')+'<button id="pgOutB">🚪 Se déconnecter</button>'
-      +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div><div class="row"><span>Type de projet : <b>'+esc(PG_TYPES[pilotageType()]||pilotageType())+'</b></span>'+(selProjets().length>1?'<span>· projets paramétrés : <b>'+esc(selProjets().map(id=>((p.projets||[]).find(x=>x.id===id)||{}).nom||id).join(', '))+'</b></span>':'')+(p.global?'<select id="pgTy">'+typeOpts(pilotageType())+'</select>':'')+'</div>';
+      +(p.role==='admin'?'<button id="pgRen">✏️ Renommer</button>':'')+'</div><div class="row"><span>Type d’espace : <b>'+esc(PG_ACR[pilotageType()]+' — '+PG_TYPES[pilotageType()])+'</b></span>'+(selProjets().length>1?'<span>· projets paramétrés : <b>'+esc(selProjets().map(id=>((p.projets||[]).find(x=>x.id===id)||{}).nom||id).join(', '))+'</b></span>':'')+(p.global?'<select id="pgTy">'+typeOpts(pilotageType())+'</select>':'')+'</div>';
     if(p.role!=='admin'){
       const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
       w.innerHTML=head+'<div class="card">Fonctionnalités désactivées pour vous : '+(off.length?off.map(esc).join(', '):'aucune')+'</div>';
@@ -15420,7 +15423,7 @@ const PG_FEATS=[
     const s=w.querySelector('#pgSw'); if(s) s.onchange=()=>window.pilotageSwitchProjet(s.value);
     const ty=w.querySelector('#pgTy'); if(ty) ty.onchange=async()=>{ try{ await window.PILOTAGE_SET_TYPE(PJ().id,ty.value); PJ().type=ty.value; location.reload(); }catch(e){ alert(e.message); } };
     const r=w.querySelector('#pgRen'); if(r) r.onclick=async()=>{ const v=prompt('Nom du projet :',PJ().nom); if(v===null||!v.trim()) return; try{ await adm({action:'p_projet_rename',nom:v.trim()}); PJ().nom=v.trim(); if(state.projet){ state.projet.nom=v.trim(); persist&&persist(); } render(); }catch(e){ alert(e.message); } };
-    const n=w.querySelector('#pgNewP'); if(n) n.onclick=async()=>{ const id=prompt('Identifiant court du nouveau projet (lettres/chiffres) :'); if(!id) return; const nom=prompt('Nom du projet :',id)||id; const tc=prompt('Type de projet :\n1 = Entreprise générale\n2 = Nettoyage & services (logistique, gardiennage)','1'); const ty=String(tc||'1').trim()==='2'?'nettoyage':'entreprise_generale'; try{ await window.PILOTAGE_ADM({action:'p_projet_create',id,nom}); if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,''),ty); alert('Projet créé. Choisissez-le dans la liste pour y créer des accès.'); window.pilotageSwitchProjet(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'')); }catch(e){ alert(e.message); } };
+    const n=w.querySelector('#pgNewP'); if(n) n.onclick=async()=>{ const id=prompt('Identifiant court du nouveau projet (lettres/chiffres) :'); if(!id) return; const nom=prompt('Nom du projet :',id)||id; const ks=Object.keys(PG_TYPES); const tc=prompt('Type d’espace :\n'+ks.map((k,n)=>(n+1)+' = '+PG_ACR[k]+' — '+PG_TYPES[k]).join('\n'),'3'); const ty=ks[(parseInt(tc,10)||3)-1]||'entreprise_generale'; try{ await window.PILOTAGE_ADM({action:'p_projet_create',id,nom}); if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,''),ty); alert('Projet créé. Choisissez-le dans la liste pour y créer des accès.'); window.pilotageSwitchProjet(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'')); }catch(e){ alert(e.message); } };
   }
   function badge(){ const b=document.getElementById('pgBadge'); if(!b) return; const n=cache?cache.notifs.length:0; b.hidden=!n; b.textContent=n; }
 
@@ -15515,7 +15518,7 @@ const PG_FEATS=[
     const w=who(), p=w.p, h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{}, col=RC[w.key]||RC.lecteur;
     const c=document.createElement('div'); c.id='pgProf';
     c.innerHTML='<div class="pgp-h">'+avatar(w.nm,52)+'<div class="pgp-n"><b>'+esc(w.nm||'Utilisateur')+'</b>'+(w.email?'<small>'+esc(w.email)+'</small>':'')+'<span class="pgp-r" style="background:'+col[0]+';color:'+col[1]+'">'+esc(w.role)+'</span></div></div>'
-      +'<div class="pgp-s"><div class="pgp-l">Projet</div><div class="pgp-v"><b>'+esc(p.nom||'')+'</b><small>'+esc(PG_TYPES[pilotageType()]||'')+'</small></div>'
+      +'<div class="pgp-s"><div class="pgp-l">Projet</div><div class="pgp-v"><b>'+esc(p.nom||'')+'</b><small>'+esc(PG_ACR[pilotageType()]+' — '+PG_TYPES[pilotageType()])+'</small></div>'
       +(p.projets&&p.projets.length>1?'<select id="pgProfSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')+'</div>'
       +(p.valide_jusqu?'<div class="pgp-s"><div class="pgp-l">Accès</div><div class="pgp-v">valable jusqu’au <b>'+p.valide_jusqu.split('-').reverse().join('/')+'</b></div></div>':'')
       +'<div class="pgp-s"><div class="pgp-l">Données</div><div class="pgp-v">'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+(h.compte?'<small>'+esc(h.compte)+'</small>':''):'Base de l’outil')+'</div></div>'
@@ -15539,11 +15542,11 @@ const PG_FEATS=[
   window.pilotageSelProjets=selProjets;
   function buildSidebar(){
     const nav=document.getElementById('tabMenu'); if(!nav) return; const head=nav.querySelector('.sb-head'); if(!head) return;
-    const p=PJ(), w=who(), local=(window.state&&state.projet)||{}, nom=(p&&p.nom)||local.nom||'Mon espace', ty=PG_TYPES[pilotageType()]||'';
+    const p=PJ(), w=who(), local=(window.state&&state.projet)||{}, nom=(p&&p.nom)||local.nom||'Mon espace', ty=PG_TYPES[pilotageType()]||'', tg=PG_ACR[pilotageType()]||'';
     const first=(w.nm||nom||'?').trim().split(/\s+/)[0]||'?', ini=first[0].toUpperCase();
     let mb=document.getElementById('menuBtn'); if(!mb) return;
     head.className='sb-head sb-ws-wrap'; head.innerHTML='';
-    const ws=document.createElement('button'); ws.type='button'; ws.id='sbWs'; ws.title='Mon profil'; ws.innerHTML='<span class="sb-ini">'+esc(ini)+'</span><span class="sb-wt"><b>'+esc(nom)+'</b><small>'+esc(ty)+'</small></span>';
+    const ws=document.createElement('button'); ws.type='button'; ws.id='sbWs'; ws.title='Mon profil'; ws.innerHTML='<span class="sb-ini">'+esc(ini)+'</span><span class="sb-wt"><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small></span>';
     ws.onclick=e=>{ e.stopPropagation(); if(p) openProfile(); };
     mb.innerHTML=ICO_SB; mb.title='Replier le volet latéral'; head.appendChild(ws); head.appendChild(mb);
     ['sbAct','sbProj'].forEach(id=>{ const o=document.getElementById(id); if(o) o.remove(); });
@@ -15555,7 +15558,7 @@ const PG_FEATS=[
     const pr=document.createElement('div'); pr.className='sb-box sb-pl'; pr.id='sbProj';
     const sum=sel.length===1?(L.find(x=>x.id===sel[0])||{}).nom||'1 projet':sel.length+' projets sélectionnés';
     pr.innerHTML='<div class="sb-t">Liste des projets</div><button type="button" class="sb-dd" id="sbDd"><span class="sb-ddl">'+esc(sum)+'</span><span class="sb-car">▾</span></button>'
-      +'<div class="sb-list" id="sbList" hidden>'+(L.length>1?'<button type="button" class="sb-all" id="sbAll">Tout sélectionner</button>':'')+L.map(x=>'<label class="sb-it'+(p&&x.id===p.id?' cur':'')+'"><input type="checkbox" data-id="'+esc(x.id)+'" '+(sel.includes(x.id)?'checked':'')+'><span class="sb-pt"><b>'+esc(x.nom)+(p&&x.id===p.id?' · ouvert':'')+'</b><small>'+esc(PG_TYPES[x.type||'entreprise_generale']||'')+'</small></span>'+(p&&x.id!==p.id?'<button type="button" class="sb-go" data-open="'+esc(x.id)+'" title="Ouvrir ce projet">↗</button>':'')+'</label>').join('')+'</div>'
+      +'<div class="sb-list" id="sbList" hidden>'+(L.length>1?'<button type="button" class="sb-all" id="sbAll">Tout sélectionner</button>':'')+L.map(x=>'<label class="sb-it'+(p&&x.id===p.id?' cur':'')+'"><input type="checkbox" data-id="'+esc(x.id)+'" '+(sel.includes(x.id)?'checked':'')+'><span class="sb-pt"><b>'+esc(x.nom)+(p&&x.id===p.id?' · ouvert':'')+'</b><small><span class="sb-tag">'+esc(PG_ACR[pgTypeKey(x.type)])+'</span>'+esc(PG_TYPES[pgTypeKey(x.type)])+'</small></span>'+(p&&x.id!==p.id?'<button type="button" class="sb-go" data-open="'+esc(x.id)+'" title="Ouvrir ce projet">↗</button>':'')+'</label>').join('')+'</div>'
       +(sel.length>1?'<small class="sb-hint">Les paramètres et invitations s’appliquent aux '+sel.length+' projets cochés.</small>':'');
     const dd=pr.querySelector('#sbDd'), ls=pr.querySelector('#sbList');
     dd.onclick=()=>{ ls.hidden=!ls.hidden; pr.classList.toggle('open',!ls.hidden); };
@@ -15576,6 +15579,7 @@ const PG_FEATS=[
       .sb-box{border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:6px;margin:4px 0 10px;display:flex;flex-direction:column;gap:2px}
       .sb-box button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;padding:9px 10px;border-radius:8px;cursor:pointer;color:#e6e8ea;font:600 13.5px 'Space Grotesk',system-ui,sans-serif}
       .sb-box button:hover{background:rgba(255,255,255,.1);color:#fff} .sb-box button svg{flex:none;color:#F2A900}
+      .sb-tag{display:inline-block;margin-right:6px;padding:0 6px;border-radius:5px;background:#F2A900;color:#16232B;font-weight:700;font-size:10.5px;letter-spacing:.04em;line-height:16px}
       .sb-pl{margin-top:12px}.sb-t{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#aeb4b9;padding:4px 8px 6px}
       .sb-pl button{padding:8px 10px}.sb-pl button.on{background:rgba(242,169,0,.16)} .sb-d{flex:none;width:9px;height:9px;border-radius:50%;background:#6b7378} .sb-pl button.on .sb-d{background:#F2A900}
       .sb-pt{display:flex;flex-direction:column;min-width:0;line-height:1.25} .sb-pt b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .sb-pt small{font-weight:400;font-size:11px;color:#aeb4b9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
