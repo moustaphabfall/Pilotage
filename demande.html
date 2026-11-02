@@ -1,0 +1,96 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><title>Votre demande</title>
+<style>
+:root{--ink:#16232B;--amb:#F2A900;--bg:#f4f2ec;--line:#d8d3c8}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 'Space Grotesk',system-ui,-apple-system,sans-serif;padding-bottom:110px}
+.top{background:#2B2F33;color:#fff;padding:14px 16px;border-bottom:4px solid var(--amb)} .top b{font-size:17px} .top p{margin:4px 0 0;color:#d5d9dc;font-size:14px}
+main{max-width:860px;margin:0 auto;padding:14px 14px 0} h2{font-size:16px;margin:18px 0 8px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0}
+label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;margin:8px 0} input,select,textarea{font:inherit;padding:9px 10px;border:1px solid #bbb;border-radius:8px;background:#fff;width:100%}
+.r{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0} .chips button{padding:7px 14px;border-radius:999px;border:1px solid var(--ink);background:#fff;font:600 14px inherit;cursor:pointer} .chips button.on{background:var(--ink);color:#fff}
+.hint{font-size:13px;color:#5b6770;margin:6px 0}
+.pl{position:relative;line-height:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;cursor:crosshair;user-select:none;-webkit-user-select:none;touch-action:manipulation} .pl img{width:100%;display:block;pointer-events:none} .pl svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none} .pl polygon{fill:rgba(242,169,0,.14);stroke:var(--amb);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.dot{position:absolute;transform:translate(-50%,-50%);min-width:32px;height:32px;padding:0 8px;border-radius:16px;background:var(--ink);color:#fff;border:2px solid var(--amb);font:700 15px/28px inherit;text-align:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.35);-webkit-touch-callout:none}
+.mode{display:flex;gap:6px;margin:8px 0} .mode button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--ink);background:#fff;font:700 15px inherit;cursor:pointer} .mode button.on{background:var(--ink);color:#fff}
+.sum{font-size:14px} .sum b{font-size:16px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:5}
+.bar .t{font-size:14px} .go{padding:13px 20px;border-radius:12px;border:0;background:var(--amb);color:var(--ink);font:700 16px inherit;cursor:pointer} .go[disabled]{opacity:.45;cursor:default}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px;z-index:20} .ov .bx{background:#fff;border-radius:14px;padding:18px;max-width:420px;width:100%} .ov .bx h3{margin:0 0 8px} .ov .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px} .ov button{padding:11px 16px;border-radius:10px;border:1px solid var(--ink);background:#fff;font:600 15px inherit;cursor:pointer} .ov button.p{background:var(--amb);border-color:var(--amb)}
+.msg{max-width:520px;margin:60px auto;text-align:center;padding:0 18px} .msg .big{font-size:48px}
+</style></head><body>
+<div class="top"><b id="ttl">Votre demande</b><p id="sub"></p></div>
+<main id="app"><p class="hint">Chargement…</p></main>
+<script src="config.js"></script>
+<script>
+(function(){
+  const cfg=window.PILOTAGE_CONFIG||{}, T=new URLSearchParams(location.search).get('t')||'', API=(cfg.url||'')+'/functions/v1/demande-client';
+  const $=id=>document.getElementById(id), app=$('app');
+  const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const uid=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  const TYPES=['Nettoyage','Logistique','Gardiennage','Homme trafic','Autre'], URG=['Normale','Haute','Urgente'];
+  let D=null, rep=[], sign=1, lvl='', F={};
+  const hdr=h=>fetch(API+h,{headers:{apikey:cfg.anonKey||''}});
+  const fin=(big,t,p)=>{ app.innerHTML='<div class="msg"><div class="big">'+big+'</div><h2>'+esc(t)+'</h2><p>'+esc(p||'')+'</p></div>'; const b=document.querySelector('.bar'); if(b) b.remove(); };
+  if(!/^[A-Za-z0-9_-]{24,64}$/.test(T)) return fin('⚠️','Lien invalide','Ouvrez le lien tel que vous l’avez reçu par e-mail.');
+  hdr('?t='+encodeURIComponent(T)).then(r=>r.json().then(j=>({ok:r.ok,j}))).then(({ok,j})=>{
+    if(!ok||!j.ok) return fin('⚠️',j&&j.error==='lien expiré'?'Lien expiré':'Lien introuvable',(j&&j.error)||'Demandez un nouveau lien à votre contact.');
+    if(j.statut!=='envoye') return fin('✅','Demande déjà clôturée','Merci : votre demande a bien été transmise.');
+    D=j; start();
+  }).catch(()=>fin('⚠️','Connexion impossible','Vérifiez votre réseau puis rechargez la page.'));
+  function start(){
+    const av=D.type==='avenant', s=D.snapshot||{}, plans=s.plans||[];
+    $('ttl').textContent=av?'Modifier votre demande':'Votre demande'; $('sub').textContent=(D.responsable?D.responsable+', responsable opérationnel, vous invite à '+(av?'modifier':'formaliser')+' votre demande.':'')+(D.projet?' Projet : '+D.projet+'.':'');
+    if(av&&Array.isArray(s.repart)) rep=s.repart.map(r=>Object.assign({},r));
+    const lv=[...new Set(plans.map(p=>p.niveau))]; lvl=lv[0]||'';
+    F=av?{}:{societe:D.societe||'',site:s.site||'',type:'Nettoyage',urgence:'Normale',debut:today(),fin:today(),hDebut:'08:00',hFin:'16:00',desc:''};
+    let h='';
+    if(!av) h+='<div class="card"><h2 style="margin-top:0">Votre demande</h2><label>Société / client<input id="fSoc" value="'+esc(F.societe)+'"></label><label>Site / adresse d’intervention<input id="fSite" value="'+esc(F.site)+'" placeholder="ex. Entrepôt Nord, 12 rue des Lilas"></label>'
+      +'<div class="r"><label>Prestation<select id="fTy">'+TYPES.map(t=>'<option>'+t+'</option>').join('')+'</select></label><label>Urgence<select id="fUr">'+URG.map(t=>'<option>'+t+'</option>').join('')+'</select></label></div>'
+      +'<div class="r"><label>Du<input type="date" id="fDe" value="'+F.debut+'"></label><label>Au<input type="date" id="fFi" value="'+F.fin+'"></label><label>De<input type="time" id="fHd" value="08:00"></label><label>À<input type="time" id="fHf" value="16:00"></label></div>'
+      +'<label>Description / consignes<textarea id="fDs" rows="3" placeholder="Nature des tâches, accès, matériel, risques…"></textarea></label></div>';
+    else h+='<div class="card"><b>Plan validé</b><p class="hint">Touchez le plan pour <b>ajouter</b> une personne, appuyez longuement sur une pastille pour en <b>retirer</b> une. Puis clôturez la modification.</p></div>';
+    h+='<h2>Personnes demandées</h2>'+(plans.length?'<div class="chips" id="lv">'+lv.map(l=>'<button type="button" data-l="'+esc(l)+'" class="'+(l===lvl?'on':'')+'">'+esc(l)+'</button>').join('')+'</div>'
+      +'<div class="mode"><button type="button" id="mP" class="on">＋ Ajouter</button><button type="button" id="mM">－ Retirer</button></div><div class="hint">Touchez le plan : une pastille = 1 personne. Touchez une pastille pour en ajouter ; appui long (ou mode « Retirer ») pour en enlever.</div><div id="st"></div>'
+      :'<div class="card"><label>Nombre de personnes demandées<input type="number" id="fNb" min="1" value="1"></label><p class="hint">Précisez les lieux et consignes dans la description : votre contact placera les personnes sur le plan.</p></div>')
+      +'<div class="card sum" id="sum"></div>';
+    app.innerHTML=h;
+    app.insertAdjacentHTML('afterend','<div class="bar"><div class="t" id="tot"></div><button class="go" id="go" disabled>'+(av?'Clôturer la modification':'Clôturer ma demande')+'</button></div>');
+    app.querySelectorAll('#lv button').forEach(b=>b.onclick=()=>{ lvl=b.dataset.l; app.querySelectorAll('#lv button').forEach(x=>x.classList.toggle('on',x===b)); draw(); });
+    const mP=$('mP'), mM=$('mM'); if(mP){ mP.onclick=()=>{ sign=1; mP.classList.add('on'); mM.classList.remove('on'); }; mM.onclick=()=>{ sign=-1; mM.classList.add('on'); mP.classList.remove('on'); }; }
+    app.querySelectorAll('input,select,textarea').forEach(e=>e.oninput=()=>{ if(noPlan()) draw(); check(); }); $('go').onclick=confirmClose; draw(); check();
+  }
+  const noPlan=()=>!((D&&D.snapshot&&D.snapshot.plans)||[]).length; const total=()=>noPlan()?Math.max(0,+(($('fNb')||{}).value)||0):rep.reduce((a,r)=>a+r.n,0);
+  function inPoly(x,y,pts){ let c=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1]; if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) c=!c; } return c; }
+  function draw(){
+    const st=$('st'); if(st){ const s=D.snapshot||{}, pl=(s.plans||[]).filter(p=>p.niveau===lvl)[0];
+      if(!pl){ st.innerHTML=''; } else {
+        const zz=(s.zones||[]).filter(z=>z.planId===pl.id);
+        st.innerHTML='<div class="pl"><img src="'+esc(pl.src)+'" alt="'+esc(pl.nom)+'"><svg viewBox="0 0 1 1" preserveAspectRatio="none">'+zz.map(z=>'<polygon points="'+z.pts.map(q=>q[0]+','+q[1]).join(' ')+'"/>').join('')+'</svg>'
+          +rep.filter(r=>r.planId===pl.id).map(r=>'<span class="dot" data-i="'+rep.indexOf(r)+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%">'+r.n+'</span>').join('')+'</div>';
+        const box=st.firstChild; let tm=null, fired=false, down=null;
+        const bump=(i,d)=>{ const r=rep[i]; if(!r) return; r.n+=d; if(r.n<=0) rep.splice(i,1); draw(); check(); };
+        box.addEventListener('pointerdown',e=>{ const dt=e.target.closest('.dot'); down=dt; fired=false; clearTimeout(tm); if(dt) tm=setTimeout(()=>{ fired=true; try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){} bump(+dt.dataset.i,-1); },550); });
+        box.addEventListener('pointerup',e=>{ clearTimeout(tm); if(fired) return; const dt=e.target.closest('.dot'); if(dt&&dt===down){ bump(+dt.dataset.i,sign); return; }
+          if(dt||sign<0) return; const b=box.getBoundingClientRect(), x=+((e.clientX-b.left)/b.width).toFixed(4), y=+((e.clientY-b.top)/b.height).toFixed(4); const z=zz.find(q=>inPoly(x,y,q.pts)); rep.push({id:uid(),planId:pl.id,niveau:pl.niveau,zone:z?z.nom:'',x,y,n:1}); draw(); check(); });
+        box.addEventListener('pointerleave',()=>clearTimeout(tm)); box.addEventListener('contextmenu',e=>e.preventDefault());
+      } }
+    const g={}; rep.forEach(r=>{ const k=(r.niveau||'—')+(r.zone?' · '+r.zone:''); g[k]=(g[k]||0)+r.n; });
+    $('sum').innerHTML=noPlan()?'Nombre de personnes demandé : <b>'+total()+'</b>':rep.length?Object.keys(g).map(k=>'• '+esc(k)+' : <b>'+g[k]+'</b>').join('<br>')+'<br><b>Total : '+total()+' personne(s)</b>':'Aucune personne placée pour l’instant.';
+    $('tot').textContent=total()+' personne(s)';
+  }
+  function val(id){ const e=$(id); return e?e.value.trim():''; }
+  function check(){ const av=D.type==='avenant'; let ok=total()>0; if(!av){ ok=ok&&!!val('fSoc')&&!!val('fSite')&&!!val('fDe'); } $('go').disabled=!ok; }
+  function confirmClose(){
+    const av=D.type==='avenant'; const o=document.createElement('div'); o.className='ov';
+    o.innerHTML='<div class="bx"><h3>Voulez-vous vraiment clôturer '+(av?'la modification de ':'')+'votre demande ?</h3><p>Elle sera envoyée à '+esc(D.responsable||'votre contact')+' ('+total()+' personne(s)). Vous ne pourrez plus la modifier.</p><div class="row"><button type="button" id="no">Non, revenir</button><button type="button" class="p" id="yes">Oui, clôturer</button></div></div>';
+    document.body.appendChild(o); o.querySelector('#no').onclick=()=>o.remove();
+    o.querySelector('#yes').onclick=async()=>{ const yb=o.querySelector('#yes'); yb.disabled=true; yb.textContent='Envoi…';
+      const R={nb:total(),repart:noPlan()?[]:rep.map(r=>({id:r.id,planId:r.planId,niveau:r.niveau,zone:r.zone,x:r.x,y:r.y,n:r.n}))};
+      if(!av) Object.assign(R,{societe:val('fSoc'),site:val('fSite'),type:val('fTy'),urgence:val('fUr'),debut:val('fDe'),fin:val('fFi')||val('fDe'),hDebut:val('fHd'),hFin:val('fHf'),desc:val('fDs')});
+      try{ const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json',apikey:cfg.anonKey||''},body:JSON.stringify({t:T,reponse:R})}); const j=await r.json().catch(()=>({})); o.remove();
+        if(r.ok&&j.ok) fin('✅','Demande clôturée','Merci ! Votre demande a été envoyée à '+(D.responsable||'votre contact')+'.'); else alert((j&&j.error)||'Envoi impossible, réessayez.'); }
+      catch(e){ o.remove(); alert('Envoi impossible : vérifiez votre réseau puis réessayez.'); } };
+  }
+})();
+</script></body></html>

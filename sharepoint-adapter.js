@@ -118,4 +118,18 @@
       async disconnect(){ try{ await app.logoutPopup({account:acct}); }catch(e){} }
     };
   }
+
+  /* ---- Envoi d'e-mail depuis le compte Microsoft connecté (Graph /me/sendMail, permission déléguée Mail.Send demandée à la première utilisation) ---- */
+  window.PILOTAGE_MAIL = {
+    available: ()=>!!(app && acct),
+    async send(to, subject, body, o){
+      if(!app || !acct) throw new Error('Compte Microsoft non connecté');
+      const req = {scopes:['Mail.Send'], account:acct}; let t;
+      try{ t = (await app.acquireTokenSilent(req)).accessToken; }catch(e){ t = (await app.acquireTokenPopup(req)).accessToken; }
+      const html = !!(o && o.html);
+      const r = await fetch(GRAPH+'/me/sendMail', {method:'POST', headers:{Authorization:'Bearer '+t, 'Content-Type':'application/json'}, body:JSON.stringify({message:{subject, body:{contentType:html?'HTML':'Text', content:body}, toRecipients:[{emailAddress:{address:to}}]}, saveToSentItems:true})});
+      if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error((j.error&&j.error.message)||('Erreur '+r.status)); }
+      return true;
+    }
+  };
 })();

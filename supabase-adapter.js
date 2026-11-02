@@ -138,6 +138,14 @@
       list: async ()=>{ const {data,error} = await sb.from('demandes_reset').select('*').eq('statut','en_attente').order('cree_le'); if(error) throw error; return data||[]; },
       done: async (id, ok)=>{ const {error} = await sb.from('demandes_reset').update({statut: ok?'validee':'refusee'}).eq('id', id); if(error) throw error; }
     };
+    /* Demandes clients : lien de formulaire en ligne envoyé au demandeur (aucun plan copié ; la réponse est supprimée dès son import) */
+    window.PILOTAGE_DEMANDES = {
+      create: async o=>{ const b=new Uint8Array(24); crypto.getRandomValues(b); const tok=btoa(String.fromCharCode.apply(null,b)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); const exp=new Date(Date.now()+7*864e5).toISOString();
+        const {error} = await sb.from('demande_liens').insert({token:tok, projet_id:PJ.id, responsable:o.responsable||null, demandeur:o.demandeur||null, demandeur_email:o.email||null, societe:o.societe||null, type:'nouvelle', demande_id:o.demande_id||null, snapshot:o.snapshot||{}, statut:'envoye', expire:exp}); if(error) throw error;
+        return new URL('demande.html?t='+tok, location.href).href; },
+      list: async ()=>{ const {data,error} = await sb.from('demande_liens').select('token,demande_id,statut,reponse,expire').eq('projet_id',PJ.id); if(error) throw error; return data||[]; },
+      remove: async tok=>{ const {error} = await sb.from('demande_liens').delete().eq('token',tok).eq('projet_id',PJ.id); if(error) throw error; }
+    };
     window.pilotageSwitchProjet = id2=>{ try{ localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
   }
   async function ensure(){
