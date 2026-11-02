@@ -15375,10 +15375,15 @@ const PG_FEATS=[
   }
   function readMatrix(root){ const o={}; root.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) o[i.dataset.f]=false; }); return o; }
   const wrap=()=>document.getElementById('pgWrap');
-  let cache=null, openF=null, cred='', headHtml='';
+  let cache=null, openF=null, cred='', headHtml='', rtok=0, rtry=0;
 
   async function render(){
     const w=wrap(); if(!w) return; const p=PJ();
+    const tk=++rtok;   /* un seul affichage à la fois : le dernier appel gagne */
+    if(!p && window.pilotageLogout && (rtry++<40)){   /* application hébergée : la connexion au projet n'est pas encore prête, on attend au lieu d'afficher la version locale incomplète */
+      w.innerHTML='<h2>🗂 Projet</h2><div class="msg">Chargement…</div>'; setTimeout(()=>{ if(tk===rtok) render(); },500); return;
+    }
+    rtry=0;
     if(!p){
       w.innerHTML='<h2>🗂 Projet</h2><div class="card">Projet <b>'+esc((state.projet&&state.projet.nom)||'SM')+'</b>.<br><br>La gestion des accès (identifiants, rôles, fonctionnalités, paiement mensuel) est disponible dans l’application hébergée, une fois connecté avec un compte administrateur.<br><br>Type de projet : <select id="pgTyL">'+typeOpts(pilotageType())+'</select></div>'+(window.pgNivHtml?pgNivHtml():'');
       if(window.pgNivBind) pgNivBind(w);
@@ -15396,7 +15401,10 @@ const PG_FEATS=[
       bindHead(w); return;
     }
     headHtml=head; w.innerHTML=head+'<div class="msg">Chargement…</div>'; bindHead(w);
-    try{ cache=await adm({action:'p_members'}); }catch(e){ w.innerHTML=head+'<div class="card ko">'+esc(e.message)+'</div>'; bindHead(w); return; }
+    let ok=false, err=null;
+    for(let i=0;i<3&&!ok;i++){ try{ cache=await adm({action:'p_members'}); ok=true; }catch(e){ err=e; if(tk!==rtok) return; await new Promise(r=>setTimeout(r,900)); } }
+    if(tk!==rtok) return;
+    if(!ok){ w.innerHTML=head+'<div class="card ko">'+esc((err&&err.message)||'Erreur')+'<br><button id="pgRetry">Réessayer</button></div>'+(window.pgNivHtml?pgNivHtml():''); bindHead(w); const rb=w.querySelector('#pgRetry'); if(rb) rb.onclick=()=>render(); if(window.pgNivBind) pgNivBind(w); return; }
     draw();
   }
   /* Synchronise les droits chez l'hébergeur (lecture / écriture) avec les rôles de l'outil. Sans effet si le projet est hébergé dans la base de l'outil. */
