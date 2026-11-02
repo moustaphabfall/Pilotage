@@ -15747,13 +15747,97 @@ const PG_FEATS=[
       +'<p><b>Traitement :</b> '+agentsOf(d)+'/'+d.nb+' agent(s) affecté(s)'+(aff.length?'<br>'+aff.map(a=>{ const g=by(n.agents,a.agentId); return '• '+esc(g?g.nom:'?')+' ('+fr(a.du)+' → '+fr(a.au)+', '+esc(a.hDebut)+'–'+esc(a.hFin)+')'; }).join('<br>'):'')+'</p>'
       +(d.repart&&d.repart.length?'<p><b>Répartition demandée :</b><br>'+repText(d.repart)+'</p>':'')
       +'<p class="nt-s"><b>Historique :</b> '+(d.histo||[]).map(h=>fr(h.d)+' · '+esc(stLbl(h.s))+(h.p?' ('+esc(h.p)+')':'')).join(' → ')+'</p>'
-      +'<div class="nt-b"><button class="del" id="sDel">Supprimer</button><button id="sEd">Modifier</button><button id="sAf">Affecter du personnel</button><button class="pri" id="sOk">Enregistrer le statut</button></div>',
+      +'<div class="nt-b"><button class="del" id="sDel">Supprimer</button><button id="sEd">Modifier</button><button id="sAf">Affecter du personnel</button><button class="pri" id="sTr">🛠 Traiter la demande</button><button class="pri" id="sOk">Enregistrer le statut</button></div>',
     o=>{
       o.querySelector('#sOk').onclick=()=>{ const v=val(o,'sSt'); if(v!==d.statut){ d.statut=v; (d.histo=d.histo||[]).push({d:today(),s:v,p:who()}); save(); } o.remove(); render('net-demandes'); };
       o.querySelector('#sEd').onclick=()=>{ o.remove(); demandeForm(d); };
+      o.querySelector('#sTr').onclick=()=>{ o.remove(); traiter(id); };
       o.querySelector('#sAf').onclick=()=>{ o.remove(); affSel=id; showPage('net-affect'); };
       o.querySelector('#sDel').onclick=()=>{ if(!confirm('Supprimer cette demande, ses affectations et ses pointages ?')) return; const ids=new Set(aff.map(a=>a.id)); n.affectations=n.affectations.filter(a=>a.demandeId!==id); n.pointages=n.pointages.filter(p=>!ids.has(p.affId)); n.demandes=n.demandes.filter(x=>x.id!==id); save(); o.remove(); render('net-demandes'); };
     });
+  }
+  /* ---------- Traitement d'une demande : pastilles → personnes disponibles → jauge → validation → devis ---------- */
+  const TVA = 0.2;
+  const ovl = (a,b)=>{ let s1=min(a.hDebut),e1=min(a.hFin),s2=min(b.hDebut),e2=min(b.hFin); if(s1==null||s2==null||e1==null||e2==null) return true; if(e1<=s1)e1+=1440; if(e2<=s2)e2+=1440; return s1<e2&&s2<e1; };
+  function slotsOf(d){ const out=[]; if(d.repart&&d.repart.length){ d.repart.forEach(r=>{ for(let k=0;k<r.n;k++) out.push({id:r.id+':'+k,r,k,n:r.n,label:(r.niveau||'—')+(r.zone?' · '+r.zone:'')}); }); } else { for(let k=0;k<(d.nb||1);k++) out.push({id:'g:'+k,r:null,k,n:1,label:'Agent '+(k+1)}); } return out; }
+  const dayList = d=>daysOf({du:d.debut,au:d.fin||d.debut,jours:d.jours||'lv'});
+  function slotCov(d,s){ const all=new Set(dayList(d)), aff=net().affectations.filter(a=>a.demandeId===d.id&&a.slotId===s.id), cov=new Set(); aff.forEach(a=>daysOf(a).forEach(x=>{ if(all.has(x)) cov.add(x); })); return {all,cov,aff}; }
+  function progress(d){ const S=slotsOf(d); let tot=0,got=0; S.forEach(s=>{ const c=slotCov(d,s); tot+=c.all.size; got+=c.cov.size; }); return tot?got/tot:0; }
+  const rng = (days,need)=>{ const out=[]; let cur=null; need.forEach((x,i)=>{ if(days.includes(x)){ if(cur&&cur.i===i-1){ cur.b=x; cur.i=i; } else { cur={a:x,b:x,i:i}; out.push(cur); } } }); return out; };
+  const fmtR = r=>r.a===r.b?fr(r.a):fr(r.a)+' → '+fr(r.b);
+  function availOf(g,d,need){ const n=net(), mine=n.affectations.filter(a=>a.agentId===g.id).map(a=>({a,days:new Set(daysOf(a))})); const free=[], busy=[], where=[];
+    need.forEach(day=>{ const c=mine.find(m=>m.days.has(day)&&ovl(m.a,d)); if(c){ busy.push(day); const dd=by(n.demandes,c.a.demandeId); const cl=dd&&by(n.clients,dd.clientId); const t=(dd?((cl&&!(dd.site||'').includes(cl.nom))?cl.nom+' — ':'')+(dd.site||dd.num):'autre mission'); if(!where.includes(t)) where.push(t); } else free.push(day); });
+    return {free,busy,where}; }
+  function lineCalc(d){ const n=net(), c=by(n.clients,d.clientId)||{tarifs:{}}, rate=+((c.tarifs||{})[d.type])||0, slots=slotsOf(d), lines=[];
+    slots.forEach(s=>{ slotCov(d,s).aff.forEach(a=>{ const g=by(n.agents,a.agentId)||{nom:'?'}, days=daysOf(a).length, h=days*planMin(a)/60; lines.push({s,a,g,days,h,rate,amt:h*rate}); }); });
+    const ht=lines.reduce((x,l)=>x+l.amt,0); return {lines,rate,ht,tva:ht*TVA,ttc:ht*(1+TVA)}; }
+  function entreprise(){ const n=net(); return n.entreprise||((window.PILOTAGE_PROJET&&PILOTAGE_PROJET.nom)||(typeof state!=='undefined'&&state&&state.projet&&state.projet.nom)||'Mon entreprise'); }
+  function repPlans(d){ const S_=(typeof state!=='undefined'&&state)||{}, ids=[...new Set((d.repart||[]).map(r=>r.planId))]; return ids.map(id=>(S_.plans||[]).find(p=>p.id===id)).filter(Boolean); }
+  function devisHtml(d){ const n=net(), c=by(n.clients,d.clientId)||{nom:'—'}, L=lineCalc(d), num='DV-'+d.num, dt=(d.valide&&d.valide.date)||today();
+    const plans=repPlans(d).map(p=>'<div style="margin:10px 0;page-break-inside:avoid"><b>'+esc(p.nom||p.id)+' — '+esc(p.niveau||'')+'</b><div style="position:relative;line-height:0;border:1px solid #ccc;margin-top:4px"><img src="'+esc(planSrc(p))+'" style="width:100%;display:block">'
+      +(d.repart||[]).filter(r=>r.planId===p.id).map(r=>'<span style="position:absolute;left:'+(r.x*100)+'%;top:'+(r.y*100)+'%;transform:translate(-50%,-50%);min-width:24px;height:24px;border-radius:12px;background:#16232B;color:#fff;border:2px solid #F2A900;font:700 12px/20px Arial;text-align:center;padding:0 5px">'+r.n+'</span>').join('')+'</div></div>').join('');
+    const perAg={}; L.lines.forEach(l=>{ const k=l.g.id||l.g.nom; (perAg[k]=perAg[k]||{g:l.g,days:0,h:0,amt:0,pos:[]}); perAg[k].days+=l.days; perAg[k].h+=l.h; perAg[k].amt+=l.amt; if(!perAg[k].pos.includes(l.s.label)) perAg[k].pos.push(l.s.label); });
+    return '<div class="dv" style="font:14px/1.45 Arial,sans-serif;color:#16232B;max-width:820px;margin:0 auto;padding:24px;background:#fff">'
+      +'<div style="display:flex;justify-content:space-between;border-bottom:4px solid #F2A900;padding-bottom:10px"><div><div style="font-size:22px;font-weight:700">'+esc(entreprise())+'</div><div style="color:#5b6770">Devis de prestation</div></div><div style="text-align:right"><b>'+esc(num)+'</b><br>Date : '+fr(dt)+'<br>Valable 30 jours</div></div>'
+      +'<p><b>Client :</b> '+esc(c.nom)+(c.contact?'<br>'+esc(c.contact):'')+'<br><b>Site :</b> '+esc(d.site||'—')+'<br><b>Prestation :</b> '+esc(d.type)+' · du '+fr(d.debut)+' au '+fr(d.fin)+' · '+esc(d.hDebut||'')+'–'+esc(d.hFin||'')+(d.jours==='all'?' · 7j/7':' · lundi → vendredi')+'</p>'
+      +(d.desc?'<p style="color:#444">'+esc(d.desc).replace(/\n/g,'<br>')+'</p>':'')
+      +(plans?'<h3 style="margin:14px 0 2px">Répartition des effectifs</h3>'+plans:'')
+      +'<h3 style="margin:14px 0 4px">Personnel affecté</h3><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#16232B;color:#fff"><th style="text-align:left;padding:6px">Agent</th><th style="text-align:left;padding:6px">Poste</th><th style="padding:6px;text-align:right">Jours</th><th style="padding:6px;text-align:right">Heures</th><th style="padding:6px;text-align:right">Taux HT/h</th><th style="padding:6px;text-align:right">Montant HT</th></tr></thead><tbody>'
+      +Object.values(perAg).map(a=>'<tr style="border-bottom:1px solid #ddd"><td style="padding:6px">'+esc(a.g.nom)+(a.g.metier?'<br><small style="color:#666">'+esc(a.g.metier)+'</small>':'')+'</td><td style="padding:6px">'+esc(a.pos.join(', '))+'</td><td style="padding:6px;text-align:right">'+a.days+'</td><td style="padding:6px;text-align:right">'+a.h.toFixed(1).replace('.',',')+'</td><td style="padding:6px;text-align:right">'+eur(L.rate)+'</td><td style="padding:6px;text-align:right">'+eur(a.amt)+'</td></tr>').join('')
+      +'</tbody></table><table style="margin:12px 0 0 auto;font-size:14px"><tr><td style="padding:3px 12px">Total HT</td><td style="text-align:right"><b>'+eur(L.ht)+'</b></td></tr><tr><td style="padding:3px 12px">TVA 20 %</td><td style="text-align:right">'+eur(L.tva)+'</td></tr><tr style="font-size:17px"><td style="padding:3px 12px"><b>Total TTC</b></td><td style="text-align:right"><b>'+eur(L.ttc)+'</b></td></tr></table>'
+      +(L.rate?'':'<p style="color:#c0392b">⚠ Aucun tarif horaire défini pour ce client et cette prestation (onglet Rapports).</p>')
+      +'<p style="margin-top:26px;color:#5b6770;font-size:12px">Bon pour accord (date, signature) :</p><div style="height:60px;border:1px dashed #bbb"></div></div>'; }
+  function devisShow(id){ const n=net(), d=by(n.demandes,id); if(!d) return; let o=document.getElementById('netDevis'); if(o) o.remove(); o=document.createElement('div'); o.id='netDevis';
+    o.innerHTML='<div class="nt-noprint nt-dvbar"><b>Devis '+esc(d.num)+'</b><label>Entreprise <input id="dvEnt" value="'+esc(entreprise())+'"></label><button id="dvPr" class="pri">🖨 Imprimer / PDF</button><button id="dvDl">⬇ Télécharger</button><button id="dvX">Fermer</button></div><div id="dvBody">'+devisHtml(d)+'</div>';
+    document.body.appendChild(o);
+    o.querySelector('#dvEnt').onchange=e=>{ n.entreprise=e.target.value.trim(); save(); o.querySelector('#dvBody').innerHTML=devisHtml(d); };
+    o.querySelector('#dvX').onclick=()=>o.remove(); o.querySelector('#dvPr').onclick=()=>window.print();
+    o.querySelector('#dvDl').onclick=()=>{ const h='<!doctype html><meta charset="utf-8"><title>Devis '+esc(d.num)+'</title>'+devisHtml(d); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([h],{type:'text/html'})); a.download='Devis-'+d.num+'.html'; a.click(); }; }
+  function traiter(id){
+    const n=net(), d=by(n.demandes,id); if(!d) return; const c=by(n.clients,d.clientId)||{nom:'—'}; let pickSlot=null, recap=false;
+    const o=modal('<div id="trW"></div>'); o.firstChild.style.width='min(980px,100%)'; const W=o.querySelector('#trW');
+    const nm=a=>{ const g=by(n.agents,a.agentId); return g?g.nom:'?'; };
+    function paint(){
+      const S=slotsOf(d), pr=progress(d), pct=Math.round(pr*100), done=pr>=0.999;
+      let h='<h3>🛠 Traiter la demande '+esc(d.num)+' — '+esc(c.nom)+'</h3><p class="nt-s"><b>'+esc(d.type)+'</b> · '+esc(d.site||'site non précisé')+' · du '+fr(d.debut)+' au '+fr(d.fin)+' · '+esc(d.hDebut||'')+'–'+esc(d.hFin||'')+' · <label style="display:inline">jours <select id="trJo">'+'<option value="lv"'+((d.jours||'lv')==='lv'?' selected':'')+'>lundi → vendredi</option><option value="all"'+(d.jours==='all'?' selected':'')+'>7 j / 7</option></select></label></p>'
+       +'<div class="nt-pg"><div class="nt-pgb"><i style="width:'+pct+'%"></i></div><b>'+pct+' %</b> <span class="nt-s">'+S.filter(s=>{ const k=slotCov(d,s); return k.cov.size>=k.all.size&&k.all.size; }).length+' / '+S.length+' personne(s) complètement couverte(s)</span></div>';
+      if(recap){ const L=lineCalc(d);
+        h+='<h4>Récapitulatif du traitement</h4><div class="nt-tw"><table class="nt-t"><thead><tr><th>Agent</th><th>Poste</th><th>Période</th><th>Jours</th><th>Heures</th><th>Taux HT/h</th><th>Montant HT</th></tr></thead><tbody>'
+         +L.lines.map(l=>'<tr><td>'+esc(l.g.nom)+'</td><td>'+esc(l.s.label)+'</td><td>'+fr(l.a.du)+' → '+fr(l.a.au)+'</td><td>'+l.days+'</td><td>'+l.h.toFixed(1)+'</td><td>'+eur(L.rate)+'</td><td>'+eur(l.amt)+'</td></tr>').join('')+'</tbody></table></div>'
+         +'<p style="text-align:right">Total HT <b>'+eur(L.ht)+'</b> · TVA 20 % '+eur(L.tva)+' · <b>Total TTC '+eur(L.ttc)+'</b></p>'+(L.rate?'':'<p class="nt-w">⚠ Aucun tarif horaire défini pour « '+esc(d.type)+' » chez ce client : renseignez-le dans l’onglet Rapports.</p>')
+         +'<div class="nt-b"><button id="trBack">← Retour</button><button id="trDv">📄 Générer le devis</button>'+(d.valide?'<span class="nt-s">Traitement validé le '+fr(d.valide.date)+'</span>':'<button class="pri" id="trOk">✔ Confirmer la validation</button>')+'</div>';
+      } else if(pickSlot){ const s=S.find(x=>x.id===pickSlot), k=slotCov(d,s), need=[...k.all].filter(x=>!k.cov.has(x));
+        h+='<h4>Personnes pour « '+esc(s.label)+' »'+(s.n>1?' (personne '+(s.k+1)+'/'+s.n+')':'')+'</h4><p class="nt-s">À couvrir : '+(need.length?rng(need,need.length?[...k.all]:[]).map(fmtR).join(' · '):'tout est couvert')+'</p>';
+        const L=n.agents.map(g=>({g,v:availOf(g,d,need)})).sort((a,b)=>b.v.free.length-a.v.free.length);
+        h+=(L.length?'<div class="nt-ag">'+L.map(({g,v})=>{ const st=v.free.length===need.length?'ok':v.free.length?'part':'ko', all=[...k.all];
+            const fr_=rng(v.free,need).map(fmtR).join(' · '), bu=rng(v.busy,need).map(fmtR).join(' · ');
+            return '<div class="nt-ac '+st+'"><div><b>'+esc(g.nom)+'</b>'+(g.metier?' <small>'+esc(g.metier)+'</small>':'')+'<br>'+(st==='ok'?'<span class="nt-g">Disponible sur toute la période</span>':st==='part'?'<span class="nt-o">Disponible : '+fr_+'</span><br><span class="nt-r2">Indisponible : '+bu+'</span><br><small>Actuellement : '+esc(v.where.join(' ; '))+'</small>':'<span class="nt-r2">Indisponible sur toute la période</span><br><small>Actuellement : '+esc(v.where.join(' ; '))+'</small>')+'</div>'+(st==='ko'?'':'<button class="pri" data-g="'+g.id+'">'+(st==='ok'?'Affecter':'Affecter (partiel)')+'</button>')+'</div>'; }).join('')+'</div>':'<p class="nt-w">Aucun agent : créez-en dans l’onglet Affectations.</p>')
+         +'<div class="nt-b"><button id="trBack">← Retour à la demande</button></div>';
+      } else {
+        const S_=(typeof state!=='undefined'&&state)||{};
+        const plans=repPlans(d);
+        if(plans.length){ h+=plans.map(p=>'<div class="nt-pl" style="margin:8px 0;cursor:default"><img src="'+esc(planSrc(p))+'" alt="">'+(d.repart||[]).filter(r=>r.planId===p.id).map(r=>{ const ss=S.filter(s=>s.r===r), q=ss.map(s=>slotCov(d,s)), full=q.filter(x=>x.cov.size>=x.all.size&&x.all.size).length, part=q.some(x=>x.cov.size), cls=full===ss.length?'full':(part?'part':'');
+              return '<button type="button" class="nt-dot nt-tdot '+cls+'" data-s="'+ss[0].id+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%" title="'+esc((r.niveau||'')+(r.zone?' · '+r.zone:''))+'">'+full+'/'+r.n+'</button>'; }).join('')+'</div>').join(''); }
+        h+='<h4>Collaborateurs demandés</h4><div class="nt-sl">'+S.map(s=>{ const k=slotCov(d,s), full=k.all.size&&k.cov.size>=k.all.size;
+          return '<div class="nt-sc '+(full?'full':k.cov.size?'part':'')+'"><button type="button" data-s="'+s.id+'">👤 '+esc(s.label)+(s.n>1?' <small>('+(s.k+1)+'/'+s.n+')</small>':'')+'<br><small>'+(full?'✔ couvert':k.cov.size?k.cov.size+'/'+k.all.size+' jours':'à affecter')+'</small></button>'
+            +k.aff.map(a=>'<span class="nt-ch">'+esc(nm(a))+' · '+fr(a.du)+(a.au!==a.du?'→'+fr(a.au):'')+' <i data-u="'+a.id+'" title="Retirer">✕</i></span>').join('')+'</div>'; }).join('')+'</div>'
+         +'<div class="nt-b"><button data-x>Fermer</button>'+(d.valide?'<button id="trDv0">📄 Devis</button>':'')+'<button class="pri" id="trVal"'+(done?'':' disabled title="Disponible à 100 %"')+'>✔ Valider le traitement de la demande</button></div>';
+      }
+      W.innerHTML=h; bind(); }
+    function bind(){
+      const q=s=>W.querySelector(s), qa=s=>W.querySelectorAll(s);
+      const jo=q('#trJo'); if(jo) jo.onchange=()=>{ d.jours=jo.value; save(); paint(); };
+      qa('[data-s]').forEach(b=>b.onclick=()=>{ pickSlot=b.dataset.s; paint(); });
+      qa('[data-u]').forEach(i=>i.onclick=e=>{ e.stopPropagation(); n.affectations=n.affectations.filter(a=>a.id!==i.dataset.u); save(); paint(); });
+      const back=q('#trBack'); if(back) back.onclick=()=>{ pickSlot=null; recap=false; paint(); };
+      qa('[data-g]').forEach(b=>b.onclick=()=>{ const g=by(n.agents,b.dataset.g), s=slotsOf(d).find(x=>x.id===pickSlot), k=slotCov(d,s), need=[...k.all].filter(x=>!k.cov.has(x)), v=availOf(g,d,need);
+        rng(v.free,need).forEach(r=>{ n.affectations.push({id:uid(),demandeId:d.id,agentId:g.id,du:r.a,au:r.b,jours:d.jours||'lv',hDebut:d.hDebut,hFin:d.hFin,poste:s.label,slotId:s.id}); });
+        if(d.statut==='recue'){ d.statut='traitement'; (d.histo=d.histo||[]).push({d:today(),s:'traitement',p:who()}); } save(); pickSlot=null; paint(); });
+      const val_=q('#trVal'); if(val_) val_.onclick=()=>{ if(progress(d)<0.999) return; recap=true; paint(); };
+      const ok=q('#trOk'); if(ok) ok.onclick=()=>{ const L=lineCalc(d); d.valide={date:today(),ht:L.ht,ttc:L.ttc,par:who()}; d.statut='planifiee'; (d.histo=d.histo||[]).push({d:today(),s:'planifiee',p:who()}); save(); paint(); };
+      const dv=q('#trDv')||q('#trDv0'); if(dv) dv.onclick=()=>devisShow(d.id);
+    }
+    paint();
   }
   function pgDemandes(w){
     const n=net(), cnt={}; n.demandes.forEach(d=>cnt[d.statut]=(cnt[d.statut]||0)+1);
@@ -15882,6 +15966,13 @@ const PG_FEATS=[
     .nt-rep{border:1px solid #d8d3c8;border-radius:10px;padding:10px;margin:8px 0;background:#faf8f3} .nt-rp{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0;font-size:13px} .nt-rp label{display:flex !important;flex-direction:row !important;align-items:center;gap:6px;font-weight:500} .nt-rp input{width:auto !important} .nt-rp .off{opacity:.55} .nt-rh{font-size:12px;color:#5b6770;margin:6px 0} .nt-rh button{margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid #16232B;background:#fff;cursor:pointer} .nt-rh button.neg{background:#c0392b;color:#fff;border-color:#c0392b}
     .nt-pl{position:relative;line-height:0;border:1px solid #d8d3c8;border-radius:8px;overflow:hidden;cursor:crosshair;user-select:none;touch-action:manipulation} .nt-pl img{width:100%;display:block} .nt-pl svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none} .nt-pl polygon{fill:rgba(242,169,0,.14);stroke:#F2A900;stroke-width:.0025;vector-effect:non-scaling-stroke}
     .nt-dot{position:absolute;transform:translate(-50%,-50%);min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:#16232B;color:#fff;border:2px solid #F2A900;font:700 13px/22px 'Space Grotesk',system-ui,sans-serif;text-align:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+    #trW p label{display:inline-flex !important;flex-direction:row !important;align-items:center;gap:6px} #trW p select{width:auto !important}
+    .nt-pg{display:flex;align-items:center;gap:10px;margin:8px 0} .nt-pgb{flex:1;height:14px;border-radius:7px;background:#e4e0d6;overflow:hidden} .nt-pgb i{display:block;height:100%;background:linear-gradient(90deg,#F2A900,#3c9d5d);transition:width .3s}
+    .nt-sl{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0} .nt-sc{border:1px solid #d8d3c8;border-radius:10px;padding:6px;min-width:170px;background:#fff} .nt-sc.full{border-color:#3c9d5d;background:#eef8f1} .nt-sc.part{border-color:#F2A900;background:#fff8e6} .nt-sc>button{width:100%;text-align:left;background:none;border:0;cursor:pointer;font-weight:600;padding:4px} .nt-ch{display:inline-block;margin:2px 3px 0 0;padding:1px 8px;border-radius:10px;background:#16232B;color:#fff;font-size:11.5px} .nt-ch i{font-style:normal;cursor:pointer;margin-left:4px;opacity:.8}
+    .nt-ag{display:flex;flex-direction:column;gap:6px;max-height:48vh;overflow:auto} .nt-ac{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #d8d3c8;border-radius:10px;padding:8px 10px;background:#fff} .nt-ac.ko{background:#eee;color:#8a8f93;filter:grayscale(1)} .nt-ac.part{background:#fff8e6;border-color:#F2A900} .nt-ac.ok{border-color:#3c9d5d} .nt-g{color:#2f8a4f;font-weight:600} .nt-o{color:#b36b00;font-weight:600} .nt-r2{color:#b03a2e}
+    .nt-tdot.full{background:#2f8a4f} .nt-tdot.part{background:#b36b00}
+    #netDevis{position:fixed;inset:0;z-index:2500;background:#e9e6df;overflow:auto} .nt-dvbar{position:sticky;top:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:#16232B;color:#fff;z-index:2} .nt-dvbar input{padding:4px 8px;border-radius:6px;border:0} .nt-dvbar button{padding:6px 12px;border-radius:8px;border:0;cursor:pointer}
+    @media print{ body>*:not(#netDevis){display:none !important} #netDevis{position:static !important;background:#fff} .nt-dvbar{display:none !important} }
     #netModal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 10px;overflow:auto} .nt-box{background:#fff;color:#16232B;border-radius:12px;padding:16px;width:min(620px,100%);display:flex;flex-direction:column;gap:10px} .nt-box h3{margin:0} .nt-box label{display:flex;flex-direction:column;gap:3px;font-size:13px;font-weight:600;flex:1;min-width:120px} .nt-box textarea{width:100%;box-sizing:border-box} .nt-r{display:flex;gap:8px;flex-wrap:wrap} .nt-b{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
     @media print{ body.net-mode .cartouche,body.net-mode .tab-menu,.nt-noprint,#userChip,#pgWho{display:none !important} }`;
     document.head.appendChild(st);
