@@ -15645,7 +15645,6 @@ const PG_FEATS=[
     /* pied de barre : un seul bouton rond (initiale) + nom de l'espace + tag du type ; un clic remplace le menu par le profil */
     const ft=document.createElement('div'); ft.id='sbFoot';
     ft.innerHTML='<button type="button" class="sb-ini" id="sbIni" title="Mon profil" aria-expanded="false">'+esc(ini)+'</button><span class="sb-wt"><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc((p&&p.fonction)||w.role||ty)+'</small></span>';
-    nav.appendChild(ft);
     const col=RC[w.key]||RC.lecteur, hst=window.PILOTAGE_HOST_CFG||(p&&p.hebergement)||null, PR=window.PILOTAGE_PROVIDERS||{};
     const sync=document.getElementById('syncStatus');
     const pv=document.createElement('div'); pv.id='sbProfView'; pv.hidden=true;
@@ -15667,19 +15666,22 @@ const PG_FEATS=[
       +(p&&p.valide_jusqu?'<div class="pv-sec"><div class="pv-l">Accès</div>valable jusqu’au <b>'+p.valide_jusqu.split('-').reverse().join('/')+'</b></div>':'')
       +'<div class="pv-sec pv-host" id="pvHost" role="button" tabindex="0" style="cursor:pointer" title="Modifier l’hébergement"><div class="pv-l">Hébergement des données ›</div>'+(hst?esc((PR[hst.provider]&&PR[hst.provider].label)||hst.provider)+(hst.compte?'<small>'+esc(hst.compte)+'</small>':''):'Base de l’outil')+'<small id="pvSync">'+esc(sync?sync.textContent.replace(/^[●◐○]\s*/,''):'')+'</small></div>'
       +'<button type="button" class="pv-row pv-out" id="pvOut"><span class="sb-ic">🚪</span><span>Se déconnecter</span></button>';
-    nav.insertBefore(pv,ft);
-    const setView=on=>{ nav.classList.toggle('sb-prof',on); pv.hidden=!on; ft.querySelector('#sbIni').setAttribute('aria-expanded',String(on)); closeDataWin(); };
+    const setView=on=>{ closeDataWin(); const old=document.getElementById('pfWin'); if(old) old.remove(); pv.hidden=!on; const fb=document.getElementById('pgFabBtn'); if(fb) fb.setAttribute('aria-expanded',String(on));
+      if(!on) return; const ov=document.createElement('div'); ov.id='pfWin'; ov.setAttribute('role','dialog'); ov.appendChild(pv); document.body.appendChild(ov);
+      ov.addEventListener('pointerdown',e=>{ if(e.target===ov) setView(false); }); };
     window.pgProfView=setView;
-    if(wasProf) setView(true);
-    ft.onclick=e=>{ e.stopPropagation(); setView(pv.hidden); };
+    if(wasProf||document.getElementById('pfWin')) setView(true);
+    { const old=document.getElementById('pgFab'); if(old) old.remove(); const fab=document.createElement('div'); fab.id='pgFab';
+      fab.innerHTML='<button type="button" id="pgFabBtn" class="pf-c" aria-label="Mon profil" aria-expanded="false">'+esc(ini)+'</button><div class="pf-i"><b>'+esc(w.nm||(w.email||'Utilisateur').split('@')[0])+'</b>'+(w.email?'<small>'+esc(w.email)+'</small>':'')+'<small>'+esc(tg)+' · '+esc(ty)+'</small><small>'+esc((p&&p.fonction)?p.fonction+' · '+w.role:w.role)+'</small></div>';
+      document.body.appendChild(fab); fab.querySelector('#pgFabBtn').onclick=e=>{ e.stopPropagation(); setView(pv.hidden||!document.getElementById('pfWin')); }; }
     { const sp=pv.querySelector('#pvPj'); if(sp) sp.onchange=()=>window.pilotageSwitchProjet&&window.pilotageSwitchProjet(sp.value);
       const st=pv.querySelector('#pvTy'); if(st) st.onchange=async()=>{ try{ await window.PILOTAGE_SET_TYPE(p.id,st.value); p.type=st.value; location.reload(); }catch(e){ alert(e.message); st.value=pilotageType(); } };
       const to=pv.querySelector('#pvTyOk'); if(to) to.onclick=e=>{ e.stopPropagation(); pgTypeWin(); }; }
-    pv.querySelector('#pvBack').onclick=()=>setView(false);
+    pv.querySelector('#pvBack').onclick=()=>setView(false); { const bk=pv.querySelector('#pvBack'); bk.textContent='✕ Fermer'; }
     pv.querySelector('#pvData').onclick=e=>{ e.stopPropagation(); openDataWin(); };
-    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ pgOpen(b.dataset.m); });
+    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); pgOpen(b.dataset.m); });
     const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ pgOpen('settings'); try{ closeTabMenu(); }catch(_){} };
-    { const hb=pv.querySelector('#pvHost'); if(hb&&adm){ hb.onclick=()=>pgOpen('host'); } else if(hb){ hb.style.cursor='default'; } }
+    { const hb=pv.querySelector('#pvHost'); if(hb&&adm){ hb.onclick=()=>{ setView(false); pgOpen('host'); }; } else if(hb){ hb.style.cursor='default'; } }
     pv.querySelector('#pvOut').onclick=()=>{ if(window.pilotageLogout) window.pilotageLogout(); };
     const pr=pv.querySelector('#sbProj');
     const upd=()=>{ const ids=[...pr.querySelectorAll('input[type=checkbox]:checked')].map(i=>i.dataset.id); const cur=p&&p.id; if(cur&&!ids.includes(cur)){ ids.unshift(cur); const ci=pr.querySelector('input[data-id="'+cur+'"]'); if(ci) ci.checked=true; } setSel(ids); pr.querySelector('.sb-sum').textContent=ids.length===1?'1 projet coché':ids.length+' projets cochés'; const h=pr.querySelector('.sb-hint'); if(h) h.remove(); if(ids.length>1){ const hh=document.createElement('small'); hh.className='sb-hint'; hh.textContent='Les paramètres et invitations s’appliquent aux '+ids.length+' projets cochés.'; pr.appendChild(hh); } try{ if(document.getElementById('page-projet').classList.contains('active')) render(); }catch(e){} };
@@ -15713,6 +15715,18 @@ const PG_FEATS=[
       #dtWin{position:fixed;left:260px;top:90px;width:300px;z-index:985;padding:8px;border-radius:18px;background:rgba(24,28,32,.42);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border:1px solid rgba(255,255,255,.28);box-shadow:0 10px 40px rgba(0,0,0,.25);color:#fff;font-family:'Space Grotesk',system-ui,sans-serif}
       #dtWin .dt-t{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.75);padding:6px 10px 4px} #dtWin button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;border-radius:10px;padding:11px 12px;color:#fff;font:500 14px 'Space Grotesk',system-ui,sans-serif;cursor:pointer} #dtWin button:hover{background:rgba(255,255,255,.14)}
       @media (max-width:899px){ #dtWin{left:50%;transform:translateX(-50%);top:18%} }
+      #pfWin{position:fixed;inset:0;z-index:984;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(10,14,18,.28)}
+      #pfWin #sbProfView{width:min(420px,100%);max-height:88vh;overflow:auto;padding:10px 12px 12px;border-radius:20px;background:rgba(24,28,32,.78);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 48px rgba(0,0,0,.35)}
+      #pfWin .pv-back{color:#fff;text-align:right;opacity:.85}
+      #pfWin .pv-sec.pv-proj{margin-top:4px}
+      #dtWin{left:50% !important;top:50% !important;transform:translate(-50%,-50%) !important;z-index:990 !important}
+      #pgFab{position:fixed;left:12px;bottom:16px;z-index:971;display:flex;align-items:center;height:48px;border-radius:24px;font-family:'Space Grotesk',system-ui,sans-serif}
+      #pgFab .pf-c{position:relative;z-index:1;flex:none;width:48px;height:48px;padding:0;border-radius:50%;background:#F2A900;color:#16232B;font:700 22px/44px 'Space Grotesk',system-ui,sans-serif;text-align:center;border:2px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer}
+      #pgFab .pf-i{display:flex;flex-direction:column;justify-content:center;gap:1px;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;margin-left:0;padding:0;border-radius:0 24px 24px 0;background:rgba(24,28,32,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#fff;transition:max-width .25s ease,opacity .2s ease,padding .25s ease;pointer-events:none}
+      #pgFab .pf-i b{font-size:13.5px;line-height:1.2} #pgFab .pf-i small{font-size:11px;line-height:1.25;color:#c9ced2}
+      #pgFab:hover .pf-i,#pgFab:focus-within .pf-i{max-width:300px;opacity:1;padding:4px 16px 4px 12px;margin-left:-14px;padding-left:24px}
+      @media (min-width:900px){ #pgFab{left:250px} body.sb-off #pgFab{left:12px} }
+      body.plan-fs-on #pgFab{display:none !important} @media print{ #pgFab,#pfWin{display:none !important} }
       #syncStatus[data-kind=ko]{display:none !important}
       .menu-open{padding:8px 11px !important} .menu-open .menu-ico{font-size:22px}`; document.head.appendChild(st); }
   }
