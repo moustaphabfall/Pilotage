@@ -15314,6 +15314,9 @@ const PG_FEATS=[
   #pgProjSel .ps-t{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px} #pgProjSel button{padding:4px 10px;border:0;border-radius:6px;background:#eee;font-size:12px;cursor:pointer}
   #pgProjSel .ps-l{display:flex;flex-wrap:wrap;gap:6px 14px} #pgProjSel .ps-i{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer} #pgProjSel small{color:#777} #pgProjSel .ps-h{display:block;margin-top:6px}
   #sbProj{display:none !important}
+  .pgs-f2{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px} .pgs-f2 input,.pgs-f2 select{width:auto !important;flex:0 1 210px;padding:7px 10px;border:1px solid #d6d6d6;border-radius:8px;background:#fff;font-size:13px}
+  .pj-tag{display:inline-block;padding:2px 10px;border-radius:999px;background:#f1f1ee;border:1px solid #e0ded8;font-weight:700;font-size:12.5px;white-space:nowrap}
+  table.mtab tbody.pgs td{border-bottom:1px solid #eee}
   #sbProfView .pv-proj{border-top:1px solid rgba(255,255,255,.22);margin-top:8px;padding-top:10px}
   #sbProfView .pv-sel{width:100%;margin-top:4px;padding:7px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.28);background:#363b40;color:#fff;font:600 13.5px 'Space Grotesk',system-ui,sans-serif}
   #sbProfView .pv-lnk{margin-top:6px;background:none;border:0;padding:2px 0;color:#F2A900;font-size:12px;cursor:pointer;text-decoration:underline}
@@ -15404,7 +15407,7 @@ const PG_FEATS=[
   }
   function readMatrix(root){ const o={}; root.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) o[i.dataset.f]=false; }); return o; }
   const wrap=()=>document.getElementById('pgWrap');
-  let pgMode='settings'; const actIds=()=>{ const p=PJ(); return pgMode==='members'?((p.projets||[]).map(x=>x.id).concat(p.projets&&p.projets.length?[]:[p.id])):selProjets(); };
+  let fq='', fr='', fv='', fa=''; let pgMode='settings'; const actIds=()=>{ const p=PJ(); return pgMode==='members'?((p.projets||[]).map(x=>x.id).concat(p.projets&&p.projets.length?[]:[p.id])):selProjets(); };
   let cache=null, caches={}, mF='', openF=null, cred='', headHtml='', rtok=0, rtry=0;
   async function loadAll(){ const p=PJ(), ids=actIds(), res={}; for(const id of ids){ try{ res[id]=await adm({action:'p_members',projet:id}); }catch(e){ if(id===p.id) throw e; res[id]=null; } } caches=res; cache=res[p.id]||cache; }
 
@@ -15470,7 +15473,22 @@ const PG_FEATS=[
       return '<div class="pgs" data-pj="'+esc(pj.id)+'">'+(multi?'<div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div>':'')+out.join('')+'</div>'; };
     if(multi&&pgMode==='members'){ if(mF&&!sels.find(x=>x.id===mF)) mF=''; body.push('<div class="pgs-f"><b>Projets :</b> <button type="button" data-mf=""'+(!mF?' class="on"':'')+'>Tous ('+sels.length+')</button>'+sels.map(x=>'<button type="button" data-mf="'+esc(x.id)+'"'+(mF===x.id?' class="on"':'')+'>'+esc(x.nom)+'</button>').join('')+'</div>'); }
     else mF='';
-    if(pgMode==='members') body.push(sels.filter(x=>!mF||x.id===mF).map(sectionHtml).join(''));
+    if(pgMode==='members'){
+      const today=Object.values(caches).find(c=>c&&c.today); const td=today?today.today:new Date().toISOString().slice(0,10);
+      const vk=m=>{ if(!m.valide_jusqu) return 'sans'; if(m.valide_jusqu<td) return 'expire'; const d=Math.round((new Date(m.valide_jusqu)-new Date(td))/864e5); return d<=5?'bientot':'ok'; };
+      const okRow=m=>{ const q=fq.trim().toLowerCase(); if(q&&!((m.nom||'')+' '+(m.email||'')).toLowerCase().includes(q)) return false; if(fr&&m.role!==fr) return false; if(fv&&vk(m)!==fv) return false; if(fa==='1'&&!m.actif) return false; if(fa==='0'&&m.actif) return false; return true; };
+      body.push('<div class="pgs-f2"><input id="mfQ" type="search" placeholder="🔎 Utilisateur…" value="'+esc(fq)+'"><select id="mfR"><option value="">Tous les rôles</option><option value="admin"'+(fr==='admin'?' selected':'')+'>Administrateur du projet</option><option value="editeur"'+(fr==='editeur'?' selected':'')+'>Éditeur</option><option value="lecteur"'+(fr==='lecteur'?' selected':'')+'>Lecteur</option></select><select id="mfV"><option value="">Toutes les validités</option>'+[['ok','Valide'],['bientot','Expire bientôt (≤ 5 j)'],['expire','Expirée'],['sans','Sans échéance']].map(x=>'<option value="'+x[0]+'"'+(fv===x[0]?' selected':'')+'>'+x[1]+'</option>').join('')+'</select><select id="mfA"><option value="">Actifs et inactifs</option><option value="1"'+(fa==='1'?' selected':'')+'>Actifs</option><option value="0"'+(fa==='0'?' selected':'')+'>Inactifs</option></select></div>');
+      const vis=sels.filter(x=>!mF||x.id===mF);
+      body.push(vis.map(pj=>{ const c=caches[pj.id]; if(!c||!c.notifs||!c.notifs.length) return ''; return '<div class="pgs" data-pj="'+esc(pj.id)+'"><div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div>'+c.notifs.map(n=>'<div class="nt" data-nu="'+n.user_id+'"><b>'+esc(n.nom||n.email)+'</b> — '+(n.type==='expire'?'accès <span class="ko">expiré</span> depuis le ':'accès qui expire le ')+fmt(n.echeance)+'.<br>Prolonger d’un mois ?<div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+n.user_id+'" disabled>Prolonger 1 mois</button><button data-lapse="'+n.user_id+'">Laisser expirer</button></div></div>').join('')+'</div>'; }).join(''));
+      const bodies=vis.map(pj=>{ const c=caches[pj.id]; if(!c) return '<tbody class="pgs" data-pj="'+esc(pj.id)+'"><tr><td colspan="6"><b>'+esc(pj.nom)+'</b> : données indisponibles (droits insuffisants ?)</td></tr></tbody>'; const M=c.members.filter(okRow), today2=c.today;
+        return '<tbody class="pgs" data-pj="'+esc(pj.id)+'">'+M.map(m=>'<tr data-u="'+m.user_id+'"><td><span class="pj-tag">'+esc(pj.nom)+'</span></td><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+(m.moi?' (vous)':'')+'</small></td>'
+          +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
+          +'<td>'+statut(m,today2)+(m.confirme===false?'<br><span class="warn">⏳ invitation envoyée, pas encore activée</span>':'')+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
+          +'<td><label class="sw"><input type="checkbox" data-act '+(m.actif?'checked':'')+' '+(m.moi?'disabled':'')+'><i></i></label></td>'
+          +'<td>'+(m.role==='admin'?'':'<button data-fn>Fonctionnalités</button> ')+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">'+(PJ().global?'Réinitialiser le compte':'Demander la réinitialisation')+'</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
+          +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="6">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
+          +'<tr data-pp="'+m.user_id+'" hidden><td colspan="6"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')+'</tbody>'; }).join('');
+      body.push('<div class="card" style="overflow:auto"><table class="mtab"><thead><tr><th>Projet</th><th>Utilisateur</th><th>Rôle</th><th>Validité</th><th>Actif</th><th>Actions</th></tr></thead>'+bodies+'</table></div>'); }
     if(pgMode==='settings') body.push(window.pgNivHtml?pgNivHtml():'');
     if(pgMode==='host'){ const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
       body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
@@ -15506,6 +15524,8 @@ const PG_FEATS=[
     });
     });
     w.querySelectorAll('[data-mf]').forEach(b=>b.onclick=()=>{ mF=b.dataset.mf; draw(); });
+    { const q=w.querySelector('#mfQ'); if(q){ let t; q.oninput=()=>{ clearTimeout(t); t=setTimeout(()=>{ fq=q.value; draw(); const n=document.getElementById('mfQ'); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length); } },250); };
+      [['#mfR',v=>fr=v],['#mfV',v=>fv=v],['#mfA',v=>fa=v]].forEach(([id,f])=>{ const e=w.querySelector(id); if(e) e.onchange=()=>{ f(e.value); draw(); }; }); } }
     const hg=w.querySelector('#hGo'); if(hg) hg.onclick=async()=>{ const k=w.querySelector('#hP').value, hm=w.querySelector('#hMsg'), say=(t,e)=>{ hm.textContent=t; hm.style.color=e?'#B4432D':'#2a7a3b'; };
       try{ let nh=null; if(k){
           const mod=pilotageModuleName();
