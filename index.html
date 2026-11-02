@@ -1076,7 +1076,7 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
   </div>
 
   <div style="display:flex; gap:10px; margin:10px 0; flex-wrap:wrap;">
-    <div class="dt-wrap"><button type="button" class="ghost" id="dataBtn" onclick="dataMenuToggle(event)" title="Gestion des données : export, sauvegardes, dossier, import" aria-haspopup="true">🗂 Données ▾</button>
+    <div class="dt-wrap" hidden style="display:none"><button type="button" class="ghost" id="dataBtn" onclick="dataMenuToggle(event)" title="Gestion des données : export, sauvegardes, dossier, import" aria-haspopup="true">🗂 Données ▾</button>
       <div class="dt-menu" id="dataMenu" hidden>
         <button type="button" onclick="dataMenuClose(); exportChoose()">📤 Exporter (données ou reporting)</button>
         <button type="button" onclick="dataMenuClose(); openRestore()">🛟 Sauvegardes de sécurité</button>
@@ -5906,7 +5906,8 @@ function setSyncStatus(kind, text){
   const colors = {ok:'var(--moss)', ko:'var(--rust)', pending:'var(--amber)', off:'var(--grey)'};
   const dot = kind==='pending' ? '◐' : '●';
   el.textContent = dot+' '+text;
-  el.style.color = colors[kind] || 'var(--grey)';
+  el.style.color = colors[kind] || 'var(--grey)'; el.dataset.kind = kind;
+  try{ const pv=document.getElementById('pvSync'); if(pv) pv.textContent=el.textContent.replace(/^[●◐○]\s*/,''); }catch(e){}
 }
 
 var _undoStack=[], _redoStack=[], _undoLast=null, _undoT=0, _undoBusy=false;
@@ -15513,7 +15514,7 @@ const PG_FEATS=[
   function who(){ const p=PJ()||{}, nm=(window.PILOTAGE_USER&&window.PILOTAGE_USER.nom)||'', key=p.global?'super':p.role; return {p,nm,email:window.PILOTAGE_USER_EMAIL||'',key,role:p.global?'Super administrateur':(RL[p.role]||p.role||'')}; }
   function avatar(nm,size){ const ini=(nm||'?').trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase()||'?'; let h=0; for(const c of nm||'') h=(h*31+c.charCodeAt(0))>>>0; return '<span class="pgav" style="width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*.42)+'px;background:'+AVC[h%AVC.length]+'">'+esc(ini)+'</span>'; }
   function closeProfile(){ const c=document.getElementById('pgProf'); if(c) c.remove(); }
-  function openProfile(){
+  function openProfile(){ if(window.pgProfView){ const n=document.getElementById('tabMenu'); window.pgProfView(!(n&&n.classList.contains('sb-prof'))); return; }
     if(document.getElementById('pgProf')){ closeProfile(); return; }
     const w=who(), p=w.p, h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{}, col=RC[w.key]||RC.lecteur;
     const c=document.createElement('div'); c.id='pgProf';
@@ -15540,40 +15541,54 @@ const PG_FEATS=[
   function selProjets(){ const p=PJ(); if(!p) return []; let a=[]; try{ a=JSON.parse(localStorage.getItem('pg_sel')||'[]'); }catch(e){} const ids=new Set((p.projets||[]).map(x=>x.id)); a=a.filter(x=>ids.has(x)); if(!a.includes(p.id)) a.unshift(p.id); return a; }
   function setSel(a){ try{ localStorage.setItem('pg_sel',JSON.stringify(a)); }catch(e){} }
   window.pilotageSelProjets=selProjets;
+  function closeDataWin(){ const d=document.getElementById('dtWin'); if(d) d.remove(); }
+  function openDataWin(){ if(document.getElementById('dtWin')){ closeDataWin(); return; }
+    const d=document.createElement('div'); d.id='dtWin';
+    d.innerHTML='<div class="dt-t">Données</div><button type="button" data-f="exp">📤 Exporter (données ou reporting)</button><button type="button" data-f="res">🛟 Sauvegardes de sécurité</button><button type="button" data-f="dir">📁 Sauvegarder dans un dossier</button><button type="button" data-f="imp">📥 Charger une sauvegarde</button>';
+    document.body.appendChild(d);
+    d.querySelectorAll('button').forEach(b=>b.onclick=()=>{ const f=b.dataset.f; closeDataWin(); try{ if(f==='exp') exportChoose(); else if(f==='res') openRestore(); else if(f==='dir') saveToFolder(); else document.getElementById('importInput').click(); }catch(e){ console.error(e); } });
+    setTimeout(()=>{ const off=e=>{ if(!d.contains(e.target)&&!e.target.closest('#pvData')){ closeDataWin(); document.removeEventListener('pointerdown',off,true); } }; document.addEventListener('pointerdown',off,true); },0); }
   function buildSidebar(){
     const nav=document.getElementById('tabMenu'); if(!nav) return; const head=nav.querySelector('.sb-head'); if(!head) return;
     const p=PJ(), w=who(), local=(window.state&&state.projet)||{}, nom=(p&&p.nom)||local.nom||'Mon espace', ty=PG_TYPES[pilotageType()]||'', tg=PG_ACR[pilotageType()]||'';
     const first=(w.nm||nom||'?').trim().split(/\s+/)[0]||'?', ini=first[0].toUpperCase();
     let mb=document.getElementById('menuBtn'); if(!mb) return;
     head.className='sb-head sb-ws-wrap'; head.innerHTML=''; mb.innerHTML=ICO_SB; mb.title='Replier le volet latéral'; head.appendChild(mb);
-    ['sbAct','sbProj','sbFoot','sbPop'].forEach(id=>{ const o=document.getElementById(id); if(o) o.remove(); });
+    const wasProf=nav.classList.contains('sb-prof'); ['sbAct','sbProj','sbFoot','sbPop','sbProfView'].forEach(id=>{ const o=document.getElementById(id); if(o) o.remove(); });
     const adm=!!p&&(p.global||p.role==='admin');
     const L=(p&&p.projets&&p.projets.length)?p.projets:[{id:(p&&p.id)||'SM',nom:nom,type:pilotageType()}], sel=p?selProjets():[L[0].id];
-    /* pied de barre : un seul bouton rond (initiale) + nom de l'espace + tag du type */
+    /* pied de barre : un seul bouton rond (initiale) + nom de l'espace + tag du type ; un clic remplace le menu par le profil */
     const ft=document.createElement('div'); ft.id='sbFoot';
-    ft.innerHTML='<button type="button" class="sb-ini" id="sbIni" title="Menu de l’espace de travail" aria-haspopup="true" aria-expanded="false">'+esc(ini)+'</button><span class="sb-wt"><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small></span>';
+    ft.innerHTML='<button type="button" class="sb-ini" id="sbIni" title="Mon profil" aria-expanded="false">'+esc(ini)+'</button><span class="sb-wt"><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small></span>';
     nav.appendChild(ft);
-    /* menu déroulant (s'ouvre au-dessus du pied de barre) */
-    const pop=document.createElement('div'); pop.id='sbPop'; pop.hidden=true;
+    const col=RC[w.key]||RC.lecteur, hst=window.PILOTAGE_HOST_CFG||(p&&p.hebergement)||null, PR=window.PILOTAGE_PROVIDERS||{};
+    const sync=document.getElementById('syncStatus');
+    const pv=document.createElement('div'); pv.id='sbProfView'; pv.hidden=true;
     const sum=sel.length===1?'1 projet coché':sel.length+' projets cochés';
-    pop.innerHTML=(p?'<button type="button" class="sb-row" data-a="prof"><span class="sb-ic">'+ICO_USER_GEAR+'</span><span>Mon profil</span></button>':'')
-      +(p&&!adm?'<button type="button" class="sb-row" data-a="proj"><span class="sb-ic">'+ICO_GEAR+'</span><span>Mon projet</span></button>':'')
+    pv.innerHTML='<button type="button" class="pv-back" id="pvBack">‹ Retour au menu</button>'
+      +'<div class="pv-head"><span class="sb-ini big">'+esc(ini)+'</span><div class="pv-n"><b>'+esc(w.nm||(w.email||'Utilisateur').split('@')[0])+'</b>'+(w.email?'<small>'+esc(w.email)+'</small>':'')+(w.role?'<span class="pv-role" style="background:'+col[0]+';color:'+col[1]+'">'+esc(w.role)+'</span>':'')+'</div></div>'
+      +'<button type="button" class="pv-row" id="pvData"><span class="sb-ic">🗂</span><span>Données</span><em>›</em></button>'
+      +(p?'<div class="pv-sec"><div class="pv-l">Projet</div><b>'+esc(nom)+'</b><small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small></div>':'')
+      +(p&&!adm?'<button type="button" class="pv-row" data-a="proj"><span class="sb-ic">'+ICO_GEAR+'</span><span>Mon projet</span></button>':'')
       +(adm?'<div class="sb-box" id="sbAct"><button type="button" data-g="#pgWrap h2">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-g="#pgNew">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-g=".pgAcc">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button></div>':'')
       +'<div class="sb-pl" id="sbProj"><div class="sb-t">Liste des projets <em class="sb-sum">'+esc(sum)+'</em></div>'
       +(L.length>1?'<button type="button" class="sb-all" id="sbAll">Tout sélectionner</button>':'')
       +'<div class="sb-list" id="sbList">'+L.map(x=>'<label class="sb-it'+(p&&x.id===p.id?' cur':'')+'"><input type="checkbox" data-id="'+esc(x.id)+'" '+(sel.includes(x.id)?'checked':'')+'><span class="sb-pt"><b>'+esc(x.nom)+'</b><small><span class="sb-tag">'+esc(PG_ACR[pgTypeKey(x.type)])+'</span>'+esc(PG_TYPES[pgTypeKey(x.type)])+'</small></span></label>').join('')+'</div>'
-      +(sel.length>1?'<small class="sb-hint">Les paramètres et invitations s’appliquent aux '+sel.length+' projets cochés.</small>':'')+'</div>';
-    document.body.appendChild(pop);
-    const ini_=ft.querySelector('#sbIni');
-    const close=()=>{ pop.hidden=true; ini_.setAttribute('aria-expanded','false'); };
-    const toggle=e=>{ e.stopPropagation(); pop.hidden=!pop.hidden; ini_.setAttribute('aria-expanded',String(!pop.hidden)); };
-    ft.onclick=toggle;
-    pop.onclick=e=>e.stopPropagation();
-    if(!window.__sbDocBound){ window.__sbDocBound=1; document.addEventListener('click',()=>{ const q=document.getElementById('sbPop'); if(q&&!q.hidden){ q.hidden=true; const b=document.getElementById('sbIni'); if(b) b.setAttribute('aria-expanded','false'); } }); document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ const q=document.getElementById('sbPop'); if(q) q.hidden=true; } }); }
-    pop.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ close(); goPg(b.dataset.g); });
-    const pj_=pop.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ close(); showPage('projet'); };
-    const pf=pop.querySelector('[data-a=prof]'); if(pf) pf.onclick=()=>{ close(); if(p) openProfile(); };
-    const pr=pop.querySelector('#sbProj');
+      +(sel.length>1?'<small class="sb-hint">Les paramètres et invitations s’appliquent aux '+sel.length+' projets cochés.</small>':'')+'</div>'
+      +(p&&p.valide_jusqu?'<div class="pv-sec"><div class="pv-l">Accès</div>valable jusqu’au <b>'+p.valide_jusqu.split('-').reverse().join('/')+'</b></div>':'')
+      +'<div class="pv-sec"><div class="pv-l">Hébergement des données</div>'+(hst?esc((PR[hst.provider]&&PR[hst.provider].label)||hst.provider)+(hst.compte?'<small>'+esc(hst.compte)+'</small>':''):'Base de l’outil')+'<small id="pvSync">'+esc(sync?sync.textContent.replace(/^[●◐○]\s*/,''):'')+'</small></div>'
+      +'<button type="button" class="pv-row pv-out" id="pvOut"><span class="sb-ic">🚪</span><span>Se déconnecter</span></button>';
+    nav.insertBefore(pv,ft);
+    const setView=on=>{ nav.classList.toggle('sb-prof',on); pv.hidden=!on; ft.querySelector('#sbIni').setAttribute('aria-expanded',String(on)); closeDataWin(); };
+    window.pgProfView=setView;
+    if(wasProf) setView(true);
+    ft.onclick=e=>{ e.stopPropagation(); setView(pv.hidden); };
+    pv.querySelector('#pvBack').onclick=()=>setView(false);
+    pv.querySelector('#pvData').onclick=e=>{ e.stopPropagation(); openDataWin(); };
+    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ goPg(b.dataset.g); });
+    const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ showPage('projet'); try{ closeTabMenu(); }catch(_){} };
+    pv.querySelector('#pvOut').onclick=()=>{ if(window.pilotageLogout) window.pilotageLogout(); };
+    const pr=pv.querySelector('#sbProj');
     const upd=()=>{ const ids=[...pr.querySelectorAll('input[type=checkbox]:checked')].map(i=>i.dataset.id); const cur=p&&p.id; if(cur&&!ids.includes(cur)){ ids.unshift(cur); const ci=pr.querySelector('input[data-id="'+cur+'"]'); if(ci) ci.checked=true; } setSel(ids); pr.querySelector('.sb-sum').textContent=ids.length===1?'1 projet coché':ids.length+' projets cochés'; const h=pr.querySelector('.sb-hint'); if(h) h.remove(); if(ids.length>1){ const hh=document.createElement('small'); hh.className='sb-hint'; hh.textContent='Les paramètres et invitations s’appliquent aux '+ids.length+' projets cochés.'; pr.appendChild(hh); } try{ if(document.getElementById('page-projet').classList.contains('active')) render(); }catch(e){} };
     pr.querySelectorAll('input[type=checkbox]').forEach(i=>i.onchange=upd);
     const all=pr.querySelector('#sbAll'); if(all) all.onclick=()=>{ pr.querySelectorAll('input[type=checkbox]').forEach(i=>i.checked=true); upd(); };
@@ -15586,16 +15601,26 @@ const PG_FEATS=[
       #sbFoot .sb-ini{flex:none;width:40px;height:40px;padding:0;border-radius:50%;background:#F2A900;color:#16232B;font:700 20px/36px 'Space Grotesk',system-ui,sans-serif;text-align:center;border:2px solid rgba(255,255,255,.85);cursor:pointer}
       #sbFoot .sb-ini:hover,#sbFoot .sb-ini[aria-expanded=true]{box-shadow:0 0 0 3px rgba(242,169,0,.35)}
       .sb-wt{display:flex;flex-direction:column;min-width:0;line-height:1.25} .sb-wt b{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff} .sb-wt small{font-size:11.5px;color:#aeb4b9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #sbPop{position:fixed;left:18px;bottom:78px;width:min(300px,calc(100vw - 36px));max-height:calc(100vh - 110px);overflow-y:auto;z-index:200;background:#2B2F33;border:1px solid rgba(255,255,255,.3);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.45);padding:8px;color:#e6e8ea;font-family:'Space Grotesk',system-ui,sans-serif}
-      #sbPop[hidden]{display:none}
-      #sbPop .sb-row,.sb-box button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;padding:9px 10px;border-radius:8px;cursor:pointer;color:#e6e8ea;font:600 13.5px 'Space Grotesk',system-ui,sans-serif}
-      #sbPop .sb-row:hover,.sb-box button:hover{background:rgba(255,255,255,.1);color:#fff} .sb-box button svg,.sb-ic svg{flex:none;color:#F2A900} .sb-ic{display:inline-flex}
+      .sb-box button,.pv-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;padding:9px 10px;border-radius:8px;cursor:pointer;color:#e6e8ea;font:600 13.5px 'Space Grotesk',system-ui,sans-serif}
+      .pv-row:hover,.sb-box button:hover{background:rgba(255,255,255,.1);color:#fff} .sb-box button svg,.sb-ic svg{flex:none;color:#F2A900} .sb-ic{display:inline-flex}
       .sb-box{border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:6px;margin:6px 0 4px;display:flex;flex-direction:column;gap:2px}
       .sb-tag{display:inline-block;margin-right:6px;padding:0 6px;border-radius:5px;background:#F2A900;color:#16232B;font-weight:700;font-size:10.5px;letter-spacing:.04em;line-height:16px}
       .sb-pl{margin-top:8px}.sb-t{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#aeb4b9;padding:4px 8px 6px;display:flex;justify-content:space-between;gap:8px} .sb-sum{font-style:normal;text-transform:none;letter-spacing:0;color:#F2A900}
       .sb-pt{display:flex;flex-direction:column;min-width:0;line-height:1.25} .sb-pt b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .sb-pt small{font-weight:400;font-size:11px;color:#aeb4b9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .sb-list{display:flex;flex-direction:column;gap:2px;max-height:34vh;overflow:auto} .sb-it{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;cursor:pointer;color:#e6e8ea;font-size:13.5px} .sb-it:hover{background:rgba(255,255,255,.08)} .sb-it.cur{background:rgba(242,169,0,.14)} .sb-it input{flex:none;accent-color:#F2A900;width:16px;height:16px} .sb-it .sb-pt{flex:1}
       .sb-all{display:block;background:none;border:0;cursor:pointer;font:600 12px 'Space Grotesk',system-ui,sans-serif;color:#F2A900;padding:2px 8px 6px} .sb-hint{display:block;color:#F2A900;font-size:11.5px;padding:6px 8px 2px}
+      nav.tab-menu.sb-prof>button.tab,nav.tab-menu.sb-prof>.sb-head .sb-ver{display:none !important}
+      #sbProfView[hidden]{display:none} #sbProfView{display:block;color:#e6e8ea;font-family:'Space Grotesk',system-ui,sans-serif;padding:0 2px 8px}
+      .pv-back{display:block;width:100%;text-align:left;background:none;border:0;color:#F2A900;font:600 13px 'Space Grotesk',system-ui,sans-serif;padding:6px 8px;cursor:pointer}
+      .pv-head{display:flex;gap:12px;align-items:center;padding:8px 6px 12px;border-bottom:1px solid rgba(255,255,255,.14);margin-bottom:6px} .pv-n{display:flex;flex-direction:column;gap:2px;min-width:0} .pv-n b{font-size:15px;color:#fff;overflow:hidden;text-overflow:ellipsis} .pv-n small{font-size:11.5px;color:#aeb4b9;overflow:hidden;text-overflow:ellipsis}
+      .pv-role{align-self:flex-start;margin-top:4px;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700}
+      .sb-ini.big{display:inline-block;flex:none;width:52px;height:52px;border-radius:50%;background:#F2A900;color:#16232B;border:2px solid rgba(255,255,255,.85);font:700 24px/48px 'Space Grotesk',system-ui,sans-serif;text-align:center}
+      .pv-sec{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;gap:2px;font-size:13.5px} .pv-sec b{color:#fff} .pv-sec small{color:#aeb4b9;font-size:11.5px} .pv-l{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#8d959b;margin-bottom:2px}
+      .pv-row em{margin-left:auto;font-style:normal;opacity:.6} .pv-out{margin-top:8px;color:#f0b0a8}
+      #dtWin{position:fixed;left:260px;top:90px;width:300px;z-index:985;padding:8px;border-radius:18px;background:rgba(24,28,32,.42);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border:1px solid rgba(255,255,255,.28);box-shadow:0 10px 40px rgba(0,0,0,.25);color:#fff;font-family:'Space Grotesk',system-ui,sans-serif}
+      #dtWin .dt-t{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.75);padding:6px 10px 4px} #dtWin button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;border-radius:10px;padding:11px 12px;color:#fff;font:500 14px 'Space Grotesk',system-ui,sans-serif;cursor:pointer} #dtWin button:hover{background:rgba(255,255,255,.14)}
+      @media (max-width:899px){ #dtWin{left:50%;transform:translateX(-50%);top:18%} }
+      #syncStatus[data-kind=ko]{display:none !important}
       .menu-open{padding:8px 11px !important} .menu-open .menu-ico{font-size:22px}`; document.head.appendChild(st); }
   }
   window.pilotageBuildSidebar=buildSidebar;
@@ -15614,7 +15639,6 @@ const PG_FEATS=[
       #pgProf .pgp-a{display:flex;flex-direction:column;padding:6px} #pgProf .pgp-a button{text-align:left;border:0;background:none;padding:9px 10px;border-radius:8px;cursor:pointer;font:inherit;color:inherit} #pgProf .pgp-a button:hover{background:#f1f3f4}
       #tabLogout.pgrow{display:flex;align-items:center;gap:10px;text-align:left} #tabLogout .pgt{display:flex;flex-direction:column;min-width:0;line-height:1.2} #tabLogout .pgt b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} #tabLogout .pgt small{opacity:.7;font-size:11px}`; document.head.appendChild(st); }
     const b=document.createElement('button'); b.type='button'; b.id='pgWho'; b.title=w.nm+' · '+w.role; b.setAttribute('aria-label','Profil'); b.innerHTML=avatar(w.nm,34); b.onclick=e=>{ e.stopPropagation(); openProfile(); };
-    document.body.appendChild(b);
     const cfg=window.PILOTAGE_CONFIG||{}, lim=Math.max(5,+cfg.inactiviteMin||30)*60000; let last=Date.now();
     ['mousemove','keydown','touchstart','click','scroll'].forEach(ev=>window.addEventListener(ev,()=>{ last=Date.now(); },{passive:true,capture:true}));
     setInterval(()=>{ if(Date.now()-last>lim){ try{ window.pilotageLogout(); }catch(e){} } },20000);
