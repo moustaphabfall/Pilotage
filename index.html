@@ -5808,10 +5808,17 @@ var gedF = {q:'', niv:'', corps:''};
 const GED_TYPES = ['Plan de repérage','Plan de terminaux','Plan d’exécution','Plan de synthèse','Plan de réservations','Plan de calepinage','Schéma','Coupe / façade','Autre'];
 const GED_PHASES = ['ESQ','APS','APD','PRO','DCE','EXE','DOE'];
 const GED_STAT = ['En attente','À jour','Périmé'];
+var gedOpen = new Set();
+function gedSyncPlans(){ state.ged = state.ged||[]; let ch=false; try{ if(window.RT_PLAN_SRC&&typeof ensureRdcPlan==='function') ensureRdcPlan(); }catch(e){}
+  (state.plans||[]).forEach(pl=>{ if(!state.ged.some(r=>r.planId===pl.id)){ state.ged.push({id:'G'+pl.id, planId:pl.id, niveau:pl.niveau||'', corps:'', type:'Plan de repérage', nom:pl.nom||pl.id, phase:'', indice:'', date:'', statut:'À jour', lien:''}); ch=true; } });
+  if(ch) persist(); }
 function gedRows(){ state.ged = state.ged||[]; return state.ged; }
+function gedPlanSrc(r){ const pl=r.planId?planById(r.planId):(state.plans||[]).find(p=>(p.nom||p.id)===r.nom); return pl?planSrc(pl):''; }
+function gedTog(id){ if(gedOpen.has(id)) gedOpen.delete(id); else gedOpen.add(id); gedRedraw(); }
 function gedCorpsList(){ const a=(state.metiers||[]).map(m=>m.nom); gedRows().forEach(r=>{ if(r.corps&&!a.includes(r.corps)) a.push(r.corps); }); return a; }
 function gedOpts(list,val,blank){ return (blank!==undefined?`<option value="">${esc(blank)}</option>`:'')+list.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join(''); }
 function gedHtml(){
+  try{ gedSyncPlans(); }catch(e){}
   const rows = gedRows(), niv = state.niveaux||[], corps = gedCorpsList(), f = gedF, q = (f.q||'').toLowerCase();
   const ni = n=>{ const i=niv.indexOf(n); return i<0?999:i; };
   const list = rows.filter(r=>(!f.niv||r.niveau===f.niv)&&(!f.corps||r.corps===f.corps)&&(!q||[r.niveau,r.corps,r.type,r.nom,r.phase,r.indice,r.note].join(' ').toLowerCase().includes(q)))
@@ -5820,14 +5827,14 @@ function gedHtml(){
   const cell = (r,k,html)=>`<td data-k="${k}">${html}</td>`;
   const inp = (r,k,ph,type)=>`<input type="${type||'text'}" value="${esc(r[k]||'')}" placeholder="${ph||''}" onchange="gedSet('${r.id}','${k}',this.value)">`;
   const sel = (r,k,l,blank)=>`<select onchange="gedSet('${r.id}','${k}',this.value)">${gedOpts(l,r[k]||'',blank)}</select>`;
-  const tr = list.map(r=>`<tr>${cell(r,'niveau',sel(r,'niveau',niv,'—'))}${cell(r,'corps',`<input list="gedCorps" value="${esc(r.corps||'')}" placeholder="Corps d’état" onchange="gedSet('${r.id}','corps',this.value)">`)}${cell(r,'type',`<input list="gedTypes" value="${esc(r.type||'')}" placeholder="Type de plan" onchange="gedSet('${r.id}','type',this.value)">`)}${cell(r,'nom',`<input list="gedPlans" value="${esc(r.nom||'')}" placeholder="Nom du plan" onchange="gedSet('${r.id}','nom',this.value)">`)}${cell(r,'phase',sel(r,'phase',GED_PHASES,'—'))}${cell(r,'indice',inp(r,'indice','Ind.'))}${cell(r,'date',inp(r,'date','','date'))}${cell(r,'statut',sel(r,'statut',GED_STAT))}${cell(r,'lien',inp(r,'lien','Lien / fichier'))}<td class="ged-x"><button type="button" title="Supprimer la ligne" onclick="gedDel('${r.id}')">✕</button></td></tr>`).join('');
+  const tr = list.map(r=>{ const src=gedPlanSrc(r), op=gedOpen.has(r.id); return `<tr>${'<td class="ged-p">'+(src?`<button type="button" title="${op?'Replier':'Déplier'} l’aperçu" onclick="gedTog(\'${r.id}\')">${op?'▾':'▸'} 🖼</button>`:'')+'</td>'}${cell(r,'niveau',sel(r,'niveau',niv,'—'))}${cell(r,'corps',`<input list="gedCorps" value="${esc(r.corps||'')}" placeholder="Corps d’état" onchange="gedSet('${r.id}','corps',this.value)">`)}${cell(r,'type',`<input list="gedTypes" value="${esc(r.type||'')}" placeholder="Type de plan" onchange="gedSet('${r.id}','type',this.value)">`)}${cell(r,'nom',`<input list="gedPlans" value="${esc(r.nom||'')}" placeholder="Nom du plan" onchange="gedSet('${r.id}','nom',this.value)">`)}${cell(r,'phase',sel(r,'phase',GED_PHASES,'—'))}${cell(r,'indice',inp(r,'indice','Ind.'))}${cell(r,'date',inp(r,'date','','date'))}${cell(r,'statut',sel(r,'statut',GED_STAT))}${cell(r,'lien',inp(r,'lien','Lien / fichier'))}<td class="ged-x"><button type="button" title="Supprimer la ligne" onclick="gedDel('${r.id}')">✕</button></td></tr>${op&&src?`<tr class="ged-prev"><td colspan="11"><img src="${esc(src)}" alt="${esc(r.nom||'')}"></td></tr>`:''}`; }).join('');
   return `<details class="ged-rb" id="gedRb" open><summary>🗂️ GED <small>${rows.length} plan${rows.length>1?'s':''}</small></summary>
     <div class="ged-bar"><input type="search" id="gedQ" placeholder="🔍 Rechercher dans la GED…" value="${esc(f.q)}" oninput="gedF.q=this.value; gedRedraw(true)">
       <select onchange="gedF.niv=this.value; gedRedraw()">${gedOpts(niv,f.niv,'Tous les niveaux')}</select>
       <select onchange="gedF.corps=this.value; gedRedraw()">${gedOpts(corps,f.corps,'Tous les corps d’état')}</select>
       <button type="button" class="primary" onclick="gedAdd()">＋ Nouvelle ligne</button></div>
-    <div class="ged-scroll"><table class="ged-t"><thead><tr><th>Niveau</th><th>Corps d’état</th><th>Type de plan</th><th>Plan</th><th>Phase</th><th>Indice</th><th>Date</th><th>Statut</th><th>Lien</th><th></th></tr></thead>
-    <tbody>${tr||'<tr><td colspan="10" class="empty-note">Aucun plan. Clique sur « ＋ Nouvelle ligne ».</td></tr>'}</tbody></table></div>
+    <div class="ged-scroll"><table class="ged-t"><thead><tr><th></th><th>Niveau</th><th>Corps d’état</th><th>Type de plan</th><th>Plan</th><th>Phase</th><th>Indice</th><th>Date</th><th>Statut</th><th>Lien</th><th></th></tr></thead>
+    <tbody>${tr||'<tr><td colspan="11" class="empty-note">Aucun plan. Clique sur « ＋ Nouvelle ligne ».</td></tr>'}</tbody></table></div>
     <datalist id="gedCorps">${corps.map(c=>`<option value="${esc(c)}">`).join('')}</datalist><datalist id="gedTypes">${GED_TYPES.map(c=>`<option value="${esc(c)}">`).join('')}</datalist><datalist id="gedPlans">${plansOpts.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></details>`;
 }
 function gedRedraw(keepFocus){ const w=document.getElementById('plansWrap'); if(!w) return; const d=document.getElementById('gedRb'); if(!d) return; const t=document.createElement('div'); t.innerHTML=gedHtml(); d.replaceWith(t.firstElementChild); if(keepFocus){ const i=document.getElementById('gedQ'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } } }
@@ -13261,7 +13268,7 @@ body.nbw-open .nb-head,body.nbw-open .nb-leg{text-align:left}
     if(!src||/^idb:/.test(src)){ box.innerHTML='<p class="ch-hint" style="padding:10px">Plan pas encore chargé sur cet appareil : ouvrez-le une fois avec du réseau.</p>'; return; }
     box.style.width=(CH.zoom*100)+'%';
     const dots=(state.tasks||[]).filter(t=>t.pos&&t.pos.planId===pl.id&&t.etat!=='fait').map(t=>`<span class="ch-dot" style="left:${t.pos.x*100}%;top:${t.pos.y*100}%" title="${esc_(t.id)}"></span>`).join('');
-    box.innerHTML=`<img src="${src}" alt="${esc_(pl.nom||'')}" draggable="false">${dots}<span id="chMk" class="ch-mk" hidden></span>`;
+    box.innerHTML=`<img src="${esc(src)}" alt="${esc_(pl.nom||'')}" draggable="false">${dots}<span id="chMk" class="ch-mk" hidden></span>`;
   };
   window.chZoom=function(d){ CH.zoom=Math.max(1,Math.min(5,CH.zoom+d)); const b=$c('chPlan'); if(b) b.style.width=(CH.zoom*100)+'%'; };
   function pieceAt(planId,x,y){
@@ -17493,6 +17500,7 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
 .ged-t td input,.ged-t td select{width:100%;border:0;background:transparent;padding:8px;font:inherit;border-radius:0;min-height:34px;box-sizing:border-box}
 .ged-t td input:focus,.ged-t td select:focus{outline:2px solid #F2A900;background:#fffaf0}
 .ged-t tr:hover td{background:#fbfaf6}
+.ged-p{width:64px;text-align:center}.ged-p button{background:#f4f2ec;border:1px solid #d5dbe0;border-radius:8px;padding:4px 7px;cursor:pointer;font-size:12px}.ged-prev td{padding:10px!important;background:#fafaf7}.ged-prev img{display:block;max-width:100%;max-height:420px;margin:auto;border:1px solid #d5dbe0;border-radius:8px;background:#fff}
 .ged-x{width:34px;text-align:center}.ged-x button{background:none;border:0;color:#B4432D;cursor:pointer;font-size:14px;opacity:.5}.ged-x button:hover{opacity:1}
 </style>
 <style id="pvCss">
