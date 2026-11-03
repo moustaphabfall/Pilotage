@@ -17956,4 +17956,56 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
   const orj=window.renderJour; if(typeof orj==='function'){ window.renderJour=function(){ const r=orj.apply(this,arguments); try{ document.querySelectorAll('[data-jrcard]').forEach(c=>{ const id=c.dataset.jrcard, K=kidsOf(id); if(!K.length) return; const b=c.querySelector('.t b'); if(b&&!b.dataset.chev){ b.dataset.chev=1; b.insertAdjacentHTML('afterbegin','<span style="color:#C98A2B">'+(jrExp.has(id)?'▾':'▸')+' </span>'); const sm=document.createElement('small'); sm.style.cssText='opacity:.65;margin-left:6px'; sm.textContent='('+K.length+' sous-tâches)'; b.appendChild(sm); } }); }catch(e){} return r; }; }
 })();
 </script>
+<style id="tfCss">
+.tf-grid{display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(260px,380px);align-items:start;margin:10px 0}
+.tf-box{border:1px solid var(--line,rgba(120,120,120,.3));border-radius:12px;padding:12px 14px;background:transparent}
+.tf-box>.tf-t{margin:0 0 8px;font:700 12px/1 sans-serif;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.tf-box>.field:last-child{margin-bottom:0}
+.tf-tech{grid-column:1;grid-row:1}.tf-plan{grid-column:1;grid-row:2}.tf-cout{grid-column:1;grid-row:3}.tf-autres{grid-column:1;grid-row:4}.tf-photos{grid-column:2;grid-row:1 / span 2;border-style:dashed}
+.tf-grid.cols{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tf-grid.cols .tf-tech{grid-column:1;grid-row:1 / span 4}.tf-grid.cols .tf-plan{grid-column:2;grid-row:1 / span 4}.tf-grid.cols .tf-photos{grid-column:3;grid-row:1}.tf-grid.cols .tf-cout{grid-column:3;grid-row:2}.tf-grid.cols .tf-autres{grid-column:3;grid-row:3 / span 2}
+@media (max-width:900px){.tf-grid,.tf-grid.cols{grid-template-columns:1fr}.tf-grid>*{grid-column:1 !important;grid-row:auto !important}}
+.modal.tf-wide{max-width:min(96vw,1500px) !important;width:min(96vw,1500px) !important}
+.tf-photos #editPhotosList{display:flex;flex-wrap:wrap;gap:8px}.tf-photos #editPhotosList>span{margin:0 !important}.tf-photos img{max-width:130px;max-height:100px;object-fit:cover}
+.tf-box .field input:not([type=checkbox]):not([type=radio]),.tf-box .field select,.tf-box .field textarea{max-width:520px}
+.tf-cout .tf-soon{font-size:13px;opacity:.65;font-style:italic;margin:0}
+#tfViewBtn{font-size:13px;padding:4px 10px;width:auto;height:auto;border-radius:8px}
+</style>
+<script>
+/* ===== v134 : fiche de tâche en encadrés (Technique / Planification / Coût / Photos) + bouton « Vue » + étapes précédente / suivante ===== */
+(function(){
+  const has=(el,sel)=>!!el.querySelector(sel);
+  const E=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const getV=()=>{ try{ return localStorage.getItem('tf_view')||'liste'; }catch(e){ return 'liste'; } };
+  const setV=v=>{ try{ localStorage.setItem('tf_view',v); }catch(e){} };
+  const lbl=t=>t.id+' — '+(t.quoi||'').slice(0,70);
+  function boxes(id){
+    const mb=document.getElementById('modalBody'); if(!mb||mb.querySelector('.tf-grid')) return; const t=taskById(id); if(!t) return;
+    const fg=mb.querySelector('.fiche-grid'); const src=fg?[...fg.querySelectorAll(':scope > .fiche-main > *'),...fg.querySelectorAll(':scope > .fiche-ph > *')]:[...mb.children];
+    const kids=src.filter(c=>c.classList&&(c.classList.contains('field')||c.classList.contains('row2')||c.classList.contains('prep-pal')||c.classList.contains('mail-box')));
+    const B={tech:[],plan:[],photos:[],autres:[]};
+    kids.forEach(c=>{ const lab=(c.querySelector('label')||{}).textContent||'';
+      if(has(c,'.ph-pick')) B.photos.push(c);
+      else if(has(c,'#e-quoi,#e-famille-t,#e-famille,#e-metier,#e-niveau,#tpWrap,#e-effectif')||/Matériel|Pièces|zone/i.test(lab)||has(c,'[id^="e-zc"],.zc-list,#e-zones')) B.tech.push(c);
+      else if(has(c,'#e-dmode,#e-pointage,#e-portee,#e-duree,#depList')||/Priorité|Dates/i.test(lab)) B.plan.push(c);
+      else B.autres.push(c); });
+    const mk=(cls,title,list)=>{ const d=document.createElement('section'); d.className='tf-box '+cls; if(title) d.innerHTML='<h4 class="tf-t">'+title+'</h4>'; list.forEach(x=>d.appendChild(x)); return d; };
+    const g=document.createElement('div'); g.className='tf-grid'+(getV()==='colonnes'?' cols':'');
+    const tech=mk('tf-tech','🔧 Technique',B.tech), plan=mk('tf-plan','📅 Planification',B.plan), ph=mk('tf-photos','',B.photos), au=mk('tf-autres','📎 Suivi et autres informations',B.autres);
+    const co=document.createElement('section'); co.className='tf-box tf-cout'; co.innerHTML='<h4 class="tf-t">💶 Coût</h4><p class="tf-soon">Prix, devis et budget de la tâche : à venir.</p>';
+    /* étapes précédente / suivante (liste des tâches de tout le projet) */
+    const dep=plan.querySelector('#depList'); const depF=dep&&dep.closest('.field');
+    const pr=taskById((t.dependances||[])[0]), nx=(state.tasks||[]).find(x=>(x.dependances||[]).includes(t.id));
+    const more=(t.dependances||[]).length>1?'<small style="display:block;opacity:.65">+ '+((t.dependances||[]).length-1)+' autre(s) étape(s) précédente(s) : '+E((t.dependances||[]).slice(1).map(d=>d).join(', '))+'</small>':'';
+    const df=document.createElement('div'); df.innerHTML='<div class="field"><label>⬅ Étape précédente</label><input id="tf-prev" list="tfTasks" value="'+E(pr?lbl(pr):'')+'" placeholder="— choisir une tâche du projet —" onchange="tfDep(\''+t.id+'\',\'prev\',this)">'+more+'</div><div class="field"><label>➡ Étape suivante</label><input id="tf-next" list="tfTasks" value="'+E(nx?lbl(nx):'')+'" placeholder="— choisir une tâche du projet —" onchange="tfDep(\''+t.id+'\',\'next\',this)"></div><datalist id="tfTasks">'+(state.tasks||[]).filter(x=>x.id!==t.id).map(x=>'<option value="'+E(lbl(x))+'">').join('')+'</datalist>';
+    if(depF){ depF.style.display='none'; depF.before(...df.childNodes); } else [...df.childNodes].forEach(n=>plan.appendChild(n));
+    g.append(tech,plan,co,ph,au);
+    const h3=mb.querySelector('h3'); if(fg){ fg.replaceWith(g); } else if(h3&&h3.nextSibling) mb.insertBefore(g,h3.nextSibling); else mb.appendChild(g);
+    const md=mb.closest('.modal'); const wide=()=>{ if(md){ md.classList.add('fiche-wide'); md.classList.toggle('tf-wide',g.classList.contains('cols')); } }; wide();
+    if(h3&&!document.getElementById('tfViewBtn')){ const b=document.createElement('button'); b.type='button'; b.id='tfViewBtn'; b.className='td-brush'; b.title='Changer la disposition de la fiche'; b.textContent=getV()==='colonnes'?'▤ Vue : colonnes':'▥ Vue : liste'; b.onclick=()=>{ const on=g.classList.toggle('cols'); wide(); setV(on?'colonnes':'liste'); b.textContent=on?'▤ Vue : colonnes':'▥ Vue : liste'; }; h3.appendChild(b); }
+  }
+  window.tfDep=function(id,k,inp){ const v=inp.value; try{ if(k==='prev') pvSetPrev(id,v); else pvSetNext(id,v); }catch(e){ console.error(e); } const t=taskById(id); const pr=taskById((t.dependances||[])[0]), nx=(state.tasks||[]).find(x=>(x.dependances||[]).includes(id)); const a=document.getElementById('tf-prev'), b=document.getElementById('tf-next'); if(a) a.value=pr?lbl(pr):''; if(b) b.value=nx?lbl(nx):''; try{ const dl=document.getElementById('depList'); if(dl) dl.innerHTML=renderDepList(t); }catch(e){} };
+  const o=window.openTaskDetail; if(typeof o==='function') window.openTaskDetail=function(id){ const r=o.apply(this,arguments); setTimeout(()=>{ try{ boxes(id); }catch(e){ console.error(e); } },40); return r; };
+})();
+</script>
 </body></html>
