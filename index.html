@@ -5221,8 +5221,6 @@ function pieceShapeAsk(cb, fromFlow){
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>Créer une pièce</h3>
     <p class="empty-note" style="margin-bottom:10px">Que souhaitez-vous créer ?</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${stairFlow?'':`<button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="closeModal(); _pieceShapeCb=null; apcxStart()">🪄 Contour automatique (comme Revit)<br><small style="font-weight:400">Approchez le curseur d’une zone fermée : son contour est proposé, un clic crée la pièce.</small></button>`}
-      ${stairFlow?'':`<button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="closeModal(); _pieceShapeCb=null; apcxVirtStart()">✏ Contour virtuel<br><small style="font-weight:400">Tracez une ligne qui ferme une zone ouverte (porte, open space) : elle sera prise en compte par « Pièce auto ».</small></button>`}
       ${(stairFlow||window.zoneFlow)?'':`<button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="closeModal(); _pieceShapeCb=null; zoneStart()">▦ Compartiment (zone)<br><small style="font-weight:400">Découpez le niveau en zones (Z1, Z2…) avec des traits de séparation.</small></button>`}
       ${stairFlow?'':`<button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="closeModal(); _pieceShapeCb=null; stairStart([], stairDefaultNiv(), 'Escalier')">🪜 Escalier<br><small style="font-weight:400">Pièce spéciale sur plusieurs niveaux : vous choisissez les niveaux desservis, puis le même escalier est repris d'un niveau à l'autre.</small></button>`}
       <button class="ghost" style="padding:14px;font-size:15px;text-align:left" onclick="_pieceKind='circulation'; pieceShapePick('free')">🚶 Circulation<br><small style="font-weight:400">Couloir ou palier : tracez le contour, le nom « Circulation » est pré-rempli.</small></button>
@@ -12838,7 +12836,7 @@ function lvSwitch(mode){
 /* Plein écran du plan : une seule sortie, utilisée partout (bouton, Échap, clic en dehors, fermeture de la vue) */
 window.rtFsExit=function(){ try{ const r=document.getElementById('rtRoot'); if(r) r.classList.remove('rt-fs'); document.body.classList.remove('plan-fs-on'); const b=document.getElementById('rtFsBtn'); if(b) b.textContent='⛶ Plein écran'; }catch(e){} };
 document.addEventListener('pointerdown',e=>{ try{ const r=document.getElementById('rtRoot'); if(!r||!r.classList.contains('rt-fs')) return; const t=e.target;
-  if(t===r || !r.contains(t)){ if(t.closest && t.closest('#overlay.open,#miniPromptOverlay,.modal,[role=dialog],[role=menu],#pinMenu,#tfOv,.tf-card,#rtBasePop,#rtBaseBtn,#fpWin,.fp-win,.pg-dk,#pgPop')) return; e.preventDefault(); e.stopPropagation(); window.rtFsExit(); } }catch(_){} }, true);
+  if(t===r || !r.contains(t)){ if(t.closest && t.closest('#overlay.open,#miniPromptOverlay,.modal,[role=dialog],[role=menu],#pinMenu,#tfOv,.tf-card,#rtBasePop,#rtBaseBtn,#fpWin,.fp-win,.pg-dk,#pgPop,#apcxBar,#apcxPhoto,#urFloat,#pgFab,#otBar,#lvNivMenu')) return; e.preventDefault(); e.stopPropagation(); window.rtFsExit(); } }catch(_){} }, true);
 setInterval(()=>{ try{ const r=document.getElementById('rtRoot'); if(r && r.classList.contains('rt-fs')){ const pg=r.closest('.page'); if(pg && !pg.classList.contains('active')) window.rtFsExit(); } }catch(_){} },400);
 function lvClose(){
   window.rtFsExit(); if(!lvState) return; lvRestorePage();
@@ -14717,6 +14715,32 @@ const NS='http://www.w3.org/2000/svg';
 function hostAt(t){ if(!t||!t.closest) return null; const rt=t.closest('#rtPlan'); if(rt) return {el:rt,kind:'rt'}; const pi=t.closest('.plan-inner'); if(pi) return {el:pi,kind:'plans'}; return null; }
 function curPlan(kind){ try{ return kind==='rt' ? (window.rtCurPlan&&window.rtCurPlan()) : planById(planSel); }catch(e){ return null; } }
 function area(q){ return Math.abs(q.reduce((a,p,i)=>{ const n=q[(i+1)%q.length]; return a+(p[0]*n[1]-n[0]*p[1]); },0))/2; }
+/* Comme Revit : seules les bordures épaisses (murs) délimitent une pièce ; les traits fins (mobilier, équipements) sont ignorés */
+function thickOnly(wall,W,H){
+  const N=W*H, hr=new Uint16Array(N), vr=new Uint16Array(N);
+  for(let y=0;y<H;y++){ let x=0; while(x<W){ if(!wall[y*W+x]){ x++; continue; } let e=x; while(e<W&&wall[y*W+e]) e++; const L=Math.min(65535,e-x); for(let k=x;k<e;k++) hr[y*W+k]=L; x=e; } }
+  for(let x=0;x<W;x++){ let y=0; while(y<H){ if(!wall[y*W+x]){ y++; continue; } let e=y; while(e<H&&wall[e*W+x]) e++; const L=Math.min(65535,e-y); for(let k=y;k<e;k++) vr[k*W+x]=L; y=e; } }
+  const lineMin=Math.max(12,Math.round(W/70)), hist=new Float64Array(41); let tot=0;
+  for(let i=0;i<N;i++){ if(!wall[i]) continue; const a=hr[i],b=vr[i], mn=Math.min(a,b), mx=Math.max(a,b); if(mx>=lineMin&&mn<=40){ hist[mn]++; tot++; } }
+  if(tot<200) return null;
+  /* seuil d'épaisseur (Otsu) entre traits fins et murs */
+  let sumAll=0; for(let t=1;t<=40;t++) sumAll+=t*hist[t]; let wB=0,sB=0,best=-1,T=3;
+  for(let t=1;t<=40;t++){ wB+=hist[t]; if(!wB) continue; const wF=tot-wB; if(!wF) break; sB+=t*hist[t]; const mB=sB/wB, mF=(sumAll-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF); if(v>best){ best=v; T=t+1; } }
+  T=Math.max(3,T);
+  let thickN=0; for(let t=T;t<=40;t++) thickN+=hist[t]; if(thickN<tot*0.06) return null;
+  const m=new Uint8Array(N); let kept=0;
+  for(let i=0;i<N;i++){ if(wall[i]&&Math.min(hr[i],vr[i])>=T){ m[i]=1; } }
+  /* on garde les ensembles de murs d'une certaine longueur (pas les petits pavés noirs : chaises, poteaux) */
+  const lab=new Uint8Array(N), stack=new Int32Array(N), minSide=Math.max(24,Math.round(W*0.012)), out=new Uint8Array(N);
+  for(let s=0;s<N;s++){ if(!m[s]||lab[s]) continue; let sp=0,minx=W,maxx=0,miny=H,maxy=0; const list=[]; stack[sp++]=s; lab[s]=1;
+    while(sp){ const i=stack[--sp]; list.push(i); const x=i%W,y=(i/W)|0; if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy) continue; const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=W||ny>=H) continue; const j=ny*W+nx; if(m[j]&&!lab[j]){ lab[j]=1; stack[sp++]=j; } } }
+    if(Math.max(maxx-minx,maxy-miny)>=minSide){ for(const i of list){ out[i]=1; kept++; } } }
+  if(kept<N*0.0004) return null;
+  /* léger épaississement pour refermer les angles et les joints entre traits épais */
+  const o2=out.slice(); for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){ const i=y*W+x; if(!out[i]&&(out[i-1]||out[i+1]||out[i-W]||out[i+W])&&wall[i]) o2[i]=1; }
+  return o2; }
+window.__apcxThick=thickOnly;
 function prep(pl,cb){
   let src=''; try{ src=planSrc(pl); }catch(e){}
   if(!src||pl.id==='__none'){ cb(null); return; }
@@ -14729,8 +14753,17 @@ function prep(pl,cb){
     const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d',{willReadFrequently:true}); g.fillStyle='#fff'; g.fillRect(0,0,W,H); g.drawImage(img,0,0,W,H);
     const px=g.getImageData(0,0,W,H).data, wall=new Uint8Array(W*H); const TH=(typeof PDET_TH==='number'?PDET_TH:190);
     if(window.PNET){ wall.set(PNET.mask(px,W,H,{})); } else { for(let i=0;i<W*H;i++) wall[i]=px[i*4+1]<TH?1:0; }
-    try{ const vs=pl.virt||[]; if(vs.length){ const vc=document.createElement('canvas'); vc.width=W; vc.height=H; const vg=vc.getContext('2d',{willReadFrequently:true}); vg.strokeStyle='#000'; vg.lineWidth=Math.max(4,W/600); vg.lineCap='round'; vg.lineJoin='round';
-      vs.forEach(v=>{ vg.beginPath(); v.pts.forEach((p,i)=>i?vg.lineTo(p[0]*W,p[1]*H):vg.moveTo(p[0]*W,p[1]*H)); if(v.closed) vg.closePath(); vg.stroke(); });
+    try{ const tk=thickOnly(wall,W,H); if(tk) wall.set(tk); }catch(_){}
+    /* le contour virtuel PRIME sur le contour du plan : le long de ses traits, et à l'intérieur d'un contour fermé, les murs du plan sont écartés ;
+       ailleurs (parties non tracées), les murs du plan restent et se combinent avec le tracé virtuel */
+    try{ const vs=pl.virt||[]; if(vs.length){
+      const mk=()=>{ const c=document.createElement('canvas'); c.width=W; c.height=H; return c; };
+      const path=(g,v)=>{ g.beginPath(); v.pts.forEach((p,i)=>i?g.lineTo(p[0]*W,p[1]*H):g.moveTo(p[0]*W,p[1]*H)); if(v.closed) g.closePath(); };
+      const zc=mk(), zg=zc.getContext('2d',{willReadFrequently:true}); zg.fillStyle='#000'; zg.strokeStyle='#000'; zg.lineCap='round'; zg.lineJoin='round'; zg.lineWidth=Math.max(16,W/130);
+      vs.forEach(v=>{ path(zg,v); if(v.closed&&v.pts.length>=3) zg.fill(); zg.stroke(); });
+      const zd=zg.getImageData(0,0,W,H).data; for(let i=0;i<W*H;i++){ if(zd[i*4+3]>100) wall[i]=0; }
+      const vc=mk(), vg=vc.getContext('2d',{willReadFrequently:true}); vg.strokeStyle='#000'; vg.lineWidth=Math.max(4,W/600); vg.lineCap='round'; vg.lineJoin='round';
+      vs.forEach(v=>{ path(vg,v); vg.stroke(); });
       const vd=vg.getImageData(0,0,W,H).data; for(let i=0;i<W*H;i++){ if(vd[i*4+3]>100) wall[i]=1; } } }catch(_){}
     e.W=W; e.H=H; e.wall=wall; e.vis=new Uint32Array(W*H); e.stamp=0; e.stack=new Int32Array(W*H); e.ready=true;
     const q=e.q; e.q=[]; q.forEach(f=>f(e));
