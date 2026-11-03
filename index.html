@@ -14453,7 +14453,9 @@ Règles :
       const t = pzWallTask(z, sg, k), col = t ? (COL[t.etat]||COL.afaire) : '#6F7B82';
       const click = live ? `onclick="event.stopPropagation(); pzWallClick('${z.id}',${k})" style="pointer-events:stroke; cursor:pointer;"` : 'style="pointer-events:none;"';
       const d = `x1="${f(sg.a[0])}" y1="${f(sg.a[1])}" x2="${f(sg.b[0])}" y2="${f(sg.b[1])}"`;
-      const hl = t && typeof jrSel!=='undefined' && jrSel===t.id ? `<line ${d} stroke="#F2A900" stroke-width="12" stroke-linecap="round" opacity=".6" vector-effect="non-scaling-stroke" style="pointer-events:none"/>` : '';
+      const scol = t && t.structure && window.pzStructCol && pzStructCol(t.structure.key);
+      const hl0 = scol ? `<line ${d} stroke="${scol}" stroke-width="10" stroke-linecap="butt" opacity=".6" vector-effect="non-scaling-stroke" style="pointer-events:none"/>` : '';
+      const hl = hl0 + (t && typeof jrSel!=='undefined' && jrSel===t.id ? `<line ${d} stroke="#F2A900" stroke-width="12" stroke-linecap="round" opacity=".6" vector-effect="non-scaling-stroke" style="pointer-events:none"/>` : '');
       return `<g class="pz-wall">${hl}<line ${d} stroke="transparent" stroke-width="16" vector-effect="non-scaling-stroke" ${click}><title>Mur ${k+1} — ${esc(z.nom)}${t?' : '+esc(t.quoi||''):' (clic : passer en mode exé)'}</title></line><line ${d} stroke="${col}" stroke-width="${t?5:3.5}" ${t?'':'stroke-dasharray="9 5"'} stroke-linecap="round" vector-effect="non-scaling-stroke" style="pointer-events:none"/></g>`;
     }).join('')).join('');
   };
@@ -17497,6 +17499,7 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
       if(has(sup)) return;
       const t=taskBase(nextTaskId(), lab+' — '+z.nom, z.niveau, {zoneChantierId:z.id, zoneChantierIds:[z.id], support:sup, zone:''});
       state.tasks.unshift(t); ns++; });
+    try{ window.pzxPins(z); }catch(e){ console.error(e); }
     persist();
     if(opt.quiet) return;
     try{ window.rtRender&&window.rtRender(); }catch(e){}
@@ -17778,6 +17781,21 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
   let S={sel:new Set(),stage:1,lib:null,lvl:null};
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   window.pzWallTask=function(z,sg,k){ const c=(state.cloisons||[]).find(c=>c.segKey===sg.key); const t=c&&cloisonTask(c); if(t) return t; return (state.tasks||[]).find(t=>t.zoneChantierId===z.id&&t.support==='mur'&&t.murSeg===sg.key)||null; };
+  const norm=x=>{ try{ return normK(x); }catch(e){ return String(x||'').toLowerCase(); } };
+  const KW={go:[['gros oeuvre','gros-oeuvre','maconnerie','beton'],'Gros œuvre'],cloison:[['cloison','doublage','platrerie','placo','plaquiste'],'Cloisons / doublage'],fp:[['faux plafond','faux-plafond','plafond'],'Faux plafonds'],peinture:[['peinture'],'Peinture'],carrelage:[['carrelage','faience'],'Carrelage'],rsol:[['revetement de sol','revetements de sol','sol souple','parquet'],'Revêtement de sol'],menuiserie:[['menuiserie','serrurerie','vitrerie'],'Menuiserie'],resine:[['resine','revetement de sol','sol souple'],'Résine / sols coulés']};
+  const SOLM={carrelage:'carrelage',parquet:'rsol',beton:'go',moquette:'rsol',vinyle:'rsol',resine:'resine',pierre:'carrelage',peinture:'peinture'};
+  const PLM={peinture:'peinture',dalles:'fp',ba13:'fp',bois:'fp',brut:'go',metal:'fp',tendu:'fp',ouvert:'peinture'};
+  const STM={parpaing:'go',voile:'go',brique:'go',placo72:'cloison',placo98:'cloison',doublage:'cloison',doublosa:'cloison',vitree:'menuiserie',gaine:'cloison'};
+  function metierFor(cls){ const [kws,nom]=KW[cls]; state.metiers=state.metiers||[]; let m=state.metiers.find(m=>kws.some(k=>norm(m.nom).includes(k)));
+    if(!m){ m={id:uid('met'),nom,couleur:'#'+((Math.random()*0xAAAAAA+0x444444)|0).toString(16).padStart(6,'0')}; state.metiers.push(m); } return m; }
+  function setMetier(t,cls){ if(!t||!cls) return; const m=metierFor(cls); t.metierId=m.id; }
+  window.pzxPins=function(z){ const pl=z.poly, P=pl.pts, n=P.length; let cx=0,cy=0; P.forEach(p=>{cx+=p[0];cy+=p[1];}); cx/=n; cy/=n; const cl=v=>+Math.min(.985,Math.max(.015,v)).toFixed(4);
+    const put=(t,x,y)=>{ if(t&&!(t.pos&&t.pos.planId)) t.pos={planId:pl.planId,x:cl(x),y:cl(y)}; };
+    put(supT(z,'sol'),cx-.012,cy+.012); put(supT(z,'plafond'),cx+.012,cy-.012);
+    pieceWallSegs(z).forEach((sg,k)=>{ put(pzWallTask(z,sg,k),(sg.a[0]+sg.b[0])/2,(sg.a[1]+sg.b[1])/2); }); };
+  function ensure(z){ try{ window.pzPieceToTasks(z.id,{quiet:true}); }catch(e){ console.error(e); } }
+  const STC={parpaing:'#8a8a8a',voile:'#3d3d3d',brique:'#b5651d',placo72:'#3b78b0',placo98:'#2b5d8c',doublage:'#2a9d8f',doublosa:'#1f7a6f',vitree:'#6cc4e0',gaine:'#b0407a'};
+  window.pzStructCol=k=>STC[k];
   const supT=(z,sup)=>(state.tasks||[]).find(t=>t.zoneChantierId===z.id&&t.support===sup&&!t.globale);
   const nT=z=>(state.tasks||[]).filter(t=>t.zoneChantierId===z.id&&!t.globale).length;
   const base=q=>String(q||'').replace(/\s·\s.*$/,'');
@@ -17794,9 +17812,10 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
       const sg=pieceWallSegs(z), so=supT(z,'sol'), pl=supT(z,'plafond');
       const ws=sg.map((s,k)=>{ const t=pzWallTask(z,s,k); return '<span>M'+(k+1)+' : '+E((t&&t.structure&&t.structure.label)||'—')+'</span>'; }).join('');
       const lib=S.lib===z.id?'<div class="pzx-lib"><b>Bibliothèque de structures</b><div class="pzx-ws">'+sg.map((s,k)=>'<label><input type="checkbox" checked data-w="'+k+'"> Mur '+(k+1)+'</label>').join('')+'</div>'+ST.map(m=>'<button type="button" class="pzx-s" onclick="pzxStruct(\''+z.id+'\',\''+m[0]+'\')">'+m[1]+' <b>'+E(m[2])+'</b><small>'+E(m[3].join(' + '))+'</small></button>').join('')+'</div>':'';
-      return '<div class="pzx-card"><b>'+E(z.nom)+'</b><div class="pzx-row"><span>Sol</span>'+chips(MS,so&&so.motif&&so.motif.key,'pzxMotif',z.id+'|sol')+'</div><div class="pzx-row"><span>Plafond</span>'+chips(MP,pl&&pl.motif&&pl.motif.key,'pzxMotif',z.id+'|plafond')+'</div><div class="pzx-row"><span>Murs</span><button type="button" class="pzx-m" onclick="pzxLib(\''+z.id+'\')">🧱 Structure…</button></div><div class="pzx-ws">'+ws+'</div>'+lib+'</div>'; }).join('')+'<div class="modal-actions"><button class="ghost" onclick="S_back()">← Pièces</button><button onclick="closeModal()">Terminé</button></div>'; }
+      return '<div class="pzx-card"><b>'+E(z.nom)+'</b><div class="pzx-row"><span>Sol</span>'+chips(MS,so&&so.motif&&so.motif.key,'pzxMotif',z.id+'|sol')+'</div><div class="pzx-row"><span>Plafond</span>'+chips(MP,pl&&pl.motif&&pl.motif.key,'pzxMotif',z.id+'|plafond')+'</div><div class="pzx-row"><span>Murs</span><button type="button" class="pzx-m" onclick="pzxLib(\''+z.id+'\')">🧱 Structure…</button></div><div class="pzx-ws">'+ws+'</div>'+lib+'</div>'; }).join('')+'<div class="modal-actions"><button class="ghost" onclick="S_back()">← Pièces</button><button onclick="pzxDone()">Terminé</button></div>'; }
   window.S_back=function(){ S.stage=1; S.lib=null; v1(); };
   window.pzExeOpen=function(zid){ const z=typeof zid==='string'?zoneById(zid):zid; if(!z) return; S={sel:new Set([z.id]),stage:1,lib:null,lvl:z.niveau}; openModal('<div id="pzxBox"></div>'); const mb=mod(); mb.innerHTML=''; v1(); };
+  window.pzxDone=function(){ pieces().filter(z=>S.sel.has(z.id)).forEach(z=>{ ensure(z); try{ pzxPins(z); }catch(e){} }); refresh(); closeModal(); try{ clipToast('Tâches et pastilles créées'); }catch(e){} };
   window.pzxTog=(id,on)=>{ on?S.sel.add(id):S.sel.delete(id); };
   window.pzxAll=()=>{ pieces().forEach(z=>S.sel.add(z.id)); v1(); };
   window.pzxGo=function(){ const ids=[...S.sel]; if(!ids.length){ try{ miniAlert('Cochez au moins une pièce.'); }catch(e){} return; }
@@ -17804,20 +17823,21 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
     refresh(); try{ clipToast(ids.length+' pièce(s) passée(s) en mode exé'); }catch(e){}
     try{ const w=document.getElementById('fpWin'), b=document.querySelector('.fp-btn[data-k=taches]'); if(b&&!(w&&b.classList.contains('on'))) b.click(); }catch(e){}
     S.stage=2; v2(); };
-  window.pzxMotif=function(arg,key){ const [zid,sup]=arg.split('|'); const z=zoneById(zid), t=z&&supT(z,sup); if(!t) return; const lst=sup==='sol'?MS:MP, m=lst.find(x=>x[0]===key);
-    if(t.motif&&t.motif.key===key){ delete t.motif; t.quoi=base(t.quoi); } else { t.motif={key,label:m[2]}; t.quoi=base(t.quoi)+' · '+m[2]; }
+  window.pzxMotif=function(arg,key){ const [zid,sup]=arg.split('|'); const z=zoneById(zid); if(!z) return; ensure(z); const t=supT(z,sup); if(!t) return; const lst=sup==='sol'?MS:MP, m=lst.find(x=>x[0]===key);
+    if(t.motif&&t.motif.key===key){ delete t.motif; t.quoi=base(t.quoi); } else { t.motif={key,label:m[2]}; t.quoi=base(t.quoi)+' · '+m[2]; setMetier(t,(sup==='sol'?SOLM:PLM)[key]); }
     refresh(); v2(); };
   window.pzxLib=function(zid){ S.lib=S.lib===zid?null:zid; v2(); };
-  window.pzxStruct=function(zid,key){ const z=zoneById(zid), m=ST.find(x=>x[0]===key); if(!z||!m) return; const sg=pieceWallSegs(z);
+  window.pzxStruct=function(zid,key){ const z=zoneById(zid), m=ST.find(x=>x[0]===key); if(!z||!m) return; ensure(z); const sg=pieceWallSegs(z);
     const ks=[...mod().querySelectorAll('input[data-w]:checked')].map(i=>+i.dataset.w);
-    ks.forEach(k=>{ const t=pzWallTask(z,sg[k],k); if(!t) return; t.structure={key,label:m[2],layers:m[3].slice()}; t.quoi=base(t.quoi)+' · '+m[2]; });
+    ks.forEach(k=>{ const t=pzWallTask(z,sg[k],k); if(!t) return; t.structure={key,label:m[2],layers:m[3].slice()}; t.quoi=base(t.quoi)+' · '+m[2]; setMetier(t,STM[key]); });
     S.lib=null; refresh(); v2(); };
   /* motifs dessinés sur le plan (sols) + pièce surlignée quand sa tâche sol / plafond est sélectionnée */
   const PAT={carrelage:'<path d="M0 0H4V4H0Z" fill="none" stroke="#7a6a55" stroke-width=".25"/>',parquet:'<path d="M0 1H6M0 3H6M0 5H6M2 0V2M4 2V4M2 4V6" stroke="#9a6b32" stroke-width=".22" fill="none"/>',beton:'<circle cx="1" cy="1" r=".25" fill="#777"/><circle cx="3" cy="2.6" r=".2" fill="#777"/>',moquette:'<path d="M0 0L3 3M3 0L0 3" stroke="#a55" stroke-width=".25"/>',vinyle:'<path d="M0 3L3 0" stroke="#3b78b0" stroke-width=".3"/>',resine:'<rect width="3" height="3" fill="#6ab"  fill-opacity=".25"/>',pierre:'<circle cx="1" cy="1" r=".6" fill="none" stroke="#887" stroke-width=".2"/><circle cx="3.2" cy="2.8" r=".8" fill="none" stroke="#887" stroke-width=".2"/>',peinture:'<rect width="3" height="3" fill="#cdb" fill-opacity=".3"/>'};
-  const SZ={carrelage:[4,4],parquet:[6,6],beton:[4,4],moquette:[3,3],vinyle:[3,3],resine:[3,3],pierre:[4,4],peinture:[3,3]};
+  const PATC={peinture:'<rect width="3" height="3" fill="#f3efe0" fill-opacity=".55"/>',dalles:'<path d="M0 0H6V6H0Z" fill="#fff" fill-opacity=".4" stroke="#555" stroke-width=".25"/>',ba13:'<rect width="5" height="5" fill="#fafafa" fill-opacity=".5"/><path d="M0 5H5" stroke="#aaa" stroke-width=".2"/>',bois:'<path d="M0 1H4M0 3H4" stroke="#9a6b32" stroke-width=".4"/>',brut:'<circle cx="1" cy="1" r=".3" fill="#666"/><circle cx="3" cy="2.5" r=".25" fill="#666"/>',metal:'<path d="M0 .5H4M0 2.5H4" stroke="#889" stroke-width=".5"/>',tendu:'<path d="M0 1.5Q1 0 2 1.5T4 1.5" stroke="#7aa" stroke-width=".3" fill="none"/>',ouvert:'<path d="M0 2H4M2 0V4" stroke="#c63" stroke-width=".3"/><circle cx="2" cy="2" r=".6" fill="none" stroke="#c63" stroke-width=".25"/>'};
+  const SZ={carrelage:[4,4],parquet:[6,6],beton:[4,4],moquette:[3,3],vinyle:[3,3],resine:[3,3],pierre:[4,4],peinture:[3,3],dalles:[6,6],ba13:[5,5],bois:[4,4],brut:[4,4],metal:[4,4],tendu:[4,3],ouvert:[4,4]};
   window.pzMotifSvg=function(zs){ let defs='', out=''; const sel=(typeof jrSel!=='undefined'&&jrSel)?taskById(jrSel):null;
-    zs.forEach(z=>{ const so=supT(z,'sol'), k=so&&so.motif&&so.motif.key; const pts=z.poly.pts.map(p=>(p[0]*100).toFixed(2)+','+(p[1]*100).toFixed(2)).join(' ');
-      if(k&&PAT[k]){ if(!defs.includes('pzp-'+k)) defs+='<pattern id="pzp-'+k+'" patternUnits="userSpaceOnUse" width="'+SZ[k][0]+'" height="'+SZ[k][1]+'">'+PAT[k]+'</pattern>'; out+='<polygon points="'+pts+'" fill="url(#pzp-'+k+')" opacity=".75" style="pointer-events:none"/>'; }
+    zs.forEach(z=>{ const ce=!!(window.pzView&&pzView.ceil), so=supT(z,ce?'plafond':'sol'), k=so&&so.motif&&so.motif.key; const PP=ce?PATC:PAT, pre=ce?'pzc-':'pzp-'; const pts=z.poly.pts.map(p=>(p[0]*100).toFixed(2)+','+(p[1]*100).toFixed(2)).join(' ');
+      if(k&&PP[k]){ if(!defs.includes(pre+k)) defs+='<pattern id="'+pre+k+'" patternUnits="userSpaceOnUse" width="'+SZ[k][0]+'" height="'+SZ[k][1]+'">'+PP[k]+'</pattern>'; out+='<polygon points="'+pts+'" fill="url(#'+pre+k+')" opacity=".75" style="pointer-events:none"/>'; }
       if(sel&&sel.zoneChantierId===z.id&&(sel.support==='sol'||sel.support==='plafond')) out+='<polygon points="'+pts+'" fill="#F2A900" fill-opacity=".22" stroke="#F2A900" stroke-width="4" vector-effect="non-scaling-stroke" style="pointer-events:none"/>'; });
     return out?'<defs>'+defs+'</defs>'+out:''; };
 })();
