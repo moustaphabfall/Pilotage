@@ -206,10 +206,12 @@
       d.querySelector('#pgBioGo').onclick = go; d.querySelector('#pgBioX').onclick = ()=>res(false); go();
     });
   }
+  /* Sans réseau : jamais d'entrée libre. Biométrie activée et instantané valide → déverrouillage ; sinon écran bloquant (il faut du réseau). */
   async function offlineEntry(){
-    const sn = lsGet(SNAP); if(!snapOk(sn) || !bioOk(sn)) return null;
     if(await reach()) return null;
-    return (await bioGate(sn)) ? sn : null;
+    const sn = lsGet(SNAP);
+    if(snapOk(sn) && bioOk(sn)){ if(await bioGate(sn)) return sn; }
+    await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application ne se rouvre qu’avec l’empreinte ou le visage activés au préalable, et jusqu’à vendredi soir. Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
   }
   function startOffline(sn){
     me = sn.me; PJ = sn.PJ; window.PILOTAGE_PROJET = PJ; window.PILOTAGE_OFFLINE = true;
