@@ -16914,18 +16914,33 @@ body.plan-fs-on #rtBasePop.on{display:block;position:fixed;left:10px;top:calc(60
   function render(){
     const w=document.getElementById('pcRibWrap'); if(!w) return;
     const Z=(state.zonesChantier||[]).filter(z=>z.poly); const ord=(typeof nbOrder==='function')?nbOrder():(state.niveaux||[]);
-    const lv=ord.concat([...new Set(Z.map(z=>z.niveau))].filter(n=>!ord.includes(n)));
+    let lv=ord.concat([...new Set(Z.map(z=>z.niveau))].filter(n=>!ord.includes(n)));
+    /* dans la fenêtre d'un niveau (ou quand un niveau est choisi), seule la liste de ce niveau est affichée */
+    let cur=null; try{ cur = document.body.classList.contains('nbw-open') ? nbSel : (typeof travauxNiveauActif!=='undefined'?travauxNiveauActif:null); }catch(e){}
+    if(cur) lv=lv.filter(n=>n===cur);
+    const ZL = cur ? Z.filter(z=>z.niveau===cur) : Z;
     let h='';
     lv.forEach(n=>{ const L=Z.filter(z=>z.niveau===n).sort((a,b)=>String(a.nom).localeCompare(String(b.nom),'fr',{numeric:true})); if(!L.length) return;
       h+='<div style="margin:8px 0 2px;font-weight:700;font-size:13px">'+esc2(typeof nbLab==='function'?nbLab(n):n)+' <small style="font-weight:400;color:#667">('+L.length+')</small></div><div style="display:flex;flex-wrap:wrap;gap:6px">'
         +L.map(z=>{ const ts=(state.tasks||[]).filter(t=>t.zoneChantierId===z.id); const pct=ts.length&&typeof tPctMean==='function'?tPctMean(ts)+'%':'';
           return '<span class="ouv-chip" title="'+esc2(z.nom)+'">'+esc2(z.nom)+(pct?' · '+pct:'')+'</span>'; }).join('')+'</div>'; });
-    const tot=Z.length;
-    w.innerHTML='<details class="pl-rib" id="pcRib"'+(open?' open':'')+'><summary><span>⬠ Liste des pièces <small>('+tot+')</small></span></summary><div class="pl-rib-body">'+(h||'<p class="empty-note">Aucune pièce tracée pour l’instant.</p>')+'</div></details>';
+    const tot=ZL.length;
+    w.innerHTML='<details class="pl-rib" id="pcRib"'+(open?' open':'')+'><summary><span>⬠ Liste des pièces'+(cur?' · '+esc2(typeof nbLab==='function'?nbLab(cur):cur):'')+' <small>('+tot+')</small></span></summary><div class="pl-rib-body">'+(h||'<p class="empty-note">Aucune pièce tracée pour l’instant.</p>')+'</div></details>';
     const d=w.querySelector('#pcRib'); d.addEventListener('toggle',()=>{ open=d.open; });
   }
+  window.pcRender=render;
   const ra=window.renderAll; window.renderAll=function(){ const r=ra.apply(this,arguments); try{ render(); }catch(e){} return r; };
+  ['renderTravaux','nbOpen','nbClose','nbWinRender'].forEach(f=>{ const o=window[f]; if(typeof o==='function') window[f]=function(){ const r=o.apply(this,arguments); try{ render(); }catch(e){} return r; }; });
   try{ render(); }catch(e){}
+})();
+</script>
+<script>
+/* ===== Tous les rubans sont repliés par défaut (au chargement, à l'ouverture d'un niveau, au changement d'onglet) ===== */
+(function(){
+  function fold(root){ try{ (root||document).querySelectorAll('.taches-list.open,.ruban.open').forEach(e=>e.classList.remove('open')); (root||document).querySelectorAll('details.pl-rib[open],details.dg-rib[open]').forEach(e=>e.removeAttribute('open')); if(typeof openInterlocRubans!=='undefined') openInterlocRubans.clear(); }catch(e){} }
+  window.pgFoldRibbons=fold;
+  ['nbOpen','showPage'].forEach(f=>{ const o=window[f]; if(typeof o==='function') window[f]=function(){ const r=o.apply(this,arguments); setTimeout(()=>fold(document.getElementById('nbWin')||document),60); return r; }; });
+  setTimeout(()=>fold(document),400);
 })();
 </script>
 </body></html>
