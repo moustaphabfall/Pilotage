@@ -167,7 +167,7 @@
       list: async ()=>{ const {data,error} = await sb.from('demande_liens').select('token,demande_id,statut,reponse,expire').eq('projet_id',PJ.id); if(error) throw error; return data||[]; },
       remove: async tok=>{ const {error} = await sb.from('demande_liens').delete().eq('token',tok).eq('projet_id',PJ.id); if(error) throw error; }
     };
-    window.pilotageSwitchProjet = id2=>{ try{ localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
+    window.pilotageSwitchProjet = id2=>{ try{ if(PJ&&PJ.id&&id2!==PJ.id) localStorage.setItem('pilotage_pid', PJ.id); localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
   }
 
   /* ===== Réouverture hors réseau (mauvaise couverture sur chantier) =====

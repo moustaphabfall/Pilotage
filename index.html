@@ -6059,6 +6059,23 @@ async function initSupabaseSync(){
   setSyncStatus('pending','Connexion au stockage en ligne…');
   try{
     const remote = await sbPull();
+    /* Les données locales appartiennent-elles à un autre projet ? (changement de projet sur cet appareil) */
+    const pidNow = (window.PILOTAGE_PROJET&&window.PILOTAGE_PROJET.id)||''; let pidOld=''; try{ pidOld=localStorage.getItem('pilotage_pid')||''; }catch(e){}
+    if(pidNow && pidOld && pidOld!==pidNow){
+      try{ localStorage.setItem('pilotage_bak_local', JSON.stringify({ts:Date.now(),n:(state.tasks||[]).length,s:lightJSON(state)})); }catch(e){}
+      try{ localStorage.removeItem('pilotage_synced'); localStorage.removeItem('pilotage_dirty'); }catch(e){}
+      if(remote && remote.data){ state = mergeState(remote.data); }
+      else{ /* nouveau projet : on garde l'architecture de l'outil, toutes les données repartent à zéro */
+        state = mergeState(JSON.parse(JSON.stringify(SEED_STATE)));
+        state.projet = Object.assign({id:pidNow}, {nom:(window.PILOTAGE_PROJET&&window.PILOTAGE_PROJET.nom)||pidNow});
+      }
+      try{ localStorage.setItem('pilotage_state', lightJSON(state)); localStorage.setItem('pilotage_pid', pidNow); localStorage.setItem('pilotage_synced','1'); }catch(e){}
+      renderAll(); try{ renderTravaux(); }catch(e){}
+      if(!(remote&&remote.data)) await pushToSupabase();
+      setSyncStatus('ok','Synchronisé'+((remote&&remote.data)?' (données en ligne)':' (projet vide)')); try{ blobPullMissing(); }catch(e){}
+      return;
+    }
+    try{ if(pidNow) localStorage.setItem('pilotage_pid', pidNow); }catch(e){}
     const nr = remote&&remote.data ? (remote.data.tasks||[]).length : 0, nl = (state.tasks||[]).length;
     const snap=(key,obj,n)=>{ try{ localStorage.setItem(key, JSON.stringify({ts:Date.now(),n,s:lightJSON(obj)})); return true; }catch(e){ return false; } };
     const adopt=()=>{ sbHold=false;
