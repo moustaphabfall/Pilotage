@@ -27,27 +27,33 @@
   function loginUI(banner){
     return new Promise(async res=>{
       const social = await socialList();
-      let mode = 'in';
+      let mode = 'in', lastEmail = '';
       const draw = (err, good)=>{
-        const d = screen(`<form><h2>🏗 Pilotage chantier</h2><small>${mode==='in'?'Connexion':'Créer mon accès (à valider par un administrateur)'}</small>
-          ${mode==='up'?'<input name="nom" placeholder="Votre nom (signe vos modifications)" required autocomplete="name">':''}
-          <input name="email" type="email" placeholder="E-mail" required autocomplete="email"><input name="pw" type="password" placeholder="Mot de passe (8 caractères min.)" minlength="8" required autocomplete="${mode==='in'?'current-password':'new-password'}">
-          ${mode==='in'&&social.length?social.map(k=>'<button type="button" class="l" data-oa="'+k+'">'+SOCIAL[k]+'</button>').join('')+'<small style="text-align:center">ou avec votre identifiant :</small>':''}
-          <div class="e" ${good?'style="color:#2a7a3b"':''}>${err||''}</div><button type="submit">${mode==='in'?'Se connecter':'Créer mon accès'}</button>
-          ${mode==='in'?'<button type="button" class="l" id="pgFg">Mot de passe oublié ?</button>':''}
-          <button type="button" class="l" id="pgSw">${mode==='in'?'Première fois ? Créer mon accès':'J’ai déjà un accès'}</button></form>`);
+        const msg = `<div class="e" ${good?'style="color:#2a7a3b"':''}>${err||''}</div>`;
+        const d = mode==='in'
+          ? screen(`<form><h2>🏗 Pilotage chantier</h2><small>Connexion</small>
+          <input name="email" type="email" placeholder="E-mail" required autocomplete="email"><input name="pw" type="password" placeholder="Mot de passe" minlength="8" required autocomplete="current-password">
+          ${social.length?social.map(k=>'<button type="button" class="l" data-oa="'+k+'">'+SOCIAL[k]+'</button>').join('')+'<small style="text-align:center">ou avec votre identifiant :</small>':''}
+          ${msg}<button type="submit">Se connecter</button>
+          <button type="button" class="l" id="pgFg">Mot de passe oublié ?</button>
+          <small style="text-align:center;opacity:.8">L’accès se fait sur invitation : demandez-le à votre administrateur.</small></form>`)
+          : screen(`<form><h2>🏗 Pilotage chantier</h2><small>Mot de passe oublié</small>
+          <p style="margin:0;font-size:13.5px">Saisissez votre e-mail : vous recevrez un lien pour choisir un nouveau mot de passe.</p>
+          <input name="email" type="email" placeholder="E-mail" required autocomplete="email" value="${esc(lastEmail)}">
+          ${msg}<button type="submit">Envoyer le lien</button>
+          <button type="button" class="l" id="pgBk">‹ Retour à la connexion</button></form>`);
         d.querySelectorAll('[data-oa]').forEach(b=>b.onclick = async ()=>{ const {error} = await sb.auth.signInWithOAuth({provider:b.dataset.oa, options:{redirectTo:location.origin+location.pathname, scopes:b.dataset.oa==='azure'?'email':undefined}}); if(error) draw(error.message); });
-        const fg = d.querySelector('#pgFg'); if(fg) fg.onclick = async ()=>{ const em = (d.querySelector('input[name=email]').value||'').trim(); if(!em){ draw('Saisissez votre e-mail ci-dessus, puis cliquez sur « Mot de passe oublié ».'); return; }
-          const {error} = await sb.auth.resetPasswordForEmail(em, {redirectTo:location.origin+location.pathname}); draw(error?error.message:'Si cette adresse a un accès, un e-mail vient d’être envoyé : cliquez sur le lien pour choisir un nouveau mot de passe.'); };
-        d.querySelector('#pgSw').onclick = ()=>{ mode = mode==='in'?'up':'in'; draw(); };
+        const fg = d.querySelector('#pgFg'); if(fg) fg.onclick = ()=>{ lastEmail = (d.querySelector('input[name=email]').value||'').trim(); mode = 'fg'; draw(); };
+        const bk = d.querySelector('#pgBk'); if(bk) bk.onclick = ()=>{ lastEmail = (d.querySelector('input[name=email]').value||'').trim(); mode = 'in'; draw(); };
         d.querySelector('form').onsubmit = async ev=>{
-          ev.preventDefault(); const f = new FormData(ev.target), email = f.get('email'), pw = f.get('pw');
+          ev.preventDefault(); const f = new FormData(ev.target), email = f.get('email');
+          if(mode==='fg'){ lastEmail = email; const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:location.origin+location.pathname}); draw(error?error.message:'Si cette adresse a un accès, un e-mail vient d’être envoyé : cliquez sur le lien pour choisir un nouveau mot de passe.', !error); return; }
+          const pw = f.get('pw');
           try{
-            if(mode==='up'){ const {error} = await sb.auth.signUp({email, password:pw, options:{data:{nom:f.get('nom')}}}); if(error) throw error; }
             const {error} = await sb.auth.signInWithPassword({email, password:pw}); if(error) throw error;
             if(!(await verifAppareil(email, pw))){ draw('Connexion annulée.'); return; }
             res();
-          }catch(e){ draw(e.message==='Email not confirmed' ? 'Confirmez votre e-mail (lien reçu), puis reconnectez-vous.' : (e.message||'Erreur')); }
+          }catch(e){ draw(e.message==='Email not confirmed' ? 'Confirmez votre e-mail (lien reçu), puis reconnectez-vous.' : (e.message==='Invalid login credentials' ? 'E-mail ou mot de passe incorrect.' : (e.message||'Erreur'))); }
         };
       };
       draw(banner, !!banner);
