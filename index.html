@@ -1979,7 +1979,7 @@ function applyToursSeed(merged){
 }
 
 let tourDate = null;
-function tourNivRank(n){ const i=TOUR_NIV_ORDRE.indexOf(n); return i<0?50:i; }
+function tourNivRank(n){ let i=-1; try{ i=nbOrder().indexOf(n); }catch(e){} if(i<0) i=(state.niveaux||[]).indexOf(n); return i<0?(n==='Tous niveaux'?-1:50):i; }
 function tourNiveauxOptions(sel){
   try{ nbApplyOrder(); }catch(e){} const nivs = ['Tous niveaux'].concat((state.niveaux||[]).slice());
   return nivs.map(n=>`<option ${n===sel?'selected':''}>${esc(n)}</option>`).join('');
@@ -7007,7 +7007,7 @@ function projParamEdit(){
     ${exe?'':'<p class="empty-note" style="margin-top:8px">En phase PRO, rien n’est traité pour l’instant : les étapes et le suivi par niveaux seront activés en phase EXE.</p>'}
     <h4 style="margin:16px 0 4px; font-size:14px">Ordre des niveaux <small style="color:var(--ink-soft); font-weight:400">(ordre d’avancement)</small></h4>
     <p class="empty-note" style="margin:0 0 8px">Glissez la poignée ⋮⋮ d’un niveau : il reste dans cette liste et les autres s’écartent. Cliquez sur le numéro d’un niveau pour saisir son rang, ou sélectionnez un niveau et utilisez les flèches ↑ ↓. Les niveaux s’affichent dans cet ordre partout.</p>
-    <div id="nivRib" class="niv-rib">${o.map((n,i)=>`<div class="niv-rb" tabindex="0" data-n="${esc(n)}"><span class="niv-rb-g">⋮⋮</span><span class="ouv-chip niv-rk" title="Cliquez pour saisir le rang" style="cursor:text">${i+1}</span><b>${esc(nbLab(n))}</b></div>`).join('')}</div>
+    <div id="nivRib" class="niv-rib">${o.map((n,i)=>`<div class="niv-rb" tabindex="0" data-n="${esc(n)}"><span class="niv-rb-g">⋮⋮</span><span class="ouv-chip niv-rk" title="Cliquez pour saisir le rang" style="cursor:text">${i+1}</span><b style="flex:1">${esc(nbLab(n))}</b><button type="button" class="niv-del" title="Supprimer ce niveau" aria-label="Supprimer ${esc(nbLab(n))}" onclick="event.stopPropagation();ribDeleteNiveau(this.closest('.niv-rb').dataset.n)" style="border:0;background:transparent;font-size:18px;cursor:pointer;padding:4px 8px">🗑</button></div>`).join('')}</div>
     <div class="obj-box" id="objBox" style="margin-top:18px">
       <h4 style="margin:0 0 8px; font-size:14px">🎯 Objectifs planning</h4>
       <div class="field" style="max-width:260px;"><label>Date de fin d'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div>
@@ -7052,7 +7052,7 @@ function nbRibBind(){
     i.addEventListener('blur', ok);
   });
   box.addEventListener('pointerdown', e=>{
-    if(e.target.closest('.niv-rk')) return;
+    if(e.target.closest('.niv-rk,.niv-del')) return;
     const r = e.target.closest('.niv-rb'); if(!r) return;
     sx=e.clientX; sy=e.clientY;
     cancel();
@@ -7672,7 +7672,7 @@ function renderBaseAssoc(){
 window.baRuleDel=i=>{ baEnsure().rules.splice(i,1); baseAssocSync(); persist(); renderAll(); };
 window.baRuleOpen=()=>{
   const lv0=(typeof travauxNiveauActif!=='undefined')?travauxNiveauActif:null;
-  const pcs=state.zonesChantier.filter(z=>z.poly&&(!lv0||z.niveau===lv0)).sort((a,b)=>ALPHA((a.niveau||'')+a.nom,(b.niveau||'')+b.nom));
+  const pcs=state.zonesChantier.filter(z=>z.poly&&(!lv0||z.niveau===lv0)).sort((a,b)=>(tourNivRank(a.niveau)-tourNivRank(b.niveau))||ALPHA(a.nom,b.nom));
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>Dérogation lot / interlocuteur</h3>
    <div class="field"><label>Famille de base</label><select id="bd-ft">${BA_FT.map(([id,n,ic])=>`<option value="${id}">${ic} ${n}</option>`).join('')}</select></div>
    <div class="field"><label>S’applique à</label><select id="bd-scope" onchange="document.getElementById('bd-niv-w').hidden=this.value!=='niveau';document.getElementById('bd-piece-w').hidden=this.value!=='piece'"><option value="niveau">Un niveau</option><option value="piece">Une pièce</option></select></div>
@@ -9919,8 +9919,10 @@ function ribDeleteNiveau(n){
     state.zoneFamilles = state.zoneFamilles.filter(f=>!gz.has(f.id));
     state.zonesChantier = state.zonesChantier.filter(z=>!zIds.has(z.id));
     state.niveaux = state.niveaux.filter(x=>x!==n);
+    if(state.perimetre&&Array.isArray(state.perimetre.niveaux)) state.perimetre.niveaux = state.perimetre.niveaux.filter(x=>x!==n);
     if(travauxNiveauActif===n) travauxNiveauActif = state.niveaux[0]||null;
     ribRefresh();
+    try{ if(document.getElementById('nivRib')) projParamEdit(); }catch(e){}
   });
 }
 
@@ -10960,7 +10962,7 @@ async function crExportListe(){
 /* Tri de la liste « Derniers ajouts » : par lot (métier), puis par niveau */
 const CR_NIV=['Sous-sol','R+0','RDC','R+1','R+2','R+3','R+4','R+5','Terrasse','Extérieur'];
 function crLot(t){ try{ const m=taskMetier(t); return (m&&m.nom)||'Sans lot'; }catch(e){ return 'Sans lot'; } }
-function crSort(L){ const ni=n=>{ const i=CR_NIV.indexOf(n||''); return i<0?99:i; }; return L.slice().sort((a,b)=>{ const la=crLot(a.t), lb=crLot(b.t); if(la!==lb){ if(la==='Sans lot') return 1; if(lb==='Sans lot') return -1; return la.localeCompare(lb,'fr'); } return ni(a.t.niveau)-ni(b.t.niveau) || (a.t.id||'').localeCompare(b.t.id||'',undefined,{numeric:true}); }); }
+function crSort(L){ const ni=n=>{ const i=tourNivRank(n||''); return i<0?-1:i; }; return L.slice().sort((a,b)=>{ const la=crLot(a.t), lb=crLot(b.t); if(la!==lb){ if(la==='Sans lot') return 1; if(lb==='Sans lot') return -1; return la.localeCompare(lb,'fr'); } return ni(a.t.niveau)-ni(b.t.niveau) || (a.t.id||'').localeCompare(b.t.id||'',undefined,{numeric:true}); }); }
 var crOuvert = false;
 function crValiderFam(id){ const t = taskById(id); if(!t) return; t.famValider = false; const f = taskFamille(t); if(f && f.aValider) f.aValider = false; (t.historique=t.historique||[]).push({date:todayStr(), champ:'Famille', ancienne:'à valider', nouvelle:(f?f.nom:'—')+' validée'}); persist(); renderClaudeRecents(); }
 function renderClaudeRecents(){
@@ -11155,7 +11157,7 @@ function renderDashboardFamilleGroups(list){
   if(!list.length) return '<p class="empty-note">Aucune tâche</p>';
   const groups={}, order=[];
   list.forEach(t=>{ const k=dashPieceKey(t); if(!groups[k]){ groups[k]=[]; order.push(k); } groups[k].push(t); });
-  order.sort((x,y)=>{ if(x==='__none') return 1; if(y==='__none') return -1; const a=zoneById(x)||{}, b=zoneById(y)||{}; return ALPHA((a.niveau||'')+'|'+(a.nom||''),(b.niveau||'')+'|'+(b.nom||'')); });
+  order.sort((x,y)=>{ if(x==='__none') return 1; if(y==='__none') return -1; const a=zoneById(x)||{}, b=zoneById(y)||{}; return (tourNivRank(a.niveau)-tourNivRank(b.niveau))||ALPHA(a.nom||'',b.nom||''); });
   return order.map(key=>{
     const ts=groups[key], z=key==='__none'?null:zoneById(key);
     const pct=tPctMean(ts);
@@ -11223,7 +11225,7 @@ function renderAssocGapDashboard(){
   const famItem = zf=>{ const ft=familleTypeById(zf.familleTypeId)||{icone:'',nom:'?'};
     return `<div class="ag-item" title="Cliquer pour associer un interlocuteur" onclick="openFamilleResponsable('${zf.id}')">${ft.icone||''} ${esc(ft.nom)} <span class="ag-go">→ associer</span></div>`; };
   const groupes = {}; famillesNonAssoc.forEach(zf=>{ const k = zf.zoneChantierId||'—'; (groupes[k]=groupes[k]||[]).push(zf); });
-  const keys = Object.keys(groupes).sort((a,b)=>{ const za=zoneById(a), zb=zoneById(b); if(!za!==!zb) return za?-1:1; za&&0; const A=za||{}, Bz=zb||{}; return (A.niveau||'').localeCompare(Bz.niveau||'') || (A.nom||'').localeCompare(Bz.nom||'','fr',{numeric:true}); });
+  const keys = Object.keys(groupes).sort((a,b)=>{ const za=zoneById(a), zb=zoneById(b); if(!za!==!zb) return za?-1:1; za&&0; const A=za||{}, Bz=zb||{}; return (tourNivRank(A.niveau)-tourNivRank(Bz.niveau)) || (A.nom||'').localeCompare(Bz.nom||'','fr',{numeric:true}); });
   const famHtml = keys.map(k=>{ const z=zoneById(k)||{}; const id='ag-'+k;
     return `<details class="ag-piece" ${window.agOpen[id]?'open':''} ontoggle="window.agOpen['${id}']=this.open"><summary><span>${z.id?(z.poly?'⬠ ':'📍 ')+esc(z.nom):'❔ Sans pièce'}</span><small>${esc(z.niveau==='R+0'?'RDC':(z.niveau||''))}${z.parentId&&zoneById(z.parentId)?' · '+esc(zoneById(z.parentId).nom):''}</small><span class="ag-n">${groupes[k].length}</span></summary><div class="ag-body">${groupes[k].map(famItem).join('')}</div></details>`; }).join('');
   el.innerHTML = `<div class="section-head" style="cursor:pointer; margin:18px 0 8px" onclick="window.agRibOpen=!window.agRibOpen; renderAssocGapDashboard()"><h2 style="font-size:16px;">🔗 Associations manquantes · ${famillesNonAssoc.length} famille${famillesNonAssoc.length>1?'s':''} · ${interlocsNonAssoc.length} interlocuteur${interlocsNonAssoc.length>1?'s':''} <small style="font-weight:400; color:var(--ink-soft)">${window.agRibOpen?'▾':'▸'}</small></h2></div>
@@ -11402,6 +11404,7 @@ function saveRefac(id){
 }
 
 function renderAll(){
+  try{ nbApplyOrder(); }catch(e){}
   try{ const c1=pieceOuvSync(), c2=baseAssocSync(), c3=reposSync(); dtSync(); if(c1||c2||c3) persist(); renderBaseAssoc(); }catch(e){ console.error(e); }
   if(window.rtRender) window.rtRender();
   try{ renderJour(); }catch(e){ console.error(e); }
@@ -11491,7 +11494,7 @@ function ritCreeLe(t){
 }
 function ritVerifTaches(){
   const auj = todayISO(), hier = (()=>{ const d = new Date(auj+'T12:00:00'); d.setDate(d.getDate()-1); return localISO(d); })();
-  return (state.tasks||[]).filter(t=>{ const c = ritCreeLe(t); return c===auj || c===hier; }).sort((a,b)=>(a.niveau||'').localeCompare(b.niveau||'') || (a.zone||'').localeCompare(b.zone||''));
+  return (state.tasks||[]).filter(t=>{ const c = ritCreeLe(t); return c===auj || c===hier; }).sort((a,b)=>(tourNivRank(a.niveau)-tourNivRank(b.niveau)) || (a.zone||'').localeCompare(b.zone||''));
 }
 function ritVerifHtml(r){
   const L = ritVerifTaches(); if(!L.length) return '<div class="rit-h" style="margin-top:8px;">Aucune tâche créée hier ou aujourd’hui.</div>';
