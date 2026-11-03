@@ -16957,7 +16957,7 @@ body.plan-fs-on #rtBasePop.on{display:block;position:fixed;left:10px;top:calc(60
 (function(){
   const root=document.getElementById('rtRoot'); if(!root) return;
   const row=root.querySelector('.rt-planrow'); if(!row) return;
-  const b=document.createElement('button'); b.type='button'; b.id='rtBaseBtn'; b.title='Afficher plafonds, murs ou sols'; b.setAttribute('aria-label','Plafonds, murs, sols'); b.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16232B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h18" stroke="#F2A900" stroke-width="2.6"/><path d="M5.5 4.5v15M18.5 4.5v15"/><path d="M3 19.5h18" stroke="#9A6A3A" stroke-width="2.6"/><path d="M9 9.5h6M9 12.5h6" stroke-width="1.1" opacity=".55"/></svg>';
+  const b=document.createElement('button'); b.type='button'; b.id='rtBaseBtn'; b.title='Afficher plafonds, murs ou sols'; b.setAttribute('aria-label','Plafonds, murs, sols'); b.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16232B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.3l2.5 2.6 4.6-5.4" stroke="#F2A900" stroke-width="2.6"/></svg>';
   row.insertBefore(b,row.firstChild);
   const pop=document.createElement('div'); pop.id='rtBasePop'; pop.innerHTML='<h4>Afficher sur le plan</h4><div style="font-size:11px;color:#667;margin:-4px 0 6px">Plafond · Murs · Sol</div><span class="pz-viewbar rt-pzv"></span>'; document.body.appendChild(pop);
   const shut=()=>{ pop._pin=false; pop.classList.remove('on'); b.classList.remove('on'); };
@@ -17344,5 +17344,82 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
 .pg-dk .bib-dd>*{padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06)}
 .pg-dk .bib-dd>*:hover,.pg-dk .bib-dd .on,.pg-dk .bib-dd .sel{background-color:rgba(242,169,0,.22)!important}
 .pg-dk select option{background:#1f2428;color:#eef1f3}
+</style>
+<script>
+/* ===== Menu contextuel de pièce : « Transformer les éléments de la pièce en tâches » (murs + sol + plafond) ===== */
+(function(){
+  let m=null, hideT=null, curZ=null;
+  function mk(){ m=document.createElement('div'); m.id='pzCtx'; m.hidden=true;
+    m.innerHTML='<button type="button">➜ Transformer les éléments de la pièce en tâches</button>'; document.body.appendChild(m);
+    m.addEventListener('mouseenter',()=>clearTimeout(hideT)); m.addEventListener('mouseleave',hide);
+    m.querySelector('button').addEventListener('click',e=>{ e.stopPropagation(); const z=curZ; hide(); if(z) window.pzPieceToTasks(z); }); }
+  function hide(){ clearTimeout(hideT); hideT=setTimeout(()=>{ if(m) m.hidden=true; },350); }
+  window.pzPieceToTasks = function(zid){
+    const z = typeof zid==='string'?zoneById(zid):zid; if(!z||!z.poly) return;
+    try{ if(typeof pieceOuvSync==='function') pieceOuvSync(); }catch(e){}
+    const pl = planById(z.poly.planId); if(!pl) return; let nw=0, ns=0;
+    const has=(sup,key)=>(state.tasks||[]).some(t=>t.zoneChantierId===z.id&&t.support===sup&&!t.globale&&(!key||t.murSeg===key||(t.po&&t.po.k==='mur')));
+    pieceWallSegs(z).forEach((sg,k)=>{
+      if((state.cloisons||[]).find(c=>c.segKey===sg.key) || has('mur',sg.key)) return;
+      const cc=cloCreate(pl,[sg.a.slice(),sg.b.slice()],'Mur '+(k+1)+' — '+z.nom); cc.segKey=sg.key; cc.pieceId=z.id; const t=cloisonTask(cc);
+      if(t){ t.zoneChantierId=z.id; t.zoneChantierIds=[z.id]; t.metierId=null; t.zone=''; t.zoneFamilleId=null; t.support='mur'; t.murSeg=sg.key; nw++; } });
+    [['sol','Sol'],['plafond','Plafond']].forEach(([sup,lab])=>{
+      if(has(sup)) return;
+      const t=taskBase(nextTaskId(), lab+' — '+z.nom, z.niveau, {zoneChantierId:z.id, zoneChantierIds:[z.id], support:sup, zone:''});
+      state.tasks.unshift(t); ns++; });
+    persist(); try{ closeModal(); }catch(e){}
+    try{ window.rtRender&&window.rtRender(); }catch(e){} try{ renderPlans&&renderPlans(); }catch(e){} try{ renderAll(); }catch(e){}
+    const nT=(state.tasks||[]).filter(t=>t.zoneChantierId===z.id&&!t.globale).length;
+    try{ clipToast('« '+z.nom+' » : murs, sol et plafond sont en tâches ('+nT+')'); }catch(e){}
+    try{ const b=document.querySelector('.fp-btn[data-k=taches]'); if(b) b.click(); }catch(e){}
+  };
+  document.addEventListener('mouseover',e=>{
+    const pg=e.target.closest&&e.target.closest('polygon[data-pz],.pz-label[data-pz]'); if(!pg) return;
+    const ov=pg.closest('.pz-ov'); if(!ov||ov.dataset.live!=='1') return;
+    if(!m) mk(); clearTimeout(hideT); curZ=pg.getAttribute('data-pz');
+    const r=pg.getBoundingClientRect(); m.hidden=false;
+    m.style.left=Math.max(8,Math.min(innerWidth-300,r.left+r.width/2-140))+'px'; m.style.top=Math.max(8,r.top-44)+'px';
+  });
+  document.addEventListener('mouseout',e=>{ if(e.target.closest&&e.target.closest('polygon[data-pz],.pz-label[data-pz]')) hide(); });
+})();
+</script>
+<style>
+#pzCtx{position:fixed;z-index:99990;background:#1f2428;border:1px solid rgba(242,169,0,.6);border-radius:12px;padding:4px;box-shadow:0 10px 28px rgba(0,0,0,.55)}
+#pzCtx[hidden]{display:none}
+#pzCtx button{background:transparent;color:#F2A900;border:0;border-radius:9px;padding:9px 12px;font:700 13px/1.1 sans-serif;cursor:pointer;white-space:nowrap}
+#pzCtx button:hover{background:rgba(242,169,0,.2)}
+</style>
+<script>
+/* ===== Clic sur une tâche de la liste : fiche de synthèse (surbrillance sur le plan), puis « Fiche » = fiche complète ===== */
+(function(){
+  let c=null;
+  function mk(){ c=document.createElement('div'); c.id='tSyn'; c.hidden=true; document.body.appendChild(c); }
+  const ET={afaire:'À faire',encours:'En cours',fait:'Fait'};
+  window.tSynHide=function(){ if(c) c.hidden=true; };
+  window.tSynShow=function(id){
+    const t=taskById(id); if(!t){ tSynHide(); return; } if(!c) mk();
+    let met='',pz=''; try{ const m=taskMetier(t); met=m?m.nom:''; }catch(e){} try{ const z=zoneById(t.zoneChantierId); pz=z?z.nom:''; }catch(e){}
+    const row=(k,v)=>v?'<div><span>'+k+'</span> '+esc(String(v))+'</div>':'';
+    c.innerHTML='<button class="tsx" type="button" onclick="tSynHide()">×</button><h4>'+esc(t.id)+' — '+esc(t.quoi||'')+'</h4>'
+      +row('État',ET[t.etat]||t.etat)+row('Niveau',t.niveau)+row('Pièce',pz)+row('Métier',met)+row('Échéance',t.quand)
+      +'<button class="tsf" type="button" onclick="tSynHide();openTaskDetail(\''+String(t.id).replace(/'/g,'')+'\')">📋 Fiche</button>';
+    c.hidden=false;
+  };
+  document.addEventListener('click',ev=>{
+    const card=ev.target.closest&&ev.target.closest('[data-jrcard],[data-jrpin]'); if(!card||ev.target.closest('button[data-jret],button[data-jrpct],button[data-jrfiche],.jr-act')) return;
+    if(ev.target.closest('#tSyn')) return;
+    const id=card.dataset.jrcard||card.dataset.jrpin;
+    setTimeout(()=>{ try{ if(typeof jrSel!=='undefined'&&jrSel===id){ tSynShow(id); if(window.rtSelect) window.rtSelect(id,null); setTimeout(()=>{ document.querySelectorAll('.rt-pin.fp-hl').forEach(x=>x.classList.remove('fp-hl')); document.querySelectorAll('#rtRoot .rt-pin.sel').forEach(x=>{ x.classList.add('fp-hl'); try{ x.scrollIntoView({block:'center',inline:'center',behavior:'smooth'}); }catch(_){} }); },60); } else tSynHide(); }catch(e){} },30);
+  },false);
+})();
+</script>
+<style>
+#tSyn{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99980;min-width:260px;max-width:min(92vw,420px);background:#1f2428;color:#eef1f3;border:1px solid rgba(242,169,0,.6);border-radius:14px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.55);font:13px/1.5 sans-serif}
+#tSyn[hidden]{display:none}
+#tSyn h4{margin:0 22px 6px 0;color:#F2A900;font-size:14px}
+#tSyn span{color:#9aa4ab}
+#tSyn .tsx{position:absolute;right:8px;top:6px;background:none;border:0;color:#eef1f3;font-size:18px;cursor:pointer}
+#tSyn .tsf{margin-top:8px;background:#F2A900;color:#16232B;border:0;border-radius:10px;padding:8px 14px;font-weight:700;cursor:pointer}
+.rt-pin.fp-hl{outline:3px solid #F2A900;outline-offset:3px;box-shadow:0 0 0 8px rgba(242,169,0,.35)!important;z-index:30}
 </style>
 </body></html>
