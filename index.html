@@ -16780,7 +16780,7 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
    (avancement, prévu du jour, retard, ouverture du niveau au clic). */
 (function(){
   const orig = window.renderNivBars; if(typeof orig!=='function') return;
-  let view = 'bld'; try{ view = localStorage.getItem('nb_view')||'bld'; }catch(e){}
+  let view = 'bld'; /* une seule vue : celle des plans chargés */
   const cache = {}; let busy = false, again = false;
   const loadImg = src=>new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; });
   const dil = (m,w,h,r)=>{ const t=new Uint8Array(w*h), o=new Uint8Array(w*h);
@@ -16908,7 +16908,7 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
     if(busy){ again = true; return; } busy = true;
     paint(w).then(ok=>{ if(!ok) orig.call(window); }).catch(()=>{ try{ orig.call(window); }catch(e){} }).finally(()=>{ busy=false; if(again){ again=false; window.renderNivBars(); } });
   };
-  const css = document.createElement('style'); css.textContent = '.nbb-wrap{max-width:900px;margin:0 auto}.nbb-lv:hover polygon:not([fill="none"]){filter:brightness(1.04)}.nbb-nop{opacity:.9}'; document.head.appendChild(css);
+  const css = document.createElement('style'); css.textContent = '#nbbView,#nbbView2{display:none!important}.nbb-wrap{max-width:900px;margin:0 auto}.nbb-lv:hover polygon:not([fill="none"]){filter:brightness(1.04)}.nbb-nop{opacity:.9}'; document.head.appendChild(css);
   try{ window.renderNivBars(); }catch(e){}
 })();
 </script>
@@ -17210,8 +17210,10 @@ body.lv-et-on #lvEtSeg{display:inline-flex}
 </script>
 <style id="otCss">
 #dashGrid .dg-block[data-b="suivi"],#dashGrid .dg-block[data-b="pac"]{display:none!important}
-#otBar{margin:6px 0 4px}
-#otBar .ios-head{margin:6px 0}
+#otBar{position:fixed;z-index:900;display:none;align-items:center;gap:2px;padding:4px 6px 4px 2px;border-radius:99px;background:linear-gradient(180deg,#3B4046,#22262A);box-shadow:0 8px 22px rgba(22,35,43,.35);border:1px solid rgba(242,169,0,.55)}
+body:has(#page-dashboard.active):not(.lv-open):not(.plan-fs-on) #otBar{display:flex}
+#otBar .ot-grip{cursor:grab;touch-action:none;user-select:none;color:#F2A900;padding:8px 6px 8px 10px;font-size:15px;letter-spacing:-2px}
+#otBar #otHead{border:0;background:transparent;color:#fff;font:700 14px 'Space Grotesk',system-ui,sans-serif;padding:8px 10px 8px 2px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 #otWin>div{width:min(640px,100%);max-height:90vh;overflow:auto;padding:14px 18px 18px;display:flex;flex-direction:column;gap:8px}
 #otWin .ot-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
 #otWin .ot-h b{font-size:18px}
@@ -17220,10 +17222,21 @@ body.lv-et-on #lvEtSeg{display:inline-flex}
 </style>
 <script>
 (function(){
-  function bar(){ if(document.getElementById('otBar')) return; const g=document.getElementById('dashGrid'); if(!g) return;
+  const KP='ot_pos';
+  function place(b,x,y){ const w=b.offsetWidth||240,h=b.offsetHeight||48; x=Math.max(4,Math.min(innerWidth-w-4,x)); y=Math.max(4,Math.min(innerHeight-h-4,y)); b.style.left=x+'px'; b.style.top=y+'px'; b.style.right='auto'; }
+  function bar(){ if(document.getElementById('otBar')) return;
     const b=document.createElement('div'); b.id='otBar';
-    b.innerHTML='<div class="ios-head dark" id="otHead" role="button" tabindex="0"><span>🧰 Mes outils personnalisés <span class="ios-cnt" id="otCnt" hidden></span></span><span class="chev">▸</span></div>';
-    g.parentNode.insertBefore(b,g); b.querySelector('#otHead').onclick=open; }
+    b.innerHTML='<span class="ot-grip" title="Glisser pour déplacer">⋮⋮</span><button type="button" id="otHead" title="Ouvrir mes outils personnalisés">🧰 Mes outils personnalisés <span class="ios-cnt" id="otCnt" hidden></span></button>';
+    document.body.appendChild(b);
+    let p=null; try{ p=JSON.parse(localStorage.getItem(KP)||'null'); }catch(e){}
+    if(p&&typeof p.x==='number') place(b,p.x,p.y); else { b.style.right='14px'; b.style.top='150px'; }
+    b.querySelector('#otHead').onclick=open;
+    const g=b.querySelector('.ot-grip'); let d=null;
+    g.addEventListener('pointerdown',e=>{ const r=b.getBoundingClientRect(); d={dx:e.clientX-r.left,dy:e.clientY-r.top}; try{ g.setPointerCapture(e.pointerId); }catch(_){} e.preventDefault(); });
+    g.addEventListener('pointermove',e=>{ if(d) place(b,e.clientX-d.dx,e.clientY-d.dy); });
+    const end=()=>{ if(!d) return; d=null; try{ const r=b.getBoundingClientRect(); localStorage.setItem(KP,JSON.stringify({x:r.left,y:r.top})); }catch(e){} };
+    g.addEventListener('pointerup',end); g.addEventListener('pointercancel',end);
+    addEventListener('resize',()=>{ const r=b.getBoundingClientRect(); if(b.style.left) place(b,r.left,r.top); }); }
   function open(){ if(document.getElementById('otWin')) return;
     const ov=document.createElement('div'); ov.id='otWin'; ov.setAttribute('role','dialog'); ov.className='pg-dk'; ov.style.cssText='position:fixed;inset:0;z-index:99990;display:flex;align-items:center;justify-content:center;padding:14px';
     ov.innerHTML='<div><div class="ot-h"><b>Mes outils personnalisés</b><button type="button" data-x>✕ Fermer</button></div><div class="ot-sec" id="otS1"></div><div class="ot-sec" id="otS2"></div></div>';
