@@ -1238,6 +1238,7 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
     </div>
 
     <div id="tvWrap" class="tv-sticky"></div>
+    <div id="pcRibWrap" style="margin:10px 0"></div>
     <div id="jrWrap" style="margin-bottom:16px;"></div>
     <div id="effResumeWrap" style="margin-bottom:16px;"></div>
 
@@ -1270,7 +1271,7 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
         <aside class="rt-panel">
           <details class="pl-rib" id="rtRibPieces"><summary><span>⬠ Pièces</span></summary><div class="pl-rib-body"><div id="rtPieceCard"></div><div id="rtPieceList"></div></div></details>
 <details class="pl-rib" id="rtRibClo"><summary><span>〰 Cloisons <small id="rtCloCnt"></small></span></summary><div class="pl-rib-body"><div id="rtCloCard"></div><div id="rtCloList"></div></div></details>
-          <details class="pl-rib" id="rtRibLots" open style="margin-top:8px"><summary><span>📊 Avancement des lots</span></summary><div class="pl-rib-body"><div id="rtEnts"></div></div></details>
+          <details class="pl-rib" id="rtRibLots" style="margin-top:8px"><summary><span>📊 Avancement des lots</span></summary><div class="pl-rib-body"><div id="rtEnts"></div></div></details>
           <div id="rtFormBox" hidden>
             <h3 class="rt-h" style="margin-top:16px">Nouveau travail</h3>
             <form class="rt-form" id="rtForm">
@@ -1287,7 +1288,7 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
           </div>
         </aside>
         <section class="rt-panel">
-          <details class="pl-rib" id="rtRibBase" open style="margin:0"><summary><span>📋 Ouvrages <span id="rtLvl" hidden></span> <small id="rtBaseCnt"></small> <span id="rtPieceChip"></span></span></summary><div class="pl-rib-body"><div class="rt-famhead">Familles d’ouvrages <small>— cliquez une famille pour filtrer la liste</small></div><div id="rtFamCard"></div><div id="rtFams"></div><div class="rt-famhead" style="margin-top:12px">Liste des ouvrages</div><div id="rtTaskCard"></div>
+          <details class="pl-rib" id="rtRibBase" style="margin:0"><summary><span>📋 Ouvrages <span id="rtLvl" hidden></span> <small id="rtBaseCnt"></small> <span id="rtPieceChip"></span></span></summary><div class="pl-rib-body"><div class="rt-famhead">Familles d’ouvrages <small>— cliquez une famille pour filtrer la liste</small></div><div id="rtFamCard"></div><div id="rtFams"></div><div class="rt-famhead" style="margin-top:12px">Liste des ouvrages</div><div id="rtTaskCard"></div>
           <label style="font-size:12px; display:flex; gap:6px; align-items:center; margin-bottom:6px;"><input type="checkbox" id="rtOnlyPos"> Seulement les travaux repérés sur le plan</label>
           <p class="rt-empty" style="margin:0 0 6px;">Liste des ouvrages : ce tableau et les familles de Suivi travaux lisent et alimentent les mêmes travaux ; le plan n’est que sa représentation graphique (chaque ouvrage s’affiche dans sa pièce).</p>
           <div class="rt-tablewrap"><table class="rt-table"><thead><tr><th>N°</th><th>Métier</th><th>Travaux</th><th>Pièce / zone</th><th>Support</th><th>Position</th><th>Statut</th><th></th></tr></thead><tbody id="rtRows"></tbody></table></div>
@@ -16892,6 +16893,28 @@ body.plan-fs-on #rtBasePop.on{display:block;position:fixed;left:10px;top:calc(60
   b.onclick=e=>{ e.stopPropagation(); const on=!pop.classList.contains('on'); pop.classList.toggle('on',on); b.classList.toggle('on',on); if(on&&typeof pzViewSync==='function') pzViewSync(); };
   document.addEventListener('click',e=>{ if(pop.classList.contains('on')&&!e.target.closest('#rtBasePop,#rtBaseBtn')) shut(); });
   new MutationObserver(()=>{ if(!root.classList.contains('rt-fs')) shut(); }).observe(root,{attributes:true,attributeFilter:['class']});
+})();
+</script>
+<script>
+/* ===== Ruban « Liste des pièces » : juste après le ruban de filtre, plié par défaut ===== */
+(function(){
+  let open=false;
+  const esc2=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  function render(){
+    const w=document.getElementById('pcRibWrap'); if(!w) return;
+    const Z=(state.zonesChantier||[]).filter(z=>z.poly); const ord=(typeof nbOrder==='function')?nbOrder():(state.niveaux||[]);
+    const lv=ord.concat([...new Set(Z.map(z=>z.niveau))].filter(n=>!ord.includes(n)));
+    let h='';
+    lv.forEach(n=>{ const L=Z.filter(z=>z.niveau===n).sort((a,b)=>String(a.nom).localeCompare(String(b.nom),'fr',{numeric:true})); if(!L.length) return;
+      h+='<div style="margin:8px 0 2px;font-weight:700;font-size:13px">'+esc2(typeof nbLab==='function'?nbLab(n):n)+' <small style="font-weight:400;color:#667">('+L.length+')</small></div><div style="display:flex;flex-wrap:wrap;gap:6px">'
+        +L.map(z=>{ const ts=(state.tasks||[]).filter(t=>t.zoneChantierId===z.id); const pct=ts.length&&typeof tPctMean==='function'?tPctMean(ts)+'%':'';
+          return '<span class="ouv-chip" title="'+esc2(z.nom)+'">'+esc2(z.nom)+(pct?' · '+pct:'')+'</span>'; }).join('')+'</div>'; });
+    const tot=Z.length;
+    w.innerHTML='<details class="pl-rib" id="pcRib"'+(open?' open':'')+'><summary><span>⬠ Liste des pièces <small>('+tot+')</small></span></summary><div class="pl-rib-body">'+(h||'<p class="empty-note">Aucune pièce tracée pour l’instant.</p>')+'</div></details>';
+    const d=w.querySelector('#pcRib'); d.addEventListener('toggle',()=>{ open=d.open; });
+  }
+  const ra=window.renderAll; window.renderAll=function(){ const r=ra.apply(this,arguments); try{ render(); }catch(e){} return r; };
+  try{ render(); }catch(e){}
 })();
 </script>
 </body></html>
