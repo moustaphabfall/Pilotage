@@ -174,7 +174,7 @@
      Après une connexion réussie avec du réseau, un instantané du compte (identité, projet, droits) est gardé sur l'appareil jusqu'au vendredi soir de la semaine.
      Sans réseau, l'application ne se rouvre que si la personne a activé la biométrie du téléphone et la valide (empreinte / visage). Aucune donnée biométrique ne quitte le téléphone ni n'est stockée par l'outil.
      Déconnexion volontaire = instantané et repère biométrique effacés. */
-  const SNAP = 'pg_offline', BIO = 'pg_bio';
+  const SNAP = 'pg_offline', BIO = 'pg_bio2', BIO_DAYS = 183;   /* repère biométrique par personne et par appareil : à confirmer tous les 6 mois */
   const lsGet = k=>{ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } };
   const lsSet = (k,v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
   const lsDel = k=>{ try{ localStorage.removeItem(k); }catch(e){} };
@@ -182,7 +182,8 @@
   const unb64 = t=>Uint8Array.from(atob(t), c=>c.charCodeAt(0));
   const snapUntil = ts=>{ const d = new Date(ts), k = (5 - d.getDay() + 7) % 7; d.setDate(d.getDate()+k); d.setHours(23,59,59,999); return d.getTime(); };
   const snapOk = sn=>!!(sn && sn.me && sn.PJ && Date.now() <= snapUntil(sn.ts));
-  const bioOk = (sn)=>{ const b = lsGet(BIO); return !!(b && b.id && sn && b.uid===sn.me.id) && !!window.PublicKeyCredential; };
+  const bioGet = uid=>{ const m = lsGet(BIO) || {}; const b = m[uid]; return (b && b.id && b.at && Date.now() - b.at < BIO_DAYS*864e5) ? b : null; };
+  const bioOk = sn=>!!(sn && sn.me && bioGet(sn.me.id)) && !!window.PublicKeyCredential;
   async function reach(){
     if(navigator.onLine===false) return false;
     try{ const c = new AbortController(), t = setTimeout(()=>c.abort(), 3500); const r = await fetch(cfg.url+'/auth/v1/settings', {headers:{apikey:cfg.anonKey}, signal:c.signal, cache:'no-store'}); clearTimeout(t); return !!r; }catch(e){ return false; }
@@ -192,15 +193,15 @@
     const user = {id:me.id, name:me.email||me.nom||'utilisateur', displayName:me.nom||me.email||'Utilisateur'};
     const ch = crypto.getRandomValues(new Uint8Array(32)), uid = new TextEncoder().encode(String(me.id)).slice(0,64);
     const cred = await navigator.credentials.create({publicKey:{rp:{name:'Pilotage Chantier'}, user:{id:uid, name:user.name, displayName:user.displayName}, challenge:ch, pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}], authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'discouraged'}, timeout:60000, attestation:'none'}});
-    lsSet(BIO, {uid:me.id, id:b64(cred.rawId)});
+    const m = lsGet(BIO) || {}; m[me.id] = {id:b64(cred.rawId), at:Date.now()}; lsSet(BIO, m);
   }
   function bioOffer(){
-    if(!window.PublicKeyCredential || bioOk({me}) ) return;
+    if(!window.PublicKeyCredential || bioGet(me.id)) return;
     const ask = ()=>{
       if(document.getElementById('pgBioOffer')) return;
       const d = document.createElement('div'); d.id = 'pgBioOffer';
       d.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99998;max-width:460px;margin:0 auto;background:#222a30;color:#fff;border:2px solid #F2A900;border-radius:14px;padding:12px 14px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.35)';
-      d.innerHTML = '<b>🔒 Rouvrir sans réseau</b><div style="margin:4px 0 8px;opacity:.9">Activez l’empreinte ou le visage de ce téléphone : vous pourrez rouvrir l’application sans internet jusqu’à vendredi soir. Rien de biométrique n’est envoyé ni stocké par l’outil.</div><div style="display:flex;gap:8px"><button id="pgBioOk" style="flex:1;padding:9px;border:0;border-radius:9px;background:#F2A900;font-weight:700;color:#16232B">Activer</button><button id="pgBioNo" style="padding:9px 12px;border:1px solid #666;border-radius:9px;background:none;color:#fff">Plus tard</button></div><div id="pgBioMsg" style="margin-top:6px;font-size:12.5px"></div>';
+      const renew = !!((lsGet(BIO)||{})[me.id]); d.innerHTML = '<b>🔒 '+(renew?'Confirmer la biométrie (tous les 6 mois)':'Rouvrir sans réseau')+'</b><div style="margin:4px 0 8px;opacity:.9">Activez l’empreinte ou le visage de ce téléphone : vous pourrez rouvrir l’application sans internet jusqu’à vendredi soir. Rien de biométrique n’est envoyé ni stocké par l’outil.</div><div style="display:flex;gap:8px"><button id="pgBioOk" style="flex:1;padding:9px;border:0;border-radius:9px;background:#F2A900;font-weight:700;color:#16232B">Activer</button><button id="pgBioNo" style="padding:9px 12px;border:1px solid #666;border-radius:9px;background:none;color:#fff">Plus tard</button></div><div id="pgBioMsg" style="margin-top:6px;font-size:12.5px"></div>';
       document.body.appendChild(d);
       d.querySelector('#pgBioNo').onclick = ()=>{ d.remove(); try{ sessionStorage.setItem('pg_bio_later','1'); }catch(e){} };
       d.querySelector('#pgBioOk').onclick = async ()=>{ try{ await bioEnrol(); d.remove(); }catch(e){ d.querySelector('#pgBioMsg').textContent = 'Activation impossible : '+((e&&e.message)||'annulée')+'.'; } };
@@ -211,7 +212,7 @@
   /* écran hors réseau : biométrie obligatoire */
   function bioGate(sn){
     return new Promise(res=>{
-      const b = lsGet(BIO);
+      const b = bioGet(sn.me.id);
       const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>📴 Mode hors réseau</h2><p>Pas de connexion internet. Validez avec l’empreinte ou le visage de ce téléphone pour rouvrir votre espace, <b>'+esc(sn.me.nom||sn.email||'')+'</b>.</p><button id="pgBioGo">🔒 Déverrouiller</button><div class="e" id="pgBioE" style="min-height:18px;margin-top:8px"></div><button class="l" id="pgBioX">Se connecter avec du réseau</button></div>');
       const go = async ()=>{
         d.querySelector('#pgBioE').textContent = '';
@@ -341,5 +342,5 @@
   const esc = t=>String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const genPw = ()=>{ const c='abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let o=''; const a=new Uint32Array(10); crypto.getRandomValues(a); a.forEach(n=>o+=c[n%c.length]); return o; };
   window.PILOTAGE_SB = ()=> (ready = ready || ensure());
-  window.pilotageLogout = async ()=>{ lsDel(SNAP); lsDel(BIO); try{ await sb.auth.signOut(); }catch(e){} location.reload(); };
+  window.pilotageLogout = async ()=>{ lsDel(SNAP); try{ await sb.auth.signOut(); }catch(e){} location.reload(); };
 })();
