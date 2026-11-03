@@ -16791,7 +16791,8 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
         res = {pts:pts.map(p=>[p[0]/w,p[1]/w]), ax:grp(cc,h).map(v=>v/w), ay:grp(rr,w).map(v=>v/w), w:(x1-x0)/w, h:(y1-y0)/w}; }
     }catch(e){ res = null; }
     cache[key] = res; return res; }
-  const planOf = niv=>(state.plans||[]).find(p=>p.niveau===niv && (planSrcViewSafe(p)));
+  const isArchi = p=>/archi/i.test((p.lot||'')+' '+(p.nom||''));
+  const planOf = niv=>{ const L=(state.plans||[]).filter(p=>p.niveau===niv && planSrcViewSafe(p)); if(!L.length) return null; const hasA=(state.plans||[]).some(p=>isArchi(p)&&planSrcViewSafe(p)); return hasA ? (L.find(isArchi)||null) : L[0]; };
   const planSrcViewSafe = p=>{ try{ return (typeof planSrc==='function'?planSrc(p):p.src)||''; }catch(e){ return ''; } };
   const esc2 = t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   async function paint(w){
@@ -16808,13 +16809,23 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
     const near = n=>{ const i=rows.indexOf(n); for(let d=1;d<rows.length;d++){ for(const j of [i-d,i+d]) if(rows[j]&&C[rows[j]]) return C[rows[j]]; } return C[have[0]]; };
     const S = 540, T = 13, G = 78, SX = .42, SY = .36, n = rows.length;
     const prj = (p,z)=>[p[0]*S+p[1]*S*SX, p[1]*S*SY - z];
-    const fillCol = {}; const items = rows.map((nv,i)=>{ const own = !!C[nv], c = C[nv]||near(nv), z = (n-1-i)*G; return {nv,i,own,c,z}; });
+    const items = rows.map((nv,i)=>{ const own = !!C[nv], c = C[nv], z = (n-1-i)*G; return {nv,i,own,c,z}; });
     // étendue
-    let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9; items.forEach(it=>{ it.P = (it.c.pts2||it.c.pts).map(p=>prj(p, -it.z)); it.P.forEach(q=>{ minX=Math.min(minX,q[0]); maxX=Math.max(maxX,q[0]); minY=Math.min(minY,q[1]); maxY=Math.max(maxY,q[1]+T); }); });
+    let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9; items.forEach(it=>{ if(!it.c){ it.P=null; return; } it.P = (it.c.pts2||it.c.pts).map(p=>prj(p, -it.z)); it.P.forEach(q=>{ minX=Math.min(minX,q[0]); maxX=Math.max(maxX,q[0]); minY=Math.min(minY,q[1]); maxY=Math.max(maxY,q[1]+T); }); });
+    items.forEach(it=>{ if(!it.P){ minY=Math.min(minY,it.z-30); maxY=Math.max(maxY,it.z+30); } });
     const padL=20, labW=250, W0 = (maxX-minX)+padL+labW+30, H0 = (maxY-minY)+40, ox = padL-minX, oy = 20-minY;
     let g = '';
     // du bas vers le haut (le plus haut est dessiné en dernier)
+    const slabW = maxX-minX;
     items.slice().reverse().forEach(it=>{
+      if(!it.P){ const x = nbStats(it.nv), lab = nbLab(it.nv), lx = maxX+ox+26, cyL = it.z+oy;
+        g += `<g class="nbb-lv nbb-nop" onclick="nbOpen('${esc2(it.nv)}')" style="cursor:pointer"><title>${esc2(lab)} — aucun plan archi chargé pour ce niveau</title>
+          <rect x="${(padL).toFixed(1)}" y="${(cyL-26).toFixed(1)}" width="${(slabW).toFixed(1)}" height="40" rx="10" fill="none" stroke="#9aa3aa" stroke-dasharray="6 5"/>
+          <text x="${(padL+slabW/2).toFixed(1)}" y="${(cyL-1).toFixed(1)}" font-size="15" text-anchor="middle" fill="#667">Aucun plan archi chargé pour ce niveau</text>
+          <line x1="${(padL+slabW+6).toFixed(1)}" x2="${(lx-8).toFixed(1)}" y1="${cyL.toFixed(1)}" y2="${cyL.toFixed(1)}" stroke="#9aa3aa" stroke-dasharray="2 3"/>
+          <text x="${lx}" y="${(cyL-6).toFixed(1)}" font-size="20" font-weight="700" fill="#16232B">${esc2(lab)}</text>
+          <text x="${lx}" y="${(cyL+13).toFixed(1)}" font-size="12.5" fill="#55606a">${x.n?x.actual+'% · '+x.n+' tâche(s)':'aucune tâche'}</text>
+          <text x="${(lx+labW-20)}" y="${(cyL-6).toFixed(1)}" font-size="20" font-weight="700" text-anchor="end" fill="#16232B">${x.actual}%</text></g>`; return; }
       const x = nbStats(it.nv), lab = nbLab(it.nv), col = nbColor(x.st,x.actual), P = it.P.map(q=>[q[0]+ox,q[1]+oy]);
       const poly = a=>a.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ');
       let sides=''; for(let k=0;k<P.length;k++){ const a=P[k], b=P[(k+1)%P.length]; const dx=b[0]-a[0]; const sh = dx>=0 ? 34 : 22; sides += `<polygon points="${poly([a,b,[b[0],b[1]+T],[a[0],a[1]+T]])}" fill="hsl(210,14%,${sh}%)" stroke="hsl(210,14%,18%)" stroke-width=".6"/>`; }
@@ -16840,7 +16851,7 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
     const extHtml = ext.length? `<div class="nb-list" style="margin-top:10px">${ext.map(n=>nbRowHtml(n,0)).join('')}</div>`:'';
     w.innerHTML = `<div class="nb-head">${nbDashResp()?esc2((interlocById(nbDashResp())||{}).nom||'Mes niveaux'):'Tous les niveaux'} · <span class="nb-ph">${esc2(projLabel())}</span> <button type="button" class="nb-edit" id="nbbView">☰ Vue liste</button></div>
       <div class="nbb-wrap"><svg viewBox="0 0 ${W0.toFixed(0)} ${H0.toFixed(0)}" width="100%" style="max-width:${Math.min(900,W0).toFixed(0)}px;display:block;margin:0 auto;font-family:inherit" role="img" aria-label="Bâtiment en élévation : un contour par niveau">${g}</svg></div>${extHtml}
-      <div class="nb-leg"><i style="background:hsl(212,62%,50%)"></i>→<i style="background:hsl(142,62%,50%)"></i>avancement · <i style="background:hsl(30,92%,52%)"></i>proche du délai et en retard sur le prévu · <i style="background:hsl(4,70%,52%)"></i>en retard · trait noir = prévu aujourd'hui · contour en pointillés = forme du niveau voisin (pas de plan)</div>`;
+      <div class="nb-leg"><i style="background:hsl(212,62%,50%)"></i>→<i style="background:hsl(142,62%,50%)"></i>avancement · <i style="background:hsl(30,92%,52%)"></i>proche du délai et en retard sur le prévu · <i style="background:hsl(4,70%,52%)"></i>en retard · trait noir = prévu aujourd'hui</div>`;
     const b = w.querySelector('#nbbView'); if(b) b.onclick = ()=>{ view='list'; try{ localStorage.setItem('nb_view','list'); }catch(e){} window.renderNivBars(); };
     return true;
   }
