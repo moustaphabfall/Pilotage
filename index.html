@@ -12838,7 +12838,7 @@ function lvSwitch(mode){
 /* Plein écran du plan : une seule sortie, utilisée partout (bouton, Échap, clic en dehors, fermeture de la vue) */
 window.rtFsExit=function(){ try{ const r=document.getElementById('rtRoot'); if(r) r.classList.remove('rt-fs'); document.body.classList.remove('plan-fs-on'); const b=document.getElementById('rtFsBtn'); if(b) b.textContent='⛶ Plein écran'; }catch(e){} };
 document.addEventListener('pointerdown',e=>{ try{ const r=document.getElementById('rtRoot'); if(!r||!r.classList.contains('rt-fs')) return; const t=e.target;
-  if(t===r || !r.contains(t)){ if(t.closest && t.closest('#overlay.open,#miniPromptOverlay,.modal,[role=dialog],[role=menu],#pinMenu,#tfOv,.tf-card')) return; e.preventDefault(); e.stopPropagation(); window.rtFsExit(); } }catch(_){} }, true);
+  if(t===r || !r.contains(t)){ if(t.closest && t.closest('#overlay.open,#miniPromptOverlay,.modal,[role=dialog],[role=menu],#pinMenu,#tfOv,.tf-card,#rtBasePop,#rtBaseBtn,#fpWin,.fp-win,.pg-dk,#pgPop')) return; e.preventDefault(); e.stopPropagation(); window.rtFsExit(); } }catch(_){} }, true);
 setInterval(()=>{ try{ const r=document.getElementById('rtRoot'); if(r && r.classList.contains('rt-fs')){ const pg=r.closest('.page'); if(pg && !pg.classList.contains('active')) window.rtFsExit(); } }catch(_){} },400);
 function lvClose(){
   window.rtFsExit(); if(!lvState) return; lvRestorePage();
@@ -16929,7 +16929,7 @@ body.plan-fs-on #rtBasePop.on{display:block;position:fixed;left:10px;top:calc(60
   const pop=document.createElement('div'); pop.id='rtBasePop'; pop.innerHTML='<h4>Afficher sur le plan</h4><div style="font-size:11px;color:#667;margin:-4px 0 6px">Plafond · Murs · Sol</div><span class="pz-viewbar rt-pzv"></span>'; document.body.appendChild(pop);
   const shut=()=>{ pop._pin=false; pop.classList.remove('on'); b.classList.remove('on'); };
   b.onclick=e=>{ e.stopPropagation(); if(window.matchMedia('(hover:hover)').matches&&pop.classList.contains('on')&&!pop._pin){ pop._pin=true; return; } pop._pin=false; const on=!pop.classList.contains('on'); pop.classList.toggle('on',on); b.classList.toggle('on',on); if(on&&typeof pzViewSync==='function') pzViewSync(); };
-  document.addEventListener('click',e=>{ if(pop.classList.contains('on')&&!e.target.closest('#rtBasePop,#rtBaseBtn')) shut(); });
+  document.addEventListener('click',e=>{ if(!e.target.isConnected) return; if(pop.classList.contains('on')&&!e.target.closest('#rtBasePop,#rtBaseBtn')) shut(); });
   /* survol (souris) : le ruban se déroule en approchant le bouton, se replie en s'éloignant */
   let ht=null; const openP=()=>{ clearTimeout(ht); if(!pop.classList.contains('on')){ pop.classList.add('on'); b.classList.add('on'); if(typeof pzViewSync==='function') pzViewSync(); } };
   const lateShut=()=>{ clearTimeout(ht); ht=setTimeout(()=>{ if(!pop._pin) shut(); },350); };
@@ -17115,6 +17115,7 @@ body.lv-et-on #lvEtSeg{display:inline-flex}
   new MutationObserver(()=>{ clearTimeout(scan._t); scan._t=setTimeout(scan,20); }).observe(document.body,{childList:true});
   document.addEventListener('click',()=>{ setTimeout(scan,60); setTimeout(scan,400); },true);
   setTimeout(scan,800);
+  { const ovl=document.getElementById('overlay'); if(ovl) new MutationObserver(()=>{ setTimeout(scan,10); }).observe(ovl,{attributes:true,attributeFilter:['class','style']}); }
 
   /* 2) Fenêtre « Gestion des projets » */
   const PJ=()=>window.PILOTAGE_PROJET||null;
@@ -17220,4 +17221,38 @@ body.lv-et-on #lvEtSeg{display:inline-flex}
   setInterval(()=>{ bar(); cnt(); },1200); bar();
 })();
 </script>
+<style id="et2Css">
+#etPgSeg{display:none;margin-left:12px;vertical-align:middle}
+body.lv-etudes:not(.lv-open) #etPgSeg{display:inline-flex}
+body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
+</style>
+<script>
+/* ===== Onglet « Études » : en mode Exé, c'est la même page que Travaux (même interface graphique), sans la liste des tâches ; Conception garde son ancienne page ===== */
+(function(){
+  const sp=window.showPage; if(typeof sp!=='function') return;
+  const tab=()=>{ document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.page==='plans')); const l=document.getElementById('menuLbl'); const t=document.querySelector('.tab[data-page="plans"]'); if(l&&t) l.textContent=t.textContent.trim(); };
+  function seg(){ if(document.getElementById('etPgSeg')) return; const h=document.querySelector('#page-travaux .section-head h2'); if(!h) return; const e=document.createElement('span'); e.className='lv-seg'; e.id='etPgSeg';
+    e.innerHTML='<button type="button" data-et="exe" class="on">🛠️ Exé</button><button type="button" data-et="conception">📐 Conception</button>'; h.appendChild(e);
+    e.onclick=ev=>{ const b=ev.target.closest('button[data-et]'); if(!b||b.dataset.et!=='conception') return; try{ etudesMode='conception'; localStorage.setItem('etudesMode','conception'); }catch(_){} document.body.classList.remove('lv-etudes','lv-et-on'); sp('plans'); }; }
+  window.showPage=function(p){
+    if(!document.body.classList.contains('lv-open')&&!window.__etGo){ document.body.classList.remove('lv-etudes','lv-et-on'); }
+    const r=sp.apply(this,arguments);
+    if(window.__etGo){ seg(); tab(); }
+    return r; };
+  window.etudesTab=function(){
+    if(typeof etudesMode!=='undefined'&&etudesMode==='conception'){ sp('plans'); return; }
+    window.__etGo=1; document.body.classList.add('lv-etudes','lv-et-on'); try{ window.showPage('travaux'); }finally{ window.__etGo=0; } };
+  const tb=document.querySelector('.tab[data-page="plans"]'); if(tb) tb.setAttribute('onclick','etudesTab()');
+  const om=window.etudesSetMode; window.etudesSetMode=function(m){ if(m==='exe'){ try{ etudesMode='exe'; localStorage.setItem('etudesMode','exe'); }catch(_){} window.etudesTab(); return; } return om.apply(this,arguments); };
+})();
+</script>
+<style id="ybCss">
+/* jaune et noir : liseré en bandes sur les fenêtres sombres, titres et cases en jaune */
+.pg-dk>div,.pg-dk>form,.pg-dk>.tf-card,#pfWin #sbProfView,#fpWin,.fp-win{background-image:repeating-linear-gradient(135deg,#F2A900 0 10px,#16232B 10px 20px)!important;background-size:100% 7px!important;background-repeat:no-repeat!important;background-position:top!important;border-color:rgba(242,169,0,.55)!important;padding-top:calc(var(--yb-pt,14px) + 7px)}
+.pg-dk .ot-h b,.pg-dk .gp-h:first-child b,.pg-dk .tf-h b,.pg-dk h2,.pg-dk h3,.pg-dk .dt-t,.pg-dk .gp-l{color:#F2A900!important}
+.pg-dk input[type=checkbox],.pg-dk input[type=radio]{accent-color:#F2A900}
+.pg-dk button.primary,.pg-dk .modal-actions button.primary{background-color:#F2A900!important;border-color:#F2A900!important;color:#16232B!important;font-weight:700}
+.pg-dk button.primary *{color:#16232B!important}
+.pg-dk .gp-st,.pg-dk .on{border-color:#F2A900!important}
+</style>
 </body></html>
