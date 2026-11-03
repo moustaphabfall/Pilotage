@@ -127,7 +127,7 @@
   async function chooseProjet(){
     const today = new Date().toISOString().slice(0,10), glob = me.role==='admin';
     let projets = [], mem = {};
-    { const r = await sb.from('projets').select('id,nom,hebergement,type,types_autorises').order('created_at'); projets = r.data||[]; }
+    { const r = await sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at'); projets = r.data||[]; }
     { const r = await sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction').eq('user_id', me.id); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
     projets = projets.filter(p=>glob || (mem[p.id] && mem[p.id].actif));
     if(!projets.length){
@@ -135,7 +135,7 @@
     }
     let id = null; try{ id = localStorage.getItem('pg_projet'); }catch(e){}
     const okP = p=>glob || (mem[p.id] && (mem[p.id].role==='admin' || !mem[p.id].valide_jusqu || mem[p.id].valide_jusqu>=today));
-    let pr = projets.find(p=>p.id===id && okP(p)) || projets.find(okP);
+    let pr = projets.find(p=>p.id===id && okP(p)) || projets.find(p=>okP(p)&&!p.archive) || projets.find(okP);
     if(!pr){
       const p0 = projets[0], m = mem[p0.id];
       await new Promise(()=>{ const d = screen('<div class="box"><h2>⌛ Accès expiré</h2><p>Votre accès au projet « '+esc(p0.nom)+' » a expiré le '+esc(m.valide_jusqu)+'. Contactez l’administrateur pour le prolonger.</p><button id="pgRe">Vérifier</button><button class="l" id="pgOut">Se déconnecter</button></div>'); d.querySelector('#pgRe').onclick = ()=>location.reload(); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); }; });
@@ -166,6 +166,11 @@
         return new URL('demande.html?t='+tok, location.href).href; },
       list: async ()=>{ const {data,error} = await sb.from('demande_liens').select('token,demande_id,statut,reponse,expire').eq('projet_id',PJ.id); if(error) throw error; return data||[]; },
       remove: async tok=>{ const {error} = await sb.from('demande_liens').delete().eq('token',tok).eq('projet_id',PJ.id); if(error) throw error; }
+    };
+    window.PILOTAGE_PROJ = {
+      archiver: async (pid,on)=>{ const {error}=await sb.rpc('projet_archiver',{p_id:pid,p_on:!!on}); if(error) throw error; },
+      supprimer: async pid=>{ const {error}=await sb.rpc('projet_supprimer',{p_id:pid}); if(error) throw error; },
+      dupliquer: async (src,id,nom)=>{ const {error}=await sb.rpc('projet_dupliquer',{p_src:src,p_id:id,p_nom:nom}); if(error) throw error; }
     };
     window.pilotageSwitchProjet = id2=>{ try{ if(PJ&&PJ.id&&id2!==PJ.id) localStorage.setItem('pilotage_pid', PJ.id); localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
   }
