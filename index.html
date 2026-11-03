@@ -100,7 +100,12 @@ body.apcx-on #rtFloat{transition:opacity .25s}
 #rtFloat.folded .rf-h{border-radius:5px}
 #rtFloat .rf-h{cursor:pointer}
 #baseDerogPage{display:none!important}
-</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script>window.OCR_LOCAL="ocr/";</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="vendor/msal-browser.min.js"></script><script src="supabase-adapter.js"></script><script src="sharepoint-adapter.js"></script></head><body>
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pilotage"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icons/icon-192.png"><script src="config.js"></script><script>window.OCR_LOCAL="ocr/";</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="vendor/msal-browser.min.js"></script><script src="supabase-adapter.js"></script><script src="sharepoint-adapter.js"></script><style id="noEff">
+/* effectif retiré de l'interface */
+.ruban[onclick*="toggleEffectifRuban"],#effectifSection,#rtEff,.eff-tg,.eff-sw,.eff-help,.eff-tot,.eff-bar .eff-chip,.eff-placing,.role-badge[title^="Effectif"],#previsionnelRapide,#pointageRapide,.field:has(#ov-eff),.field:has(#e-effectif){display:none!important}
+#rtEffBar input[type=date],#rtEffBar button[onclick*="eff"],#rtEffBar button[onclick*="rtFit"]{display:none!important}
+</style>
+</head><body>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -7931,7 +7936,7 @@ async function ficheDrawPage(doc, t, hdr){
   const tl=doc.splitTextToSize(pdfTxt(t.quoi||'(sans libelle)'), pw); doc.text(tl, px, ly); ly+=tl.length*5.6+1;
   const lab=pdfTxt((ETAT_LABEL[etat]||etat).toUpperCase()); doc.setFontSize(9); const lw=doc.getTextWidth(lab)+7;
   doc.setFillColor(EC[0],EC[1],EC[2]); doc.roundedRect(px, ly, lw, 6.5, 1.5, 1.5, 'F'); doc.setTextColor(255); doc.text(lab, px+3.5, ly+4.5); ly+=10;
-  const kv=[['Metier',me&&me.nom],['Famille',ft&&ft.nom],['Niveau',t.niveau||(pl&&pl.niveau)],['Pour le',fin&&fmtDate(fin)],['Effectif',(function(){try{var n=ficheEffCount(t);return n>0?n+' pers.':''}catch(e){return ''}})()]].filter(a=>a[1]);
+  const kv=[['Metier',me&&me.nom],['Famille',ft&&ft.nom],['Niveau',t.niveau||(pl&&pl.niveau)],['Pour le',fin&&fmtDate(fin)]].filter(a=>a[1]);
   kv.forEach(([k,v])=>{ doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(120); doc.text(pdfTxt(k.toUpperCase()), px, ly); ly+=3.8;
     doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(22,35,43); const vl=doc.splitTextToSize(pdfTxt(String(v)), pw); doc.text(vl, px, ly); ly+=vl.length*4.2+2.2; });
   const desc=[(t.notes||'').trim(), (t.comment||'').trim()].filter(Boolean).join('\n') || (t.ou?String(t.ou):'');
@@ -16726,5 +16731,121 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
   /* les barres de filtre font partie du plein écran : ne pas quitter en les touchant */
   document.addEventListener('pointerdown',e=>{ if(root.classList.contains('rt-fs') && e.target.closest&&e.target.closest('#tvWrap')) e.stopImmediatePropagation(); },true);
 })();</script>
+
+<script>
+/* ===== Niveaux en bâtiment : contours des plans empilés en élévation (vue 3/4 fixe) =====
+   Le contour extérieur de chaque plan d'architecte chargé est détecté dans le navigateur (aucune copie ailleurs),
+   puis les contours sont empilés dans l'ordre des niveaux du paramétrage du projet. Chaque dalle garde les fonctions de l'étage
+   (avancement, prévu du jour, retard, ouverture du niveau au clic). */
+(function(){
+  const orig = window.renderNivBars; if(typeof orig!=='function') return;
+  let view = 'bld'; try{ view = localStorage.getItem('nb_view')||'bld'; }catch(e){}
+  const cache = {}; let busy = false, again = false;
+  const loadImg = src=>new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; });
+  const dil = (m,w,h,r)=>{ const t=new Uint8Array(w*h), o=new Uint8Array(w*h);
+    for(let y=0;y<h;y++){ let last=-1e9; for(let x=0;x<w;x++){ if(m[y*w+x]) last=x; if(x-last<=r) t[y*w+x]=1; } last=1e9; for(let x=w-1;x>=0;x--){ if(m[y*w+x]) last=x; if(last-x<=r) t[y*w+x]=1; } }
+    for(let x=0;x<w;x++){ let last=-1e9; for(let y=0;y<h;y++){ if(t[y*w+x]) last=y; if(y-last<=r) o[y*w+x]=1; } last=1e9; for(let y=h-1;y>=0;y--){ if(t[y*w+x]) last=y; if(last-y<=r) o[y*w+x]=1; } }
+    return o; };
+  const inv = m=>{ const o=new Uint8Array(m.length); for(let i=0;i<m.length;i++) o[i]=m[i]?0:1; return o; };
+  function biggest(m,w,h){ const lab=new Int32Array(w*h); let best=0,bl=0,L=0;
+    for(let i=0;i<w*h;i++){ if(!m[i]||lab[i]) continue; L++; let n=0; const st=[i]; lab[i]=L; while(st.length){ const p=st.pop(); n++; const x=p%w, y=(p/w)|0;
+        if(x>0&&m[p-1]&&!lab[p-1]){ lab[p-1]=L; st.push(p-1); } if(x<w-1&&m[p+1]&&!lab[p+1]){ lab[p+1]=L; st.push(p+1); } if(y>0&&m[p-w]&&!lab[p-w]){ lab[p-w]=L; st.push(p-w); } if(y<h-1&&m[p+w]&&!lab[p+w]){ lab[p+w]=L; st.push(p+w); } }
+      if(n>best){ best=n; bl=L; } }
+    const o=new Uint8Array(w*h); for(let i=0;i<w*h;i++) if(lab[i]===bl) o[i]=1; return o; }
+  function trace(m,w,h){
+    let sx=-1,sy=-1; for(let y=0;y<h&&sx<0;y++) for(let x=0;x<w;x++) if(m[y*w+x]){ sx=x; sy=y; break; }
+    if(sx<0) return null; const D=[[-1,0],[-1,-1],[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1]], at=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&m[y*w+x]===1;
+    let cx=sx, cy=sy, bx=sx-1, by=sy; const pts=[[cx,cy]]; let g=0;
+    while(g++<w*h*2){ const k=D.findIndex(d=>cx+d[0]===bx&&cy+d[1]===by); let moved=false;
+      for(let i=1;i<=8;i++){ const idx=(k+i)%8, px=cx+D[idx][0], py=cy+D[idx][1]; if(at(px,py)){ const pb=D[(idx+7)%8]; bx=cx+pb[0]; by=cy+pb[1]; cx=px; cy=py; moved=true; break; } }
+      if(!moved) break; if(cx===sx&&cy===sy) break; pts.push([cx,cy]); }
+    return pts; }
+  function rdp(p,e){ if(p.length<4) return p; const d=(a,b,c)=>{ const dx=c[0]-b[0], dy=c[1]-b[1], l=dx*dx+dy*dy||1; return Math.abs((a[0]-b[0])*dy-(a[1]-b[1])*dx)/Math.sqrt(l); };
+    const rec=(a,i,j)=>{ let mx=0,mi=-1; for(let k=i+1;k<j;k++){ const v=d(a[k],a[i],a[j]); if(v>mx){ mx=v; mi=k; } } return mx>e? rec(a,i,mi).slice(0,-1).concat(rec(a,mi,j)) : [a[i],a[j]]; };
+    let far=0,fd=0; for(let k=1;k<p.length;k++){ const v=Math.hypot(p[k][0]-p[0][0],p[k][1]-p[0][1]); if(v>fd){ fd=v; far=k; } }
+    return rec(p,0,far).slice(0,-1).concat(rec(p.concat([p[0]]).slice(0,p.length+1),far,p.length)).slice(0); }
+  async function contourOf(pl){
+    const src = (typeof planSrcView==='function')?planSrcView(pl):pl.src; if(!src) return null;
+    const key = pl.id+'|'+src.length+'|'+src.slice(-24); if(key in cache) return cache[key];
+    let res = null;
+    try{ const im = await loadImg(src), W = 280, k = W/im.naturalWidth, w = W, h = Math.max(16,Math.round(im.naturalHeight*k));
+      const c = document.createElement('canvas'); c.width=w; c.height=h; const x = c.getContext('2d',{willReadFrequently:true}); x.fillStyle='#fff'; x.fillRect(0,0,w,h); x.drawImage(im,0,0,w,h);
+      const d = x.getImageData(0,0,w,h).data, D = new Uint8Array(w*h); for(let i=0;i<w*h;i++){ const l=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2]; D[i]=(d[i*4+3]>40&&l<150)?1:0; }
+      const R=4, D2 = dil(D,w,h,R), out = new Uint8Array(w*h), st=[]; const push=p=>{ if(!D2[p]&&!out[p]){ out[p]=1; st.push(p); } };
+      for(let xx=0;xx<w;xx++){ push(xx); push((h-1)*w+xx); } for(let yy=0;yy<h;yy++){ push(yy*w); push(yy*w+w-1); }
+      while(st.length){ const p=st.pop(), px=p%w, py=(p/w)|0; if(px>0) push(p-1); if(px<w-1) push(p+1); if(py>0) push(p-w); if(py<h-1) push(p+w); }
+      let M = new Uint8Array(w*h); for(let i=0;i<w*h;i++) M[i]=out[i]?0:1;
+      M = inv(dil(inv(M),w,h,R)); M = biggest(M,w,h);
+      const t = trace(M,w,h); if(t&&t.length>8){ const pts = rdp(t,3); let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; pts.forEach(p=>{ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]); y0=Math.min(y0,p[1]); y1=Math.max(y1,p[1]); });
+        const grp=(arr,len)=>{ const th=len*.38, o=[]; let run=[]; arr.forEach((v,i)=>{ if(v>th) run.push(i); else if(run.length){ o.push(run.reduce((a,c)=>a+c,0)/run.length); run=[]; } }); if(run.length) o.push(run.reduce((a,c)=>a+c,0)/run.length); return o; };
+        const cc=new Array(w).fill(0), rr=new Array(h).fill(0); for(let yy=0;yy<h;yy++) for(let xx=0;xx<w;xx++){ const i=(yy*w+xx)*4, l=.3*d[i]+.59*d[i+1]+.11*d[i+2]; if(d[i+3]>40&&l<205){ cc[xx]++; rr[yy]++; } }
+        res = {pts:pts.map(p=>[p[0]/w,p[1]/w]), ax:grp(cc,h).map(v=>v/w), ay:grp(rr,w).map(v=>v/w), w:(x1-x0)/w, h:(y1-y0)/w}; }
+    }catch(e){ res = null; }
+    cache[key] = res; return res; }
+  const planOf = niv=>(state.plans||[]).find(p=>p.niveau===niv && (planSrcViewSafe(p)));
+  const planSrcViewSafe = p=>{ try{ return (typeof planSrc==='function'?planSrc(p):p.src)||''; }catch(e){ return ''; } };
+  const esc2 = t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  async function paint(w){
+    const lv = nbPerim(); const rows = lv.filter(n=>!/^ext/i.test(n)), ext = lv.filter(n=>/^ext/i.test(n));
+    const C = {}; for(const n of rows){ const p = planOf(n); C[n] = p ? await contourOf(p) : null; }
+    const have = rows.filter(n=>C[n]); if(!have.length) return false;
+    // calage sur les traits de repère (axes) : décalage qui aligne le plus d'axes avec le niveau de référence ; sinon même cadre de plan
+    const ref = C[have[0]], tol = .012;
+    const vote = (A,B)=>{ let best=0,bc=0; (A||[]).forEach(a=>(B||[]).forEach(b=>{ const t=b-a; let c=0; A.forEach(a2=>{ if(B.some(b2=>Math.abs(b2-a2-t)<tol)) c++; }); if(c>bc||(c===bc&&Math.abs(t)<Math.abs(best)&&c>0)){ bc=c; best=t; } })); return bc>=2?best:0; };
+    have.forEach(n=>{ const c=C[n]; if(c.al) return; const dx = c===ref?0:vote(c.ax,ref.ax), dy = c===ref?0:vote(c.ay,ref.ay); c.al = c.pts.map(q=>[q[0]+dx,q[1]+dy]); c.dx=dx; c.dy=dy; });
+    let gx0=1e9,gx1=-1e9,gy0=1e9,gy1=-1e9; have.forEach(n=>C[n].al.forEach(q=>{ gx0=Math.min(gx0,q[0]); gx1=Math.max(gx1,q[0]); gy0=Math.min(gy0,q[1]); gy1=Math.max(gy1,q[1]); }));
+    const gcx=(gx0+gx1)/2, gcy=(gy0+gy1)/2;
+    have.forEach(n=>{ const c=C[n]; c.pts2=c.al.map(q=>[q[0]-gcx,q[1]-gcy]); });
+    const near = n=>{ const i=rows.indexOf(n); for(let d=1;d<rows.length;d++){ for(const j of [i-d,i+d]) if(rows[j]&&C[rows[j]]) return C[rows[j]]; } return C[have[0]]; };
+    const S = 540, T = 13, G = 78, SX = .42, SY = .36, n = rows.length;
+    const prj = (p,z)=>[p[0]*S+p[1]*S*SX, p[1]*S*SY - z];
+    const fillCol = {}; const items = rows.map((nv,i)=>{ const own = !!C[nv], c = C[nv]||near(nv), z = (n-1-i)*G; return {nv,i,own,c,z}; });
+    // étendue
+    let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9; items.forEach(it=>{ it.P = (it.c.pts2||it.c.pts).map(p=>prj(p, -it.z)); it.P.forEach(q=>{ minX=Math.min(minX,q[0]); maxX=Math.max(maxX,q[0]); minY=Math.min(minY,q[1]); maxY=Math.max(maxY,q[1]+T); }); });
+    const padL=20, labW=250, W0 = (maxX-minX)+padL+labW+30, H0 = (maxY-minY)+40, ox = padL-minX, oy = 20-minY;
+    let g = '';
+    // du bas vers le haut (le plus haut est dessiné en dernier)
+    items.slice().reverse().forEach(it=>{
+      const x = nbStats(it.nv), lab = nbLab(it.nv), col = nbColor(x.st,x.actual), P = it.P.map(q=>[q[0]+ox,q[1]+oy]);
+      const poly = a=>a.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ');
+      let sides=''; for(let k=0;k<P.length;k++){ const a=P[k], b=P[(k+1)%P.length]; const dx=b[0]-a[0]; const sh = dx>=0 ? 34 : 22; sides += `<polygon points="${poly([a,b,[b[0],b[1]+T],[a[0],a[1]+T]])}" fill="hsl(210,14%,${sh}%)" stroke="hsl(210,14%,18%)" stroke-width=".6"/>`; }
+      let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; P.forEach(q=>{ x0=Math.min(x0,q[0]); x1=Math.max(x1,q[0]); y0=Math.min(y0,q[1]); y1=Math.max(y1,q[1]); });
+      const wid = x1-x0, id = 'nbc'+it.i;
+      const stroke = x.st==='late'?'hsl(4,70%,45%)':x.st==='warn'?'hsl(30,92%,45%)':'#222a30', sw = nbSel===it.nv?4:2;
+      const prev = (x.prevu!==null&&x.n)?`<line x1="${(x0+wid*x.prevu/100).toFixed(1)}" x2="${(x0+wid*x.prevu/100).toFixed(1)}" y1="${y0}" y2="${y1}" stroke="#16232B" stroke-width="2"/>`:'';
+      const cyL = (y0+y1)/2 + 0, txt = x.n ? (x.prevu!==null?`prévu ${x.prevu}%`:'sans date')+(x.fin?` · fin ${x.fin.slice(8,10)}/${x.fin.slice(5,7)}`:'') : 'aucune tâche';
+      const lx = maxX+ox+26;
+      g += `<g class="nbb-lv${it.own?'':' nbb-nop'}" data-n="${esc2(it.nv)}" onclick="nbOpen('${esc2(it.nv)}')" style="cursor:pointer"><title>${esc2(lab)} — avancement ${x.actual}%${it.own?'':' (contour de plan non disponible : forme du niveau voisin)'}</title>
+        ${sides}<clipPath id="${id}"><polygon points="${poly(P)}"/></clipPath>
+        <polygon points="${poly(P)}" fill="var(--paper,#fff)"/>
+        <rect x="${x0}" y="${y0}" width="${(wid*x.actual/100).toFixed(1)}" height="${(y1-y0).toFixed(1)}" fill="${col}" clip-path="url(#${id})" opacity=".92"/>
+        <g clip-path="url(#${id})">${prev}</g>
+        <polygon points="${poly(P)}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" ${it.own?'':'stroke-dasharray="6 4"'}/>
+        <line x1="${(x1+6).toFixed(1)}" x2="${(lx-8).toFixed(1)}" y1="${cyL.toFixed(1)}" y2="${cyL.toFixed(1)}" stroke="#9aa3aa" stroke-dasharray="2 3"/>
+        <text x="${lx}" y="${(cyL-6).toFixed(1)}" font-size="20" font-weight="700" fill="#16232B">${esc2(lab)}${x.st==='late'?' ⏰':x.st==='warn'?' ⚠':''}</text>
+        <text x="${lx}" y="${(cyL+13).toFixed(1)}" font-size="12.5" fill="#55606a">${esc2(txt)}</text>
+        <text x="${(lx+labW-20)}" y="${(cyL-6).toFixed(1)}" font-size="20" font-weight="700" text-anchor="end" fill="#16232B">${x.actual}%</text></g>`;
+    });
+    // sol sous le bâtiment
+    const gy = (maxY-minY)+oy+6;
+    const extHtml = ext.length? `<div class="nb-list" style="margin-top:10px">${ext.map(n=>nbRowHtml(n,0)).join('')}</div>`:'';
+    w.innerHTML = `<div class="nb-head">${nbDashResp()?esc2((interlocById(nbDashResp())||{}).nom||'Mes niveaux'):'Tous les niveaux'} · <span class="nb-ph">${esc2(projLabel())}</span> <button type="button" class="nb-edit" id="nbbView">☰ Vue liste</button></div>
+      <div class="nbb-wrap"><svg viewBox="0 0 ${W0.toFixed(0)} ${H0.toFixed(0)}" width="100%" style="max-width:${Math.min(900,W0).toFixed(0)}px;display:block;margin:0 auto;font-family:inherit" role="img" aria-label="Bâtiment en élévation : un contour par niveau">${g}</svg></div>${extHtml}
+      <div class="nb-leg"><i style="background:hsl(212,62%,50%)"></i>→<i style="background:hsl(142,62%,50%)"></i>avancement · <i style="background:hsl(30,92%,52%)"></i>proche du délai et en retard sur le prévu · <i style="background:hsl(4,70%,52%)"></i>en retard · trait noir = prévu aujourd'hui · contour en pointillés = forme du niveau voisin (pas de plan)</div>`;
+    const b = w.querySelector('#nbbView'); if(b) b.onclick = ()=>{ view='list'; try{ localStorage.setItem('nb_view','list'); }catch(e){} window.renderNivBars(); };
+    return true;
+  }
+  window.renderNivBars = function(){
+    const w = document.getElementById('nivBarWrap'); if(!w) return orig.apply(this,arguments);
+    if(view!=='bld'){ orig.apply(this,arguments); const h=w.querySelector('.nb-head'); if(h&&!h.querySelector('#nbbView2')){ const b=document.createElement('button'); b.type='button'; b.className='nb-edit'; b.id='nbbView2'; b.textContent='🏢 Vue bâtiment'; b.onclick=()=>{ view='bld'; try{ localStorage.setItem('nb_view','bld'); }catch(e){} window.renderNivBars(); }; h.appendChild(b); } return; }
+    let any = false; try{ any = (state.plans||[]).some(p=>planSrcViewSafe(p)); }catch(e){}
+    if(!any || (typeof projEns==='function' && projEns().phase==='pro')) return orig.apply(this,arguments);
+    if(busy){ again = true; return; } busy = true;
+    paint(w).then(ok=>{ if(!ok) orig.call(window); }).catch(()=>{ try{ orig.call(window); }catch(e){} }).finally(()=>{ busy=false; if(again){ again=false; window.renderNivBars(); } });
+  };
+  const css = document.createElement('style'); css.textContent = '.nbb-wrap{max-width:900px;margin:0 auto}.nbb-lv:hover polygon:not([fill="none"]){filter:brightness(1.04)}.nbb-nop{opacity:.9}'; document.head.appendChild(css);
+  try{ window.renderNivBars(); }catch(e){}
+})();
+</script>
 
 </body></html>
