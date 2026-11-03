@@ -7500,7 +7500,7 @@ function pieceOuvSync(){
   const byKey=new Map(); state.tasks.forEach(t=>{ if(t.po) byKey.set(t.po.z+'|'+t.po.k+'|'+(t.po.i||0),t) });
   const zones=state.zonesChantier.filter(z=>z.poly&&z.poly.pts&&z.poly.pts.length>=3), zset=new Set(zones.map(z=>z.id));
   zones.forEach(z=>{
-    const n=z.poly.pts.length, want=[['sol',0],['plafond',0]]; for(let i=1;i<=n;i++) want.push(['mur',i]);
+    const n=z.poly.pts.length, want=[['sol',0],['plafond',0]];
     want.forEach(([k,i])=>{
       const key=z.id+'|'+k+'|'+i, K=PO_KINDS[k], q=k==='mur'?`Mur ${i} — ${z.nom}`:`${K.lbl} — ${z.nom}`;
       let t=byKey.get(key);
@@ -7515,7 +7515,7 @@ function pieceOuvSync(){
   const keep=state.tasks.filter(t=>{
     if(!t.po) return true;
     const z=zoneById(t.po.z), n=z&&z.poly&&z.poly.pts?z.poly.pts.length:0;
-    const valid=z&&zset.has(z.id)&&(t.po.k!=='mur'||t.po.i<=n);
+    const valid=z&&zset.has(z.id)&&t.po.k!=='mur';
     return valid||!poUntouched(t);
   });
   if(keep.length!==state.tasks.length){ state.tasks=keep; ch=true; }
@@ -9391,6 +9391,8 @@ function niveauxTrisAffichage(){
 }
 /* ===== TÂCHES DU JOUR (suit la date d'état de l'onglet Suivi travaux) ===== */
 let jrNiv=null, jrMet=null, jrSel=null;
+var jrExp=new Set();
+function jrVis(t){ let k=t,d=0; while(k&&k.parentTaskId&&d<8){ if(!jrExp.has(k.parentTaskId)) return false; k=taskById(k.parentTaskId); d++; } return true; }
 function jrEnt(id){ return (state.entreprises||[]).find(e=>e.id===id); }
 function jrAddDays(d,n){ const dt=new Date(d+'T00:00:00'); dt.setDate(dt.getDate()+n); return localISO(dt); }
 function jrDate(){ return getDateEtat('travaux'); }
@@ -9418,7 +9420,7 @@ const jrOpen = {v:true};
 function renderJour(){
   const box=document.getElementById('jrWrap'); if(!box) return;
   const keepOpen=(box.querySelector('details')||{}).open; if(keepOpen!==undefined) jrOpen.v=keepOpen;
-  const d=jrDate(), all=state.tasks.filter(t=>typeof travVisible==='function'?travVisible(t):jrIsDay(t,d));
+  const d=jrDate(), all=state.tasks.filter(t=>typeof travVisible==='function'?travVisible(t):jrIsDay(t,d)).filter(jrVis);
   const nivs=[...new Set(all.map(t=>t.niveau).filter(Boolean))];
   const jrLock=(typeof travauxNiveauActif!=='undefined'&&travauxNiveauActif)?travauxNiveauActif:null;
   if(jrLock){ jrNiv=jrLock; } else if(jrNiv && jrNiv!=='__all' && !nivs.includes(jrNiv)) jrNiv=null;
@@ -9477,7 +9479,7 @@ document.addEventListener('click',ev=>{
   if(b=q('[data-jrfiche]')){ openTaskDetail(b.dataset.jrfiche); return; }
   if(b=q('[data-jrrm]')){ jrToggleDay(b.dataset.jrrm); return; }
   if(b=q('[data-jrpin]')){ jrSel=(jrSel===b.dataset.jrpin)?null:b.dataset.jrpin; renderJour(); const c=jrSel&&document.querySelector('[data-jrcard="'+CSS.escape(jrSel)+'"]'); if(c) c.scrollIntoView({block:'nearest'}); return; }
-  if(b=q('[data-jrcard]')){ if(ev.target.closest('button')) return; jrSel=(jrSel===b.dataset.jrcard)?null:b.dataset.jrcard; renderJour(); return; }
+  if(b=q('[data-jrcard]')){ if(ev.target.closest('button')) return; const cid=b.dataset.jrcard; if(state.tasks.some(x=>x.parentTaskId===cid&&!x.deleted)){ if(jrExp.has(cid)){ jrExp.delete(cid); [...jrExp].forEach(i=>{ let k=taskById(i),d=0; while(k&&k.parentTaskId&&d<8){ if(k.parentTaskId===cid){ jrExp.delete(i); break; } k=taskById(k.parentTaskId); d++; } }); } else jrExp.add(cid); jrSel=cid; renderJour(); try{ if(window.rtSelect) window.rtSelect(cid,null); }catch(e){} return; } jrSel=(jrSel===cid)?null:cid; renderJour(); return; }
 });
 document.addEventListener('change',ev=>{
   if(ev.target.id==='jrNivSel'){ jrNiv=ev.target.value==='__all'?null:ev.target.value; renderJour(); }
@@ -14487,6 +14489,7 @@ Règles :
   const SUPL = {mur:'Murs', sol:'Sol', plafond:'Plafond'};
   const seen = new Map(); let primed = false;
   function ensureGlobal(z, sup, met){
+    return; /* une seule tâche mur / sol / plafond par pièce */
     if(!z || !sup || !met) return;
     const ex = (state.tasks||[]).find(t=>t.globale && t.zoneChantierId===z.id && t.support===sup && t.metierId===met.id); if(ex) return;
     const t = taskBase(nextTaskId(), SUPL[sup]+' — '+met.nom+' — '+z.nom, z.niveau, {zoneChantierId:z.id, zoneChantierIds:[z.id], support:sup, metierId:met.id, zone:met.nom, globale:true, auto:true});
@@ -17491,11 +17494,7 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
     try{ if(typeof pieceOuvSync==='function') pieceOuvSync(); }catch(e){}
     const pl = planById(z.poly.planId); if(!pl) return; let nw=0, ns=0;
     const has=(sup,key)=>(state.tasks||[]).some(t=>t.zoneChantierId===z.id&&t.support===sup&&!t.globale&&(!key||t.murSeg===key));
-    { const segs0=pieceWallSegs(z); (state.tasks||[]).forEach(t=>{ if(t.po&&t.po.z===z.id&&t.po.k==='mur'&&!t.globale){ const sg=segs0[t.po.i-1]; if(sg) t.murSeg=sg.key; } }); }
-    pieceWallSegs(z).forEach((sg,k)=>{
-      if((state.cloisons||[]).find(c=>c.segKey===sg.key) || has('mur',sg.key)) return;
-      const cc=cloCreate(pl,[sg.a.slice(),sg.b.slice()],'Mur '+(k+1)+' — '+z.nom); cc.segKey=sg.key; cc.pieceId=z.id; const t=cloisonTask(cc);
-      if(t){ t.zoneChantierId=z.id; t.zoneChantierIds=[z.id]; t.metierId=null; t.zone=''; t.zoneFamilleId=null; t.support='mur'; t.murSeg=sg.key; nw++; } });
+    try{ nw=(window.pzEnsureNet(z,'afaire')?1:0); }catch(e){ console.error(e); }
     [['sol','Sol'],['plafond','Plafond']].forEach(([sup,lab])=>{
       if(has(sup)) return;
       const t=taskBase(nextTaskId(), lab+' — '+z.nom, z.niveau, {zoneChantierId:z.id, zoneChantierIds:[z.id], support:sup, zone:''});
@@ -17917,4 +17916,44 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pzx-det{margin-top:6px;font-size:13px}.pzx-det summary{cursor:pointer;opacity:.7}
 .pzx-wl{display:flex;gap:10px;align-items:center;margin:4px 0}.pzx-wl span{width:56px}.pzx-wl .pzx-sel{min-height:32px}
 </style>
+<script>
+/* ===== v133 : UNE tâche « Murs » par pièce (pastille centrale libre) + une sous-tâche par mur (ancrée au mur), repliable dans la liste ===== */
+(function(){
+  const kidsOf=id=>(state.tasks||[]).filter(t=>t.parentTaskId===id&&!t.deleted);
+  const central=z=>(state.tasks||[]).find(t=>t.murPiece===z.id&&!t.parentTaskId&&!t.deleted);
+  const wallKids=z=>(state.tasks||[]).filter(t=>t.murPiece===z.id&&t.parentTaskId&&t.murIdx!=null&&!t.deleted).sort((a,b)=>a.murIdx-b.murIdx);
+  function renum(z){ wallKids(z).forEach((t,k)=>{ if(/^Mur \d+/.test(t.quoi||'')) t.quoi=t.quoi.replace(/^Mur \d+/,'Mur '+(k+1)); }); }
+  function mkKid(z,g,i,etat){ const n=z.poly.pts.length; return taskBase(nextTaskId(),'Mur '+(i+1)+' — '+z.nom,z.niveau,{zone:z.nom,zoneChantierId:z.id,zoneChantierIds:[z.id],zoneFamilleId:g.zoneFamilleId||null,support:'mur',etat:etat||'afaire',pct:etat==='fait'?100:0,quand:g.quand||todayStr(),murPiece:z.id,parentTaskId:g.id,murIdx:i}); }
+  window.pzEnsureNet=function(z,etat){ if(!z||!z.poly||!z.poly.pts||z.poly.pts.length<3) return null; const n=z.poly.pts.length;
+    let g=central(z); if(!g){ try{ pieceMursCreer(z); }catch(e){ console.error(e); } g=central(z); if(g&&etat&&etat!=='fait'){ [g].concat(kidsOf(g.id)).forEach(t=>{ t.etat=etat; t.pct=0; delete t._agg; }); } }
+    if(!g) return null; const have=new Set(wallKids(z).map(t=>t.murIdx));
+    for(let i=0;i<n;i++){ if(have.has(i)) continue; const a=z.poly.pts[i], b=z.poly.pts[(i+1)%n]; if(Math.hypot(b[0]-a[0],b[1]-a[1])<0.008) continue; state.tasks.unshift(mkKid(z,g,i,etat)); }
+    const gone=wallKids(z).filter(t=>t.murIdx>=n).map(t=>t.id); if(gone.length) state.tasks=state.tasks.filter(t=>!gone.includes(t.id));
+    renum(z); return g; };
+  window.pzWallTask=function(z,sg,k){ return (state.tasks||[]).find(t=>t.murPiece===z.id&&t.parentTaskId&&t.murIdx===k&&!t.deleted)||null; };
+  window.pzWallEdit=function(kind,z,i){
+    const P=z.poly.pts, n=P.length; let msg='';
+    if(kind==='add'){ const g=central(z); wallKids(z).filter(t=>t.murIdx>i).sort((a,b)=>b.murIdx-a.murIdx).forEach(t=>{ t.murIdx++; delete t._gs; });
+      msg='Mur n° '+(i+2)+' ajouté — '+z.nom;
+      setTimeout(()=>{ try{ if(g){ state.tasks.unshift(mkKid(z,g,i+1,'afaire')); } renum(z); persist(); try{ window.rtRender&&window.rtRender(); }catch(e){} }catch(e){ console.error(e); } },0); }
+    else if(kind==='delv'){ if(n<=3){ try{ miniAlert('Une pièce doit garder au moins 3 sommets.'); }catch(e){} return; }
+      const gone=wallKids(z).filter(t=>t.murIdx===i); const rm=new Set(); const rec=id=>{ rm.add(id); kidsOf(id).forEach(k=>rec(k.id)); }; gone.forEach(t=>rec(t.id));
+      state.tasks=(state.tasks||[]).filter(t=>!rm.has(t.id)); (state.tasks||[]).forEach(t=>{ if(t.dependances&&t.dependances.length) t.dependances=t.dependances.filter(d=>!rm.has(d&&d.id!==undefined?d.id:d)); });
+      wallKids(z).filter(t=>t.murIdx>i).sort((a,b)=>a.murIdx-b.murIdx).forEach(t=>{ t.murIdx--; delete t._gs; });
+      P.splice(i,1); renum(z); msg='Mur n° '+(i+1)+' supprimé — '+z.nom+(rm.size?' (tâche et pastille supprimées)':'');
+      try{ pzAfterEdit(); }catch(x){ console.error(x); } renum(z); persist(); }
+    try{ clipToast(msg); }catch(e){ try{ miniAlert(msg); }catch(_){} }
+  };
+  /* migration : anciennes tâches « Mur i » par arête et tâches globales automatiques → sous-tâches du réseau */
+  function migrate(){ if(!state||!Array.isArray(state.tasks)||!Array.isArray(state.zonesChantier)) return; state.migrations=state.migrations||{}; if(state.migrations.wallsNet) return;
+    const zs=state.zonesChantier.filter(z=>z.poly&&z.poly.pts&&z.poly.pts.length>=3); const pos=state.tasks.filter(t=>t.po&&t.po.k==='mur');
+    zs.forEach(z=>{ const mine=pos.filter(t=>t.po.z===z.id); if(!mine.length) return; const g=pzEnsureNet(z,'afaire'); if(!g) return;
+      mine.forEach(t=>{ const c=pzWallTask(z,null,t.po.i-1); if(!c) return; ['motif','structure','metierId','notes','photos','sousTaches','dependances'].forEach(k=>{ if(t[k]!==undefined&&(Array.isArray(t[k])?t[k].length:t[k])) c[k]=t[k]; }); if(t.etat!=='afaire'){ c.etat=t.etat; c.pct=t.pct; } if(t.pos&&t.pos.planId&&!c.pos) c.pos=t.pos; if(/ · /.test(t.quoi||'')) c.quoi=c.quoi.replace(/\s·\s.*$/,'')+' · '+t.quoi.split(' · ').slice(1).join(' · '); }); });
+    const rmIds=new Set(pos.map(t=>t.id)); state.tasks.forEach(t=>{ if(t.globale&&t.auto&&['mur','sol','plafond'].includes(t.support)) rmIds.add(t.id); });
+    state.tasks=state.tasks.filter(t=>!rmIds.has(t.id)); state.migrations.wallsNet=true; persist(); try{ window.rtRender&&window.rtRender(); renderAll(); }catch(e){} }
+  setInterval(()=>{ try{ migrate(); }catch(e){ console.error(e); } },1500);
+  /* liste des tâches : chevron sur la tâche mère */
+  const orj=window.renderJour; if(typeof orj==='function'){ window.renderJour=function(){ const r=orj.apply(this,arguments); try{ document.querySelectorAll('[data-jrcard]').forEach(c=>{ const id=c.dataset.jrcard, K=kidsOf(id); if(!K.length) return; const b=c.querySelector('.t b'); if(b&&!b.dataset.chev){ b.dataset.chev=1; b.insertAdjacentHTML('afterbegin','<span style="color:#C98A2B">'+(jrExp.has(id)?'▾':'▸')+' </span>'); const sm=document.createElement('small'); sm.style.cssText='opacity:.65;margin-left:6px'; sm.textContent='('+K.length+' sous-tâches)'; b.appendChild(sm); } }); }catch(e){} return r; }; }
+})();
+</script>
 </body></html>
