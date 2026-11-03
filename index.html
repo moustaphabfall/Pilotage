@@ -24,7 +24,7 @@ body.plan-fs-on .rt-root.rt-fs{top:var(--tvh,0px) !important; height:calc(100vh 
   .rt-root.rt-fs #rtFsBtn{font-size:0 !important;} .rt-root.rt-fs #rtFsBtn::before{content:'✕'; font-size:16px;}
   .rt-root.rt-fs .rt-scroller{order:1; flex:none; min-height:0; max-height:none !important; height:calc(100vh - var(--tvh,0px) - 84px) !important; height:calc(100dvh - var(--tvh,0px) - 84px) !important;}
   .rt-root.rt-fs .rt-planrow{order:2; padding:0; margin:0; display:block;}
-  .rt-root.rt-fs .rt-planrow>*:not(#rtEffBar):not(#tvWrap):not(#rtBaseBtn){display:none !important;}
+  .rt-root.rt-fs .rt-planrow>*:not(#rtEffBar):not(#tvWrap):not(#rtBaseBtn):not(.fp-btn){display:none !important;}
   .rt-root.rt-fs #rtEffBar{display:block; padding:0; margin:0;}
   .rt-root.rt-fs #rtEffBar *:not(.eff-etats):not(.eff-etats *){display:none !important;}
   .rt-root.rt-fs .eff-etats{display:flex !important; flex-wrap:nowrap; overflow-x:auto; gap:6px; padding:4px 6px;}
@@ -1230,7 +1230,7 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
 
   <div class="page" id="page-travaux">
     <div class="section-head">
-      <h2>Suivi travaux</h2>
+      <h2>Suivi travaux<span id="lvNivSlot"></span></h2>
       <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
         <div id="dateEtatWrap-travaux"></div>
         <button class="ghost" onclick="openManageFamilleTypes()">Types de familles</button>
@@ -1245,7 +1245,7 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
     <div class="travaux-layout">
     <div class="travaux-main">
 
-    <div class="ruban" onclick="rtToggle()"><span>▸ 📍 <span id="rtTitle">Repérage RDC</span></span><span>›</span></div>
+    <div class="ruban" onclick="rtToggle()"><span>▸ 📍 Plan <span id="rtTitle" hidden>Repérage RDC</span></span><span>›</span></div>
     <div class="taches-list" id="rtSection">
     <div class="rt-root" id="rtRoot">
       <div class="rt-tools">
@@ -16650,7 +16650,7 @@ body.plan-fs-on .rt-root.rt-fs .rt-tools>#rtFsBtn{display:inline-flex !important
 body.plan-fs-on .rt-root.rt-fs #rtFsBtn::before{content:'✕';font-size:16px;color:#16232B}
 /* pastilles d'état et légende : bandeaux discrets transparents au-dessus du menu */
 body.plan-fs-on .rt-root.rt-fs .rt-planrow{position:fixed;left:10px;right:60px;top:calc(10px + env(safe-area-inset-top,0px));bottom:auto;z-index:955;padding:0;margin:0;display:flex;align-items:center;gap:8px;overflow-x:auto;pointer-events:none}
-body.plan-fs-on .rt-root.rt-fs .rt-planrow>*:not(#rtEffBar):not(#tvWrap):not(#rtBaseBtn){display:none !important}
+body.plan-fs-on .rt-root.rt-fs .rt-planrow>*:not(#rtEffBar):not(#tvWrap):not(#rtBaseBtn):not(.fp-btn){display:none !important}
 body.plan-fs-on .rt-root.rt-fs .rt-planrow>#rtEffBar{flex:none}
 body.plan-fs-on .rt-root.rt-fs #rtEffBar{display:block;padding:0;margin:0}
 body.plan-fs-on .rt-root.rt-fs #rtEffBar *:not(.eff-etats):not(.eff-etats *){display:none !important}
@@ -16737,7 +16737,7 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
   /* toucher le plan referme le menu */
   root.addEventListener('pointerdown',e=>{ if(!pal.hidden && !e.target.closest('#rtPal,#rtPen')) shut(); },true);
   /* entrée / sortie du plein écran */
-  new MutationObserver(()=>{ if(root.classList.contains('rt-fs')){ toCtx(); tvIn(); } else { tvOut(); fromCtx(); shut(); if(root.classList.contains('rt-pal-base')) root.classList.remove('rt-pal-base'); if(document.body.classList.contains('rt-pal-tv')) document.body.classList.remove('rt-pal-tv'); if(rib) rib.open=false; try{ if(sec&&sec.classList.contains('open')&&window.rtToggle) window.rtToggle(); }catch(_){} } }).observe(root,{attributes:true,attributeFilter:['class']});
+  let wasFs=false; new MutationObserver(()=>{ const isFs=root.classList.contains('rt-fs'); if(isFs){ wasFs=true; toCtx(); tvIn(); } else { tvOut(); if(!wasFs) return; wasFs=false; fromCtx(); shut(); if(root.classList.contains('rt-pal-base')) root.classList.remove('rt-pal-base'); if(document.body.classList.contains('rt-pal-tv')) document.body.classList.remove('rt-pal-tv'); if(rib) rib.open=false; try{ if(!document.body.classList.contains('lv-open')&&sec&&sec.classList.contains('open')&&window.rtToggle) window.rtToggle(); }catch(_){} } }).observe(root,{attributes:true,attributeFilter:['class']});
   /* les barres de filtre font partie du plein écran : ne pas quitter en les touchant */
   document.addEventListener('pointerdown',e=>{ if(root.classList.contains('rt-fs') && e.target.closest&&e.target.closest('#tvWrap')) e.stopImmediatePropagation(); },true);
 })();</script>
@@ -16937,10 +16937,99 @@ body.plan-fs-on #rtBasePop.on{display:block;position:fixed;left:10px;top:calc(60
 <script>
 /* ===== Tous les rubans sont repliés par défaut (au chargement, à l'ouverture d'un niveau, au changement d'onglet) ===== */
 (function(){
-  function fold(root){ try{ (root||document).querySelectorAll('.taches-list.open,.ruban.open').forEach(e=>e.classList.remove('open')); (root||document).querySelectorAll('details.pl-rib[open],details.dg-rib[open]').forEach(e=>e.removeAttribute('open')); if(typeof openInterlocRubans!=='undefined') openInterlocRubans.clear(); }catch(e){} }
+  function fold(root){ try{ (root||document).querySelectorAll('.taches-list.open,.ruban.open').forEach(e=>{ if(e.id==='rtSection'||(e.closest&&e.closest('#rtSection'))) return; e.classList.remove('open'); }); (root||document).querySelectorAll('details.pl-rib[open],details.dg-rib[open]').forEach(e=>{ if(e.closest&&(e.closest('#rtSection')||e.closest('.fp-body'))) return; e.removeAttribute('open'); }); if(typeof openInterlocRubans!=='undefined') openInterlocRubans.clear(); document.querySelectorAll('details.tv-rib[open]').forEach(e=>e.removeAttribute('open')); }catch(e){} }
   window.pgFoldRibbons=fold;
   ['nbOpen','showPage'].forEach(f=>{ const o=window[f]; if(typeof o==='function') window[f]=function(){ const r=o.apply(this,arguments); setTimeout(()=>fold(document.getElementById('nbWin')||document),60); return r; }; });
   setTimeout(()=>fold(document),400);
+})();
+</script>
+<style id="fpCss">
+/* Les rubriques Tâches / Familles / Zones / Liste des pièces quittent la page : elles s'ouvrent en barres flottantes depuis la vue graphique */
+#pcRibWrap,#jrWrap,#famillesSection,#zonesSection,.ruban[onclick*="toggleFamillesRuban"],.ruban[onclick*="toggleZonesRuban"]{display:none !important}
+.fp-body #jrWrap,.fp-body #famillesSection,.fp-body #zonesSection{display:block !important}
+.fp-body #rtRibPieces{display:block !important}
+.fp-btn{display:inline-flex;flex:none;pointer-events:auto;width:40px;height:40px;border-radius:50%;border:1px solid rgba(22,35,43,.25);background:rgba(255,255,255,.75);backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(22,35,43,.2);align-items:center;justify-content:center;font-size:19px;padding:0;cursor:pointer;position:relative;margin:0}
+.fp-btn.on{background:#F2A900}
+.fp-btn::after{content:attr(data-tip);position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%);white-space:nowrap;background:#16232B;color:#fff;font-size:12px;padding:3px 8px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:990}
+.fp-btn:hover::after,.fp-btn:focus-visible::after{opacity:1}
+.fp-win{position:fixed;z-index:4500;width:min(380px,calc(100vw - 20px));max-height:72vh;display:flex;flex-direction:column;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-radius:14px;box-shadow:0 10px 34px rgba(22,35,43,.35);overflow:hidden}
+.fp-h{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#16232B;color:#fff;cursor:grab;touch-action:none;user-select:none}
+.fp-h b{flex:1;font-size:14px}.fp-h button{border:0;background:rgba(255,255,255,.15);color:#fff;border-radius:8px;min-width:30px;min-height:28px;cursor:pointer}
+.fp-body{overflow:auto;padding:8px 10px;flex:1}
+#lvNivPick{margin-left:10px;font:inherit;font-weight:700;border:1px solid var(--line,#ccc);background:#fff;border-radius:10px;padding:0 10px;cursor:pointer;color:inherit}
+#lvNivMenu{position:fixed;z-index:4600;background:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(22,35,43,.3);padding:6px;display:flex;flex-direction:column;min-width:140px;max-height:60vh;overflow:auto}
+#lvNivMenu button{border:0;background:transparent;text-align:left;padding:8px 12px;border-radius:8px;font:inherit;cursor:pointer}
+#lvNivMenu button:hover,#lvNivMenu button.on{background:#F2A90033}
+.rt-pin.fp-hl,.rt-pin.fp-hl .rt-tlbl{outline:4px solid #F2A900;outline-offset:3px;animation:fpPulse 1s ease-in-out 3}
+@keyframes fpPulse{50%{box-shadow:0 0 0 12px rgba(242,169,0,.35)}}
+</style>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const DEF={
+    pieces:{ico:'⬠',tip:'Liste des pièces',els:()=>[$('rtRibPieces'),$('zonesSection')],prep(){ const r=$('rtRibPieces'); if(r) r.open=true; const z=$('zonesSection'); if(z) z.classList.add('open'); }},
+    ouvrages:{ico:'📋',tip:'Liste des ouvrages',els:()=>[$('famillesSection')],prep(){ const z=$('famillesSection'); if(z) z.classList.add('open'); }},
+    taches:{ico:'☀',tip:'Tâches',els:()=>[$('jrWrap')],prep(){ try{ jrOpen.v=true; if(typeof renderJour==='function') renderJour(); }catch(e){} const d=document.querySelector('#jrWrap details'); if(d) d.open=true; }}
+  };
+  let cur=null, homes=[], pos={};
+  function closeP(){ const w=$('fpWin'); if(!w) return; homes.forEach(([ph,el])=>{ try{ ph.replaceWith(el); }catch(e){} }); homes=[]; w.remove(); cur=null; document.querySelectorAll('.fp-btn').forEach(b=>b.classList.remove('on')); }
+  function openP(k){
+    if(cur===k){ closeP(); return; } closeP(); const D=DEF[k]; cur=k;
+    const w=document.createElement('div'); w.id='fpWin'; w.className='fp-win'; w.setAttribute('role','dialog'); w.setAttribute('aria-label',D.tip);
+    w.innerHTML='<div class="fp-h"><span>'+D.ico+'</span><b>'+D.tip+'</b><button type="button" title="Réduire (retour au bouton)" aria-label="Réduire">—</button></div><div class="fp-body"></div>';
+    const P=pos[k]||{l:Math.max(8,innerWidth-400),t:70}; w.style.left=P.l+'px'; w.style.top=P.t+'px'; document.body.appendChild(w);
+    const bd=w.querySelector('.fp-body'); D.els().forEach(el=>{ if(!el) return; const ph=document.createElement('span'); ph.hidden=true; el.before(ph); homes.push([ph,el]); bd.appendChild(el); });
+    try{ D.prep(); }catch(e){}
+    w.querySelector('.fp-h button').onclick=closeP;
+    let d=null; const h=w.querySelector('.fp-h');
+    h.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; const r=w.getBoundingClientRect(); d={dx:e.clientX-r.left,dy:e.clientY-r.top}; try{ h.setPointerCapture(e.pointerId); }catch(_){} e.preventDefault(); });
+    h.addEventListener('pointermove',e=>{ if(!d) return; const l=Math.max(-w.offsetWidth+80,Math.min(innerWidth-80,e.clientX-d.dx)), t=Math.max(0,Math.min(innerHeight-44,e.clientY-d.dy)); w.style.left=l+'px'; w.style.top=t+'px'; pos[k]={l,t}; });
+    const end=()=>{ d=null; }; h.addEventListener('pointerup',end); h.addEventListener('pointercancel',end);
+    document.querySelectorAll('.fp-btn').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+    /* choisir un élément de la liste le met en surbrillance sur le plan */
+    w.addEventListener('click',e=>{ const t=e.target; if(t.closest('button[data-jret],button[data-jrpct],button[data-jrfiche]')) return;
+      let el=t; for(let i=0;i<6&&el&&el!==w;i++,el=el.parentElement){ const raw=[el.getAttribute&&el.getAttribute('onclick'),el.dataset&&Object.values(el.dataset).join(' ')].join(' '); const toks=(raw.match(/[A-Za-z0-9_-]{2,}/g)||[]);
+        for(const tk of toks){ try{ if(typeof taskById==='function'&&taskById(tk)){ hl(tk,null); return; } if(typeof zoneById==='function'&&zoneById(tk)){ hl(null,tk); return; } }catch(_){} } } });
+  }
+  function hl(task,piece){ try{ if(window.rtSelect) window.rtSelect(task,piece); }catch(e){} if(task){ setTimeout(()=>{ document.querySelectorAll('.rt-pin.fp-hl').forEach(x=>x.classList.remove('fp-hl')); document.querySelectorAll('#rtRoot .rt-pin.sel').forEach(x=>{ x.classList.add('fp-hl'); try{ x.scrollIntoView({block:'center',inline:'center',behavior:'smooth'}); }catch(_){} }); },60); } }
+  function mkBtns(){ const row=document.querySelector('#rtRoot .rt-planrow'); if(!row||row.querySelector('.fp-btn')) return;
+    const ref=$('rtBaseBtn'); Object.keys(DEF).reverse().forEach(k=>{ const b=document.createElement('button'); b.type='button'; b.className='fp-btn'; b.dataset.k=k; b.dataset.tip=DEF[k].tip; b.setAttribute('aria-label',DEF[k].tip); b.textContent=DEF[k].ico; b.onclick=e=>{ e.stopPropagation(); openP(k); }; if(ref&&ref.nextSibling) row.insertBefore(b,ref.nextSibling); else row.insertBefore(b,row.firstChild); }); }
+  mkBtns(); setInterval(mkBtns,1500);
+  /* titre : Suivi travaux · niveau (cliquable pour changer de niveau sans fermer la fenêtre) */
+  function lab(n){ try{ return nbLab(n); }catch(e){ return n; } }
+  function slot(){ const sl=$('lvNivSlot'); if(!sl) return; let b=$('lvNivPick'); const n=(typeof travauxNiveauActif!=='undefined'&&travauxNiveauActif)||'—';
+    if(!b){ sl.innerHTML=' · <button type="button" id="lvNivPick" title="Changer de niveau"></button>'; b=$('lvNivPick'); b.onclick=e=>{ e.stopPropagation(); const old=$('lvNivMenu'); if(old){ old.remove(); return; } const m=document.createElement('div'); m.id='lvNivMenu'; const r=b.getBoundingClientRect(); m.style.left=r.left+'px'; m.style.top=(r.bottom+6)+'px';
+        const cn=(typeof travauxNiveauActif!=='undefined')?travauxNiveauActif:null; m.innerHTML=((typeof nbOrder==='function')?nbOrder():state.niveaux||[]).map(x=>'<button type="button" data-n="'+String(x).replace(/"/g,'&quot;')+'" class="'+(x===cn?'on':'')+'">'+lab(x)+'</button>').join(''); document.body.appendChild(m);
+        m.onclick=ev=>{ const bt=ev.target.closest('button[data-n]'); if(!bt) return; const n2=bt.dataset.n; m.remove(); closeP(); try{ if(typeof lvState!=='undefined'&&lvState) lvOpen(n2); else setTravauxNiveau(n2); }catch(err){ try{ travauxNiveauActif=n2; renderTravaux(); }catch(_){} } }; }; }
+    const t='R+0'===n?'RDC':n; if(b.textContent!==t+' ▾') b.textContent=t+' ▾'; }
+  setInterval(slot,400); slot();
+  document.addEventListener('click',e=>{ const m=$('lvNivMenu'); if(m&&!e.target.closest('#lvNivMenu,#lvNivPick')) m.remove(); });
+  window.fpClose=closeP;
+  /* le niveau change : la barre flottante se referme (son contenu suit le nouveau niveau à la réouverture) */
+})();
+</script>
+<style id="etCss">
+body.lv-etudes .fp-btn[data-k=taches]{display:none !important}
+#lvEtSeg{display:none}
+body.lv-et-on #lvEtSeg{display:inline-flex}
+</style>
+<script>
+/* ===== Études (niveau) : même interface graphique que Travaux, sans les tâches ; Conception garde sa base de règles ===== */
+(function(){
+  const o=window.lvSwitch; if(typeof o!=='function') return;
+  function seg(){ const bar=document.querySelector('#lvWin .lv-bar'); if(!bar||document.getElementById('lvEtSeg')) return; const sp=bar.querySelector('.lv-seg'); const e=document.createElement('span'); e.className='lv-seg'; e.id='lvEtSeg';
+    e.innerHTML='<button type="button" data-et="exe">🛠️ Exé</button><button type="button" data-et="conception">📐 Conception</button>'; sp.after(e);
+    e.onclick=ev=>{ const b=ev.target.closest('button[data-et]'); if(!b) return; try{ etudesMode=b.dataset.et; localStorage.setItem('etudesMode',etudesMode); }catch(_){} window.lvSwitch('plans'); }; }
+  window.lvSwitch=function(mode){
+    seg(); const et=(mode==='plans'); const exe=et&&(typeof etudesMode==='undefined'||etudesMode==='exe');
+    document.body.classList.toggle('lv-et-on',et); document.body.classList.toggle('lv-etudes',exe);
+    if(typeof window.fpClose==='function') window.fpClose();
+    const r=o.call(this,exe?'travaux':mode);
+    try{ document.querySelectorAll('#lvWin [data-lv]').forEach(b=>b.classList.toggle('on',b.dataset.lv===mode)); document.querySelectorAll('#lvEtSeg [data-et]').forEach(b=>b.classList.toggle('on',b.dataset.et===((typeof etudesMode!=='undefined')?etudesMode:'exe'))); localStorage.setItem('lv_mode',mode); }catch(e){}
+    return r; };
+  const oc=window.lvClose; if(typeof oc==='function') window.lvClose=function(){ document.body.classList.remove('lv-etudes','lv-et-on'); return oc.apply(this,arguments); };
+  /* titre de la fenêtre : « Études · niveau » */
+  setInterval(()=>{ try{ const h=document.querySelector('#page-travaux .section-head h2'); if(h&&h.firstChild&&h.firstChild.nodeType===3){ const t=document.body.classList.contains('lv-etudes')?'Études':'Suivi travaux'; if(h.firstChild.nodeValue!==t) h.firstChild.nodeValue=t; } }catch(e){} },400);
 })();
 </script>
 </body></html>
