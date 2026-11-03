@@ -4131,7 +4131,7 @@ function piecesOverlayHtml(pl, live, selId, pending, clickFn){
   let handles = '';
   if(sz){
     const P = sz.poly.pts, n = P.length;
-    handles = P.map((p,i)=>{ const q = P[(i+1)%n]; return `<div class="pz-mid" data-i="${i}" title="Ajouter un point" style="left:${(p[0]+q[0])/2*100}%; top:${(p[1]+q[1])/2*100}%;"></div>`; }).join('')
+    handles = P.map((p,i)=>{ const q = P[(i+1)%n]; return `<div class="pz-mid" data-i="${i}" title="Clic : ajouter un point · ⌘ / Ctrl + clic : supprimer ce segment" style="left:${(p[0]+q[0])/2*100}%; top:${(p[1]+q[1])/2*100}%;"></div>`; }).join('')
       + P.map((p,i)=>`<div class="pz-h" data-i="${i}" title="Glisser pour déplacer · double-clic pour supprimer" style="left:${p[0]*100}%; top:${p[1]*100}%;"></div>`).join('');
   }
   return `<div class="pz-ov" data-plan="${pl.id}" data-live="${live?1:0}" data-sel="${selId||''}" data-click="${clickFn||''}"><svg class="pz-svg" viewBox="0 0 100 100" preserveAspectRatio="none">${PZ_DEFS}${regions}${window.pzMotifSvg?pzMotifSvg(zs):''}${polys}${avl}${pzView.mur?wallsSvgHtml(zs, live):''}${pend}</svg>${cloisonsSvgHtml(pl, live)}${zlabels}${labels}${pzView.mur?wallsLabelsHtml(zs):''}${dots}${handles}${live?zoneHandlesHtml(pl):''}${cloisonHandlesHtml(pl, live)}</div>`;
@@ -4863,7 +4863,7 @@ window.addEventListener('pointermove', e=>{
   d.x = Math.max(0, Math.min(1, (e.clientX-d.r.left)/d.r.width)); d.y = Math.max(0, Math.min(1, (e.clientY-d.r.top)/d.r.height));
   if(d.kind==='t'&&window.netWallClamp){ const _t=state.tasks.find(k=>k.id===d.id), _q=window.netWallClamp(_t,d.x,d.y); if(_q){ d.x=_q[0]; d.y=_q[1]; } }
   d.el.style.left = (d.x*100)+'%'; d.el.style.top = (d.y*100)+'%'; d.el.dataset.px = d.x; d.el.dataset.py = d.y;
-  if(d.kind==='t'){ if(d.lk===undefined){ const t=state.tasks.find(k=>k.id===d.id); const pl=(t&&t.pos&&t.pos.planId)||(window.rtCurPlan&&window.rtCurPlan().id); const z=t&&!t.cloisonId&&!t.murId&&!t.murSeg&&!t.etude&&t.zoneChantierId&&zoneById(t.zoneChantierId); d.lk=(z&&z.poly&&z.poly.pts&&z.poly.pts.length>2&&z.poly.planId===pl&&!t.horsPiece)?z:null; }
+  if(d.kind==='t'){ if(d.lk===undefined){ const t=state.tasks.find(k=>k.id===d.id); const pl=(t&&t.pos&&t.pos.planId)||(window.rtCurPlan&&window.rtCurPlan().id); const z=t&&!t.cloisonId&&!t.murId&&!t.murSeg&&!(t.po&&t.po.k==='mur')&&!t.etude&&t.zoneChantierId&&zoneById(t.zoneChantierId); d.lk=(z&&z.poly&&z.poly.pts&&z.poly.pts.length>2&&z.poly.planId===pl&&!t.horsPiece)?z:null; }
     const out=!!(d.lk&&!ptInPoly(d.x,d.y,d.lk.poly.pts)); d.el.classList.toggle('rt-pin-out', out);
     const m=document.getElementById('rtMsg'); if(m&&out!==d.wasOut){ d.wasOut=out; m.textContent=out?'⚠ Hors de la pièce « '+(d.lk.nom||'')+' » : relâchez pour demander la sortie, ou revenez dans la pièce':''; } }
   pzMarkAll();
@@ -4875,7 +4875,7 @@ window.addEventListener('pointerup', ()=>{
   if(d.kind==='o'){ const o = state.objets.find(k=>k.id===d.id); if(o){ o.x = x; o.y = y; } }
   else { const t = state.tasks.find(k=>k.id===d.id); if(t){ const op = t.pos||{}; const np = {planId:op.planId||(window.rtCurPlan&&window.rtCurPlan().id)||'PL-RDC', x, y}; if(op.forme) np.forme = op.forme; if(op.sz) np.sz = op.sz; if(op.pts){ const dx = x-(op.x||0), dy = y-(op.y||0); np.pts = op.pts.map(q=>[Math.round((q[0]+dx)*10000)/10000, Math.round((q[1]+dy)*10000)/10000]); }
       const lz = t.zoneChantierId && zoneById(t.zoneChantierId);
-      const lk = (!t.cloisonId && !t.murId && !t.murSeg && !t.etude && lz && lz.poly && lz.poly.pts && lz.poly.pts.length>2 && lz.poly.planId===np.planId) ? lz : null;
+      const lk = (!t.cloisonId && !t.murId && !t.murSeg && !(t.po&&t.po.k==='mur') && !t.etude && lz && lz.poly && lz.poly.pts && lz.poly.pts.length>2 && lz.poly.planId===np.planId) ? lz : null;
       d.el.classList.remove('rt-pin-out'); { const m=document.getElementById('rtMsg'); if(m&&d.wasOut) m.textContent=''; }
       if(lk && !ptInPoly(x, y, lk.poly.pts)){
         if(t.horsPiece){ t.pos = np; }
@@ -4918,6 +4918,8 @@ document.addEventListener('pointerdown', e=>{
   const r = cont.getBoundingClientRect(), P = z.poly.pts;
   if(t.classList.contains('pz-mid')){
     const i = +t.dataset.i, a = P[i], b = P[(i+1)%P.length];
+    if(e.metaKey || e.ctrlKey){ if(window.pzWallEdit) pzWallEdit('delv', z, i); return; }
+    if(window.pzWallEdit) pzWallEdit('add', z, i);
     P.splice(i+1, 0, [(a[0]+b[0])/2, (a[1]+b[1])/2]);
     pzDrag = {z, idx:i+1, kind:'v', cont, r, moved:true};
   } else if(hnd){ pzDrag = {z, idx:+t.dataset.i, kind:'v', cont, r, moved:false, rect:pzRectInfo(P, +t.dataset.i, r)}; }
@@ -5032,7 +5034,7 @@ document.addEventListener('dblclick', e=>{
   if(hnd){
     const ov = hnd.closest('.pz-ov'), z = ov && zoneById(ov.dataset.sel); if(!z || !z.poly) return;
     if(z.poly.pts.length<=3){ miniAlert('Une pièce doit garder au moins 3 sommets.'); return; }
-    z.poly.pts.splice(+hnd.dataset.i, 1); pzAfterEdit(); return;
+    if(window.pzWallEdit) pzWallEdit('delv', z, +hnd.dataset.i); else { z.poly.pts.splice(+hnd.dataset.i, 1); pzAfterEdit(); } return;
   }
 });
 function planSvgHtml(pl){ return piecesOverlayHtml(pl, planMode==='pieces', planPieceSel, planPoly, 'planPieceSelect'); }
@@ -17489,8 +17491,7 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
     try{ if(typeof pieceOuvSync==='function') pieceOuvSync(); }catch(e){}
     const pl = planById(z.poly.planId); if(!pl) return; let nw=0, ns=0;
     const has=(sup,key)=>(state.tasks||[]).some(t=>t.zoneChantierId===z.id&&t.support===sup&&!t.globale&&(!key||t.murSeg===key));
-    { const orph=(state.tasks||[]).filter(t=>t.zoneChantierId===z.id&&t.support==='mur'&&!t.globale&&!t.murSeg).reverse(); const used=new Set((state.tasks||[]).filter(t=>t.zoneChantierId===z.id&&t.murSeg).map(t=>t.murSeg));
-      pieceWallSegs(z).forEach(sg=>{ if(used.has(sg.key)||(state.cloisons||[]).find(c=>c.segKey===sg.key)) return; const t=orph.shift(); if(t){ t.murSeg=sg.key; used.add(sg.key); } }); }
+    { const segs0=pieceWallSegs(z); (state.tasks||[]).forEach(t=>{ if(t.po&&t.po.z===z.id&&t.po.k==='mur'&&!t.globale){ const sg=segs0[t.po.i-1]; if(sg) t.murSeg=sg.key; } }); }
     pieceWallSegs(z).forEach((sg,k)=>{
       if((state.cloisons||[]).find(c=>c.segKey===sg.key) || has('mur',sg.key)) return;
       const cc=cloCreate(pl,[sg.a.slice(),sg.b.slice()],'Mur '+(k+1)+' — '+z.nom); cc.segKey=sg.key; cc.pieceId=z.id; const t=cloisonTask(cc);
@@ -17806,13 +17807,28 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
     const L=pieces();
     mod().innerHTML='<button class="close-x" onclick="closeModal()">×</button><h3>➜ Passer en mode exé</h3><p class="empty-note" style="margin:0">Choisissez les pièces du niveau '+E(S.lvl)+' à passer en mode exé : sols, murs et plafonds deviennent des tâches.</p><div class="pzx-list">'+L.map(z=>'<label><input type="checkbox" '+(S.sel.has(z.id)?'checked':'')+' onchange="pzxTog(\''+z.id+'\',this.checked)"> '+E(z.nom)+'<small>'+(nT(z)?'✓ '+nT(z)+' tâches':'—')+'</small></label>').join('')+'</div><div class="modal-actions"><button class="ghost" onclick="pzxAll()">Tout cocher</button><button onclick="pzxGo()">➜ Transformer en tâches</button></div>'; }
   function chips(list,cur,fn,zid){ return list.map(m=>'<button type="button" class="pzx-m'+(cur===m[0]?' on':'')+'" onclick="'+fn+'(\''+zid+'\',\''+m[0]+'\')">'+m[1]+' '+E(m[2])+'</button>').join(''); }
+  function sel(opts,cur,fn,dis,ph){ return '<select class="pzx-sel" '+(dis?'disabled ':'')+'onchange="'+fn+'(this.value)"><option value="">'+(ph||'Choisir…')+'</option>'+opts.map(m=>'<option value="'+m[0]+'"'+(cur===m[0]?' selected':'')+'>'+m[1]+' '+E(m[2])+'</option>').join('')+'</select>'; }
   function v2(){
-    const L=pieces().filter(z=>S.sel.has(z.id));
-    mod().innerHTML='<button class="close-x" onclick="closeModal()">×</button><h3>🎨 Finitions · mode exé</h3><p class="empty-note" style="margin:0">Motifs des sols et plafonds, structure des murs. Tout est enregistré dans les tâches.</p>'+L.map(z=>{
-      const sg=pieceWallSegs(z), so=supT(z,'sol'), pl=supT(z,'plafond');
-      const ws=sg.map((s,k)=>{ const t=pzWallTask(z,s,k); return '<span>M'+(k+1)+' : '+E((t&&t.structure&&t.structure.label)||'—')+'</span>'; }).join('');
-      const lib=S.lib===z.id?'<div class="pzx-lib"><b>Bibliothèque de structures</b><div class="pzx-ws">'+sg.map((s,k)=>'<label><input type="checkbox" checked data-w="'+k+'"> Mur '+(k+1)+'</label>').join('')+'</div>'+ST.map(m=>'<button type="button" class="pzx-s" onclick="pzxStruct(\''+z.id+'\',\''+m[0]+'\')">'+m[1]+' <b>'+E(m[2])+'</b><small>'+E(m[3].join(' + '))+'</small></button>').join('')+'</div>':'';
-      return '<div class="pzx-card"><b>'+E(z.nom)+'</b><div class="pzx-row"><span>Sol</span>'+chips(MS,so&&so.motif&&so.motif.key,'pzxMotif',z.id+'|sol')+'</div><div class="pzx-row"><span>Plafond</span>'+chips(MP,pl&&pl.motif&&pl.motif.key,'pzxMotif',z.id+'|plafond')+'</div><div class="pzx-row"><span>Murs</span><button type="button" class="pzx-m" onclick="pzxLib(\''+z.id+'\')">🧱 Structure…</button></div><div class="pzx-ws">'+ws+'</div>'+lib+'</div>'; }).join('')+'<div class="modal-actions"><button class="ghost" onclick="S_back()">← Pièces</button><button onclick="pzxDone()">Terminé</button></div>'; }
+    const L=pieces().filter(z=>S.sel.has(z.id)); S.off=S.off||new Set();
+    mod().innerHTML='<button class="close-x" onclick="closeModal()">×</button><h3>🎨 Définition et structure</h3><p class="empty-note" style="margin:0 0 6px">Cochez ce qui passe en mode exé, puis choisissez le motif ou la structure. Tout est enregistré dans les tâches.</p>'+L.map(z=>{
+      const sg=pieceWallSegs(z), so=supT(z,'sol'), pl=supT(z,'plafond'); const wt=sg.map((s,k)=>pzWallTask(z,s,k));
+      const ks=[...new Set(wt.map(t=>t&&t.structure&&t.structure.key))]; const mk=ks.length===1&&ks[0]?ks[0]:'';
+      const on=sup=>!S.off.has(z.id+'|'+sup);
+      const row=(lab,sup,ctl)=>'<tr><td class="pzx-l"><label><span>'+lab+'</span><input type="checkbox" '+(on(sup)?'checked':'')+' onchange="pzxChk(\''+z.id+'\',\''+sup+'\',this.checked)"></label></td><td>'+ctl+'</td></tr>';
+      const det='<details class="pzx-det"><summary>Mur par mur'+(mk?'':(ks.length>1?' (structures différentes)':''))+'</summary>'+sg.map((s,k)=>'<div class="pzx-wl"><span>Mur '+(k+1)+'</span>'+sel(ST.map(m=>[m[0],m[1],m[2]]),wt[k]&&wt[k].structure&&wt[k].structure.key,'pzxWall.bind(null,\''+z.id+'\','+k+')',!on('mur'))+'</div>').join('')+'</details>';
+      return '<div class="pzx-card"><b>'+E(z.nom)+'</b><table class="pzx-t"><thead><tr><th></th><th>Structure / motif</th></tr></thead><tbody>'
+        +row('Sol','sol',sel(MS,so&&so.motif&&so.motif.key,'pzxPick.bind(null,\''+z.id+'\',\'sol\')',!on('sol')))
+        +row('Plafond','plafond',sel(MP,pl&&pl.motif&&pl.motif.key,'pzxPick.bind(null,\''+z.id+'\',\'plafond\')',!on('plafond')))
+        +row('Murs','mur',sel(ST,mk,'pzxPick.bind(null,\''+z.id+'\',\'mur\')',!on('mur'),ks.length>1?'Mixte — choisir…':'Choisir…'))
+        +'</tbody></table>'+det+'</div>'; }).join('')+'<div class="modal-actions"><button class="ghost" onclick="S_back()">← Pièces</button><button onclick="pzxDone()">Terminé</button></div>'; }
+  function clearOne(t){ if(!t) return; delete t.motif; delete t.structure; t.quoi=base(t.quoi); }
+  window.pzxChk=function(zid,sup,on){ const z=zoneById(zid); if(!z) return; S.off=S.off||new Set(); const k=zid+'|'+sup; on?S.off.delete(k):S.off.add(k);
+    if(!on){ if(sup==='mur') pieceWallSegs(z).forEach((s,i)=>clearOne(pzWallTask(z,s,i))); else clearOne(supT(z,sup)); refresh(); } v2(); };
+  window.pzxPick=function(zid,sup,key){ const z=zoneById(zid); if(!z) return; ensure(z);
+    if(sup==='mur'){ const m=ST.find(x=>x[0]===key); pieceWallSegs(z).forEach((s,i)=>{ const t=pzWallTask(z,s,i); if(!t) return; if(!m){ clearOne(t); return; } t.structure={key,label:m[2],layers:m[3].slice()}; t.quoi=base(t.quoi)+' · '+m[2]; setMetier(t,STM[key]); }); }
+    else { const t=supT(z,sup); if(!t) return; const lst=sup==='sol'?MS:MP, m=lst.find(x=>x[0]===key); if(!m){ clearOne(t); } else { t.motif={key,label:m[2]}; t.quoi=base(t.quoi)+' · '+m[2]; setMetier(t,(sup==='sol'?SOLM:PLM)[key]); } }
+    refresh(); v2(); };
+  window.pzxWall=function(zid,k,key){ const z=zoneById(zid); if(!z) return; ensure(z); const sg=pieceWallSegs(z), t=pzWallTask(z,sg[k],k), m=ST.find(x=>x[0]===key); if(!t) return; if(!m) clearOne(t); else { t.structure={key,label:m[2],layers:m[3].slice()}; t.quoi=base(t.quoi)+' · '+m[2]; setMetier(t,STM[key]); } refresh(); v2(); };
   window.S_back=function(){ S.stage=1; S.lib=null; v1(); };
   window.pzExeOpen=function(zid){ const z=typeof zid==='string'?zoneById(zid):zid; if(!z) return; S={sel:new Set([z.id]),stage:1,lib:null,lvl:z.niveau}; openModal('<div id="pzxBox"></div>'); const mb=mod(); mb.innerHTML=''; v1(); };
   window.pzxDone=function(){ pieces().filter(z=>S.sel.has(z.id)).forEach(z=>{ ensure(z); try{ pzxPins(z); }catch(e){} }); refresh(); closeModal(); try{ clipToast('Tâches et pastilles créées'); }catch(e){} };
@@ -17850,11 +17866,55 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
   window.pzPinHidden=function(t){ const k=VK[t&&t.support]; if(!k||t.globale||t.etude) return false; return !(window.pzView&&pzView[k]); };
   if(!document.getElementById('pzxHideCss')){ const st=document.createElement('style'); st.id='pzxHideCss'; st.textContent='.rt-pin.pzx-hide{display:none !important}'; document.head.appendChild(st); }
   const o=window.rtSelect; window.rtSelect=function(pin,piece){ try{ const t=pin&&taskById(pin); const k=t&&VK[t.support]; if(k&&!t.globale&&!pzView[k]) pzViewToggle(k); }catch(e){} return o.apply(this,arguments); };
-  const oc=window.netWallClamp; window.netWallClamp=function(t,x,y){ if(t&&t.murSeg&&t.zoneChantierId){ const z=zoneById(t.zoneChantierId); const sg=z&&pieceWallSegs(z).find(g=>g.key===t.murSeg); if(sg){ const dx=sg.b[0]-sg.a[0], dy=sg.b[1]-sg.a[1], l=dx*dx+dy*dy||1; let k=((x-sg.a[0])*dx+(y-sg.a[1])*dy)/l; k=Math.max(.04,Math.min(.96,k)); return [sg.a[0]+k*dx, sg.a[1]+k*dy]; } } return oc?oc(t,x,y):null; };
+  const oc=window.netWallClamp; window.netWallClamp=function(t,x,y){ if(t&&(t.murSeg||(t.po&&t.po.k==='mur'))&&t.zoneChantierId){ const z=zoneById(t.zoneChantierId); const sg=z&&((t.po&&t.po.k==='mur')?pieceWallSegs(z)[t.po.i-1]:pieceWallSegs(z).find(g=>g.key===t.murSeg)); if(sg){ const dx=sg.b[0]-sg.a[0], dy=sg.b[1]-sg.a[1], l=dx*dx+dy*dy||1; let k=((x-sg.a[0])*dx+(y-sg.a[1])*dy)/l; k=Math.max(.04,Math.min(.96,k)); return [sg.a[0]+k*dx, sg.a[1]+k*dy]; } } return oc?oc(t,x,y):null; };
   const WP={parpaing:'<rect width="4" height="1.4" fill="#cfcfcf"/><path d="M0 0V1.4M2 0V1.4" stroke="#666" stroke-width=".18"/>',voile:'<rect width="3" height="1.4" fill="#4a4a4a"/><circle cx="1" cy=".5" r=".18" fill="#bbb"/><circle cx="2.2" cy=".95" r=".14" fill="#bbb"/>',brique:'<rect width="4" height="1.4" fill="#c4683a"/><path d="M0 .7H4M0 0V.7M2 .7V1.4" stroke="#f0d8c8" stroke-width=".16"/>',placo72:'<rect width="2" height="1.4" fill="#d6e8f7"/><path d="M0 1.4L1.4 0" stroke="#3b78b0" stroke-width=".28"/>',placo98:'<rect width="2" height="1.4" fill="#b9d2ea"/><path d="M0 1.4L1.4 0M.7 1.4L2 0" stroke="#2b5d8c" stroke-width=".28"/>',doublage:'<rect width="2.4" height="1.4" fill="#cdeee9"/><circle cx=".6" cy=".7" r=".22" fill="#2a9d8f"/><circle cx="1.8" cy=".7" r=".22" fill="#2a9d8f"/>',doublosa:'<rect width="2.4" height="1.4" fill="#bfe3dd"/><path d="M0 .7H2.4" stroke="#1f7a6f" stroke-width=".3"/>',vitree:'<rect width="3" height="1.4" fill="#d9f2fa"/><path d="M.4 1.1L1.4 .3" stroke="#fff" stroke-width=".22"/>',gaine:'<rect width="2" height="1.4" fill="#f5d6e6"/><path d="M0 0L2 1.4M2 0L0 1.4" stroke="#b0407a" stroke-width=".2"/>'};
   const W={parpaing:[4,1.4],voile:[3,1.4],brique:[4,1.4],placo72:[2,1.4],placo98:[2,1.4],doublage:[2.4,1.4],doublosa:[2.4,1.4],vitree:[3,1.4],gaine:[2,1.4]};
   const DEFS='<defs>'+Object.keys(WP).map(k=>'<pattern id="pzw-'+k+'" patternUnits="userSpaceOnUse" width="'+W[k][0]+'" height="'+W[k][1]+'">'+WP[k]+'</pattern>').join('')+'</defs>';
   const ow=window.wallsSvgHtml; window.wallsSvgHtml=function(zs,live){ return DEFS+ow(zs,live); };
 })();
 </script>
+<style id="pzEdgeCss">
+.pz-mid{display:flex;align-items:center;justify-content:center;transition:width .08s,height .08s}
+.pz-mid:hover{width:18px !important;height:18px !important;margin:-9px 0 0 -9px !important;border-radius:4px}
+.pz-mid::after{content:'+';transform:rotate(-45deg);font:700 14px/1 sans-serif;color:#fff;opacity:0}
+.pz-mid:hover::after{opacity:1}
+body.pz-cmd .pz-mid:hover{background:#C0392B !important;border-color:#8e2a20 !important;cursor:not-allowed}
+body.pz-cmd .pz-mid:hover::after{content:'−'}
+</style>
+<script>
+/* ===== v131 : segments de pièce = murs ; ⌘/Ctrl + clic sur un losange supprime le segment ; murs et tâches mis à jour avec message ===== */
+(function(){
+  const upd=()=>{};
+  ['keydown','keyup'].forEach(ev=>document.addEventListener(ev,e=>document.body.classList.toggle('pz-cmd',!!(e.metaKey||e.ctrlKey)),true));
+  window.addEventListener('blur',()=>document.body.classList.remove('pz-cmd'));
+  window.pieceWallSegs=function(z){ const P=z.poly&&z.poly.pts; if(!P||P.length<3) return []; const r3=v=>Math.round(v*1000)/1000;
+    return P.map((a,i)=>{ const b=P[(i+1)%P.length]; return {a,b,key:z.id+'|'+[a,b].map(q=>r3(q[0])+','+r3(q[1])).join('>')}; }); };
+  const old=window.pzWallTask; window.pzWallTask=function(z,sg,k){ const t=(state.tasks||[]).find(t=>t.zoneChantierId===z.id&&t.po&&t.po.k==='mur'&&t.po.i===k+1&&!t.globale); return t||(old?old(z,sg,k):null); };
+  const wallTasks=z=>(state.tasks||[]).filter(t=>t.po&&t.po.z===z.id&&t.po.k==='mur');
+  function renum(z){ wallTasks(z).forEach(t=>{ const b='Mur '+t.po.i+' — '+z.nom; if(/^Mur \d+/.test(t.quoi||'')) t.quoi=t.quoi.replace(/^Mur \d+/,'Mur '+t.po.i); t.poQuoi=b; }); }
+  window.pzWallEdit=function(kind,z,i){
+    const P=z.poly.pts, n=P.length; let msg='';
+    if(kind==='add'){ const j=i+1; wallTasks(z).filter(t=>t.po.i>j).sort((a,b)=>b.po.i-a.po.i).forEach(t=>{ t.po.i++; }); msg='Mur n° '+(j+1)+' ajouté — '+z.nom; setTimeout(()=>{ try{ pzAfterEdit&&0; renum(z); persist(); }catch(e){} },0); }
+    else if(kind==='delv'){ if(n<=3){ try{ miniAlert('Une pièce doit garder au moins 3 sommets.'); }catch(e){} return; }
+      const e=(i===0?1:i+1); const gone=wallTasks(z).filter(t=>t.po.i===e&&!t.globale); const ids=new Set(gone.map(t=>t.id));
+      state.tasks=(state.tasks||[]).filter(t=>!ids.has(t.id)); (state.tasks||[]).forEach(t=>{ if(t.dependances&&t.dependances.length) t.dependances=t.dependances.filter(d=>!ids.has(d&&d.id!==undefined?d.id:d)); });
+      wallTasks(z).filter(t=>t.po.i>e).sort((a,b)=>a.po.i-b.po.i).forEach(t=>{ t.po.i--; });
+      P.splice(i,1); renum(z); msg='Mur n° '+e+' supprimé — '+z.nom+(ids.size?' (tâche et pastille supprimées)':'');
+      try{ pzAfterEdit(); }catch(x){ console.error(x); } renum(z); persist(); }
+    try{ clipToast(msg); }catch(e){ try{ miniAlert(msg); }catch(_){} }
+  };
+})();
+</script>
+<style id="pzxCss2">
+.pzx-card{border:0 !important;border-radius:0 !important;border-top:1px solid var(--line,rgba(120,120,120,.25)) !important;padding:10px 0 !important;background:transparent !important}
+.pzx-t{width:100%;border-collapse:collapse;background:transparent;margin-top:4px}
+.pzx-t th{font-weight:400;color:var(--muted,#9b9a97);text-align:left;font-size:13px;padding:4px 0}
+.pzx-t td{padding:6px 0;border-top:1px solid var(--line,rgba(120,120,120,.18));vertical-align:middle}
+.pzx-l{width:130px}.pzx-l label{display:flex;gap:10px;align-items:center;font-weight:700;cursor:pointer}
+.pzx-l input{width:20px;height:20px;accent-color:#F2A900}
+.pzx-sel{width:100%;min-height:38px;border:1.5px solid var(--line,#999);border-radius:8px;background:var(--panel,#fff);color:inherit;padding:6px 10px;font:inherit}
+.pzx-sel:disabled{opacity:.45}
+.pzx-det{margin-top:6px;font-size:13px}.pzx-det summary{cursor:pointer;opacity:.7}
+.pzx-wl{display:flex;gap:10px;align-items:center;margin:4px 0}.pzx-wl span{width:56px}.pzx-wl .pzx-sel{min-height:32px}
+</style>
 </body></html>
