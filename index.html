@@ -1363,8 +1363,9 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
     <div class="section-head"><h2>Planification</h2><div id="dateEtatWrap-planif"></div></div>
 
     <h3 style="font-size:15px; margin-bottom:10px;">1. Prévoir — Quoi ? Quand ? Où ? Qui ? Comment ?</h3>
-    <div style="overflow-x:auto; margin-bottom:28px;"><table>
-      <thead><tr><th>Quoi</th><th>Quand</th><th>Où</th><th>Qui</th><th>Comment</th></tr></thead>
+    <div class="pv-bar"><input type="search" id="pvQ" placeholder="🔍 Rechercher une tâche…" oninput="pvQ=this.value; renderPrevoir(true)"><span id="pvCount"></span></div>
+    <div class="pv-scroll" style="margin-bottom:28px;"><table class="pv-t">
+      <thead><tr><th>Quoi</th><th>Début</th><th>Fin</th><th>Étape précédente</th><th>Étape suivante</th><th>Où</th><th>Qui</th><th>Comment</th></tr></thead>
       <tbody id="prevoirBody"></tbody>
     </table></div>
 
@@ -12008,18 +12009,44 @@ function viewKeep(fn){
 })();
 /* ===================== PLANIFICATION ===================== */
 function setComment(taskId, val){ taskById(taskId).comment = val; persist(); }
-function renderPrevoir(){
-  document.getElementById('prevoirBody').innerHTML = state.tasks.length ? state.tasks.map(t=>{
+var pvQ = '';
+function pvLbl(t){ return t.id+' — '+(t.quoi||'').slice(0,70); }
+function pvSucc(id){ return state.tasks.find(x=>(x.dependances||[]).includes(id)); }
+function pvParse(v){ const m=/^\s*([A-Za-z]+-\d+|[A-Za-z0-9_-]+)\s*(?:—|$)/.exec(v||''); return m&&taskById(m[1])?m[1]:null; }
+function pvSetDate(id,k,v){ const t=taskById(id); if(!t) return; t[k]=v; if(t.quand&&t.dateFin&&t.dateFin<t.quand){ if(k==='quand') t.dateFin=t.quand; else t.quand=t.dateFin; } if(t.quand&&t.dateFin&&typeof dtDays==='function') t.dureeEstimee=Math.max(1,dtDays(t.quand,t.dateFin)+1); persist(); renderPrevoir(true); }
+function pvSetPrev(id,v){ const t=taskById(id); if(!t) return; const old=(t.dependances||[])[0];
+  if(!v.trim()){ if(old) t.dependances=t.dependances.slice(1); }
+  else { const d=pvParse(v); if(!d||d===id){ renderPrevoir(true); return; } if(hasCycle(d,id)){ miniAlert('Impossible : cela créerait une boucle entre les étapes.'); renderPrevoir(true); return; }
+    t.dependances=[d].concat((t.dependances||[]).filter(x=>x!==d&&x!==old)); }
+  persist(); renderPrevoir(true); }
+function pvSetNext(id,v){ const t=taskById(id); if(!t) return; const old=pvSucc(id);
+  if(!v.trim()){ if(old) old.dependances=old.dependances.filter(x=>x!==id); }
+  else { const n=pvParse(v); if(!n||n===id){ renderPrevoir(true); return; } if(hasCycle(id,n)){ miniAlert('Impossible : cela créerait une boucle entre les étapes.'); renderPrevoir(true); return; }
+    const nt=taskById(n); if(old&&old.id!==n) old.dependances=old.dependances.filter(x=>x!==id);
+    nt.dependances=nt.dependances||[]; if(!nt.dependances.includes(id)) nt.dependances.unshift(id); }
+  persist(); renderPrevoir(true); }
+function renderPrevoir(keepFocus){
+  const body=document.getElementById('prevoirBody'); if(!body) return;
+  const q=(pvQ||'').toLowerCase(), ae=document.activeElement, fid=keepFocus&&ae&&ae.id==='pvQ';
+  const list=state.tasks.filter(t=>!q||((t.id||'')+' '+(t.quoi||'')+' '+(t.niveau||'')).toLowerCase().includes(q));
+  const cnt=document.getElementById('pvCount'); if(cnt) cnt.textContent=list.length+' / '+state.tasks.length+' tâches';
+  const dl='<datalist id="pvTasks">'+state.tasks.map(t=>`<option value="${esc(pvLbl(t))}">`).join('')+'</datalist>';
+  body.innerHTML = (list.length ? list.map(t=>{
     const linked = linkedInterlocsForTask(t.id);
-    const qui = linked.length ? linked.map(i=>esc(i.nom)).join(', ') : '<span style="color:var(--grey); font-style:italic;">Pas de responsable associé</span>';
+    const qui = linked.length ? linked.map(i=>esc(i.nom)).join(', ') : '<span style="color:var(--grey); font-style:italic;">—</span>';
+    const pr=taskById((t.dependances||[])[0]), nx=pvSucc(t.id), more=(t.dependances||[]).length>1?` title="+${t.dependances.length-1} autre(s) étape(s) précédente(s)"`:'';
     return `<tr>
-      <td style="display:flex; align-items:center; gap:6px;">${taskThumb(t)}<span>${esc(t.quoi)} <span style="color:var(--grey); font-size:10.5px;">${t.id}</span></span></td>
-      <td>${t.quand||'—'}</td>
-      <td>${(t.zoneChantierIds && t.zoneChantierIds.length) ? esc(t.zoneChantierIds.map(zonePath).join(', ')) : (t.zoneChantierId ? esc(zonePath(t.zoneChantierId)) : (esc(t.ou)||'—'))}</td>
-      <td>${qui}</td>
+      <td class="pv-q"><span style="display:flex; align-items:center; gap:6px;">${taskThumb(t)}<a href="#" onclick="event.preventDefault();openTaskDetail('${t.id}')">${esc(t.quoi)}</a> <span style="color:var(--grey); font-size:10.5px;">${t.id}</span></span></td>
+      <td><input type="date" value="${esc(t.quand||'')}" onchange="pvSetDate('${t.id}','quand',this.value)"></td>
+      <td><input type="date" value="${esc(t.dateFin||'')}" onchange="pvSetDate('${t.id}','dateFin',this.value)"></td>
+      <td><input list="pvTasks" value="${esc(pr?pvLbl(pr):'')}" placeholder="— choisir —"${more} onchange="pvSetPrev('${t.id}',this.value)"></td>
+      <td><input list="pvTasks" value="${esc(nx?pvLbl(nx):'')}" placeholder="— choisir —" onchange="pvSetNext('${t.id}',this.value)"></td>
+      <td class="pv-ro">${(t.zoneChantierIds && t.zoneChantierIds.length) ? esc(t.zoneChantierIds.map(zonePath).join(', ')) : (t.zoneChantierId ? esc(zonePath(t.zoneChantierId)) : (esc(t.ou)||'—'))}</td>
+      <td class="pv-ro">${qui}</td>
       <td><input type="text" value="${esc(t.comment||'')}" placeholder="Approche envisagée" onchange="setComment('${t.id}',this.value)"></td>
     </tr>`;
-  }).join('') : '<tr><td colspan="5" class="empty-note">Aucune tâche créée.</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty-note">Aucune tâche.</td></tr>') + '';
+  let d=document.getElementById('pvTasksHolder'); if(!d){ d=document.createElement('div'); d.id='pvTasksHolder'; document.body.appendChild(d); } d.innerHTML=dl;
 }
 function renderOrganiser(){
   const parResp = {};
@@ -17467,5 +17494,16 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
 .ged-t td input:focus,.ged-t td select:focus{outline:2px solid #F2A900;background:#fffaf0}
 .ged-t tr:hover td{background:#fbfaf6}
 .ged-x{width:34px;text-align:center}.ged-x button{background:none;border:0;color:#B4432D;cursor:pointer;font-size:14px;opacity:.5}.ged-x button:hover{opacity:1}
+</style>
+<style id="pvCss">
+.pv-bar{display:flex;gap:12px;align-items:center;margin-bottom:10px}.pv-bar input{flex:1;max-width:420px}#pvCount{font-size:12px;color:#667}
+.pv-scroll{overflow:auto;max-height:70vh;border:1px solid var(--line,#d5dbe0);border-radius:10px;background:#fff}
+.pv-t{border-collapse:collapse;width:100%;min-width:1100px;font-size:13px}
+.pv-t th{position:sticky;top:0;z-index:2}
+.pv-t td{border-bottom:1px solid #eceae3;border-right:1px solid #f1efe8;padding:0 6px;vertical-align:middle}
+.pv-t td input{width:100%;border:0;background:transparent;padding:8px 4px;font:inherit;border-radius:0;min-height:34px;box-sizing:border-box}
+.pv-t td input:focus{outline:2px solid #F2A900;background:#fffaf0}
+.pv-t td.pv-ro{font-size:12px;color:#556;padding:6px}.pv-t td.pv-q{min-width:260px;padding:6px}.pv-t td.pv-q a{color:inherit;text-decoration:none;font-weight:600}.pv-t td.pv-q a:hover{color:#CC5F00;text-decoration:underline}
+.pv-t tr:hover td{background:#fbfaf6}
 </style>
 </body></html>
