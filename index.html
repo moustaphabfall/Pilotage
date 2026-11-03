@@ -14460,7 +14460,7 @@ window.actOpen=function(tid){ const t=taskById(tid); if(!t) return; actTypes(); 
     <div class="field"><label>Lot / métier concerné</label><select id="act-lot"><option value="">— choisir —</option>${mets.map(m=>`<option value="${esc(m.id)}" ${m.id===((ex&&ex.lotId)||actDefaultLot(t))?'selected':''}>${esc(m.nom)}</option>`).join('')}</select></div>
     <div class="modal-actions"><button class="primary" id="act-ok">Ajouter à la liste de suivi</button>${ex?'<button class="ghost" id="act-del">Retirer l’action</button>':''}<button class="ghost" onclick="closeModal()">Annuler</button></div>`);
     const mb=document.getElementById('modalBody')||document; 
-    document.querySelectorAll('[data-at]').forEach(b=>b.onclick=()=>{ if(b.dataset.at==='new'){ const v=prompt('Nouveau type d’action (ex. Reprise, Nettoyage, Sécurité) :'); if(v&&v.trim()){ state.actionTypes.push(v.trim()); typ=v.trim(); persist(); } } else typ=state.actionTypes[+b.dataset.at]; draw(); });
+    document.querySelectorAll('[data-at]').forEach(b=>b.onclick=()=>{ if(b.dataset.at==='new'){ miniPrompt('Nouveau type d’action (ex. Reprise, Nettoyage, Sécurité) :','',v=>{ if(v&&String(v).trim()){ state.actionTypes.push(String(v).trim()); typ=String(v).trim(); persist(); } draw(); }); return; } else typ=state.actionTypes[+b.dataset.at]; draw(); });
     const ok=document.getElementById('act-ok'); if(ok) ok.onclick=()=>{ const lot=document.getElementById('act-lot').value; if(!lot){ try{miniAlert('Choisissez le lot concerné.')}catch(e){} return; }
       if(ex){ ex.type=typ; ex.lotId=lot; } else state.actions.push({id:'A-'+Date.now().toString(36),taskId:tid,type:typ,lotId:lot,date:todayISO(),statut:'afaire'});
       persist(); closeModal(); renderActions(); try{ renderJour() }catch(e){} };
@@ -14517,7 +14517,7 @@ try{ document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{ try{rende
 <script>
 function projNom(){ return (state.projet&&state.projet.nom)||''; }
 function projChipRefresh(){ const b=document.getElementById('projChip'); if(b) b.textContent='📁 '+(projNom()||'Nommer le projet'); }
-window.projRename=function(){ const v=prompt('Nom du projet (tout l’artefact appartient à ce projet) :',projNom()); if(v===null) return; state.projet=Object.assign({id:'projet-1'},state.projet||{},{nom:v.trim()}); persist(); projChipRefresh(); try{ if(v.trim()) document.title=v.trim()+' — Artefact de pilotage'; }catch(e){} };
+window.projRename=function(){ miniPrompt('Nom du projet (tout l’artefact appartient à ce projet) :',projNom(),function(v){ if(v===null) return; v=String(v); state.projet=Object.assign({id:'projet-1'},state.projet||{},{nom:v.trim()}); persist(); projChipRefresh(); try{ if(v.trim()) document.title=v.trim()+' — Artefact de pilotage'; }catch(e){} }); };
 /* titre du projet (style Notion) : icône modifiable + nom, à droite du bouton menu — masqué pour l'espace Nettoyage */
 (function(){
   const CRANE='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#2A2F36"/><g fill="none" stroke="#F2A900" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 54V22M20 22 8 28M20 22H54M20 22 40 8M40 8V22M32 22 20 40M32 22 44 40M20 40 44 40"/></g><path d="M44 22v12" stroke="#fff" stroke-width="3" stroke-linecap="round"/><rect x="40" y="34" width="8" height="6" rx="1.5" fill="#fff"/><path d="M14 54h12" stroke="#F2A900" stroke-width="4" stroke-linecap="round"/></svg>');
@@ -15503,8 +15503,22 @@ const PG_FEATS=[
     const lo=w.querySelector('#pgOutB'); if(lo) lo.onclick=()=>window.pilotageLogout&&window.pilotageLogout();
     const s=w.querySelector('#pgSw'); if(s) s.onchange=()=>window.pilotageSwitchProjet(s.value);
     const ty=w.querySelector('#pgTy'); if(ty) ty.onchange=async()=>{ try{ await window.PILOTAGE_SET_TYPE(PJ().id,ty.value); PJ().type=ty.value; location.reload(); }catch(e){ alert(e.message); } };
-    const r=w.querySelector('#pgRen'); if(r) r.onclick=async()=>{ const v=prompt('Nom du projet :',PJ().nom); if(v===null||!v.trim()) return; try{ await adm({action:'p_projet_rename',nom:v.trim()}); PJ().nom=v.trim(); if(state.projet){ state.projet.nom=v.trim(); persist&&persist(); } render(); }catch(e){ alert(e.message); } };
-    const n=w.querySelector('#pgNewP'); if(n) n.onclick=async()=>{ const id=prompt('Identifiant court du nouveau projet (lettres/chiffres) :'); if(!id) return; const nom=prompt('Nom du projet :',id)||id; const ks=Object.keys(PG_TYPES); const tc=prompt('Type d’espace de travail :\n'+ks.map((k,n)=>(n+1)+' = '+PG_ACR[k]+' — '+PG_TYPES[k]).join('\n'),'3'); const ty=ks[(parseInt(tc,10)||3)-1]||'entreprise_generale'; try{ await window.PILOTAGE_ADM({action:'p_projet_create',id,nom}); if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,''),ty); alert('Projet créé. Choisissez-le dans la liste pour y créer des accès.'); window.pilotageSwitchProjet(id.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'')); }catch(e){ alert(e.message); } };
+    const r=w.querySelector('#pgRen'); if(r) r.onclick=()=>{ miniPrompt('Nom du projet :',PJ().nom,async v=>{ if(v===null||!String(v).trim()) return; v=String(v); try{ await adm({action:'p_projet_rename',nom:v.trim()}); PJ().nom=v.trim(); if(state.projet){ state.projet.nom=v.trim(); persist&&persist(); } render(); }catch(e){ miniAlert(e.message); } }); };
+    const n=w.querySelector('#pgNewP'); if(n) n.onclick=()=>{
+      /* nouveau projet : un seul formulaire dans le style de l'outil (identifiant, nom, type en liste déroulante) */
+      const ks=Object.keys(PG_TYPES), ov=document.createElement('div'); ov.setAttribute('role','dialog'); ov.style.cssText='position:fixed;inset:0;z-index:99985;background:rgba(22,35,43,.5);display:flex;align-items:center;justify-content:center;padding:14px';
+      const fld='width:100%;padding:10px 12px;border:1px solid #d6d6d6;border-radius:10px;font:inherit;background:#fff;margin-top:4px';
+      ov.innerHTML='<form style="background:#fff;border-top:6px solid #F2A900;border-radius:14px;padding:18px 20px;width:min(460px,100%);box-shadow:0 18px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:14px"><b style="font-size:17px">Nouveau projet</b>'
+        +'<label style="font-size:13px;font-weight:600">Identifiant court<small style="font-weight:400;color:#666"> (lettres, chiffres)</small><input name="id" required autocomplete="off" style="'+fld+'"></label>'
+        +'<label style="font-size:13px;font-weight:600">Nom du projet<input name="nom" autocomplete="off" style="'+fld+'"></label>'
+        +'<label style="font-size:13px;font-weight:600">Type d’espace de travail<select name="ty" style="'+fld+'">'+ks.map(k=>'<option value="'+k+'"'+(k==='entreprise_generale'?' selected':'')+'>'+PG_ACR[k]+' — '+PG_TYPES[k]+'</option>').join('')+'</select></label>'
+        +'<div class="msg" style="color:#B4432D;font-size:13px;min-height:16px"></div>'
+        +'<div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" data-x style="padding:10px 16px;border:1px solid #d6d6d6;border-radius:10px;background:#fff;cursor:pointer;font-weight:600">Annuler</button><button type="submit" style="padding:10px 18px;border:0;border-radius:10px;background:#F2A900;color:#16232B;cursor:pointer;font-weight:700">Créer</button></div></form>';
+      document.body.appendChild(ov); const f=ov.querySelector('form'); f.id.focus();
+      ov.querySelector('[data-x]').onclick=()=>ov.remove(); ov.addEventListener('pointerdown',e=>{ if(e.target===ov) ov.remove(); });
+      f.onsubmit=async e=>{ e.preventDefault(); const clean=f.id.value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,''); if(!clean){ f.querySelector('.msg').textContent='Identifiant requis (lettres ou chiffres).'; return; }
+        const nom=f.nom.value.trim()||f.id.value.trim(), ty=f.ty.value; const sb=f.querySelector('[type=submit]'); sb.disabled=true; sb.textContent='Création…';
+        try{ await window.PILOTAGE_ADM({action:'p_projet_create',id:f.id.value.trim(),nom}); if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(clean,ty); ov.remove(); window.pilotageSwitchProjet(clean); }catch(err){ sb.disabled=false; sb.textContent='Créer'; f.querySelector('.msg').textContent=err.message||String(err); } }; };
   }
   function badge(){ const b=document.getElementById('pgBadge'); if(!b) return; const n=cache?cache.notifs.length:0; b.hidden=!n; b.textContent=n; }
 
@@ -17031,5 +17045,9 @@ body.lv-et-on #lvEtSeg{display:inline-flex}
   /* titre de la fenêtre : « Études · niveau » */
   setInterval(()=>{ try{ const h=document.querySelector('#page-travaux .section-head h2'); if(h&&h.firstChild&&h.firstChild.nodeType===3){ const t=document.body.classList.contains('lv-etudes')?'Études':'Suivi travaux'; if(h.firstChild.nodeValue!==t) h.firstChild.nodeValue=t; } }catch(e){} },400);
 })();
+</script>
+<script>
+/* Les messages d'alerte du navigateur (« moustaphabfall.github.io indique ») sont remplacés par la fenêtre de l'outil */
+(function(){ const native=window.alert; window.alert=function(m){ try{ if(typeof miniAlert==='function'){ miniAlert(String(m==null?'':m)); return; } }catch(e){} return native.call(window,m); }; })();
 </script>
 </body></html>
