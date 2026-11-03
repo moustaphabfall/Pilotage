@@ -2924,7 +2924,7 @@ function render(){
     const b=document.createElement("button");b.type="button";
     b.className="rt-pin "+(t.etat==="fait"?"fait ":t.etat==="encours"?"encours ":"")+(selected===t.id?"sel ":"")+((filter&&(filter==="__none"?t.lotId:filter!==t.lotId))||(famFilter&&(taskFamille(t)||{}).id!==famFilter)||(gMetF()&&!gMetHas(metKey(t)))||(etatFilter&&(t.etat||"afaire")!==etatFilter)?"dim":"");
     b.style.left=`calc(${p.x*100}% + ${(n-1)*14}px)`;b.style.top=`${p.y*100}%`;b.style.background=t.etat==="fait"?"#2f7d4f":t.etat==="encours"?"#E8B500":colorOf(t);
-    b.textContent=t.etat==="fait"?"✓":(numOf(t)||"•");b.title=`${t.id} ${t.quoi||""}`;
+    if(window.pzPinHidden&&pzPinHidden(t)) b.classList.add("pzx-hide");b.textContent=t.etat==="fait"?"✓":(numOf(t)||"•");b.title=`${t.id} ${t.quoi||""}`;
     if(JRSET.has(t.id)) b.classList.add("jour");
     { const fm=p.forme; if(fm&&fm!=="rond"&&fm!=="libre"){ b.classList.add("f-"+fm); if(fm==="cercle"){const c=t.etat==="fait"?"#2f7d4f":t.etat==="encours"?"#E8B500":colorOf(t);b.style.background="color-mix(in srgb,"+c+" 30%,transparent)";b.style.border="3px solid "+c;b.style.color=c} if(fm==="ligne") b.textContent="" } }
     { const ftI=taskFamille(t); if(!t.etude&&t.etat!=="fait"&&p.forme!=="ligne"&&ftI&&ftI.icone){ b.textContent=ftI.icone; b.title=`${t.id} ${t.quoi||""}`+(numOf(t)?" (n° "+numOf(t)+")":"") }
@@ -4863,7 +4863,7 @@ window.addEventListener('pointermove', e=>{
   d.x = Math.max(0, Math.min(1, (e.clientX-d.r.left)/d.r.width)); d.y = Math.max(0, Math.min(1, (e.clientY-d.r.top)/d.r.height));
   if(d.kind==='t'&&window.netWallClamp){ const _t=state.tasks.find(k=>k.id===d.id), _q=window.netWallClamp(_t,d.x,d.y); if(_q){ d.x=_q[0]; d.y=_q[1]; } }
   d.el.style.left = (d.x*100)+'%'; d.el.style.top = (d.y*100)+'%'; d.el.dataset.px = d.x; d.el.dataset.py = d.y;
-  if(d.kind==='t'){ if(d.lk===undefined){ const t=state.tasks.find(k=>k.id===d.id); const pl=(t&&t.pos&&t.pos.planId)||(window.rtCurPlan&&window.rtCurPlan().id); const z=t&&!t.cloisonId&&!t.murId&&!t.etude&&t.zoneChantierId&&zoneById(t.zoneChantierId); d.lk=(z&&z.poly&&z.poly.pts&&z.poly.pts.length>2&&z.poly.planId===pl&&!t.horsPiece)?z:null; }
+  if(d.kind==='t'){ if(d.lk===undefined){ const t=state.tasks.find(k=>k.id===d.id); const pl=(t&&t.pos&&t.pos.planId)||(window.rtCurPlan&&window.rtCurPlan().id); const z=t&&!t.cloisonId&&!t.murId&&!t.murSeg&&!t.etude&&t.zoneChantierId&&zoneById(t.zoneChantierId); d.lk=(z&&z.poly&&z.poly.pts&&z.poly.pts.length>2&&z.poly.planId===pl&&!t.horsPiece)?z:null; }
     const out=!!(d.lk&&!ptInPoly(d.x,d.y,d.lk.poly.pts)); d.el.classList.toggle('rt-pin-out', out);
     const m=document.getElementById('rtMsg'); if(m&&out!==d.wasOut){ d.wasOut=out; m.textContent=out?'⚠ Hors de la pièce « '+(d.lk.nom||'')+' » : relâchez pour demander la sortie, ou revenez dans la pièce':''; } }
   pzMarkAll();
@@ -4875,7 +4875,7 @@ window.addEventListener('pointerup', ()=>{
   if(d.kind==='o'){ const o = state.objets.find(k=>k.id===d.id); if(o){ o.x = x; o.y = y; } }
   else { const t = state.tasks.find(k=>k.id===d.id); if(t){ const op = t.pos||{}; const np = {planId:op.planId||(window.rtCurPlan&&window.rtCurPlan().id)||'PL-RDC', x, y}; if(op.forme) np.forme = op.forme; if(op.sz) np.sz = op.sz; if(op.pts){ const dx = x-(op.x||0), dy = y-(op.y||0); np.pts = op.pts.map(q=>[Math.round((q[0]+dx)*10000)/10000, Math.round((q[1]+dy)*10000)/10000]); }
       const lz = t.zoneChantierId && zoneById(t.zoneChantierId);
-      const lk = (!t.cloisonId && !t.murId && !t.etude && lz && lz.poly && lz.poly.pts && lz.poly.pts.length>2 && lz.poly.planId===np.planId) ? lz : null;
+      const lk = (!t.cloisonId && !t.murId && !t.murSeg && !t.etude && lz && lz.poly && lz.poly.pts && lz.poly.pts.length>2 && lz.poly.planId===np.planId) ? lz : null;
       d.el.classList.remove('rt-pin-out'); { const m=document.getElementById('rtMsg'); if(m&&d.wasOut) m.textContent=''; }
       if(lk && !ptInPoly(x, y, lk.poly.pts)){
         if(t.horsPiece){ t.pos = np; }
@@ -14454,7 +14454,7 @@ Règles :
       const click = live ? `onclick="event.stopPropagation(); pzWallClick('${z.id}',${k})" style="pointer-events:stroke; cursor:pointer;"` : 'style="pointer-events:none;"';
       const d = `x1="${f(sg.a[0])}" y1="${f(sg.a[1])}" x2="${f(sg.b[0])}" y2="${f(sg.b[1])}"`;
       const scol = t && t.structure && window.pzStructCol && pzStructCol(t.structure.key);
-      const hl0 = scol ? `<line ${d} stroke="${scol}" stroke-width="10" stroke-linecap="butt" opacity=".6" vector-effect="non-scaling-stroke" style="pointer-events:none"/>` : '';
+      const hl0 = scol ? `<line ${d} stroke="${scol}" stroke-width="13" stroke-linecap="butt" vector-effect="non-scaling-stroke" style="pointer-events:none"/><line ${d} stroke="url(#pzw-${t.structure.key})" stroke-width="10" stroke-linecap="butt" vector-effect="non-scaling-stroke" style="pointer-events:none"/>` : '';
       const hl = hl0 + (t && typeof jrSel!=='undefined' && jrSel===t.id ? `<line ${d} stroke="#F2A900" stroke-width="12" stroke-linecap="round" opacity=".6" vector-effect="non-scaling-stroke" style="pointer-events:none"/>` : '');
       return `<g class="pz-wall">${hl}<line ${d} stroke="transparent" stroke-width="16" vector-effect="non-scaling-stroke" ${click}><title>Mur ${k+1} — ${esc(z.nom)}${t?' : '+esc(t.quoi||''):' (clic : passer en mode exé)'}</title></line><line ${d} stroke="${col}" stroke-width="${t?5:3.5}" ${t?'':'stroke-dasharray="9 5"'} stroke-linecap="round" vector-effect="non-scaling-stroke" style="pointer-events:none"/></g>`;
     }).join('')).join('');
@@ -17836,11 +17836,25 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
   const PATC={peinture:'<rect width="3" height="3" fill="#f3efe0" fill-opacity=".55"/>',dalles:'<path d="M0 0H6V6H0Z" fill="#fff" fill-opacity=".4" stroke="#555" stroke-width=".25"/>',ba13:'<rect width="5" height="5" fill="#fafafa" fill-opacity=".5"/><path d="M0 5H5" stroke="#aaa" stroke-width=".2"/>',bois:'<path d="M0 1H4M0 3H4" stroke="#9a6b32" stroke-width=".4"/>',brut:'<circle cx="1" cy="1" r=".3" fill="#666"/><circle cx="3" cy="2.5" r=".25" fill="#666"/>',metal:'<path d="M0 .5H4M0 2.5H4" stroke="#889" stroke-width=".5"/>',tendu:'<path d="M0 1.5Q1 0 2 1.5T4 1.5" stroke="#7aa" stroke-width=".3" fill="none"/>',ouvert:'<path d="M0 2H4M2 0V4" stroke="#c63" stroke-width=".3"/><circle cx="2" cy="2" r=".6" fill="none" stroke="#c63" stroke-width=".25"/>'};
   const SZ={carrelage:[4,4],parquet:[6,6],beton:[4,4],moquette:[3,3],vinyle:[3,3],resine:[3,3],pierre:[4,4],peinture:[3,3],dalles:[6,6],ba13:[5,5],bois:[4,4],brut:[4,4],metal:[4,4],tendu:[4,3],ouvert:[4,4]};
   window.pzMotifSvg=function(zs){ let defs='', out=''; const sel=(typeof jrSel!=='undefined'&&jrSel)?taskById(jrSel):null;
-    zs.forEach(z=>{ const ce=!!(window.pzView&&pzView.ceil), so=supT(z,ce?'plafond':'sol'), k=so&&so.motif&&so.motif.key; const PP=ce?PATC:PAT, pre=ce?'pzc-':'pzp-'; const pts=z.poly.pts.map(p=>(p[0]*100).toFixed(2)+','+(p[1]*100).toFixed(2)).join(' ');
+    zs.forEach(z=>{ const ce=!!(window.pzView&&pzView.ceil), so=(ce||pzView.sol)?supT(z,ce?'plafond':'sol'):null, k=so&&so.motif&&so.motif.key; const PP=ce?PATC:PAT, pre=ce?'pzc-':'pzp-'; const pts=z.poly.pts.map(p=>(p[0]*100).toFixed(2)+','+(p[1]*100).toFixed(2)).join(' ');
       if(k&&PP[k]){ if(!defs.includes(pre+k)) defs+='<pattern id="'+pre+k+'" patternUnits="userSpaceOnUse" width="'+SZ[k][0]+'" height="'+SZ[k][1]+'">'+PP[k]+'</pattern>'; out+='<polygon points="'+pts+'" fill="url(#'+pre+k+')" opacity=".75" style="pointer-events:none"/>'; }
       if(sel&&sel.zoneChantierId===z.id&&(sel.support==='sol'||sel.support==='plafond')) out+='<polygon points="'+pts+'" fill="#F2A900" fill-opacity=".22" stroke="#F2A900" stroke-width="4" vector-effect="non-scaling-stroke" style="pointer-events:none"/>'; });
     return out?'<defs>'+defs+'</defs>'+out:''; };
 })();
 </script>
 
+<script>
+/* ===== v130 : pastilles de murs glissant le long du mur, visibilité selon les œils plafond / mur / sol, murs remplis du motif ===== */
+(function(){
+  const VK={mur:'mur',sol:'sol',plafond:'ceil'};
+  window.pzPinHidden=function(t){ const k=VK[t&&t.support]; if(!k||t.globale||t.etude) return false; return !(window.pzView&&pzView[k]); };
+  if(!document.getElementById('pzxHideCss')){ const st=document.createElement('style'); st.id='pzxHideCss'; st.textContent='.rt-pin.pzx-hide{display:none !important}'; document.head.appendChild(st); }
+  const o=window.rtSelect; window.rtSelect=function(pin,piece){ try{ const t=pin&&taskById(pin); const k=t&&VK[t.support]; if(k&&!t.globale&&!pzView[k]) pzViewToggle(k); }catch(e){} return o.apply(this,arguments); };
+  const oc=window.netWallClamp; window.netWallClamp=function(t,x,y){ if(t&&t.murSeg&&t.zoneChantierId){ const z=zoneById(t.zoneChantierId); const sg=z&&pieceWallSegs(z).find(g=>g.key===t.murSeg); if(sg){ const dx=sg.b[0]-sg.a[0], dy=sg.b[1]-sg.a[1], l=dx*dx+dy*dy||1; let k=((x-sg.a[0])*dx+(y-sg.a[1])*dy)/l; k=Math.max(.04,Math.min(.96,k)); return [sg.a[0]+k*dx, sg.a[1]+k*dy]; } } return oc?oc(t,x,y):null; };
+  const WP={parpaing:'<rect width="4" height="1.4" fill="#cfcfcf"/><path d="M0 0V1.4M2 0V1.4" stroke="#666" stroke-width=".18"/>',voile:'<rect width="3" height="1.4" fill="#4a4a4a"/><circle cx="1" cy=".5" r=".18" fill="#bbb"/><circle cx="2.2" cy=".95" r=".14" fill="#bbb"/>',brique:'<rect width="4" height="1.4" fill="#c4683a"/><path d="M0 .7H4M0 0V.7M2 .7V1.4" stroke="#f0d8c8" stroke-width=".16"/>',placo72:'<rect width="2" height="1.4" fill="#d6e8f7"/><path d="M0 1.4L1.4 0" stroke="#3b78b0" stroke-width=".28"/>',placo98:'<rect width="2" height="1.4" fill="#b9d2ea"/><path d="M0 1.4L1.4 0M.7 1.4L2 0" stroke="#2b5d8c" stroke-width=".28"/>',doublage:'<rect width="2.4" height="1.4" fill="#cdeee9"/><circle cx=".6" cy=".7" r=".22" fill="#2a9d8f"/><circle cx="1.8" cy=".7" r=".22" fill="#2a9d8f"/>',doublosa:'<rect width="2.4" height="1.4" fill="#bfe3dd"/><path d="M0 .7H2.4" stroke="#1f7a6f" stroke-width=".3"/>',vitree:'<rect width="3" height="1.4" fill="#d9f2fa"/><path d="M.4 1.1L1.4 .3" stroke="#fff" stroke-width=".22"/>',gaine:'<rect width="2" height="1.4" fill="#f5d6e6"/><path d="M0 0L2 1.4M2 0L0 1.4" stroke="#b0407a" stroke-width=".2"/>'};
+  const W={parpaing:[4,1.4],voile:[3,1.4],brique:[4,1.4],placo72:[2,1.4],placo98:[2,1.4],doublage:[2.4,1.4],doublosa:[2.4,1.4],vitree:[3,1.4],gaine:[2,1.4]};
+  const DEFS='<defs>'+Object.keys(WP).map(k=>'<pattern id="pzw-'+k+'" patternUnits="userSpaceOnUse" width="'+W[k][0]+'" height="'+W[k][1]+'">'+WP[k]+'</pattern>').join('')+'</defs>';
+  const ow=window.wallsSvgHtml; window.wallsSvgHtml=function(zs,live){ return DEFS+ow(zs,live); };
+})();
+</script>
 </body></html>
