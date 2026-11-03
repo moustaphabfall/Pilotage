@@ -16781,12 +16781,19 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
     try{ const im = await loadImg(src), W = 280, k = W/im.naturalWidth, w = W, h = Math.max(16,Math.round(im.naturalHeight*k));
       const c = document.createElement('canvas'); c.width=w; c.height=h; const x = c.getContext('2d',{willReadFrequently:true}); x.fillStyle='#fff'; x.fillRect(0,0,w,h); x.drawImage(im,0,0,w,h);
       const d = x.getImageData(0,0,w,h).data, D = new Uint8Array(w*h); for(let i=0;i<w*h;i++){ const l=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2]; D[i]=(d[i*4+3]>40&&l<150)?1:0; }
-      const R=4, D2 = dil(D,w,h,R), out = new Uint8Array(w*h), st=[]; const push=p=>{ if(!D2[p]&&!out[p]){ out[p]=1; st.push(p); } };
+      const R=5, D2 = dil(D,w,h,R), out = new Uint8Array(w*h), st=[]; const push=p=>{ if(!D2[p]&&!out[p]){ out[p]=1; st.push(p); } };
       for(let xx=0;xx<w;xx++){ push(xx); push((h-1)*w+xx); } for(let yy=0;yy<h;yy++){ push(yy*w); push(yy*w+w-1); }
       while(st.length){ const p=st.pop(), px=p%w, py=(p/w)|0; if(px>0) push(p-1); if(px<w-1) push(p+1); if(py>0) push(p-w); if(py<h-1) push(p+w); }
       let M = new Uint8Array(w*h); for(let i=0;i<w*h;i++) M[i]=out[i]?0:1;
       M = inv(dil(inv(M),w,h,R)); M = biggest(M,w,h);
-      const t = trace(M,w,h); if(t&&t.length>8){ const pts = rdp(t,3); let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; pts.forEach(p=>{ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]); y0=Math.min(y0,p[1]); y1=Math.max(y1,p[1]); });
+      const t = trace(M,w,h); if(t&&t.length>8){ let pts = rdp(t,5);
+        /* traits droits : segments ramenés à l'horizontale ou à la verticale, petits décrochements fusionnés */
+        { let q = pts.map(v=>v.slice()), n = q.length;
+          for(let k=0;k<n-1;k++){ const a=q[k], c=q[k+1]; if(Math.abs(c[0]-a[0])<Math.abs(c[1]-a[1])) c[0]=a[0]; else c[1]=a[1]; }
+          const last=q[n-1], first=q[0]; if(Math.abs(first[0]-last[0])<Math.abs(first[1]-last[1])) last[0]=first[0]; else last[1]=first[1];
+          const clean=[]; q.forEach(v=>{ const pv=clean[clean.length-1]; if(!pv||Math.hypot(v[0]-pv[0],v[1]-pv[1])>=3) clean.push(v); });
+          const out=[]; clean.forEach((v,i)=>{ const a=clean[(i+clean.length-1)%clean.length], c=clean[(i+1)%clean.length]; if((a[0]===v[0]&&v[0]===c[0])||(a[1]===v[1]&&v[1]===c[1])) return; out.push(v); });
+          if(out.length>=4) pts=out; } let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; pts.forEach(p=>{ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]); y0=Math.min(y0,p[1]); y1=Math.max(y1,p[1]); });
         const grp=(arr,len)=>{ const th=len*.38, o=[]; let run=[]; arr.forEach((v,i)=>{ if(v>th) run.push(i); else if(run.length){ o.push(run.reduce((a,c)=>a+c,0)/run.length); run=[]; } }); if(run.length) o.push(run.reduce((a,c)=>a+c,0)/run.length); return o; };
         const cc=new Array(w).fill(0), rr=new Array(h).fill(0); for(let yy=0;yy<h;yy++) for(let xx=0;xx<w;xx++){ const i=(yy*w+xx)*4, l=.3*d[i]+.59*d[i+1]+.11*d[i+2]; if(d[i+3]>40&&l<205){ cc[xx]++; rr[yy]++; } }
         res = {pts:pts.map(p=>[p[0]/w,p[1]/w]), ax:grp(cc,h).map(v=>v/w), ay:grp(rr,w).map(v=>v/w), w:(x1-x0)/w, h:(y1-y0)/w}; }
@@ -16889,9 +16896,13 @@ body.plan-fs-on #rtBasePop.on{display:block;position:fixed;left:10px;top:calc(60
   const b=document.createElement('button'); b.type='button'; b.id='rtBaseBtn'; b.title='Voir les pièces, plafonds, murs ou sols'; b.setAttribute('aria-label','Pièces, plafonds, murs, sols'); b.textContent='🧩';
   row.insertBefore(b,row.firstChild);
   const pop=document.createElement('div'); pop.id='rtBasePop'; pop.innerHTML='<h4>Afficher sur le plan</h4><div style="font-size:11px;color:#667;margin:-4px 0 6px">Plafond · Murs · Sol</div><span class="pz-viewbar rt-pzv"></span>'; document.body.appendChild(pop);
-  const shut=()=>{ pop.classList.remove('on'); b.classList.remove('on'); };
-  b.onclick=e=>{ e.stopPropagation(); const on=!pop.classList.contains('on'); pop.classList.toggle('on',on); b.classList.toggle('on',on); if(on&&typeof pzViewSync==='function') pzViewSync(); };
+  const shut=()=>{ pop._pin=false; pop.classList.remove('on'); b.classList.remove('on'); };
+  b.onclick=e=>{ e.stopPropagation(); if(window.matchMedia('(hover:hover)').matches&&pop.classList.contains('on')&&!pop._pin){ pop._pin=true; return; } pop._pin=false; const on=!pop.classList.contains('on'); pop.classList.toggle('on',on); b.classList.toggle('on',on); if(on&&typeof pzViewSync==='function') pzViewSync(); };
   document.addEventListener('click',e=>{ if(pop.classList.contains('on')&&!e.target.closest('#rtBasePop,#rtBaseBtn')) shut(); });
+  /* survol (souris) : le ruban se déroule en approchant le bouton, se replie en s'éloignant */
+  let ht=null; const openP=()=>{ clearTimeout(ht); if(!pop.classList.contains('on')){ pop.classList.add('on'); b.classList.add('on'); if(typeof pzViewSync==='function') pzViewSync(); } };
+  const lateShut=()=>{ clearTimeout(ht); ht=setTimeout(()=>{ if(!pop._pin) shut(); },350); };
+  [b,pop].forEach(el=>{ el.addEventListener('mouseenter',e=>{ if(window.matchMedia('(hover:hover)').matches) openP(); }); el.addEventListener('mouseleave',e=>{ if(window.matchMedia('(hover:hover)').matches) lateShut(); }); });
   new MutationObserver(()=>{ if(!root.classList.contains('rt-fs')) shut(); }).observe(root,{attributes:true,attributeFilter:['class']});
 })();
 </script>
