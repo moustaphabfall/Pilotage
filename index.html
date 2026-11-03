@@ -11620,6 +11620,11 @@ function travVisible(t){
   const c = tvCfg(), r = tvRange(), cr = tvCreated(t);
   if(c.met){ const m=taskMetier(t); if(!c.met.split(',').includes(m?m.id:'__none')) return false; }
   if(c.etat==='retard'){ if(!(window.actLate&&actLate(t))) return false; } else if(c.etat && (t.etat||'afaire')!==c.etat) return false;
+  if(c.dt){ const inR=d=>!!d&&String(d).slice(0,10)>=r.du&&String(d).slice(0,10)<=r.au;
+    if(c.dt.includes('c')&&!inR(cr)) return false;
+    if(c.dt.includes('d')&&!inR(t.quand)) return false;
+    if(c.dt.includes('f')&&!inR(t.dateFin||t.butoir)) return false;
+    return true; }
   return !cr || cr <= r.au;
 }
 function tvFr(iso){ if(!iso) return '—'; const [y,m,d] = iso.split('-'); return d+'/'+m+'/'+y; }
@@ -11635,12 +11640,27 @@ function renderTravVision(){
     <div class="tv-slide"><input type="range" min="0" max="${st.length-1}" step="1" value="${k}" oninput="tvLive(this.value)" onchange="tvPick(this.value)" aria-label="Curseur du temps">
       <div class="tv-ticks">${st.map((x,i)=>`<button class="${i===k?'on':''}${x.from<=getDateEtat('travaux')&&getDateEtat('travaux')<=x.to?' today':''}" onclick="tvPick(${i})"><b>${x.label}</b>${x.sub?'<small>'+x.sub+'</small>':''}</button>`).join('')}</div></div>
     <button class="tv-nav" onclick="tvStep(1)" aria-label="Avancer d'une unité" title="Avancer d'une unité (jour, semaine, mois ou année)">›</button>
-    <button class="tv-today" onclick="tvToday()" title="Recentrer sur aujourd'hui">Aujourd'hui</button></div></details>
-    <details class="tv-rib" ${O.m?'open':''} ontoggle="window._tvOpen.m=this.open"><summary>🧰 Métier <small class="tv-ind">· ${c.met?esc(c.met.split(',').map(k=>k==='__none'?'Sans métier':((state.metiers||[]).find(m=>m.id===k)||{}).nom||'').filter(Boolean).join(', ')):'Tous les métiers'}</small></summary><div class="tv-row tv-mchips"><button type="button" class="tv-mc ${c.met?'':'on'}" onclick="tvSetMet('')">Tous</button>${(state.metiers||[]).map(m=>`<button type="button" class="tv-mc ${(c.met||'').split(',').includes(m.id)?'on':''}" onclick="tvToggleMet('${esc(m.id)}')">${esc((metierIcon(m)||'')+' '+m.nom)}</button>`).join('')}<button type="button" class="tv-mc ${(c.met||'').split(',').includes('__none')?'on':''}" onclick="tvToggleMet('__none')">Sans métier</button></div></details>
+    <button class="tv-today" onclick="tvToday()" title="Recentrer sur aujourd'hui">Aujourd'hui</button></div>
+    <div class="tv-row tv-dt"><span class="tv-dtl">Filtrer par :</span>${[['c','📝 Date de création'],['d','▶ Date de début'],['f','⏹ Date de fin']].map(([k,l])=>`<button type="button" class="tv-mc ${(c.dt||'').includes(k)?'on':''}" onclick="tvToggleDt('${k}')">${l}</button>`).join('')}<small class="tv-dth">${c.dt?'Les tâches affichées ont toutes les dates cochées dans la période du curseur.':'Aucune case : tâches créées jusqu’à la fin de la période.'}</small></div></details>
+    <details class="tv-rib" ${O.m?'open':''} ontoggle="window._tvOpen.m=this.open"><summary>🧰 Métier <small class="tv-ind">· ${c.met?esc(c.met.split(',').map(k=>k==='__none'?'Sans métier':((state.metiers||[]).find(m=>m.id===k)||{}).nom||'').filter(Boolean).join(', ')):'Tous les métiers'}</small></summary><div class="tv-row"><div class="tv-tagbox" id="tvTagBox"></div></div></div></details>
     <details class="tv-rib" ${O.e?'open':''} ontoggle="window._tvOpen.e=this.open"><summary>◐ État <small class="tv-ind">· ${({'':'Toutes les tâches',afaire:'À faire',encours:'En cours',retard:'En retard',fait:'Fait'})[c.etat||'']}</small></summary><div class="tv-row"><span class="tv-seg" title="Filtre sur l'état">${et('','Tous')}${et('afaire','À faire')}${et('encours','En cours')}${et('retard','⏰ En retard')}${et('fait','Fait')}</span>
-    <span class="tv-info">Tâches créées jusqu'au ${tvFr(cur.to)} · ${esc(niv||'')} : ${vis} tâche${vis>1?'s':''} affichée${vis>1?'s':''} sur ${tn.length}</span></div></details></div>`;
+    <span class="tv-info">${c.dt?'Période du '+tvFr(cur.from)+' au '+tvFr(cur.to):'Tâches créées jusqu\'au '+tvFr(cur.to)} · ${esc(niv||'')} : ${vis} tâche${vis>1?'s':''} affichée${vis>1?'s':''} sur ${tn.length}</span></div></details></div>`;
+  try{ tvMetDraw(); }catch(e){}
 }
+var TV_PAL=[['#E7F3F8','#1F6C9F'],['#FBE4E4','#9E3B38'],['#EEE0DA','#64473A'],['#E8DEEE','#6940A5'],['#DDEBF1','#2B5C8A'],['#FDECC8','#8A5F0A'],['#DBEDDB','#2E6A3F'],['#F4E0EB','#8F3A6B']];
+function tvTagCol(k){ let h=0; String(k).split('').forEach(ch=>h=(h*31+ch.charCodeAt(0))>>>0); return TV_PAL[h%TV_PAL.length]; }
+function tvTagHtml(k,x){ const m=k==='__none'?{nom:'Sans métier'}:((state.metiers||[]).find(m=>m.id===k)||{nom:k}); const c=tvTagCol(k); return `<span class="tv-tag" style="background:${c[0]};color:${c[1]}">${esc(m.nom)}${x?`<b onclick="event.stopPropagation();tvToggleMet('${esc(k)}')" title="Retirer">×</b>`:''}</span>`; }
+window.tvMetDD=function(on){ window._tvMetDD=on; tvMetDraw(); };
+window.tvMetQ=function(v){ window._tvMetQv=v; tvMetDraw(true); };
+function tvMetDraw(keep){ const box=document.getElementById('tvTagBox'); if(!box) return;
+  const sel=(tvCfg().met||'').split(',').filter(Boolean), q=(window._tvMetQv||'').toLowerCase(), open=!!window._tvMetDD;
+  const opts=(state.metiers||[]).map(m=>m.id).concat(['__none']).filter(k=>{ const nom=k==='__none'?'sans métier':((state.metiers||[]).find(m=>m.id===k)||{}).nom||''; return !q||nom.toLowerCase().includes(q); });
+  box.innerHTML=`<div class="tv-tb-in" onclick="tvMetDD(true)">${sel.length?sel.map(k=>tvTagHtml(k,true)).join(''):'<span class="tv-tb-ph">Tous les métiers</span>'}<input type="text" id="tvMetInp" placeholder="${sel.length?'':'Rechercher…'}" value="${esc(window._tvMetQv||'')}" oninput="tvMetQ(this.value)" onfocus="if(!window._tvMetDD)tvMetDD(true)"><button type="button" class="tv-tb-x" title="Tous les métiers" onclick="event.stopPropagation();window._tvMetQv='';tvSetMet('')">✕</button></div>
+  ${open?`<div class="tv-tb-dd"><div class="tv-tb-h">Sélectionnez un ou plusieurs métiers</div>${opts.map(k=>`<div class="tv-tb-o ${sel.includes(k)?'on':''}" onclick="tvToggleMet('${esc(k)}')">${tvTagHtml(k,false)}${sel.includes(k)?'<i>✓</i>':''}</div>`).join('')||'<div class="tv-tb-h">Aucun résultat</div>'}</div>`:''}`;
+  if(open&&(keep||window._tvMetFocus)){ const i=document.getElementById('tvMetInp'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } } }
+document.addEventListener('click',e=>{ if(window._tvMetDD&&!e.target.closest('#tvTagBox')){ window._tvMetDD=false; window._tvMetQv=''; tvMetDraw(); } });
 function tvRefresh(){ persist(); try{renderJour()}catch(e){} renderTravaux(); if(window.rtRender) window.rtRender(); }
+window.tvToggleDt=function(k){ const c=tvCfg(); const a=(c.dt||'').split('').filter(Boolean); const i=a.indexOf(k); if(i<0) a.push(k); else a.splice(i,1); c.dt=['c','d','f'].filter(x=>a.includes(x)).join(''); tvRefresh(); };
 window.tvSetMet=function(k){ tvCfg().met=k||''; tvRefresh(); };
 window.tvToggleMet=function(k){ const c=tvCfg(); const a=c.met?c.met.split(','):[]; const i=a.indexOf(k); if(i<0) a.push(k); else a.splice(i,1); tvSetMet(a.join(',')); };
 window.gMetHas=function(k){ const m=(typeof tvCfg==='function'&&tvCfg().met)||''; return !m||m.split(',').includes(k); };
@@ -14667,7 +14687,7 @@ setInterval(projChipRefresh,1500); document.addEventListener('DOMContentLoaded',
   const base=window.travVisible;
   if(typeof base==='function'){
     window.travVisible=function(t){
-      try{ const c=tvCfg(); const k=JSON.stringify([c.scale,c.sel,c.ref,c.etat,c.met,window.travauxNiveauActif,getDateEtat('travaux')]);
+      try{ const c=tvCfg(); const k=JSON.stringify([c.scale,c.sel,c.ref,c.etat,c.met,c.dt,window.travauxNiveauActif,getDateEtat('travaux')]);
         if(k!==sig){ sig=k; snap={}; (state.tasks||[]).forEach(x=>{ snap[x.id]=x.etat||'afaire'; }); }
         if(t && snap[t.id]!==undefined && snap[t.id]!==(t.etat||'afaire')){ const o=Object.create(t); o.etat=snap[t.id]; return base(o); }
       }catch(e){}
@@ -17572,5 +17592,16 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
 <style>.jr-plan .jr-pin{cursor:grab;touch-action:none}.jr-plan .jr-pin:active{cursor:grabbing}</style>
 <style id="hideCss">
 .ruban[onclick*="'sujets'"],#ilruban-sujets,#baseAssocPage{display:none!important}
+</style>
+<style id="tvTagCss">
+.tv-dt{flex-wrap:wrap;gap:6px;align-items:center}.tv-dtl{font-size:12px;color:#667}.tv-dth{font-size:11.5px;color:#667;flex-basis:100%}
+.tv-tagbox{position:relative;flex:1;min-width:260px}
+.tv-tb-in{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid #cfd5d9;border-radius:10px;background:#fff;padding:6px 8px;min-height:40px;cursor:text}
+.tv-tb-in input{border:0!important;outline:0!important;flex:1;min-width:90px;padding:4px!important;background:transparent!important;min-height:0!important;box-shadow:none!important}
+.tv-tb-ph{color:#8a949a;font-size:13px}.tv-tb-x{border:0;background:none;cursor:pointer;color:#8a949a;font-size:14px}
+.tv-tag{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:3px 9px;font:600 13px/1.3 sans-serif}.tv-tag b{cursor:pointer;opacity:.6;font-size:15px}.tv-tag b:hover{opacity:1}
+.tv-tb-dd{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:9000;background:#fff;border:1px solid #d5dbe0;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.22);max-height:320px;overflow:auto;padding:4px}
+.tv-tb-h{font-size:12px;color:#8a949a;padding:8px 10px}
+.tv-tb-o{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;cursor:pointer}.tv-tb-o:hover,.tv-tb-o.on{background:#f1f0ec}.tv-tb-o i{color:#16232B;font-style:normal;font-weight:700}
 </style>
 </body></html>
