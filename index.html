@@ -3974,7 +3974,8 @@ function planUpdateConfirm(src, w, h){
     <div class="modal-actions"><button class="primary" onclick="planUpdateApply()">Remplacer le plan</button><button class="ghost" onclick="planUpdateCancel()">Annuler</button></div>`);
 }
 function planUpdateCancel(){ planUpdateTarget = null; planPendingImg = null; closeModal(); }
-function planUpdateApply(){
+function planUpdateApply(){ const _p0=planUpdateTarget; try{ planUpdateApply0(); }finally{ try{ const pl=planById(_p0); if(pl&&state.ged){ state.ged.filter(r=>r.planId===pl.id).forEach(r=>{ r.indice=String.fromCharCode(64+Math.min(26,pl.version||1)); r.date=todayISO(); r.statut='À jour'; }); persist(); if(document.getElementById('gedRb')) gedRedraw(); } }catch(e){} } }
+function planUpdateApply0(){
   const pl = planById(planUpdateTarget); if(!pl || !planPendingImg) return;
   pl.prev = {src:pl.src, w:pl.w, h:pl.h, date:pl.date||'', version:pl.version||1};
   pl.src = planPendingImg.src; pl.w = planPendingImg.w; pl.h = planPendingImg.h; pl.version = (pl.version||1)+1; pl.date = todayStr();
@@ -5813,9 +5814,11 @@ function gedSyncPlans(){ state.ged = state.ged||[]; let ch=false; try{ if(window
   (state.plans||[]).forEach(pl=>{ if(!state.ged.some(r=>r.planId===pl.id)){ state.ged.push({id:'G'+pl.id, planId:pl.id, niveau:pl.niveau||'', corps:'', type:'Plan de repérage', nom:pl.nom||pl.id, phase:'', indice:'', date:'', statut:'À jour', lien:''}); ch=true; } });
   if(ch) persist(); }
 function gedRows(){ state.ged = state.ged||[]; return state.ged; }
+function gedPlanOf(r){ return r.planId?planById(r.planId):(state.plans||[]).find(p=>(p.nom||p.id)===r.nom); }
+function gedNewIndice(id){ const r=gedRows().find(x=>x.id===id), pl=r&&gedPlanOf(r); if(!pl){ miniAlert('Aucun plan chargé pour cette ligne.'); return; } r.planId=pl.id; planStartUpdate(pl.id); }
 function gedPlanSrc(r){ const pl=r.planId?planById(r.planId):(state.plans||[]).find(p=>(p.nom||p.id)===r.nom); return pl?planSrc(pl):''; }
 function gedTog(id){ if(gedOpen.has(id)) gedOpen.delete(id); else gedOpen.add(id); gedRedraw(); }
-function gedCorpsList(){ const a=(state.metiers||[]).map(m=>m.nom); gedRows().forEach(r=>{ if(r.corps&&!a.includes(r.corps)) a.push(r.corps); }); return a; }
+function gedCorpsList(){ const a=(state.zones||[]).slice(); gedRows().forEach(r=>{ if(r.corps&&!a.includes(r.corps)) a.push(r.corps); }); return a; }
 function gedOpts(list,val,blank){ return (blank!==undefined?`<option value="">${esc(blank)}</option>`:'')+list.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join(''); }
 function gedHtml(){
   try{ gedSyncPlans(); }catch(e){}
@@ -5827,7 +5830,7 @@ function gedHtml(){
   const cell = (r,k,html)=>`<td data-k="${k}">${html}</td>`;
   const inp = (r,k,ph,type)=>`<input type="${type||'text'}" value="${esc(r[k]||'')}" placeholder="${ph||''}" onchange="gedSet('${r.id}','${k}',this.value)">`;
   const sel = (r,k,l,blank)=>`<select onchange="gedSet('${r.id}','${k}',this.value)">${gedOpts(l,r[k]||'',blank)}</select>`;
-  const tr = list.map(r=>{ const src=gedPlanSrc(r), op=gedOpen.has(r.id); return `<tr>${'<td class="ged-p">'+(src?`<button type="button" title="${op?'Replier':'Déplier'} l’aperçu" onclick="gedTog(\'${r.id}\')">${op?'▾':'▸'} 🖼</button>`:'')+'</td>'}${cell(r,'niveau',sel(r,'niveau',niv,'—'))}${cell(r,'corps',`<input list="gedCorps" value="${esc(r.corps||'')}" placeholder="Corps d’état" onchange="gedSet('${r.id}','corps',this.value)">`)}${cell(r,'type',`<input list="gedTypes" value="${esc(r.type||'')}" placeholder="Type de plan" onchange="gedSet('${r.id}','type',this.value)">`)}${cell(r,'nom',`<input list="gedPlans" value="${esc(r.nom||'')}" placeholder="Nom du plan" onchange="gedSet('${r.id}','nom',this.value)">`)}${cell(r,'phase',sel(r,'phase',GED_PHASES,'—'))}${cell(r,'indice',inp(r,'indice','Ind.'))}${cell(r,'date',inp(r,'date','','date'))}${cell(r,'statut',sel(r,'statut',GED_STAT))}${cell(r,'lien',inp(r,'lien','Lien / fichier'))}<td class="ged-x"><button type="button" title="Supprimer la ligne" onclick="gedDel('${r.id}')">✕</button></td></tr>${op&&src?`<tr class="ged-prev"><td colspan="11"><img src="${esc(src)}" alt="${esc(r.nom||'')}"></td></tr>`:''}`; }).join('');
+  const tr = list.map(r=>{ const src=gedPlanSrc(r), op=gedOpen.has(r.id); return `<tr>${'<td class="ged-p">'+(src?`<button type="button" title="${op?'Replier':'Déplier'} l’aperçu" onclick="gedTog(\'${r.id}\')">${op?'▾':'▸'} 🖼</button>`:'')+'</td>'}${cell(r,'niveau',sel(r,'niveau',niv,'—'))}${cell(r,'corps',`<input list="gedCorps" value="${esc(r.corps||'')}" placeholder="Corps d’état" onchange="gedSet('${r.id}','corps',this.value)">`)}${cell(r,'type',`<input list="gedTypes" value="${esc(r.type||'')}" placeholder="Type de plan" onchange="gedSet('${r.id}','type',this.value)">`)}${cell(r,'nom',`<input list="gedPlans" value="${esc(r.nom||'')}" placeholder="Nom du plan" onchange="gedSet('${r.id}','nom',this.value)">`)}${cell(r,'phase',sel(r,'phase',GED_PHASES,'—'))}${cell(r,'indice',`<span style="display:flex;align-items:center">${inp(r,'indice','Ind.')}${gedPlanOf(r)?`<button type="button" class="ged-up" title="Déposer un nouvel indice (remplace le plan, l’ancien est gardé)" onclick="gedNewIndice('${r.id}')">⬆</button>`:''}</span>`)}${cell(r,'date',inp(r,'date','','date'))}${cell(r,'statut',sel(r,'statut',GED_STAT))}${cell(r,'lien',inp(r,'lien','Lien / fichier'))}<td class="ged-x"><button type="button" title="Supprimer la ligne" onclick="gedDel('${r.id}')">✕</button></td></tr>${op&&src?`<tr class="ged-prev"><td colspan="11"><img src="${esc(src)}" alt="${esc(r.nom||'')}"></td></tr>`:''}`; }).join('');
   return `<details class="ged-rb" id="gedRb" open><summary>🗂️ GED <small>${rows.length} plan${rows.length>1?'s':''}</small></summary>
     <div class="ged-bar"><input type="search" id="gedQ" placeholder="🔍 Rechercher dans la GED…" value="${esc(f.q)}" oninput="gedF.q=this.value; gedRedraw(true)">
       <select onchange="gedF.niv=this.value; gedRedraw()">${gedOpts(niv,f.niv,'Tous les niveaux')}</select>
@@ -17507,6 +17510,7 @@ body.lv-etudes:not(.lv-open) .fp-btn[data-k=taches]{display:none!important}
 .ged-t td input:focus,.ged-t td select:focus{outline:2px solid #F2A900;background:#fffaf0}
 .ged-t tr:hover td{background:#fbfaf6}
 .ged-p{width:64px;text-align:center}.ged-p button{background:#f4f2ec;border:1px solid #d5dbe0;border-radius:8px;padding:4px 7px;cursor:pointer;font-size:12px}.ged-prev td{padding:10px!important;background:#fafaf7}.ged-prev img{display:block;max-width:100%;max-height:420px;margin:auto;border:1px solid #d5dbe0;border-radius:8px;background:#fff}
+.ged-up{background:#F2A900;border:0;border-radius:6px;padding:4px 7px;cursor:pointer;font-weight:700;margin-right:4px}
 .ged-x{width:34px;text-align:center}.ged-x button{background:none;border:0;color:#B4432D;cursor:pointer;font-size:14px;opacity:.5}.ged-x button:hover{opacity:1}
 </style>
 <style id="pvCss">
