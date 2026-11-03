@@ -16832,19 +16832,25 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
       let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; P.forEach(q=>{ x0=Math.min(x0,q[0]); x1=Math.max(x1,q[0]); y0=Math.min(y0,q[1]); y1=Math.max(y1,q[1]); });
       const wid = x1-x0, id = 'nbc'+it.i;
       const stroke = x.st==='late'?'hsl(4,70%,45%)':x.st==='warn'?'hsl(30,92%,45%)':'#222a30', sw = nbSel===it.nv?4:2;
-      const prev = (x.prevu!==null&&x.n)?`<line x1="${(x0+wid*x.prevu/100).toFixed(1)}" x2="${(x0+wid*x.prevu/100).toFixed(1)}" y1="${y0}" y2="${y1}" stroke="#16232B" stroke-width="2"/>`:'';
+      // bornes du contour dans le plan, projetées : le trait d'avancement suit la perspective (parallèle aux arêtes en profondeur)
+      const sp = it.c.pts2||it.c.pts; let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; sp.forEach(q=>{ bx0=Math.min(bx0,q[0]); bx1=Math.max(bx1,q[0]); by0=Math.min(by0,q[1]); by1=Math.max(by1,q[1]); });
+      const pj = (px,py)=>{ const q=prj([px,py],-it.z); return [q[0]+ox,q[1]+oy]; };
+      const band = pc=>{ const xt=bx0+(bx1-bx0)*pc/100, a=pj(bx0-.01,by0-.01), b=pj(xt,by0-.01), c=pj(xt,by1+.01), d=pj(bx0-.01,by1+.01); return poly([a,b,c,d]); };
+      const lineAt = pc=>{ const xt=bx0+(bx1-bx0)*pc/100, a=pj(xt,by0-.01), b=pj(xt,by1+.01); return [a,b]; };
+      const prev = (x.prevu!==null&&x.n)?(()=>{ const [a,b]=lineAt(x.prevu); return `<line x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}" stroke="#16232B" stroke-width="2"/>`; })():'';
+      const mid = pj((bx0+bx1)/2,(by0+by1)/2);
       const cyL = (y0+y1)/2 + 0, txt = x.n ? (x.prevu!==null?`prévu ${x.prevu}%`:'sans date')+(x.fin?` · fin ${x.fin.slice(8,10)}/${x.fin.slice(5,7)}`:'') : 'aucune tâche';
       const lx = maxX+ox+26;
       g += `<g class="nbb-lv${it.own?'':' nbb-nop'}" data-n="${esc2(it.nv)}" onclick="nbOpen('${esc2(it.nv)}')" style="cursor:pointer"><title>${esc2(lab)} — avancement ${x.actual}%${it.own?'':' (contour de plan non disponible : forme du niveau voisin)'}</title>
         ${sides}<clipPath id="${id}"><polygon points="${poly(P)}"/></clipPath>
         <polygon points="${poly(P)}" fill="var(--paper,#fff)"/>
-        <rect x="${x0}" y="${y0}" width="${(wid*x.actual/100).toFixed(1)}" height="${(y1-y0).toFixed(1)}" fill="${col}" clip-path="url(#${id})" opacity=".92"/>
+        <polygon points="${band(x.actual)}" fill="${col}" clip-path="url(#${id})" opacity=".92"/>
         <g clip-path="url(#${id})">${prev}</g>
         <polygon points="${poly(P)}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" ${it.own?'':'stroke-dasharray="6 4"'}/>
         <line x1="${(x1+6).toFixed(1)}" x2="${(lx-8).toFixed(1)}" y1="${cyL.toFixed(1)}" y2="${cyL.toFixed(1)}" stroke="#9aa3aa" stroke-dasharray="2 3"/>
         <text x="${lx}" y="${(cyL-6).toFixed(1)}" font-size="20" font-weight="700" fill="#16232B">${esc2(lab)}${x.st==='late'?' ⏰':x.st==='warn'?' ⚠':''}</text>
         <text x="${lx}" y="${(cyL+13).toFixed(1)}" font-size="12.5" fill="#55606a">${esc2(txt)}</text>
-        <text x="${(lx+labW-20)}" y="${(cyL-6).toFixed(1)}" font-size="20" font-weight="700" text-anchor="end" fill="#16232B">${x.actual}%</text></g>`;
+        <text x="${mid[0].toFixed(1)}" y="${(mid[1]+9).toFixed(1)}" font-size="28" font-weight="800" text-anchor="middle" fill="#16232B" stroke="#fff" stroke-width="5" paint-order="stroke" stroke-linejoin="round">${x.actual}%</text></g>`;
     });
     // sol sous le bâtiment
     const gy = (maxY-minY)+oy+6;
