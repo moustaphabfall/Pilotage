@@ -7064,9 +7064,10 @@ function projParamEdit(){
       ${exe ? row('Schéma d’enchaînement', sel('schema', PROJ_SCHEMAS, P.schema), det(PROJ_SCHEMAS,P.schema)) : ''}
     </tbody></table>
     ${exe?'':'<p class="empty-note" style="margin-top:8px">En phase PRO, rien n’est traité pour l’instant : les étapes et le suivi par niveaux seront activés en phase EXE.</p>'}
-    <h4 style="margin:16px 0 4px; font-size:14px">Ordre des niveaux <small style="color:var(--ink-soft); font-weight:400">(ordre d’avancement)</small></h4>
+    <h4 style="margin:16px 0 4px; font-size:14px">Gérer les niveaux <small style="color:var(--ink-soft); font-weight:400">(renommer, ajouter, retirer, ordre d’avancement)</small></h4>
     <p class="empty-note" style="margin:0 0 8px">Glissez la poignée ⋮⋮ d’un niveau : il reste dans cette liste et les autres s’écartent. Cliquez sur le numéro d’un niveau pour saisir son rang, ou sélectionnez un niveau et utilisez les flèches ↑ ↓. Les niveaux s’affichent dans cet ordre partout.</p>
-    <div id="nivRib" class="niv-rib">${o.map((n,i)=>`<div class="niv-rb" tabindex="0" data-n="${esc(n)}"><span class="niv-rb-g">⋮⋮</span><span class="ouv-chip niv-rk" title="Cliquez pour saisir le rang" style="cursor:text">${i+1}</span><b style="flex:1">${esc(nbLab(n))}</b><button type="button" class="niv-del" title="Supprimer ce niveau" aria-label="Supprimer ${esc(nbLab(n))}" onclick="event.stopPropagation();ribDeleteNiveau(this.closest('.niv-rb').dataset.n)" style="border:0;background:transparent;font-size:18px;cursor:pointer;padding:4px 8px">🗑</button></div>`).join('')}</div>
+    <div id="nivRib" class="niv-rib">${o.map((n,i)=>`<div class="niv-rb" tabindex="0" data-n="${esc(n)}"><span class="niv-rb-g">⋮⋮</span><span class="ouv-chip niv-rk" title="Cliquez pour saisir le rang" style="cursor:text">${i+1}</span><b style="flex:1;cursor:text" class="niv-name" title="Cliquez pour renommer ce niveau" onclick="event.stopPropagation();nivGestRename(this.closest('.niv-rb').dataset.n)">${esc(nbLab(n))} <small style="opacity:.5">✎</small></b><button type="button" class="niv-del" title="Supprimer ce niveau" aria-label="Supprimer ${esc(nbLab(n))}" onclick="event.stopPropagation();ribDeleteNiveau(this.closest('.niv-rb').dataset.n)" style="border:0;background:transparent;font-size:18px;cursor:pointer;padding:4px 8px">🗑</button></div>`).join('')}</div>
+    <div style="margin-top:10px"><button type="button" class="primary" onclick="nivGestAdd()">＋ Ajouter un niveau</button></div>
     <div class="obj-box" id="objBox" style="margin-top:18px">
       <h4 style="margin:0 0 8px; font-size:14px">🎯 Objectifs planning</h4>
       <div class="field" style="max-width:260px;"><label>Date de fin d'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div>
@@ -7076,6 +7077,18 @@ function projParamEdit(){
   nbRibBind(); try{ renderObjectifsPanel(); }catch(e){ console.error(e); }
 }
 /* Ruban des niveaux : appui long puis glisser pour changer l'ordre */
+window.nivGestAdd=function(){ miniPrompt('Nom du nouveau niveau :','',v=>{ const nom=(v||'').trim(); if(!nom) return;
+    if(state.niveaux.some(x=>x.toLowerCase()===nom.toLowerCase())){ miniAlert('Ce niveau existe déjà.'); return; }
+    const ord=[...document.querySelectorAll('#nivRib .niv-rb')].map(r=>r.dataset.n); state.niveaux.push(nom); ord.push(nom); nbRibSave(ord,nom); }); };
+window.nivGestRename=function(n){ miniPrompt('Nouveau nom du niveau :',n,v=>{ v=(v||'').trim(); if(!v||v===n) return;
+    if(state.niveaux.some(x=>x.toLowerCase()===v.toLowerCase())){ miniAlert('Ce niveau existe déjà.'); return; }
+    state.niveaux=state.niveaux.map(x=>x===n?v:x);
+    (state.zonesChantier||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; }); (state.zoneFamilles||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; });
+    (state.plans||[]).forEach(p=>{ if(p.niveau===n) p.niveau=v; }); (state.tasks||[]).forEach(t=>{ if(t.niveau===n) t.niveau=v; }); (state.ged||[]).forEach(r=>{ if(r.niveau===n) r.niveau=v; });
+    if(state.objectifs&&state.objectifs.datesNiveau&&state.objectifs.datesNiveau[n]!==undefined){ state.objectifs.datesNiveau[v]=state.objectifs.datesNiveau[n]; delete state.objectifs.datesNiveau[n]; }
+    if(state.niveauCotes&&state.niveauCotes[n]!==undefined){ state.niveauCotes[v]=state.niveauCotes[n]; delete state.niveauCotes[n]; }
+    try{ if(travauxNiveauActif===n) travauxNiveauActif=v; }catch(e){}
+    const ord=[...document.querySelectorAll('#nivRib .niv-rb')].map(r=>r.dataset.n===n?v:r.dataset.n); nbRibSave(ord,v); }); };
 function nbRibSave(ord, focusN){
   state.perimetre = state.perimetre||{niveaux:[]}; state.perimetre.niveaux = ord;
   try{ nbApplyOrder(); persist(); renderAll(); }catch(e){}
