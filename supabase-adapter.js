@@ -14,7 +14,22 @@
   css.textContent = '#pgAuth{position:fixed;inset:0;z-index:99999;background:#2B2F33;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif}#pgAuth form,#pgAuth .box{background:#fff;border-top:6px solid #F2A900;border-radius:10px;padding:22px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}#pgAuth h2{margin:0;font-size:20px}#pgAuth input{padding:11px;border:1px solid #ccc;border-radius:6px;font-size:16px}#pgAuth button{padding:12px;border:0;border-radius:6px;background:#CC5F00;color:#fff;font-size:16px;font-weight:600}#pgAuth button.l{background:#eee;color:#222}#pgAuth .e{color:#B4432D;font-size:13px;min-height:16px}#pgAuth small{color:#666}';
   document.head.appendChild(css);
 
-  function screen(html){ let d = document.getElementById('pgAuth'); if(!d){ d = document.createElement('div'); d.id = 'pgAuth'; document.body.appendChild(d); } d.innerHTML = html; return d; }
+  /* œil : afficher le mot de passe temporairement (se remasque seul après 8 s, à l'envoi et en quittant le champ) */
+  function eyes(d){
+    d.querySelectorAll('input[type=password]').forEach(inp=>{
+      const w = document.createElement('div'); w.style.cssText = 'position:relative;display:block'; inp.parentNode.insertBefore(w, inp); w.appendChild(inp); inp.style.paddingRight = '44px'; inp.style.boxSizing = 'border-box'; inp.style.width = '100%';
+      const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label','Afficher le mot de passe'); b.title = 'Afficher / masquer';
+      b.style.cssText = 'position:absolute;right:4px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;background:none;padding:0;cursor:pointer;opacity:.65;display:flex;align-items:center;justify-content:center;margin:0';
+      const ON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16232B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+      const OFF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16232B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.9 10.9 0 0 1 12 19c-6.4 0-10-7-10-7a18 18 0 0 1 4.1-5M9.9 5.2A10 10 0 0 1 12 5c6.4 0 10 7 10 7a18 18 0 0 1-2.1 3"/><path d="M1 1l22 22"/></svg>';
+      let t = null; const hide = ()=>{ clearTimeout(t); inp.type = 'password'; b.innerHTML = ON; b.setAttribute('aria-label','Afficher le mot de passe'); };
+      b.innerHTML = ON;
+      b.onmousedown = e=>e.preventDefault();
+      b.onclick = ()=>{ if(inp.type==='password'){ inp.type = 'text'; b.innerHTML = OFF; b.setAttribute('aria-label','Masquer le mot de passe'); clearTimeout(t); t = setTimeout(hide, 8000); } else hide(); };
+      w.appendChild(b); const f = inp.form; if(f) f.addEventListener('submit', hide);
+    });
+  }
+  function screen(html){ let d = document.getElementById('pgAuth'); if(!d){ d = document.createElement('div'); d.id = 'pgAuth'; document.body.appendChild(d); } d.innerHTML = html; try{ eyes(d); }catch(e){} return d; }
   function close(){ const d = document.getElementById('pgAuth'); if(d) d.remove(); }
 
   /* Connexion par un autre service (Google / Gmail, Microsoft / Outlook / compte professionnel) : proposée si activée côté serveur. */
