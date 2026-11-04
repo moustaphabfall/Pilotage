@@ -124,11 +124,11 @@
   }
 
   /* Projet : chaque utilisateur appartient à un ou plusieurs projets (rôle, fonctionnalités et validité propres à chacun). */
-  async function chooseProjet(){
+  async function chooseProjet(pre){
     const today = new Date().toISOString().slice(0,10), glob = me.role==='admin';
     let projets = [], mem = {};
-    { const r = await sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at'); projets = r.data||[]; }
-    { const r = await sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction').eq('user_id', me.id); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
+    { const r = await (pre?pre.p:sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at')); projets = r.data||[]; }
+    { const r = await (pre?pre.m:sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction').eq('user_id', me.id)); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
     projets = projets.filter(p=>glob || (mem[p.id] && mem[p.id].actif));
     if(!projets.length){
       await new Promise(()=>{ const d = screen('<div class="box"><h2>🚫 Aucun projet</h2><p>Votre compte n’est rattaché à aucun projet actif. Contactez l’administrateur.</p><button class="l" id="pgOut">Se déconnecter</button></div>'); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); }; });
@@ -228,8 +228,8 @@
     });
   }
   /* Sans réseau : jamais d'entrée libre. Biométrie activée et instantané valide → déverrouillage ; sinon écran bloquant (il faut du réseau). */
-  async function offlineEntry(){
-    if(await reach()) return null;
+  async function offlineEntry(unreached){
+    if(!unreached && await reach()) return null;
     const sn = lsGet(SNAP);
     if(snapOk(sn) && bioOk(sn)){ if(await bioGate(sn)) return sn; }
     await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application ne se rouvre qu’avec l’empreinte ou le visage activés au préalable, et jusqu’à vendredi soir. Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
@@ -245,14 +245,16 @@
     return db;
   }
   async function ensure(){
-    { const sn = await offlineEntry(); if(sn) return startOffline(sn); }
-    let {data:{session}} = await sb.auth.getSession();
+    const [up, sess0] = await Promise.all([reach(), sb.auth.getSession().catch(()=>({data:{session:null}}))]);   /* réseau et session en même temps */
+    if(!up){ const sn = await offlineEntry(true); if(sn) return startOffline(sn); }
+    let {data:{session}} = sess0;
     let banner = null;
     if(session && RET && /invite|recovery/.test(RET[1])){ await passwordUI(); session = null; banner = 'Mot de passe enregistré. Connectez-vous avec votre e-mail et ce nouveau mot de passe.'; }
     if(session && DV){ try{ await sb.rpc('appareil_valider', {p_dev:DV}); await sb.rpc('appareil_valider', {p_dev:DEV}); }catch(e){} try{ history.replaceState(null,'',location.pathname); }catch(e){} }   /* lien de vérification cliqué : cet appareil (et celui qui attend) sont validés */
     if(!session){ await loginUI(banner); ({data:{session}} = await sb.auth.getSession()); }
+    const pre = {p:Promise.resolve(sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at')), m:Promise.resolve(sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction').eq('user_id', session.user.id))};   /* lancées pendant la vérification du profil */
     await profile(session.user);
-    await chooseProjet();
+    await chooseProjet(pre);
     try{ window.PILOTAGE_USER_EMAIL = session.user.email; }catch(e){}
     await openStore();
     close();
