@@ -18023,7 +18023,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
     const more=(t.dependances||[]).length>1?'<small style="display:block;opacity:.65">+ '+((t.dependances||[]).length-1)+' autre(s) étape(s) précédente(s) : '+E((t.dependances||[]).slice(1).map(d=>d).join(', '))+'</small>':'';
     const df=document.createElement('div'); df.innerHTML='<div class="field"><label>⬅ Étape précédente</label><input id="tf-prev" list="tfTasks" value="'+E(pr?lbl(pr):'')+'" placeholder="— choisir une tâche du projet —" onchange="tfDep(\''+t.id+'\',\'prev\',this)">'+more+'</div><div class="field"><label>➡ Étape suivante</label><input id="tf-next" list="tfTasks" value="'+E(nx?lbl(nx):'')+'" placeholder="— choisir une tâche du projet —" onchange="tfDep(\''+t.id+'\',\'next\',this)"></div><datalist id="tfTasks">'+(state.tasks||[]).filter(x=>x.id!==t.id).map(x=>'<option value="'+E(lbl(x))+'">').join('')+'</datalist>';
     if(depF){ depF.style.display='none'; depF.before(...df.childNodes); } else [...df.childNodes].forEach(n=>plan.appendChild(n));
-    g.append(tech,ing,plan,co,ph,au);
+    const mkSep=(c,h)=>{ const d=document.createElement('div'); d.className='tf-sep '+c; d.innerHTML=h; return d; }; g.append(mkSep('cons','Construction'),tech,ing,mkSep('gp','Gestion de projet <small>manipule la construction</small>'),plan,co,ph,au);
     const h3=mb.querySelector('h3'); if(h3&&!mb.querySelector('.tf-kind')){ const kd=document.createElement('div'); kd.className='tf-kind'; kd.textContent='Fiche d’ouvrage'; h3.before(kd); } if(fg){ fg.replaceWith(g); } else if(h3&&h3.nextSibling) mb.insertBefore(g,h3.nextSibling); else mb.appendChild(g);
     const md=mb.closest('.modal'); const wide=()=>{ if(md){ md.classList.add('fiche-wide'); md.classList.toggle('tf-wide',g.classList.contains('cols')); } }; wide();
     if(h3&&!document.getElementById('tfViewBtn')){ const b=document.createElement('button'); b.type='button'; b.id='tfViewBtn'; b.className='td-brush'; b.title='Changer la disposition de la fiche'; b.textContent=getV()==='colonnes'?'▤ Vue : colonnes':'▥ Vue : liste'; b.onclick=()=>{ const on=g.classList.toggle('cols'); wide(); setV(on?'colonnes':'liste'); b.textContent=on?'▤ Vue : colonnes':'▥ Vue : liste'; }; h3.appendChild(b); }
@@ -18297,6 +18297,19 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
 .pjA-b svg{flex:none}
 .pjA-s{margin-top:6px; font-size:13px; opacity:.85}
 .pjdf-v{padding:8px 0; font-size:14px}
+
+/* fiches : deux grandes parties, Construction (A, E) et Gestion de projet (T, C) */
+.tf-sep{font:700 13px 'Space Grotesk',system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase; color:#B8860B; padding:6px 2px 4px; border-bottom:2px solid #FFC400; margin-top:6px}
+.tf-sep small{font:500 11.5px 'IBM Plex Sans',system-ui,sans-serif; letter-spacing:0; text-transform:none; opacity:.8; margin-left:8px}
+.tf-grid .tf-sep.cons{grid-column:1;grid-row:1}.tf-grid .tf-tech{grid-column:1;grid-row:2}.tf-grid .tf-ing{grid-column:1;grid-row:3}
+.tf-grid .tf-sep.gp{grid-column:1;grid-row:4}.tf-grid .tf-plan{grid-column:1;grid-row:5}.tf-grid .tf-cout{grid-column:1;grid-row:6}.tf-grid .tf-autres{grid-column:1;grid-row:7}.tf-grid .tf-photos{grid-column:2;grid-row:1 / span 3}
+.tf-grid.cols .tf-sep.cons{grid-column:1;grid-row:1}.tf-grid.cols .tf-tech{grid-column:1;grid-row:2}.tf-grid.cols .tf-ing{grid-column:1;grid-row:3}
+.tf-grid.cols .tf-sep.gp{grid-column:2;grid-row:1}.tf-grid.cols .tf-plan{grid-column:2;grid-row:2}.tf-grid.cols .tf-cout{grid-column:2;grid-row:3}
+.tf-grid.cols .tf-photos{grid-column:3;grid-row:1 / span 1}.tf-grid.cols .tf-autres{grid-column:3;grid-row:2 / span 2}
+.tf-grid.pjdf{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tf-grid.pjdf .tf-sep{grid-column:1 / -1 !important;grid-row:auto !important}
+.tf-grid.pjdf>.tf-box{grid-column:auto !important;grid-row:auto !important}
+@media (max-width:900px){.tf-grid.pjdf{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){ #pjDb .pjd-mt{transition:none} }
 </style>
 <script id="pjV140Js">
@@ -18588,8 +18601,6 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
  const fsz=n=>!n?'':(n>1048576?(n/1048576).toFixed(1)+' Mo':Math.max(1,Math.round(n/1024))+' Ko');
  /* catalogue des documents d'étude, lu dans la base (tables mbf_*) */
  let CAT=LS('pj_mbf_cat',[])||[];
- const ouvFrom=j=>j.filter(x=>x.document_nom&&x.genre==='ouvrage').map(x=>({s:x.sous_bloc_code==='E_INF'?'INF':x.sous_bloc_code==='E_GO'?'GO':(x.bloc_code==='A'?'A':(x.sous_bloc_code||x.bloc_code)),n:x.nom,d:x.document_nom,i:x.icone||'',c:x.code}));
- (function(){ try{ const c=LS('pj_ouv',null); if(Array.isArray(c)&&c.length) OUV=c; fetch(SUPABASE_URL+'/rest/v1/mbf_types?select=code,nom,document_nom,bloc_code,sous_bloc_code,ordre,icone,genre&actif=eq.true&order=bloc_code,sous_bloc_code,ordre',{headers:{apikey:SUPABASE_KEY}}).then(r=>r.ok?r.json():null).then(j=>{ if(Array.isArray(j)&&j.length){ const o=ouvFrom(j); if(o.length){ OUV=o; LSset('pj_ouv',o); } } }).catch(()=>{}); }catch(_){} })();
  const modeSw=()=>'<div class="pjd-mode" role="group" aria-label="Mode" data-m="'+mode+'"><i class="pjd-mt"></i><button type="button" data-mode="etude" aria-pressed="'+(mode==='etude')+'">Étude</button><button type="button" data-mode="exe" aria-pressed="'+(mode==='exe')+'">Exé</button></div>';
  function setMode(m){ mode=m; LSset('pj_mode',m); document.body.classList.toggle('pj-etude',m==='etude'); popClose(); filtDraw(); dbRender(); }
  function passD(x){
@@ -18645,14 +18656,24 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
  /* ---------- fiches : ouvrage et document, en cadres A · E · T · C ---------- */
  let TC=[{"d":"Graphe","b":"T","ph":""},{"d":"Matrice de dépendances","b":"T","ph":""},{"d":"Planning Gantt","b":"T","ph":""},{"d":"Devis d'étude (chiffrage non validé)","b":"C","ph":"etude"},{"d":"Devis d'exécution (validé)","b":"C","ph":"exe"},{"d":"Facture","b":"C","ph":"exe"},{"d":"Avancement","b":"C","ph":"exe"},{"d":"Situation de travaux","b":"C","ph":"exe"}];
  const docTypes=()=>OUV.filter(o=>o.d).map(o=>[o.d,o.d+' · '+o.n]).concat(TC.map(t=>[t.d,t.d+' · '+(t.b==='T'?'Planning':'Coût')]));
- let SPECS=LS('pj_specs',[])||[], LOTS=LS('pj_lots',[])||[]; if(!SPECS.length) SPECS=[{"code":"","type_code":"A_murs_cloisons","nom":"Béton","ordre":1},{"code":"","type_code":"A_murs_cloisons","nom":"Bois","ordre":2},{"code":"","type_code":"A_murs_cloisons","nom":"Métallique","ordre":3},{"code":"","type_code":"A_murs_cloisons","nom":"Maçonnerie","ordre":4},{"code":"","type_code":"A_murs_cloisons","nom":"Plaque de plâtre","ordre":5},{"code":"","type_code":"A_murs_cloisons","nom":"Verre","ordre":6},{"code":"","type_code":"E_GO_murs_et_voiles","nom":"Béton armé","ordre":1},{"code":"","type_code":"E_GO_murs_et_voiles","nom":"Béton BHP","ordre":2},{"code":"","type_code":"E_GO_murs_et_voiles","nom":"Maçonnerie porteuse","ordre":3},{"code":"","type_code":"E_GO_planchers","nom":"Dalle pleine","ordre":1},{"code":"","type_code":"E_GO_planchers","nom":"Prédalles","ordre":2},{"code":"","type_code":"E_GO_planchers","nom":"Poutrelles et hourdis","ordre":3},{"code":"","type_code":"E_GO_planchers","nom":"Plancher mixte","ordre":4},{"code":"","type_code":"E_GO_poteaux","nom":"Béton armé","ordre":1},{"code":"","type_code":"E_GO_poteaux","nom":"Métallique","ordre":2},{"code":"","type_code":"E_GO_poteaux","nom":"Bois","ordre":3},{"code":"","type_code":"A_sols","nom":"Carrelage","ordre":1},{"code":"","type_code":"A_sols","nom":"Parquet","ordre":2},{"code":"","type_code":"A_sols","nom":"PVC","ordre":3},{"code":"","type_code":"A_sols","nom":"Moquette","ordre":4}];
+ /* l'arbre Mafatihul Bishri (table mbf_arbre) : base de l'outil. Copie locale + valeurs de départ pour travailler sans réseau */
+ let ARB=LS('pj_arb',null); if(!Array.isArray(ARB)||!ARB.length) ARB=[{"code":"A_murs_cloisons.beton","parent_code":"A_murs_cloisons","nom":"Béton","kind":"valeur","ordre":1},{"code":"A_murs_cloisons.bois","parent_code":"A_murs_cloisons","nom":"Bois","kind":"valeur","ordre":2},{"code":"A_murs_cloisons.metallique","parent_code":"A_murs_cloisons","nom":"Métallique","kind":"valeur","ordre":3},{"code":"A_murs_cloisons.maconnerie","parent_code":"A_murs_cloisons","nom":"Maçonnerie","kind":"valeur","ordre":4},{"code":"A_murs_cloisons.plaque_de_platre","parent_code":"A_murs_cloisons","nom":"Plaque de plâtre","kind":"valeur","ordre":5},{"code":"A_murs_cloisons.verre","parent_code":"A_murs_cloisons","nom":"Verre","kind":"valeur","ordre":6},{"code":"E_GO_murs_et_voiles.beton_arme","parent_code":"E_GO_murs_et_voiles","nom":"Béton armé","kind":"valeur","ordre":1},{"code":"E_GO_murs_et_voiles.beton_bhp","parent_code":"E_GO_murs_et_voiles","nom":"Béton BHP","kind":"valeur","ordre":2},{"code":"E_GO_murs_et_voiles.maconnerie_porteuse","parent_code":"E_GO_murs_et_voiles","nom":"Maçonnerie porteuse","kind":"valeur","ordre":3},{"code":"E_GO_planchers.dalle_pleine","parent_code":"E_GO_planchers","nom":"Dalle pleine","kind":"valeur","ordre":1},{"code":"E_GO_planchers.predalles","parent_code":"E_GO_planchers","nom":"Prédalles","kind":"valeur","ordre":2},{"code":"E_GO_planchers.poutrelles_et_hourdis","parent_code":"E_GO_planchers","nom":"Poutrelles et hourdis","kind":"valeur","ordre":3},{"code":"E_GO_planchers.plancher_mixte","parent_code":"E_GO_planchers","nom":"Plancher mixte","kind":"valeur","ordre":4},{"code":"E_GO_poteaux.beton_arme","parent_code":"E_GO_poteaux","nom":"Béton armé","kind":"valeur","ordre":1},{"code":"E_GO_poteaux.metallique","parent_code":"E_GO_poteaux","nom":"Métallique","kind":"valeur","ordre":2},{"code":"E_GO_poteaux.bois","parent_code":"E_GO_poteaux","nom":"Bois","kind":"valeur","ordre":3},{"code":"A_sols.carrelage","parent_code":"A_sols","nom":"Carrelage","kind":"valeur","ordre":1},{"code":"A_sols.parquet","parent_code":"A_sols","nom":"Parquet","kind":"valeur","ordre":2},{"code":"A_sols.pvc","parent_code":"A_sols","nom":"PVC","kind":"valeur","ordre":3},{"code":"A_sols.moquette","parent_code":"A_sols","nom":"Moquette","kind":"valeur","ordre":4}];
+ let LOTS=LS('pj_lots',[])||[];
+ { const c=LS('pj_ouv',null); if(Array.isArray(c)&&c.length) OUV=c; }
+ const GRP={A:'A',E_INF:'INF',E_GO:'GO'}, GORD={A:0,INF:1,GO:2};
+ function fromArb(){
+  const typ=ARB.filter(x=>x.kind==='type'&&x.actif!==false);
+  const o=typ.filter(x=>x.genre==='ouvrage').map(x=>({s:GRP[x.parent_code]||x.parent_code,n:x.nom,d:x.document_nom||'',i:x.icone||'<rect x="5" y="5" width="14" height="14" rx="2"/>',c:x.code,_r:x.ordre||0}));
+  o.sort((a,b)=>((GORD[a.s]==null?9:GORD[a.s])-(GORD[b.s]==null?9:GORD[b.s]))||(a._r-b._r));
+  const tc=typ.filter(x=>x.genre==='document'&&(x.parent_code==='T'||x.parent_code==='C')).map(x=>({d:x.document_nom,b:x.parent_code,ph:x.phase||''}));
+  if(o.length){ OUV=o; LSset('pj_ouv',o); } if(tc.length) TC=tc;
+ }
  const rest=p=>fetch(SUPABASE_URL+'/rest/v1/'+p,{headers:{apikey:SUPABASE_KEY}}).then(r=>r.ok?r.json():null).catch(()=>null);
- rest('mbf_types?select=document_nom,bloc_code,phase,ordre&bloc_code=in.(T,C)&order=bloc_code,ordre').then(j=>{ if(Array.isArray(j)&&j.length) TC=j.map(x=>({d:x.document_nom,b:x.bloc_code,ph:x.phase||''})); });
+ rest('mbf_arbre_v?select=code,parent_code,nom,kind,ordre,icone,genre,phase,document_nom,actif&actif=eq.true&order=profondeur,ordre').then(j=>{ if(Array.isArray(j)&&j.length){ ARB=j; LSset('pj_arb',j); fromArb(); } });
+ const kids=code=>ARB.filter(x=>x.parent_code===code&&x.actif!==false).sort((a,b)=>(a.ordre||0)-(b.ordre||0));
  const rpc=(fn,b)=>fetch(SUPABASE_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.ok?r.json():null).catch(()=>null);
- rest('mbf_specs?select=code,type_code,nom,ordre&order=type_code,ordre').then(j=>{ if(Array.isArray(j)){ SPECS=j; LSset('pj_specs',j); } });
  rest('mbf_lots?select=code,nom,ordre&actif=eq.true&order=ordre').then(j=>{ if(Array.isArray(j)&&j.length){ LOTS=j; LSset('pj_lots',j); } });
  const ouvByName=n=>OUV.find(o=>o.n===n);
- const specsOf=n=>{ const o=ouvByName(n); return o&&o.c?SPECS.filter(x=>x.type_code===o.c):[]; };
  /* choisir un type d'ouvrage ; un nouveau type enrichit ta bibliothèque (base Supabase) */
  function pickType(anchor,cur,onSet){
   let h='<div class="pp-t">Type d’ouvrage</div>', last='';
@@ -18660,17 +18681,28 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
   h+='<button type="button" class="pp-lnk" data-new="1">+ Nouveau type…</button>';
   popOpen(anchor,h,d=>{
    d.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{ popClose(); onSet(OUV[+b.dataset.i].n); });
-   d.querySelector('[data-new]').onclick=()=>{ popClose(); try{ miniPrompt('Nom du nouveau type :','',v=>{ v=(v||'').trim(); if(v.length<2) return; if(!ouvByName(v)){ const o={s:'A',n:v,d:'',i:'<rect x="5" y="5" width="14" height="14" rx="2"/>',c:null}; OUV.push(o); LSset('pj_ouv',OUV); rpc('mbf_type_ajouter',{p_bloc:'A',p_sous_bloc:null,p_nom:v}).then(c=>{ if(typeof c==='string'){ o.c=c; LSset('pj_ouv',OUV); } }); toast('Nouveau type ajouté à la bibliothèque : '+v); } onSet(v); }); }catch(_){} };
+   d.querySelector('[data-new]').onclick=()=>{ popClose(); try{ miniPrompt('Nom du nouveau type :','',v=>{ v=(v||'').trim(); if(v.length<2) return; if(!ouvByName(v)){ const o={s:'A',n:v,d:'',i:'<rect x="5" y="5" width="14" height="14" rx="2"/>',c:null}; OUV.push(o); LSset('pj_ouv',OUV); ARB.push({code:'A_tmp_'+Date.now(),parent_code:'A',nom:v,kind:'type',genre:'ouvrage',ordre:99,source:'client'}); rpc('mbf_type_ajouter',{p_bloc:'A',p_sous_bloc:null,p_nom:v}).then(c=>{ if(typeof c==='string'){ o.c=c; const t=ARB.find(q=>q.code.indexOf('A_tmp_')===0&&q.nom===v); if(t) t.code=c; LSset('pj_ouv',OUV); LSset('pj_arb',ARB); } }); toast('Nouveau type ajouté à la bibliothèque : '+v); } onSet(v); }); }catch(_){} };
   });
  }
  /* spécifier le type (mur : béton, bois, métallique…) ; une nouvelle valeur enrichit aussi la base */
  function pickSpec(anchor,typeName,cur,onSet){
-  if(!typeName){ toast('Choisis d’abord le type'); return; }
-  const L=specsOf(typeName);
-  popOpen(anchor,'<div class="pp-t">Spécifier · '+esc(typeName)+'</div>'+L.map(x=>'<button type="button" class="pp-i'+(x.nom===cur?' on':'')+'" data-v="'+esc(x.nom)+'"><span>'+esc(x.nom)+'</span></button>').join('')+'<button type="button" class="pp-lnk" data-new="1">+ Nouvelle valeur…</button><button type="button" class="pp-lnk" data-v="">Aucune</button>',d=>{
-   d.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ popClose(); onSet(b.dataset.v); });
-   d.querySelector('[data-new]').onclick=()=>{ popClose(); try{ miniPrompt('Nouvelle valeur pour « '+typeName+' » :','',v=>{ v=(v||'').trim(); if(v.length<2) return; const o=ouvByName(typeName); if(!L.some(x=>x.nom.toLowerCase()===v.toLowerCase())){ const e={code:'',type_code:o&&o.c,nom:v,ordre:99}; SPECS.push(e); LSset('pj_specs',SPECS); if(o&&o.c) rpc('mbf_spec_ajouter',{p_type_code:o.c,p_nom:v}).then(c=>{ if(typeof c==='string'){ e.code=c; LSset('pj_specs',SPECS); } }); toast('Valeur ajoutée à la bibliothèque : '+v); } onSet(v); }); }catch(_){} };
-  });
+  const o=ouvByName(typeName); if(!typeName||!o||!o.c){ toast('Choisis d’abord le type'); return; }
+  const SEP=' › ';
+  const level=(code,path)=>{
+   const L=kids(code), here=path.join(SEP);
+   popOpen(anchor,'<div class="pp-t">Spécifier · '+esc([typeName].concat(path).join(SEP))+'</div>'
+    +(path.length?'<button type="button" class="pp-lnk" data-here="1">Choisir « '+esc(path[path.length-1])+' » sans préciser</button>':'')
+    +L.map(x=>'<button type="button" class="pp-i'+(here&&false?'':'')+'" data-c="'+esc(x.code)+'"><span>'+esc(x.nom)+'</span>'+(kids(x.code).length?'<span style="margin-left:auto;opacity:.7">›</span>':'')+'</button>').join('')
+    +'<button type="button" class="pp-lnk" data-new="1">+ Nouvelle valeur…</button>'+(path.length?'':'<button type="button" class="pp-lnk" data-none="1">Aucune</button>'),d=>{
+    d.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{ const x=ARB.find(q=>q.code===b.dataset.c); popClose(); if(kids(x.code).length) level(x.code,path.concat(x.nom)); else onSet(path.concat(x.nom).join(SEP)); });
+    const h=d.querySelector('[data-here]'); if(h) h.onclick=()=>{ popClose(); onSet(here); };
+    const nn=d.querySelector('[data-none]'); if(nn) nn.onclick=()=>{ popClose(); onSet(''); };
+    d.querySelector('[data-new]').onclick=()=>{ popClose(); try{ miniPrompt('Nouvelle valeur sous « '+(path[path.length-1]||typeName)+' » :','',v=>{ v=(v||'').trim(); if(v.length<2) return;
+      if(!L.some(x=>x.nom.toLowerCase()===v.toLowerCase())){ const e={code:code+'.'+v.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),parent_code:code,nom:v,kind:'valeur',ordre:99,source:'client'}; ARB.push(e); LSset('pj_arb',ARB); rpc('mbf_branche_ajouter',{p_parent:code,p_nom:v}).then(c=>{ if(typeof c==='string'){ e.code=c; LSset('pj_arb',ARB); } }); toast('Valeur ajoutée à la bibliothèque : '+v); }
+      onSet(path.concat(v).join(SEP)); }); }catch(_){} };
+   });
+  };
+  level(o.c,[]);
  }
  /* cadre A de la fiche d'ouvrage : type d'ouvrage + spécifier le type */
  window.pjAFields=function(t){
@@ -18690,10 +18722,10 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
   const f=(k,lab,type)=>'<div class="field"><label>'+lab+'</label><input type="'+(type||'text')+'" data-df="'+k+'" value="'+esc(doc[k]||'')+'"></div>';
   const sel=(k,lab,items)=>'<div class="field"><label>'+lab+'</label><select data-df="'+k+'"><option value="">—</option>'+items.map(([v,l])=>'<option value="'+esc(v)+'"'+(doc[k]===v?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>';
   const o=OUV.find(q=>q.d===doc.docType);
-  openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">Fiche de document</div><h3 style="padding-right:46px">'+esc(doc.nom||'Document')+'</h3><div class="tf-grid pjdf">'
+  openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">Fiche de document</div><h3 style="padding-right:46px">'+esc(doc.nom||'Document')+'</h3><div class="tf-grid pjdf"><div class="tf-sep cons">Construction</div>'
    +'<section class="tf-box"><h4 class="tf-t">A · Architecture</h4>'+f('nom','Document')+sel('docType','Type de document',docTypes().map(x=>[x[0],x[0]]))+'<div class="field"><label>Ouvrage correspondant</label><div class="pjdf-v" id="pjdfO">'+esc(doc.ouvrage||'—')+'</div></div>'+sel('niveau','Niveau',(S.niveaux||[]).map(n=>[n,n]))+'<div class="field pjA"><div class="pjA-r"><button type="button" class="pjA-b" data-dsp="1">Spécifier le type</button></div><div class="pjA-s" id="pjdfS">'+(doc.spec?esc(doc.ouvrage||'')+' · <b>'+esc(doc.spec)+'</b>':'')+'</div></div></section>'
    +'<section class="tf-box"><h4 class="tf-t">E · Ingénierie</h4>'+f('discipline','Discipline')+f('emetteur','Émetteur')+sel('lot','Lot',LOTS.map(l=>[l.code,l.nom]))+f('type','Type (code)')+'</section>'
-   +'<section class="tf-box"><h4 class="tf-t">T · Planning</h4>'+f('date','Date','date')+f('indice','Indice')+sel('etat','État',Object.keys(DET).map(k=>[k,DET[k]]))+f('phase','Phase')+f('periode','Période')+'</section>'
+   +'<div class="tf-sep gp">Gestion de projet <small>manipule la construction</small></div><section class="tf-box"><h4 class="tf-t">T · Planning</h4>'+f('date','Date','date')+f('indice','Indice')+sel('etat','État',Object.keys(DET).map(k=>[k,DET[k]]))+f('phase','Phase')+f('periode','Période')+'</section>'
    +'<section class="tf-box"><h4 class="tf-t">C · Devis</h4><p class="tf-soon">Coût de l’étude et devis liés à ce document : à venir.</p></section>'
    +'<section class="tf-box"><h4 class="tf-t">Fichier</h4><div class="pjdf-v">'+(doc.fichier?esc(doc.fichier)+(doc.taille?' · '+fsz(doc.taille):''):'Aucun fichier déposé')+'</div></section></div>');
   const mb=document.getElementById('modalBody'); const bd=mb.querySelector('.modal-date-etat'); if(bd) bd.remove();
