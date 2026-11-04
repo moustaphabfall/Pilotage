@@ -18188,6 +18188,18 @@ body.pj-rz,body.pj-rz *{cursor:col-resize !important; user-select:none !importan
 #pjDb .pjd-th{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 #pgTitle{left:192px !important; max-width:calc(100vw - 210px)}
 @media (min-width:900px){ #pgTitle{left:376px !important} body.sb-off #pgTitle{left:192px !important} }
+#pjPick{position:fixed; top:0; bottom:0; right:0; left:262px; z-index:30; overflow:auto; background:#ECEAE4; color:#37352F; display:none; font-family:'IBM Plex Sans',system-ui,sans-serif}
+body.sb-off #pjPick{left:0} @media (max-width:899px){ #pjPick{left:0} }
+#pjPick.on{display:block}
+#pjPick .pk-in{max-width:900px; margin:0 auto; padding:84px 40px 80px}
+#pjPick h1{margin:0 0 4px; font:700 34px/1.15 'Space Grotesk',system-ui,sans-serif; color:#37352F}
+#pjPick p{margin:0 0 22px; font-size:15px; color:#787774}
+#pjPick .pk-g{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px}
+#pjPick .pk-c{display:flex; flex-direction:column; gap:4px; align-items:flex-start; padding:16px 18px; background:#0E0E0E; border:1px solid #FFC400; border-radius:14px; color:#FFC400; cursor:pointer; text-align:left; min-height:0; box-shadow:0 4px 14px rgba(0,0,0,.12); transition:background .15s, transform .15s}
+#pjPick .pk-c:hover{background:#1C1808; transform:translateY(-2px)}
+#pjPick .pk-c b{font:700 22px/1.1 'Space Grotesk',system-ui,sans-serif}
+#pjPick .pk-c span{font-size:12.5px; color:#FFE27A}
+body:has(#pjPick.on) #otBar,body.pj-db-on #otBar{display:none !important}
 #pjDb .pjd-empty{padding:36px 10px; text-align:center; color:#787774}
 </style>
 <script id="pjV140Js">
@@ -18262,12 +18274,23 @@ body.pj-rz,body.pj-rz *{cursor:col-resize !important; user-select:none !importan
  }
  /* ---------- changement de vue ---------- */
  function dbEl(){ let d=document.getElementById('pjDb'); if(!d){ d=document.createElement('div'); d.id='pjDb'; document.body.appendChild(d); d.addEventListener('click',dbClick); } return d; }
- function setView(v,quiet){
-  view=v; LSset('pj_view',v==='table'?'table':'none'); popClose();
+ function pickHide(){ const e=document.getElementById('pjPick'); if(e) e.classList.remove('on'); }
+ function pickShow(){
+  let e=document.getElementById('pjPick'); if(!e){ e=document.createElement('div'); e.id='pjPick'; document.body.appendChild(e); e.addEventListener('click',ev=>{ const b=ev.target.closest('[data-n]'); if(!b) return; const n=b.dataset.n; FL.niv=[n]; saveFl(); try{ travauxNiveauActif=n; }catch(_){} setView('plan',false,true); }); }
+  const S=ST(), T=S.tasks||[];
+  e.innerHTML='<div class="pk-in"><h1>Plans</h1><p>Choisis un niveau à afficher.</p><div class="pk-g">'+(S.niveaux||[]).map(n=>{ const c=T.filter(t=>t.niveau===n).length; return '<button type="button" class="pk-c" data-n="'+esc(n)+'"><b>'+esc(n)+'</b><span>'+c+' tâche'+(c>1?'s':'')+'</span></button>'; }).join('')+'</div></div>';
+  e.classList.add('on');
+ }
+ function setView(v,quiet,direct){
+  view=v; LSset('pj_view',v==='table'?'table':'none'); popClose(); pickHide();
   const d=dbEl(); d.classList.toggle('on',v==='table'); document.body.classList.toggle('pj-db-on',v==='table');
   if(v==='table'){ if(document.body.classList.contains('plan-fs-on')){ window.__pjKeep=true; try{ const x=document.getElementById('rtFsBtn'); if(x) x.click(); document.body.classList.remove('plan-fs-on'); }finally{ window.__pjKeep=false; } view='table'; d.classList.add('on'); document.body.classList.add('pj-db-on'); } dbRender(); return; }
+  if(v==='plan'&&!direct){
+   if(document.body.classList.contains('plan-fs-on')){ window.__pjKeep=true; try{ const x=document.getElementById('rtFsBtn'); if(x) x.click(); document.body.classList.remove('plan-fs-on'); }finally{ window.__pjKeep=false; } view='plan'; }
+   pickShow(); filtDraw(); return;
+  }
   if(v==='plan'){
-   const S=ST(); let n=null; try{ n=travauxNiveauActif; }catch(_){} if(!n||!(S.niveaux||[]).includes(n)){ n=(S.niveaux||[])[0]; try{ travauxNiveauActif=n; }catch(_){} }
+   filtDraw(); const S=ST(); let n=null; try{ n=travauxNiveauActif; }catch(_){} if(!n||!(S.niveaux||[]).includes(n)){ n=(S.niveaux||[])[0]; try{ travauxNiveauActif=n; }catch(_){} }
    window.__pjKeep=true; try{ showPage('travaux'); }finally{ window.__pjKeep=false; }
    setTimeout(()=>{ const r=document.getElementById('rtRibPlan'); if(r&&!r.open){ const s=r.querySelector('summary'); s?s.click():(r.open=true); } const pg=document.getElementById('page-travaux'); if(pg) try{ pg.scrollIntoView({block:'start'}); }catch(_){} window.scrollTo(0,0); },250);
   }
@@ -18276,7 +18299,7 @@ body.pj-rz,body.pj-rz *{cursor:col-resize !important; user-select:none !importan
  const ETL={afaire:'À faire',encours:'En cours',fait:'Fait'};
  function sumTxt(kind){
   const S=ST();
-  if(kind==='niv'){ if(view==='plan'){ let n=''; try{ n=travauxNiveauActif; }catch(_){} return n||'—'; } return FL.niv.length?FL.niv.join(', '):'Tous'; }
+  if(kind==='niv'){ if(view==='plan'){ if((document.getElementById('pjPick')||{}).classList&&document.getElementById('pjPick').classList.contains('on')) return 'À choisir'; let n=''; try{ n=travauxNiveauActif; }catch(_){} return n||'—'; } return FL.niv.length?FL.niv.join(', '):'Tous'; }
   if(kind==='chrono') return (FL.from||FL.to)?((FL.from?frDate(FL.from):'…')+' → '+(FL.to?frDate(FL.to):'…')):'Toutes dates';
   if(kind==='etat') return FL.etat.length?FL.etat.map(k=>ETL[k]||k).join(', '):'Tous';
   if(kind==='met'){ if(!FL.met.length) return 'Tous'; return FL.met.map(id=>{ const m=(S.metiers||[]).find(x=>x.id===id); return (m&&(m.nom||m.label))||id; }).join(', '); }
@@ -18303,7 +18326,7 @@ body.pj-rz,body.pj-rz *{cursor:col-resize !important; user-select:none !importan
   if(k==='reset'){ FL={niv:[],met:[],etat:[],from:'',to:''}; popClose(); after(); return; }
   const mk=(items,sel,toggle)=>items.map(([v,l])=>'<label class="pp-i"><input type="checkbox" data-v="'+esc(v)+'"'+(sel.includes(v)?' checked':'')+'><span>'+esc(l)+'</span></label>').join('')+'<button type="button" class="pp-lnk" data-clr="1">Tout afficher</button>';
   if(k==='niv'){
-   if(view==='plan'){ popOpen(b,'<div class="pp-t">Niveau du plan</div>'+(S.niveaux||[]).map(n=>'<button type="button" class="pp-i" data-n="'+esc(n)+'"><span>'+esc(n)+'</span></button>').join(''),d=>d.querySelectorAll('[data-n]').forEach(x=>x.onclick=()=>{ try{ travauxNiveauActif=x.dataset.n; }catch(_){} popClose(); setView('plan'); filtDraw(); })); return; }
+   if(view==='plan'){ popOpen(b,'<div class="pp-t">Niveau du plan</div>'+(S.niveaux||[]).map(n=>'<button type="button" class="pp-i" data-n="'+esc(n)+'"><span>'+esc(n)+'</span></button>').join(''),d=>d.querySelectorAll('[data-n]').forEach(x=>x.onclick=()=>{ try{ travauxNiveauActif=x.dataset.n; }catch(_){} FL.niv=[x.dataset.n]; saveFl(); popClose(); setView('plan',false,true); filtDraw(); })); return; }
    popOpen(b,'<div class="pp-t">Niveau</div>'+mk((S.niveaux||[]).map(n=>[n,n]),FL.niv),d=>bindCk(d,FL.niv));
   }
   else if(k==='etat') popOpen(b,'<div class="pp-t">État</div>'+mk(Object.entries(ETL),FL.etat),d=>bindCk(d,FL.etat));
@@ -18372,7 +18395,7 @@ body.pj-rz,body.pj-rz *{cursor:col-resize !important; user-select:none !importan
   const fb=mkBtn('pjFiltBtn','Filtres',ICO.filt,'filt'); fb.addEventListener('click',()=>{ if(fb.dataset.moved) return; filtToggle(); });
   filtDraw();
  }
- const sp=window.showPage; if(typeof sp==='function'){ window.showPage=function(){ if(!window.__pjKeep&&view!=='none'){ view='none'; LSset('pj_view','none'); const d=document.getElementById('pjDb'); if(d) d.classList.remove('on'); document.body.classList.remove('pj-db-on'); filtDraw(); } return sp.apply(this,arguments); }; }
+ const sp=window.showPage; if(typeof sp==='function'){ window.showPage=function(){ if(!window.__pjKeep&&view!=='none'){ pickHide(); view='none'; LSset('pj_view','none'); const d=document.getElementById('pjDb'); if(d) d.classList.remove('on'); document.body.classList.remove('pj-db-on'); filtDraw(); } return sp.apply(this,arguments); }; }
  ['renderAll','render'].forEach(n=>{ const f=window[n]; if(typeof f==='function'&&!f.__pjw){ const g=function(){ const r=f.apply(this,arguments); if(view==='table'){ clearTimeout(rq); rq=setTimeout(dbRender,80); } return r; }; g.__pjw=1; window[n]=g; } });
  document.addEventListener('keydown',e=>{ if(e.key==='Escape') popClose(); });
  const boot=()=>{ init(); let n=0; const t=setInterval(()=>{ n++; const s=document.getElementById('syncStatus'), ok=s&&!/Initialisation|Connexion au stockage/.test(s.textContent)&&window.PILOTAGE_PROJET; if(ok||n>60){ clearInterval(t); if(LS('pj_view','none')==='table'&&view==='none') setView('table',true); } },150); };
