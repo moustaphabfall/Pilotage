@@ -17381,12 +17381,21 @@ body.lv-etudes .fp-btn[data-k=taches]{display:none !important}
 })();
 </script>
 <style id="otCss">
-#dashGrid .dg-block[data-b="suivi"],#dashGrid .dg-block[data-b="pac"]{display:none!important}
+#dashGrid .dg-block:not([data-b="levels"]){display:none!important}
 #otBar{position:fixed;z-index:900;display:none;align-items:center;gap:2px;padding:4px 6px 4px 2px;border-radius:99px;background:linear-gradient(180deg,#3B4046,#22262A);box-shadow:0 8px 22px rgba(22,35,43,.35);border:1px solid rgba(242,169,0,.55)}
 body:has(#page-dashboard.active):not(.lv-open):not(.plan-fs-on) #otBar{display:flex}
 #otBar .ot-grip{cursor:grab;touch-action:none;user-select:none;color:#F2A900;padding:8px 6px 8px 10px;font-size:15px;letter-spacing:-2px}
 #otBar #otHead{border:0;background:transparent;color:#fff;font:700 14px 'Space Grotesk',system-ui,sans-serif;padding:8px 10px 8px 2px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-#otWin>div{width:min(640px,100%);max-height:90vh;overflow:auto;padding:14px 18px 18px;display:flex;flex-direction:column;gap:8px}
+#otWin .ot-sub{font-size:12.5px;color:#B8B4A6;margin:-2px 0 6px}
+#otWin #otBlocks{display:flex;flex-direction:column;gap:4px}
+#otWin .ot-blk{position:relative;padding-left:26px;border-radius:10px}
+#otWin .ot-blk.ot-empty{display:none}
+#otWin .ot-hd{position:absolute;left:0;top:10px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#F2A900;opacity:.35;cursor:grab;touch-action:none;user-select:none;font-size:15px;letter-spacing:-2px}
+#otWin .ot-blk:hover>.ot-hd,#otWin .ot-blk.ot-drag>.ot-hd{opacity:1;background:rgba(242,169,0,.18)}
+#otWin .ot-blk.ot-drag{opacity:.7;outline:1px dashed #F2A900}
+#otWin .ot-bd{min-width:0}
+#otWin .ot-none{padding:24px;text-align:center;color:#B8B4A6}
+#otWin>div{width:min(780px,100%);max-height:90vh;overflow:auto;padding:14px 18px 18px;display:flex;flex-direction:column;gap:8px}
 #otWin .ot-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
 #otWin .ot-h b{font-size:18px}
 #otWin .dg-in{padding:0}
@@ -17398,7 +17407,7 @@ body:has(#page-dashboard.active):not(.lv-open):not(.plan-fs-on) #otBar{display:f
   function place(b,x,y){ const w=b.offsetWidth||240,h=b.offsetHeight||48; x=Math.max(4,Math.min(innerWidth-w-4,x)); y=Math.max(4,Math.min(innerHeight-h-4,y)); b.style.left=x+'px'; b.style.top=y+'px'; b.style.right='auto'; }
   function bar(){ if(document.getElementById('otBar')) return;
     const b=document.createElement('div'); b.id='otBar';
-    b.innerHTML='<span class="ot-grip" title="Glisser pour déplacer">⋮⋮</span><button type="button" id="otHead" title="Ouvrir mes outils personnalisés">🧰 Mes outils personnalisés <span class="ios-cnt" id="otCnt" hidden></span></button>';
+    b.innerHTML='<span class="ot-grip" title="Glisser pour déplacer">⋮⋮</span><button type="button" id="otHead" title="Ouvrir ma boîte à outils">🧰 Ma boîte à outils <span class="ios-cnt" id="otCnt" hidden></span></button>';
     document.body.appendChild(b);
     let p=null; try{ p=JSON.parse(localStorage.getItem(KP)||'null'); }catch(e){}
     if(p&&typeof p.x==='number') place(b,p.x,p.y); else { b.style.right='14px'; b.style.top='150px'; }
@@ -17411,13 +17420,26 @@ body:has(#page-dashboard.active):not(.lv-open):not(.plan-fs-on) #otBar{display:f
     addEventListener('resize',()=>{ const r=b.getBoundingClientRect(); if(b.style.left) place(b,r.left,r.top); }); }
   function open(){ if(document.getElementById('otWin')) return;
     const ov=document.createElement('div'); ov.id='otWin'; ov.setAttribute('role','dialog'); ov.className='pg-dk'; ov.style.cssText='position:fixed;inset:0;z-index:99990;display:flex;align-items:center;justify-content:center;padding:14px';
-    ov.innerHTML='<div><div class="ot-h"><b>Mes outils personnalisés</b><button type="button" data-x>✕ Fermer</button></div><div class="ot-sec" id="otS1"></div><div class="ot-sec" id="otS2"></div></div>';
+    ov.innerHTML='<div><div class="ot-h"><b>🧰 Ma boîte à outils</b><button type="button" data-x>✕ Fermer</button></div><div class="ot-sub">Des blocs, comme dans Notion : glisse la poignée ⋮⋮ pour les ranger dans l’ordre que tu veux.</div><div id="otBlocks"></div><div class="ot-none" id="otNone" hidden>Rien à afficher pour l’instant.</div></div>';
     document.body.appendChild(ov);
-    const moved=[]; [['suivi','#otS1'],['pac','#otS2']].forEach(([k,sel])=>{ const bl=document.querySelector('#dashGrid .dg-block[data-b="'+k+'"]'); const i=bl&&bl.querySelector(':scope>.dg-in'); if(i){ moved.push([bl,i]); ov.querySelector(sel).appendChild(i); } });
-    const close=()=>{ moved.forEach(([bl,i])=>bl.appendChild(i)); ov.remove(); try{ renderAll(); }catch(e){} };
+    const KEYS=[['suivi','📌','Suivi'],['mg','⏱','Dates à valider'],['pac','🧱','Pièces à créer'],['assoc','🔗','Associations manquantes'],['recap','🦺','Récap sécurité & propreté'],['eis','🧭','Matrice d’Eisenhower'],['chart','📈','Graphique d’avancement'],['tend','📊','Tendances']];
+    let ord=[]; try{ ord=JSON.parse(localStorage.getItem('ot_order')||'[]')||[]; }catch(_){}
+    const list=KEYS.slice().sort((x,y)=>{ const i=ord.indexOf(x[0]), j=ord.indexOf(y[0]); return (i<0?99:i)-(j<0?99:j); });
+    const host=ov.querySelector('#otBlocks'), moved=[];
+    list.forEach(([k,ic,t])=>{ const bl=document.querySelector('#dashGrid .dg-block[data-b="'+k+'"]'); const i=bl&&bl.querySelector(':scope>.dg-in'); if(!i) return;
+      const w=document.createElement('div'); w.className='ot-blk'; w.dataset.k=k; w.innerHTML='<span class="ot-hd" title="Glisser pour déplacer ce bloc">⋮⋮</span><div class="ot-bd"></div>'; w.querySelector('.ot-bd').appendChild(i); host.appendChild(w); moved.push([bl,i,w]); });
+    const upd=()=>{ let n=0; moved.forEach(([bl,i,w])=>{ const e=!i.innerText.trim()&&!i.querySelector('canvas,svg,img,input,select,table'); w.classList.toggle('ot-empty',e); if(!e) n++; }); ov.querySelector('#otNone').hidden=n>0; };
+    const close=()=>{ clearInterval(iv); moved.forEach(([bl,i])=>bl.appendChild(i)); ov.remove(); try{ renderAll(); }catch(e){} };
+    const iv=setInterval(upd,500);
+    /* glisser-déposer des blocs */
+    let dr=null;
+    host.addEventListener('pointerdown',e=>{ const h=e.target.closest('.ot-hd'); if(!h) return; const w=h.closest('.ot-blk'); dr={w,id:e.pointerId,h}; try{ h.setPointerCapture(e.pointerId); }catch(_){} w.classList.add('ot-drag'); e.preventDefault(); });
+    host.addEventListener('pointermove',e=>{ if(!dr) return; const els=[...host.querySelectorAll('.ot-blk:not(.ot-empty)')].filter(x=>x!==dr.w); let tgt=null; for(const x of els){ const r=x.getBoundingClientRect(); if(e.clientY<r.top+r.height/2){ tgt=x; break; } } if(tgt) host.insertBefore(dr.w,tgt); else host.appendChild(dr.w); });
+    const end=()=>{ if(!dr) return; dr.w.classList.remove('ot-drag'); dr=null; try{ localStorage.setItem('ot_order',JSON.stringify([...host.querySelectorAll('.ot-blk')].map(x=>x.dataset.k))); }catch(_){} };
+    host.addEventListener('pointerup',end); host.addEventListener('pointercancel',end);
     ov.querySelector('[data-x]').onclick=close; ov.addEventListener('pointerdown',e=>{ if(e.target===ov) close(); });
     document.addEventListener('keydown',function k(e){ if(e.key==='Escape'&&document.getElementById('otWin')){ close(); document.removeEventListener('keydown',k); } });
-    try{ renderAll(); }catch(e){} }
+    try{ renderAll(); }catch(e){} setTimeout(upd,60); }
   window.pgOutilsPerso=open;
   function cnt(){ try{ const c=document.getElementById('otCnt'); if(!c) return; const n=document.querySelector('#pacWrap .ios-cnt'); const v=n?n.textContent.trim():''; c.textContent=v; c.hidden=!v||v==='0'; }catch(e){} }
   setInterval(()=>{ bar(); cnt(); },1200); bar();
@@ -18097,7 +18119,7 @@ nav.tab-menu button.tab,#pjBar .pj-it,#pjBar .pj-n{border-radius:7px !important}
   { const sh=shut(); box.querySelectorAll('.pj-it.cur').forEach(b=>{ const on=!!sh[b.dataset.pj]; b.classList.toggle('shut',on); b.setAttribute('aria-expanded',String(!on)); const w=b.nextElementSibling; if(w&&w.classList.contains('pj-lvw')) w.classList.toggle('shut',on); }); }
  }catch(e){ console.warn('pjBar',e); } }
  const sp=window.showPage; if(typeof sp==='function'){ window.showPage=function(){ const r=sp.apply(this,arguments); setTimeout(build,0); return r; }; }
- (function wrapSw(){ const f=window.pilotageSwitchProjet; if(typeof f==='function'&&!f.__pj){ const g=function(){ const a=arguments, self=this; document.documentElement.classList.add('pj-leave'); setTimeout(()=>f.apply(self,a),280); }; g.__pj=1; window.pilotageSwitchProjet=g; } else if(!f||!f.__pj) setTimeout(wrapSw,300); })();
+ (function wrapSw(){ const f=window.pilotageSwitchProjet; if(typeof f==='function'&&!f.__pj){ const g=function(){ const a=arguments, self=this; try{ localStorage.setItem('pj_view','"none"'); }catch(_){} document.documentElement.classList.add('pj-leave'); setTimeout(()=>f.apply(self,a),280); }; g.__pj=1; window.pilotageSwitchProjet=g; } else if(!f||!f.__pj) setTimeout(wrapSw,300); })();
  document.addEventListener('DOMContentLoaded',build); setTimeout(build,500); setInterval(build,1500);
 })();
 </script>
