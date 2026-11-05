@@ -3929,7 +3929,9 @@ function planFormBatChanged(sel){
   miniPrompt('Nom du bâtiment :', '', v=>{ v=(v||'').trim(); if(v && !state.batiments.includes(v)) state.batiments.push(v); sel.innerHTML = planBatOptions(v||''); });
 }
 function planFormNivChanged(){ const z = document.getElementById('pl-zone'); if(z) z.innerHTML = planZoneOptions(document.getElementById('pl-niv').value, ''); }
-function arcTypeOpts(cur){ cur=cur||'Plan de niveau'; let A=[],T=[]; try{ A=window.pjArcTypes?window.pjArcTypes():[]; T=window.pjTechTypes?window.pjTechTypes():[]; }catch(e){} if(!A.length) A=['Plan de masse','Plan de niveau','Plan de toiture','Plan de façades','Plan de pièce / fiche de local']; const o=x=>`<option value="${esc(x)}" ${x===cur?'selected':''}>${esc(x)}</option>`; return '<optgroup label="Architecture">'+A.map(o).join('')+'</optgroup>'+(T.length?'<optgroup label="Ingénierie">'+T.map(o).join('')+'</optgroup>':'')+((A.concat(T)).includes(cur)?'':o(cur)); }
+const ARC4=[['Perspective','bâtiment'],['Plan d’étage','niveau'],['Détail','pièce'],['Fiche produit','type d’ouvrage']];
+function normTD(x){ return (!x||x==='Plan de niveau')?'Plan d’étage':x; }
+function arcTypeOpts(cur){ cur=normTD(cur); let A=[],T=[]; try{ A=ARC4.map(x=>x[0]); T=window.pjTechTypes?window.pjTechTypes():[]; }catch(e){} if(!A.length) A=['Plan de masse','Plan de niveau','Plan de toiture','Plan de façades','Plan de pièce / fiche de local']; const o=x=>{ const k=ARC4.find(y=>y[0]===x); return `<option value="${esc(x)}" ${x===cur?'selected':''}>${esc(x)}${k?' · '+esc(k[1]):''}</option>`; }; return '<optgroup label="Architecture">'+A.map(o).join('')+'</optgroup>'+(T.length?'<optgroup label="Ingénierie">'+T.map(o).join('')+'</optgroup>':'')+((A.concat(T)).includes(cur)?'':o(cur)); }
 const CE_LIST=['Architecture','Structure','Clos et couvert','CET'];
 function planFormFields(v){
   return `<div class="field"><label>Nom du plan</label><input type="text" id="pl-nom" value="${esc(v.nom||'Plan')}"></div>
@@ -8103,9 +8105,9 @@ function tpRender(id, nivOverride){
   const w = document.getElementById('tpWrap'); if(!w) return;
   const t = taskById(id); if(!t) return;
   const niv = nivOverride || t.niveau;
-  const tdc = (t.mbf&&t.mbf.typeDocArchi)||'';
-  const plans = (state.plans||[]).filter(p=>p.src && (tdc ? ((p.typeDoc||'Plan de niveau')===tdc && (tdc!=='Plan de niveau'||p.niveau===niv)) : p.niveau===niv));
-  if(!plans.length){ w.innerHTML = tdc&&tdc!=='Plan de niveau' ? `<div class="tp-msg">Aucun plan de type « ${esc(tdc)} » dans le projet. Ajoute-le dans Plans, en choisissant ce type de document.</div>` : `<div class="tp-msg">Aucun plan pour le niveau ${esc(niv||'—')}.</div>`; return; }
+  const tdc = (t.mbf&&t.mbf.typeDocArchi)?normTD(t.mbf.typeDocArchi):'';
+  const plans = (state.plans||[]).filter(p=>p.src && (tdc ? (normTD(p.typeDoc)===tdc && ((tdc!=='Plan d’étage'&&tdc!=='Détail')||p.niveau===niv||!p.niveau)) : p.niveau===niv));
+  if(!plans.length){ w.innerHTML = tdc&&tdc!=='Plan d’étage' ? `<div class="tp-msg">Aucun plan de type « ${esc(tdc)} » dans le projet. Ajoute-le dans Plans, en choisissant ce type de document.</div>` : `<div class="tp-msg">Aucun plan pour le niveau ${esc(niv||'—')}.</div>`; return; }
   let pl = plans.find(p=>p.id===tpPlanSel[id]) || plans.find(p=>t.pos && p.id===t.pos.planId) || plans[0];
   tpPlanSel[id] = pl.id;
   const prim = !t.pos || t.pos.planId===pl.id; const altPos = (!prim && t.posAlt) ? t.posAlt[pl.id] : null;
@@ -18094,7 +18096,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
    m.onclick=e=>{ const x=e.target.closest('[data-e]'); if(!x) return; e.stopPropagation(); const k=x.dataset.e, anc=t.etat; if(k!==anc){ t.etat=k; t.historique=t.historique||[]; t.historique.push({date:today(),champ:'État',ancienne:ST_LBL[anc],nouvelle:ST_LBL[k]}); try{ persist(); renderAll(); openTaskDetail(t.id); return; }catch(_){} } m.remove(); draw(); };
    setTimeout(()=>document.addEventListener('pointerdown',function f(ev){ if(!m.contains(ev.target)){ m.remove(); document.removeEventListener('pointerdown',f); } }),0); }
   draw(); g.before(b); try{ buildCE(t); }catch(e){ console.error(e); }
-  try{ const tw=document.getElementById('tpWrap'), tf=tw&&tw.closest('.field'); if(tf&&!document.getElementById('pjArcT')){ let L=[]; try{ L=window.pjArcTypes?window.pjArcTypes():[]; }catch(_){} if(!L.length) L=['Plan de niveau']; const cur=(t.mbf&&t.mbf.typeDocArchi)||'Plan de niveau'; const f=document.createElement('div'); f.className='field'; f.innerHTML='<label>Type de document architectural</label><select id="pjArcT">'+L.map(x=>'<option value="'+E(x)+'"'+(x===cur?' selected':'')+'>'+E(x)+'</option>').join('')+'</select>'; tf.before(f);
+  try{ const tw=document.getElementById('tpWrap'), tf=tw&&tw.closest('.field'); if(tf&&!document.getElementById('pjArcT')){ const L=ARC4.map(x=>x[0]); const cur=normTD(t.mbf&&t.mbf.typeDocArchi); const f=document.createElement('div'); f.className='field'; f.innerHTML='<label>Type de document architectural</label><select id="pjArcT">'+ARC4.map(x=>'<option value="'+E(x[0])+'"'+(x[0]===cur?' selected':'')+'>'+E(x[0])+' · '+E(x[1])+'</option>').join('')+'</select>'; tf.before(f);
    f.querySelector('select').onchange=e=>{ t.mbf=t.mbf||{}; t.mbf.typeDocArchi=e.target.value; try{ persist(); }catch(_){} const nv=(document.getElementById('e-niveau')||{}).value||t.niveau; try{ tpRender(t.id,nv); }catch(_){} }; } }catch(e){ console.error(e); } }
 
  /* ---- cadre E : types de documents techniques + 3 zones (structure, clos et couvert, CET) + plan avec pastille ---- */
