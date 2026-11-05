@@ -7086,6 +7086,19 @@ function projLabel(){
   const e = PROJ_ETAPES.find(x=>x[0]===P.etape), sc = PROJ_SCHEMAS.find(x=>x[0]===P.schema);
   return 'EXE · '+(e?e[1]:'')+' · '+(sc?(P.schema==='seq'?'GO puis CES':'GO avec CES'):'');
 }
+function archEns(){ if(!Array.isArray(state.batiments)||!state.batiments.length) state.batiments=[{id:'B1',nom:'Bâtiment 1'}]; state.nivBat=state.nivBat||{}; const f=state.batiments[0].id; nbOrder().forEach(n=>{ if(!state.batiments.some(b=>b.id===state.nivBat[n])) state.nivBat[n]=f; }); }
+function archTreeHtml(o){
+  archEns(); const B=state.batiments;
+  return `<div class="arch-box" id="archBox" style="margin-top:18px">
+    <h4 style="margin:0 0 4px; font-size:14px">🏛 Architecture</h4>
+    <p class="empty-note" style="margin:0 0 8px">Bâtiment, puis niveaux. Cliquez sur un nom pour le renommer. Glissez la poignée ⋮⋮ d’un niveau pour changer l’ordre dans son bâtiment. Les pièces et les produits se gèrent ailleurs.</p>
+    <div id="nivRib" class="arch-tree">${B.map(b=>{ const L=o.filter(n=>state.nivBat[n]===b.id); return `<div class="arch-bat" data-b="${esc(b.id)}"><div class="arch-bh"><span class="arch-ic">🏢</span><b class="arch-bn" title="Cliquez pour renommer ce bâtiment" onclick="archRenameBat('${esc(b.id)}')">${esc(b.nom)} <small style="opacity:.5">✎</small></b><button type="button" class="ghost arch-add" onclick="nivGestAdd('${esc(b.id)}')">＋ Niveau</button><button type="button" class="niv-del" title="Supprimer ce bâtiment (vide)" onclick="archDelBat('${esc(b.id)}')" style="border:0;background:transparent;font-size:16px;cursor:pointer;padding:4px 8px">🗑</button></div><div class="arch-nl">${L.map((n,i)=>`<div class="niv-rb" tabindex="0" data-n="${esc(n)}"><span class="niv-rb-g">⋮⋮</span><span class="ouv-chip niv-rk" title="Cliquez pour saisir le rang" style="cursor:text">${i+1}</span><b style="flex:1;cursor:text" class="niv-name" title="Cliquez pour renommer ce niveau" onclick="event.stopPropagation();nivGestRename(this.closest('.niv-rb').dataset.n)">${esc(nbLab(n))} <small style="opacity:.5">✎</small></b><button type="button" class="niv-del" title="Supprimer ce niveau" aria-label="Supprimer ${esc(nbLab(n))}" onclick="event.stopPropagation();ribDeleteNiveau(this.closest('.niv-rb').dataset.n)" style="border:0;background:transparent;font-size:18px;cursor:pointer;padding:4px 8px">🗑</button></div>`).join('')||'<p class="empty-note" style="margin:4px 0 4px 8px">Aucun niveau</p>'}</div></div>`; }).join('')}</div>
+    <div style="margin-top:10px"><button type="button" class="primary" onclick="archAddBat()">＋ Ajouter un bâtiment</button></div>
+  </div>`;
+}
+window.archAddBat=function(){ miniPrompt('Nom du nouveau bâtiment :','',v=>{ v=(v||'').trim(); if(!v) return; archEns(); if(state.batiments.some(b=>b.nom.toLowerCase()===v.toLowerCase())){ miniAlert('Ce bâtiment existe déjà.'); return; } state.batiments.push({id:'B'+Date.now().toString(36),nom:v}); persist(); projParamEdit(); }); };
+window.archRenameBat=function(id){ archEns(); const b=state.batiments.find(x=>x.id===id); if(!b) return; miniPrompt('Nouveau nom du bâtiment :',b.nom,v=>{ v=(v||'').trim(); if(!v||v===b.nom) return; b.nom=v; persist(); projParamEdit(); }); };
+window.archDelBat=function(id){ archEns(); const b=state.batiments.find(x=>x.id===id); if(!b) return; if(state.batiments.length<2){ miniAlert('Il faut au moins un bâtiment.'); return; } if(nbOrder().some(n=>state.nivBat[n]===id)){ miniAlert('Ce bâtiment contient encore des niveaux : déplacez-les ou supprimez-les d’abord.'); return; } state.batiments=state.batiments.filter(x=>x.id!==id); persist(); projParamEdit(); };
 function projParamEdit(){
   const P = projEns(), exe = P.phase==='exe';
   const sel = (key, opts, cur)=>`<select style="width:100%" onchange="projSet('${key}',this.value)">${opts.map(x=>`<option value="${x[0]}" ${cur===x[0]?'selected':''}>${esc(x[1])}</option>`).join('')}</select>`;
@@ -7099,26 +7112,23 @@ function projParamEdit(){
       ${exe ? row('Schéma d’enchaînement', sel('schema', PROJ_SCHEMAS, P.schema), det(PROJ_SCHEMAS,P.schema)) : ''}
     </tbody></table>
     ${exe?'':'<p class="empty-note" style="margin-top:8px">En phase PRO, rien n’est traité pour l’instant : les étapes et le suivi par niveaux seront activés en phase EXE.</p>'}
-    <h4 style="margin:16px 0 4px; font-size:14px">Gérer les niveaux <small style="color:var(--ink-soft); font-weight:400">(renommer, ajouter, retirer, ordre d’avancement)</small></h4>
-    <p class="empty-note" style="margin:0 0 8px">Glissez la poignée ⋮⋮ d’un niveau : il reste dans cette liste et les autres s’écartent. Cliquez sur le numéro d’un niveau pour saisir son rang, ou sélectionnez un niveau et utilisez les flèches ↑ ↓. Les niveaux s’affichent dans cet ordre partout.</p>
-    <div id="nivRib" class="niv-rib">${o.map((n,i)=>`<div class="niv-rb" tabindex="0" data-n="${esc(n)}"><span class="niv-rb-g">⋮⋮</span><span class="ouv-chip niv-rk" title="Cliquez pour saisir le rang" style="cursor:text">${i+1}</span><b style="flex:1;cursor:text" class="niv-name" title="Cliquez pour renommer ce niveau" onclick="event.stopPropagation();nivGestRename(this.closest('.niv-rb').dataset.n)">${esc(nbLab(n))} <small style="opacity:.5">✎</small></b><button type="button" class="niv-del" title="Supprimer ce niveau" aria-label="Supprimer ${esc(nbLab(n))}" onclick="event.stopPropagation();ribDeleteNiveau(this.closest('.niv-rb').dataset.n)" style="border:0;background:transparent;font-size:18px;cursor:pointer;padding:4px 8px">🗑</button></div>`).join('')}</div>
-    <div style="margin-top:10px"><button type="button" class="primary" onclick="nivGestAdd()">＋ Ajouter un niveau</button></div>
     <div class="obj-box" id="objBox" style="margin-top:18px">
       <h4 style="margin:0 0 8px; font-size:14px">🎯 Objectifs planning</h4>
       <div class="field" style="max-width:260px;"><label>Date de fin d'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div>
       <div id="objNiveauDetail" style="overflow-x:auto"></div>
     </div>
+    ${archTreeHtml(o)}
     <div class="modal-actions"><button class="primary" onclick="closeModal(); try{ renderAll(); }catch(e){}">Terminé</button></div>`);
   nbRibBind(); try{ renderObjectifsPanel(); }catch(e){ console.error(e); }
 }
 /* Ruban des niveaux : appui long puis glisser pour changer l'ordre */
 window.nivGestSaveClose=function(ord){ state.perimetre=state.perimetre||{niveaux:[]}; state.perimetre.niveaux=ord; try{ nbApplyOrder(); }catch(e){} persist(); try{ closeModal(); }catch(e){} try{ renderAll(); }catch(e){} try{ clipToast('Niveaux enregistrés'); }catch(e){} };
-window.nivGestAdd=function(){ miniPrompt('Nom du nouveau niveau :','',v=>{ const nom=(v||'').trim(); if(!nom) return;
+window.nivGestAdd=function(batId){ miniPrompt('Nom du nouveau niveau :','',v=>{ const nom=(v||'').trim(); if(!nom) return;
     if(state.niveaux.some(x=>x.toLowerCase()===nom.toLowerCase())){ miniAlert('Ce niveau existe déjà.'); return; }
-    const ord=[...document.querySelectorAll('#nivRib .niv-rb')].map(r=>r.dataset.n); state.niveaux.push(nom); ord.push(nom); nivGestSaveClose(ord); }); };
+    const ord=[...document.querySelectorAll('#nivRib .niv-rb')].map(r=>r.dataset.n); state.niveaux.push(nom); try{ archEns(); state.nivBat[nom]=batId||state.batiments[0].id; }catch(e){} ord.push(nom); nivGestSaveClose(ord); }); };
 window.nivGestRename=function(n){ miniPrompt('Nouveau nom du niveau :',n,v=>{ v=(v||'').trim(); if(!v||v===n) return;
     if(state.niveaux.some(x=>x.toLowerCase()===v.toLowerCase())){ miniAlert('Ce niveau existe déjà.'); return; }
-    state.niveaux=state.niveaux.map(x=>x===n?v:x);
+    state.niveaux=state.niveaux.map(x=>x===n?v:x); try{ if(state.nivBat&&state.nivBat[n]!==undefined){ state.nivBat[v]=state.nivBat[n]; delete state.nivBat[n]; } }catch(e){}
     (state.zonesChantier||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; }); (state.zoneFamilles||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; });
     (state.plans||[]).forEach(p=>{ if(p.niveau===n) p.niveau=v; }); (state.tasks||[]).forEach(t=>{ if(t.niveau===n) t.niveau=v; }); (state.ged||[]).forEach(r=>{ if(r.niveau===n) r.niveau=v; });
     if(state.objectifs&&state.objectifs.datesNiveau&&state.objectifs.datesNiveau[n]!==undefined){ state.objectifs.datesNiveau[v]=state.objectifs.datesNiveau[n]; delete state.objectifs.datesNiveau[n]; }
@@ -7135,6 +7145,8 @@ function nbRibBind(){
   const box = document.getElementById('nivRib'); if(!box) return;
   let t=null, d=null, sy=0, sx=0, tr=0;
   const rows = ()=>[...box.querySelectorAll('.niv-rb')];
+  const grp = r=>rows().filter(x=>x.parentNode===r.parentNode);
+  const withGroup = (r,newOrd)=>{ let k=0; return rows().map(x=>x.parentNode===r.parentNode?newOrd[k++]:x.dataset.n); };
   const cancel = ()=>{ clearTimeout(t); t=null; };
   const commit = (fn)=>nbRibSave(rows().map(r=>r.dataset.n), typeof fn==='string'?fn:null);
   /* Clavier : un niveau sélectionné (cliqué ou atteint par Tab) se déplace avec les flèches haut / bas */
@@ -7142,20 +7154,20 @@ function nbRibBind(){
     if(e.key!=='ArrowUp' && e.key!=='ArrowDown') return;
     const row = e.target.closest && e.target.closest('.niv-rb'); if(!row || e.target.tagName==='INPUT') return;
     e.preventDefault(); e.stopPropagation();
-    const ord = rows().map(r=>r.dataset.n), n = row.dataset.n, i = ord.indexOf(n), j = i + (e.key==='ArrowUp'?-1:1);
+    const ord = grp(row).map(r=>r.dataset.n), n = row.dataset.n, i = ord.indexOf(n), j = i + (e.key==='ArrowUp'?-1:1);
     if(j<0 || j>=ord.length) return;
-    ord.splice(i,1); ord.splice(j,0,n); nbRibSave(ord, n);
+    ord.splice(i,1); ord.splice(j,0,n); nbRibSave(withGroup(row,ord), n);
   });
   /* Numéro de rang modifiable : un clic, on saisit le rang, le niveau se place à cet endroit */
   box.addEventListener('click', e=>{
     const k = e.target.closest('.niv-rk'); if(!k || k.querySelector('input')) return;
-    const row = k.closest('.niv-rb'), n = row.dataset.n, cur = rows().findIndex(r=>r===row)+1, N = rows().length;
+    const row = k.closest('.niv-rb'), n = row.dataset.n, cur = grp(row).findIndex(r=>r===row)+1, N = grp(row).length;
     k.innerHTML = `<input type="number" min="1" max="${N}" value="${cur}" style="width:54px;padding:2px 6px;min-height:0;text-align:center;font-weight:700">`;
     const i = k.querySelector('input'); i.focus(); i.select();
     let done = false;
     const ok = ()=>{ if(done) return; done = true; let v = parseInt(i.value,10); if(!(v>=1)) v = cur; v = Math.min(N, v);
       if(v===cur){ projParamEdit(); return; }
-      const ord = rows().map(r=>r.dataset.n).filter(x=>x!==n); ord.splice(v-1,0,n); nbRibSave(ord); };
+      const ord = grp(row).map(r=>r.dataset.n).filter(x=>x!==n); ord.splice(v-1,0,n); nbRibSave(withGroup(row,ord)); };
     i.addEventListener('keydown', ev=>{ ev.stopPropagation(); if(ev.key==='Enter'){ ev.preventDefault(); ok(); } if(ev.key==='Escape'){ ev.preventDefault(); done=true; projParamEdit(); } });
     i.addEventListener('blur', ok);
   });
@@ -7175,17 +7187,17 @@ function nbRibBind(){
   box.addEventListener('pointermove', e=>{
     if(!d){ if(t && Math.hypot(e.clientX-sx,e.clientY-sy)>9) cancel(); return; }
     e.preventDefault();
-    const r = d.r, br = box.getBoundingClientRect();
+    const r = d.r, br = r.parentNode.getBoundingClientRect();
     /* position voulue (écran) : suit la souris mais reste dans la zone des niveaux */
     const want = Math.max(br.top, Math.min(br.bottom - d.h, e.clientY - d.off));
     let layoutTop = r.getBoundingClientRect().top - tr;
-    const others = rows().filter(x=>x!==r);
+    const others = grp(r).filter(x=>x!==r);
     const mid = want + d.h/2;
     let before = null;
     for(const x of others){ const b = x.getBoundingClientRect(); if(mid < b.top + b.height/2){ before = x; break; } }
     if((before||null)!==r.nextElementSibling){
       const old = new Map(others.map(x=>[x,x.getBoundingClientRect().top]));
-      box.insertBefore(r, before);
+      r.parentNode.insertBefore(r, before);
       others.forEach(x=>{ const dy = old.get(x) - x.getBoundingClientRect().top; if(dy) try{ x.animate([{transform:'translateY('+dy+'px)'},{transform:'none'}],{duration:160,easing:'ease-out'}); }catch(_){} });
       layoutTop = r.getBoundingClientRect().top - tr;
     }
@@ -18207,6 +18219,11 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pjB{display:grid;grid-template-columns:minmax(96px,150px) 1fr minmax(96px,150px);gap:0;margin:0 0 12px;border:2px solid var(--pjB,#2D6CDF);border-radius:12px;overflow:visible;background:color-mix(in srgb,var(--pjB,#2D6CDF) 10%,transparent);position:relative}
 .pjB-time{--pjB:#2D6CDF}.pjB-late{--pjB:#D93636}.pjB-ok{--pjB:#2E9E5B}
 .tf-tech>.pjHideA{display:none !important}
+.arch-bat{border:1px solid var(--line,rgba(128,128,128,.3));border-radius:12px;padding:8px 10px;margin:0 0 10px}
+.arch-bh{display:flex;align-items:center;gap:8px;margin-bottom:6px}.arch-bn{flex:1;cursor:text;font-size:15px}
+.arch-nl{display:flex;flex-direction:column;gap:6px;margin-left:14px;padding-left:12px;border-left:2px solid var(--line,rgba(128,128,128,.35))}
+.arch-nl .niv-rb{display:flex;align-items:center;gap:8px}
+.arch-add{font-size:12.5px;padding:4px 10px}
 .pjd-th{all:unset;cursor:pointer;display:inline-block;vertical-align:middle;margin-right:8px;width:44px;height:32px;border-radius:6px;overflow:hidden;border:1px solid rgba(0,0,0,.15);background:#fff}.pjd-th img{width:100%;height:100%;object-fit:cover;display:block}
 .pjd-q{width:220px !important;flex:none;border:0;border-bottom:1px solid rgba(0,0,0,.15);background:transparent;font:inherit;padding:4px 6px;min-width:200px;outline:none}.pjd-add{opacity:.6;cursor:pointer}
 
