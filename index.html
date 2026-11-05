@@ -17013,7 +17013,7 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
         res = {pts:pts.map(p=>[p[0]/w,p[1]/w]), ax:grp(cc,h).map(v=>v/w), ay:grp(rr,w).map(v=>v/w), w:(x1-x0)/w, h:(y1-y0)/w}; }
     }catch(e){ res = null; }
     cache[key] = res; return res; }
-  const isArchi = p=>/archi/i.test((p.lot||'')+' '+(p.nom||''));
+  const isArchi = p=>/archi/i.test((p.lot||'')+' '+(p.nom||''))||(typeof normTD==='function'&&normTD(p.typeDoc)==='Plan d’étage'&&p.typeDoc);
   const planOf = niv=>{ const L=(state.plans||[]).filter(p=>p.niveau===niv && planSrcViewSafe(p)); if(!L.length) return null; const hasA=(state.plans||[]).some(p=>isArchi(p)&&planSrcViewSafe(p)); return hasA ? (L.find(isArchi)||null) : L[0]; };
   const planSrcViewSafe = p=>{ try{ return (typeof planSrc==='function'?planSrc(p):p.src)||''; }catch(e){ return ''; } };
   const esc2 = t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -17024,7 +17024,7 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
     // calage sur les traits de repère (axes) : décalage qui aligne le plus d'axes avec le niveau de référence ; sinon même cadre de plan
     const ref = C[have[0]], tol = .012;
     const vote = (A,B)=>{ let best=0,bc=0; (A||[]).forEach(a=>(B||[]).forEach(b=>{ const t=b-a; let c=0; A.forEach(a2=>{ if(B.some(b2=>Math.abs(b2-a2-t)<tol)) c++; }); if(c>bc||(c===bc&&Math.abs(t)<Math.abs(best)&&c>0)){ bc=c; best=t; } })); return bc>=2?best:0; };
-    have.forEach(n=>{ const c=C[n]; if(c.al) return; const dx = c===ref?0:vote(c.ax,ref.ax), dy = c===ref?0:vote(c.ay,ref.ay); c.al = c.pts.map(q=>[q[0]+dx,q[1]+dy]); c.dx=dx; c.dy=dy; });
+    have.forEach(n=>{ const c=C[n]; const dx = c===ref?0:vote(c.ax,ref.ax), dy = c===ref?0:vote(c.ay,ref.ay); c.al = c.pts.map(q=>[q[0]+dx,q[1]+dy]); c.dx=dx; c.dy=dy; });
     let gx0=1e9,gx1=-1e9,gy0=1e9,gy1=-1e9; have.forEach(n=>C[n].al.forEach(q=>{ gx0=Math.min(gx0,q[0]); gx1=Math.max(gx1,q[0]); gy0=Math.min(gy0,q[1]); gy1=Math.max(gy1,q[1]); }));
     const gcx=(gx0+gx1)/2, gcy=(gy0+gy1)/2;
     have.forEach(n=>{ const c=C[n]; c.pts2=c.al.map(q=>[q[0]-gcx,q[1]-gcy]); });
@@ -17088,6 +17088,8 @@ body.plan-fs-on .rt-root.rt-fs #rtCtx .rt-btn{min-height:32px;padding:3px 11px;f
     if(view!=='bld'){ orig.apply(this,arguments); const h=w.querySelector('.nb-head'); if(h&&!h.querySelector('#nbbView2')){ const b=document.createElement('button'); b.type='button'; b.className='nb-edit'; b.id='nbbView2'; b.textContent='🏢 Vue bâtiment'; b.onclick=()=>{ view='bld'; try{ localStorage.setItem('nb_view','bld'); }catch(e){} window.renderNivBars(); }; h.appendChild(b); } return; }
     let any = false; try{ any = (state.plans||[]).some(p=>planSrcViewSafe(p)); }catch(e){}
     if(!any || (typeof projEns==='function' && projEns().phase==='pro')) return orig.apply(this,arguments);
+    /* nouveau plan d'étage / d'architecte (ajout, remplacement, changement de niveau ou de type) : la vue est réinitialisée */
+    try{ const sig=(state.plans||[]).filter(p=>isArchi(p)||/archi/i.test(p.lot||'')).map(p=>[p.id,p.niveau,p.typeDoc,(p.src||'').length,(p.src||'').slice(-16)].join('~')).sort().join('|'); if(window.__nbSig!==undefined&&window.__nbSig!==sig){ Object.keys(cache).forEach(k=>delete cache[k]); } window.__nbSig=sig; }catch(e){}
     if(busy){ again = true; return; } busy = true;
     paint(w).then(ok=>{ if(!ok) orig.call(window); }).catch(()=>{ try{ orig.call(window); }catch(e){} }).finally(()=>{ busy=false; if(again){ again=false; window.renderNivBars(); } });
   };
