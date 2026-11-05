@@ -18124,6 +18124,10 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 
  /* ---- cadre E : types de documents techniques + 3 zones (structure, clos et couvert, CET) + plan avec pastille ---- */
  const CEZ=[['Structure','Structure'],['Clos et couvert','Clos et couvert'],['CET','Corps d’état techniques']];
+ function pjTaskPiece(t){ try{ return pieceOfTask(t); }catch(_){ return null; } }
+ function pjPinFallback(t,pl){ const z=pjTaskPiece(t); if(z&&z.poly&&z.poly.planId===pl.id&&z.poly.pts&&z.poly.pts.length>2){ try{ const c=pieceCentroid(z.poly.pts); return {x:c[0],y:c[1],planId:pl.id,auto:true}; }catch(_){} } return null; }
+ function pjOver(t,pl){ let L=[]; try{ L=piecesOfNiveau(pl.niveau).filter(z=>z.poly&&z.poly.planId===pl.id&&z.poly.pts&&z.poly.pts.length>2); }catch(_){} if(!L.length) return ''; const mine=pjTaskPiece(t);
+  return '<svg class="pjOv" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">'+L.map(z=>'<polygon points="'+z.poly.pts.map(q=>q[0]+','+q[1]).join(' ')+'" class="pjOv-z'+(mine&&mine.id===z.id?' mine':'')+'"/>').join('')+'</svg>'+L.map(z=>{ let c=[0,0]; try{ c=pieceCentroid(z.poly.pts); }catch(_){} return '<span class="pjOv-l'+(mine&&mine.id===z.id?' mine':'')+'" style="left:'+c[0]*100+'%;top:'+c[1]*100+'%">'+E(z.nom||'')+'</span>'; }).join(''); }
  function pjPill(t,p,placing){ let m=null,pc=null; try{ m=taskMetier(t); }catch(_){} try{ pc=pieceOfTask(t); }catch(_){} const col=m?metColor(m):'#FFC400'; const lab=pc&&pc.nom?pc.nom:(m?m.nom:(t.quoi||'Ouvrage')); const ic=metierIcon(m); return '<div class="pjPillRow"><span class="pjPill'+(p?' put':'')+'" style="--c:'+col+'" title="Touche le plan pour placer ou déplacer la pastille"><span class="pjPill-i">'+E(ic)+'</span><span class="pjPill-t">'+E(lab)+'</span>'+(pc&&m?'<small>'+E(m.nom)+'</small>':'')+'</span><span class="pjPill-h">'+(pc?'Pièce : '+E(pc.nom||'')+' · ':'')+(p?'touche le plan pour la déplacer':'touche le plan pour la placer')+'</span></div>'; }
  function pinPos(t,pl){ return (t.pos&&t.pos.planId===pl.id)?t.pos:((t.posAlt||{})[pl.id]||null); }
  /* ---- cadre ARC : boîtes imbriquées BAT > NN > PIÈCE > TYPE, chacune ouvre son plan s'il existe ---- */
@@ -18148,9 +18152,9 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
   const mark=()=>{ wrap.querySelectorAll('[data-s]').forEach(x=>x.classList.toggle('on',x.dataset.s===curK)); };
   const view=(k,pl)=>{ const v=wrap.querySelector('#pjARCv'); const md=document.querySelector('#modalBody').closest('.modal');
    if(!pl){ cur=null; curK=null; placing=true; v.hidden=true; v.innerHTML=''; mark(); return; }
-   cur=pl; curK=k; const loc=k!=='type'; const L=plansOf(k); const p=loc?pinPos(t,pl):null; placing=true;
+   cur=pl; curK=k; const loc=k!=='type'; const L=plansOf(k); const p=loc?(pinPos(t,pl)||pjPinFallback(t,pl)):null; placing=true;
    last(pl); mark(); v.hidden=false;
-   v.innerHTML='<div class="pjCE-b">'+(L.length>1?'<select data-a="pick">'+L.map(x=>'<option value="'+E(x.id)+'"'+(x.id===pl.id?' selected':'')+'>'+E(x.nom||x.id)+'</option>').join('')+'</select>':'<b>'+E(pl.nom||pl.id)+'</b>')+(loc&&pl.niveau?'<button type="button" data-a="vue">⤢ Vue image</button>':'')+'<button type="button" data-a="x" aria-label="Fermer">×</button></div>'+(loc?pjPill(t,p,placing):'')+'<div class="pjCE-p tp-inner" id="pjARCp"><img src="'+E(typeof planSrc==='function'?planSrc(pl):pl.src)+'" alt="'+E(pl.nom||'Plan')+'" draggable="false">'+(p?'<div class="tp-pin" style="left:'+p.x*100+'%;top:'+p.y*100+'%;background:'+tpColor(t)+';'+tpPinShape(t)+'"></div>':'')+'</div>'+(loc?'<p class="pjCE-m">Touche le plan à l’endroit voulu : la pastille s’y place'+(k==='bat'?' (position approximative)':'')+'. Dans une pièce dessinée, la pièce est renseignée automatiquement.</p>':''); 
+   v.innerHTML='<div class="pjCE-b">'+(L.length>1?'<select data-a="pick">'+L.map(x=>'<option value="'+E(x.id)+'"'+(x.id===pl.id?' selected':'')+'>'+E(x.nom||x.id)+'</option>').join('')+'</select>':'<b>'+E(pl.nom||pl.id)+'</b>')+(loc&&pl.niveau?'<button type="button" data-a="vue">⤢ Vue image</button>':'')+'<button type="button" data-a="x" aria-label="Fermer">×</button></div>'+(loc?pjPill(t,p,placing):'')+'<div class="pjCE-p tp-inner" id="pjARCp"><img src="'+E(typeof planSrc==='function'?planSrc(pl):pl.src)+'" alt="'+E(pl.nom||'Plan')+'" draggable="false">'+pjOver(t,pl)+(p?'<div class="tp-pin" style="left:'+p.x*100+'%;top:'+p.y*100+'%;background:'+tpColor(t)+';'+tpPinShape(t)+'"></div>':'')+'</div>'+(loc?'<p class="pjCE-m">Touche le plan à l’endroit voulu : la pastille s’y place'+(k==='bat'?' (position approximative)':'')+'. Dans une pièce dessinée, la pièce est renseignée automatiquement.</p>':''); 
    if(md) md.classList.add('pjBig'); setTimeout(()=>{ try{ v.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(_){} },60); };
   const open=k=>{ const L=plansOf(k); if(!L.length){ try{ clipToast('Aucun document chargé pour cette échelle'); }catch(_){} return; } if(curK===k){ view(null); return; } placing=false; const pl=L.find(x=>pinPos(t,x))||L[0]; view(k,pl); };
   wrap.addEventListener('click',e=>{
@@ -18173,8 +18177,8 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
   const last=pl=>{ window.pjLastFiche={id:t.id,planId:pl?pl.id:null}; const b=document.getElementById('pjBackFiche'); if(b) b.hidden=false; };
   const goVue=pl=>{ last(pl); try{ closeModal(); state.repPlanParNiv=state.repPlanParNiv||{}; state.repPlanParNiv[pl.niveau]=pl.id; travauxNiveauActif=pl.niveau; persist(); showPage('travaux'); setTimeout(()=>{ try{ const d=document.getElementById('rtRibPlan'); if(d&&!d.open){ const sm=d.querySelector('summary'); if(sm) sm.click(); if(!d.open) d.open=true; } window.rtSelect(t.id,null); }catch(_){} },500); }catch(e){ console.error(e); } };
   const view=pl=>{ const v=wrap.querySelector('#pjCEv'); const md=document.querySelector('#modalBody').closest('.modal'); if(!pl){ cur=null; v.hidden=true; v.innerHTML=''; if(md) md.classList.remove('pjBig'); lists(); return; }
-   cur=pl; last(pl); if(md) md.classList.add('pjBig'); const p=pinPos(t,pl);
-   v.hidden=false; v.innerHTML='<div class="pjCE-b"><b>'+E(pl.nom||pl.id)+'</b><span>'+E(pl.typeDoc||'')+'</span><button type="button" data-a="vue">⤢ Vue image</button><button type="button" data-a="x" aria-label="Fermer le plan">×</button></div>'+pjPill(t,p,placing)+'<div class="pjCE-p tp-inner" id="pjCEp"><img src="'+E(typeof planSrc==='function'?planSrc(pl):pl.src)+'" alt="'+E(pl.nom||'Plan')+'" draggable="false">'+(p?'<div class="tp-pin" style="left:'+p.x*100+'%;top:'+p.y*100+'%;background:'+tpColor(t)+';'+tpPinShape(t)+'"></div>':'')+'</div><p class="pjCE-m">'+(p?'Pastille de l’ouvrage sur ce plan. Touche le plan pour l’ouvrir en vue image.':'L’ouvrage n’est pas encore placé sur ce plan : « Placer la pastille ici », puis touche l’endroit.')+'</p>';
+   cur=pl; last(pl); if(md) md.classList.add('pjBig'); const p=pinPos(t,pl)||pjPinFallback(t,pl);
+   v.hidden=false; v.innerHTML='<div class="pjCE-b"><b>'+E(pl.nom||pl.id)+'</b><span>'+E(pl.typeDoc||'')+'</span><button type="button" data-a="vue">⤢ Vue image</button><button type="button" data-a="x" aria-label="Fermer le plan">×</button></div>'+pjPill(t,p,placing)+'<div class="pjCE-p tp-inner" id="pjCEp"><img src="'+E(typeof planSrc==='function'?planSrc(pl):pl.src)+'" alt="'+E(pl.nom||'Plan')+'" draggable="false">'+pjOver(t,pl)+(p?'<div class="tp-pin" style="left:'+p.x*100+'%;top:'+p.y*100+'%;background:'+tpColor(t)+';'+tpPinShape(t)+'"></div>':'')+'</div><p class="pjCE-m">'+(p?'Pastille de l’ouvrage sur ce plan. Touche le plan pour l’ouvrir en vue image.':'L’ouvrage n’est pas encore placé sur ce plan : « Placer la pastille ici », puis touche l’endroit.')+'</p>';
    lists(); setTimeout(()=>{ try{ v.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(_){} },60); };
   wrap.addEventListener('click',e=>{ const b=e.target.closest('[data-pl]'); if(b){ const pl=(state.plans||[]).find(x=>x.id===b.dataset.pl); if(!pl) return; if(cur&&cur.id===pl.id) goVue(pl); else { placing=false; view(pl); } return; }
    const a=e.target.closest('[data-a]'); if(a){ if(a.dataset.a==='x'){ placing=false; view(null); } else if(a.dataset.a==='vue'&&cur) goVue(cur); return; }
@@ -18792,6 +18796,11 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
 .pjPill small{font-weight:500;opacity:.75;margin-left:2px}.pjPill-h{color:#B8B4A6;font-size:12.5px}
 
 .pjCE-p,.pjCE-p img,#pjARCp,#pjCEp{cursor:crosshair!important}
+
+.pjCE-p{position:relative}.pjOv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.pjOv-z{fill:rgba(255,196,0,.14);stroke:#E0A800;stroke-width:1.5;vector-effect:non-scaling-stroke}.pjOv-z.mine{fill:rgba(255,196,0,.34);stroke:#FFC400;stroke-width:3}
+.pjOv-l{color:#0E0E0E!important;position:absolute;transform:translate(-50%,-50%);font:600 11px 'Space Grotesk',system-ui,sans-serif;background:rgba(255,255,255,.85);padding:1px 6px;border-radius:999px;pointer-events:none;white-space:nowrap}.pjOv-l.mine{background:#FFC400!important}.pjOv-l{top:auto}
+.pjCE-p .tp-pin{z-index:3}
 </style>
 <script id="pjV140Js">
 (function(){
