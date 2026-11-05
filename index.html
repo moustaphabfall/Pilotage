@@ -18322,6 +18322,7 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
 .pjPlan:hover{background:rgba(255,196,0,.2)}.pjPlan:focus-visible{outline:2px solid #FFC400;outline-offset:2px}
 .pjPlan-p{display:inline-flex;align-items:center;gap:6px}.pjPlan-p i{font:600 12px 'IBM Plex Sans',system-ui,sans-serif;border:1.5px solid currentColor;border-radius:50%;min-width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;font-style:normal}.pjPlan-p u{width:34px;height:2px;background:currentColor;position:relative;text-decoration:none}.pjPlan-p u::after{content:'';position:absolute;right:-1px;top:-4px;border-left:7px solid currentColor;border-top:5px solid transparent;border-bottom:5px solid transparent}
 .pjG{display:flex;align-items:center;justify-content:center;gap:0;margin:22px 0 12px;flex-wrap:wrap}
+#modalBody .pjG-c[disabled],#modalBody .pjG-t[disabled]{opacity:.35;cursor:not-allowed !important}
 #modalBody .pjG-c{all:unset;box-sizing:border-box;cursor:pointer;width:170px;height:170px;border-radius:50% !important;border:2.5px solid #FFC400 !important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;background:rgba(255,196,0,.08)}
 .pjG-c:hover{background:rgba(255,196,0,.2)}.pjG-c small{font:500 11px 'IBM Plex Sans',sans-serif;opacity:.7}.pjG-c b{font:700 26px 'Space Grotesk',sans-serif}.pjG-c span{font:500 12px 'IBM Plex Sans',sans-serif;opacity:.85}
 #modalBody .pjG-t{background:transparent !important;border:0 !important;box-shadow:none !important;color:#F2EFE6;all:unset;display:block;box-sizing:border-box;cursor:pointer;width:min(260px,40vw);min-width:120px;padding:10px 6px 18px;text-align:center;font:600 14px 'Space Grotesk',sans-serif;position:relative}
@@ -18757,22 +18758,26 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
  const sh=d=>frDate?frDate(d):d;
  window.pjPlanif=function(kind,id){
   const c=pjCtx(kind,id); if(!c) return; try{ persist(); }catch(_){}
-  const cir=(k,e,lab)=>'<button type="button" class="pjG-c" data-pe="'+k+'"><small>'+lab+'</small><b>'+esc(e.nom||'—')+'</b><span>'+(e.tot?sh(e.tot):'…')+' · '+(e.tard?sh(e.tard):'…')+'</span></button>';
+  const debOk=!!(c.deb.nom&&c.deb.tot&&c.deb.tard), tOk=!!(c.kind==='doc'?c.o.tacheOk:(c.o.mbf||{}).tacheOk);
+  const cir=(k,e,lab)=>'<button type="button" class="pjG-c" data-pe="'+k+'"'+(k==='fin'&&!tOk?' disabled aria-disabled="true"':'')+'><small>'+lab+'</small><b>'+esc(e.nom||'—')+'</b><span>'+(e.tot?sh(e.tot):'…')+' · '+(e.tard?sh(e.tard):'…')+'</span></button>';
   openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">Planning</div><h3 style="padding-right:46px">'+esc(c.label)+'</h3>'
-   +'<div class="pjG">'+cir('deb',c.deb,'Départ (input)')+'<button type="button" class="pjG-t" data-pe="tache" title="Ouvrir la fiche"><span>tâche '+esc(c.tache)+'</span><i></i></button>'+cir('fin',c.fin,'Fin (output)')+'</div>'
-   +'<p class="pjG-h">Touche un cercle pour renseigner l’étape. Touche la flèche pour ouvrir la fiche.</p><div class="pjG-b"><button type="button" class="pp-lnk" data-pe="retour">← Retour à la fiche</button></div>');
+   +'<div class="pjG">'+cir('deb',c.deb,'Départ (input)')+'<button type="button" class="pjG-t" data-pe="tache" title="Ouvrir la fiche"'+(debOk?'':' disabled aria-disabled="true"')+'><span>tâche '+esc(c.tache)+'</span><i></i></button>'+cir('fin',c.fin,'Fin (output)')+'</div>'
+   +'<p class="pjG-h">'+(!debOk?'1. Renseigne l’étape de départ (nom et les deux dates).':!tOk?'2. Ouvre la tâche (la flèche) et remplis sa fiche.':'3. Renseigne l’étape de fin.')+'</p><div class="pjG-b"><button type="button" class="pp-lnk" data-pe="retour">← Retour à la fiche</button></div>');
   const mb=document.getElementById('modalBody'); const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
-  mb.querySelectorAll('[data-pe]').forEach(b=>b.onclick=()=>{ const k=b.dataset.pe; if(k==='tache'||k==='retour') c.fiche(); else cercle(c,k); });
+  mb.querySelectorAll('[data-pe]').forEach(b=>b.onclick=()=>{ const k=b.dataset.pe; if(b.disabled) return; if(k==='tache'){ if(c.kind==='doc') c.o.tacheOk=true; else { c.o.mbf=c.o.mbf||{}; c.o.mbf.tacheOk=true; } try{ persist(); }catch(_){} c.fiche(); } else if(k==='retour') c.fiche(); else cercle(c,k); });
  };
  function cercle(c,k){
   const e=c[k], titre=k==='deb'?'Départ (input)':'Fin (output)';
   openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">'+titre+'</div><h3 style="padding-right:46px">'+esc(c.label)+'</h3>'
    +'<div class="pjC"><div class="pjC-h"><label>Étape</label><input data-v="nom" value="'+esc(e.nom||'')+'" placeholder="E0, E1…"></div><div class="pjC-l"><label>Au plus tôt</label><input type="date" data-v="tot" value="'+esc(e.tot||'')+'"></div><div class="pjC-r"><label>Au plus tard</label><input type="date" data-v="tard" value="'+esc(e.tard||'')+'"></div></div>'
-   +'<p class="pjG-h" id="pjCm"></p><div class="pjG-b"><button type="button" class="pp-lnk" data-pe="retour">← Retour au planning</button></div>');
+   +'<p class="pjG-h" id="pjCm"></p><div class="pjG-b"><button type="button" class="pp-lnk" data-pe="retour">← Retour au planning</button>'+(k==='fin'?' <button type="button" class="pp-lnk" data-pe="suite">Créer l’étape suivante →</button>':'')+'</div>');
   const mb=document.getElementById('modalBody'); const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
   const mg=()=>{ const a=e.tot,b=e.tard; const m=mb.querySelector('#pjCm'); if(m) m.textContent=(a&&b)?('Marge : '+Math.round((new Date(b)-new Date(a))/864e5)+' j'+(b<a?' — au plus tard avant au plus tôt, à corriger':'')):'Marge : renseigne les deux dates'; }; mg();
   mb.querySelectorAll('[data-v]').forEach(i=>i.onchange=()=>{ e[i.dataset.v]=i.value.trim(); try{ persist(); }catch(_){} mg(); });
   mb.querySelector('[data-pe=retour]').onclick=()=>window.pjPlanif(c.kind,c.id);
+  const su=mb.querySelector('[data-pe=suite]'); if(su) su.onclick=()=>{ if(!(e.nom&&e.tot&&e.tard)){ toast('Renseigne d’abord le nom et les deux dates de cette étape.'); return; }
+   if(c.kind!=='doc'){ toast('Création de l’étape suivante : pour l’instant côté documents (mode Étude).'); return; }
+   const id='D'+Date.now().toString(36); DOCS().unshift({id,nom:'Nouveau document',docType:'',niveau:'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'A',format:'',etat:'aemettre',date:(typeof todayISO==='function'?todayISO():''),fichier:'',taille:0,etapeNom:''}); try{ persist(); }catch(_){} toast('Étape suivante créée'); window.pjPlanif('doc',id); };
  }
  /* fiche de document */
  function openDocFiche(id){
