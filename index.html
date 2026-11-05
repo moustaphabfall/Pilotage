@@ -659,6 +659,7 @@ body.db-resizing{cursor:col-resize; user-select:none;}
 .fiche-exp-bar .tf-exp{flex:none; width:auto; background:transparent !important; border:0 !important; box-shadow:none !important; padding:4px 6px !important; font-size:18px; opacity:.55; pointer-events:auto; cursor:pointer}
 .fiche-exp-bar .tf-exp:hover{opacity:1}
 .modal.fiche-wide h3>.badge,.modal.fiche-wide h3>span[style*="flex:1"],.modal.fiche-wide h3 .td-item{display:none !important}
+.modal.fiche-wide h3{justify-content:flex-end}
 .fiche-exp-bar .td-brush-bar{pointer-events:auto;background:transparent !important;border:0 !important;box-shadow:none !important;padding:4px 6px !important;font-size:18px;opacity:.55;cursor:pointer}
 .fiche-exp-bar .td-brush-bar:hover{opacity:1}
 
@@ -18072,7 +18073,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
   el.addEventListener('pointerup',e=>{ stop(); if(!fired) onTap(e); });
   el.addEventListener('contextmenu',e=>e.preventDefault()); }
  function build(id){
-  const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t||mb.querySelector('.pjB')) return; try{ mb.querySelectorAll('.tf-tech>*:not(h4)').forEach(c=>{ if(!/Type de document architectural|Position sur le plan/.test(c.textContent)||c.querySelector('#e-quoi,#e-niveau')) c.classList.add('pjHideA'); }); }catch(e){}
+  const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t||mb.querySelector('.pjB')) return;
   const g=mb.querySelector('.tf-grid'); if(!g) return;
   const b=document.createElement('div'); b.className='pjB';
   const draw=()=>{ const s=status(t); b.className='pjB pjB-'+s; b.style.setProperty('--pjP',pct(t)+'%');
@@ -18095,13 +18096,47 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
    m.onpointerdown=e=>e.stopPropagation(); m.onpointerup=e=>e.stopPropagation();
    m.onclick=e=>{ const x=e.target.closest('[data-e]'); if(!x) return; e.stopPropagation(); const k=x.dataset.e, anc=t.etat; if(k!==anc){ t.etat=k; t.historique=t.historique||[]; t.historique.push({date:today(),champ:'État',ancienne:ST_LBL[anc],nouvelle:ST_LBL[k]}); try{ persist(); renderAll(); openTaskDetail(t.id); return; }catch(_){} } m.remove(); draw(); };
    setTimeout(()=>document.addEventListener('pointerdown',function f(ev){ if(!m.contains(ev.target)){ m.remove(); document.removeEventListener('pointerdown',f); } }),0); }
-  draw(); g.before(b); try{ buildCE(t); }catch(e){ console.error(e); }
+  draw(); g.before(b); try{ buildARC(t); }catch(e){ console.error(e); } try{ buildCE(t); }catch(e){ console.error(e); }
   try{ const tw=document.getElementById('tpWrap'), tf=tw&&tw.closest('.field'); if(tf&&!document.getElementById('pjArcT')){ const L=ARC4.map(x=>x[0]); const cur=normTD(t.mbf&&t.mbf.typeDocArchi); const f=document.createElement('div'); f.className='field'; f.innerHTML='<label>Type de document architectural</label><select id="pjArcT">'+ARC4.map(x=>'<option value="'+E(x[0])+'"'+(x[0]===cur?' selected':'')+'>'+E(x[0])+' · '+E(x[1])+'</option>').join('')+'</select>'; tf.before(f);
    f.querySelector('select').onchange=e=>{ t.mbf=t.mbf||{}; t.mbf.typeDocArchi=e.target.value; try{ persist(); }catch(_){} const nv=(document.getElementById('e-niveau')||{}).value||t.niveau; try{ tpRender(t.id,nv); }catch(_){} }; } }catch(e){ console.error(e); } }
 
  /* ---- cadre E : types de documents techniques + 3 zones (structure, clos et couvert, CET) + plan avec pastille ---- */
  const CEZ=[['Structure','Structure'],['Clos et couvert','Clos et couvert'],['CET','Corps d’état techniques']];
  function pinPos(t,pl){ return (t.pos&&t.pos.planId===pl.id)?t.pos:((t.posAlt||{})[pl.id]||null); }
+ /* ---- cadre ARC : boîtes imbriquées BAT > NN > PIÈCE > TYPE, chacune ouvre son plan s'il existe ---- */
+ function buildARC(t){
+  const tech=document.querySelector('#modalBody .tf-tech'); if(!tech||tech.querySelector('.pjARC')) return;
+  tech.querySelectorAll(':scope>*:not(h4)').forEach(c=>c.classList.add('pjHideA'));
+  const niv=()=>t.niveau; const pc=()=>{ try{ return pieceOfTask(t); }catch(_){ return null; } };
+  const plansOf=k=>{ const A=(state.plans||[]).filter(p=>p.src); const T=p=>normTD(p.typeDoc);
+   if(k==='bat') return A.filter(p=>T(p)==='Perspective');
+   if(k==='niv') return A.filter(p=>T(p)==='Plan d’étage'&&p.niveau===niv());
+   if(k==='pc'){ const z=pc(); return A.filter(p=>T(p)==='Détail'&&(!p.niveau||p.niveau===niv())&&(!(p.pieceId||p.zoneId)||(z&&(p.pieceId===z.id||p.zoneId===z.id)))); }
+   return A.filter(p=>T(p)==='Fiche produit'); };
+  const FR=[['bat','BÂT','perspective'],['niv','NN','plan d’étage'],['pc','PIÈCE','détail'],['type','TYPE','fiche produit']];
+  const lab={bat:'',niv:niv()||'',pc:(pc()||{}).nom||'',type:''};
+  let inner=''; for(let i=FR.length-1;i>=0;i--){ const [k,n,d]=FR[i]; const has=plansOf(k).length>0; inner='<div class="pjAF'+(has?' has':' none')+'" role="button" tabindex="0" data-s="'+k+'" title="'+(has?'Ouvrir : '+d:'Aucun document chargé')+'"><span class="pjAF-l"><b>'+n+'</b> <em>'+d+'</em>'+(lab[k]?' · '+E(lab[k]):'')+'</span>'+inner+'</div>'; }
+  const wrap=document.createElement('div'); wrap.className='pjARC';
+  wrap.innerHTML='<div class="pjARC-fr"><span class="pjARC-t">ARC</span>'+inner+'</div><div class="pjARC-v" id="pjARCv" hidden></div>';
+  const h=tech.querySelector('h4'); if(h) h.after(wrap); else tech.prepend(wrap);
+  let cur=null,curK=null,placing=false;
+  const last=pl=>{ window.pjLastFiche={id:t.id,planId:pl?pl.id:null}; const b=document.getElementById('pjBackFiche'); if(b) b.hidden=false; };
+  const goVue=pl=>{ if(!pl.niveau) return; last(pl); try{ closeModal(); state.repPlanParNiv=state.repPlanParNiv||{}; state.repPlanParNiv[pl.niveau]=pl.id; travauxNiveauActif=pl.niveau; persist(); showPage('travaux'); setTimeout(()=>{ try{ const d=document.getElementById('rtRibPlan'); if(d&&!d.open){ const sm=d.querySelector('summary'); if(sm) sm.click(); if(!d.open) d.open=true; } window.rtSelect(t.id,null); }catch(_){} },500); }catch(e){ console.error(e); } };
+  const mark=()=>{ wrap.querySelectorAll('[data-s]').forEach(x=>x.classList.toggle('on',x.dataset.s===curK)); };
+  const view=(k,pl)=>{ const v=wrap.querySelector('#pjARCv'); const md=document.querySelector('#modalBody').closest('.modal');
+   if(!pl){ cur=null; curK=null; placing=false; v.hidden=true; v.innerHTML=''; mark(); return; }
+   cur=pl; curK=k; const loc=k!=='type'; const L=plansOf(k); const p=loc?pinPos(t,pl):null; if(loc&&!p&&placing===false&&!pl.__asked){ placing=true; }
+   last(pl); mark(); v.hidden=false;
+   v.innerHTML='<div class="pjCE-b">'+(L.length>1?'<select data-a="pick">'+L.map(x=>'<option value="'+E(x.id)+'"'+(x.id===pl.id?' selected':'')+'>'+E(x.nom||x.id)+'</option>').join('')+'</select>':'<b>'+E(pl.nom||pl.id)+'</b>')+(loc?'<button type="button" data-a="place" class="'+(placing?'on':'')+'">'+(placing?'Touche le plan…':(p?'Déplacer la pastille':'Placer la pastille'))+'</button>':'')+(loc&&pl.niveau?'<button type="button" data-a="vue">⤢ Vue image</button>':'')+'<button type="button" data-a="x" aria-label="Fermer">×</button></div><div class="pjCE-p tp-inner" id="pjARCp"><img src="'+E(typeof planSrc==='function'?planSrc(pl):pl.src)+'" alt="'+E(pl.nom||'Plan')+'" draggable="false">'+(p?'<div class="tp-pin" style="left:'+p.x*100+'%;top:'+p.y*100+'%;background:'+tpColor(t)+';'+tpPinShape(t)+'"></div>':'')+'</div>'+(loc?'<p class="pjCE-m'+(placing?' pjWarn':'')+'">'+(placing?(p?'Touche le plan pour déplacer l’ouvrage.':'Positionne l’ouvrage sur le plan : touche l’endroit'+(k==='bat'?' (approximatif).':'.')):'Pastille placée · touche le plan pour ouvrir la vue image.')+'</p>':''); 
+   if(md) md.classList.add('pjBig'); setTimeout(()=>{ try{ v.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(_){} },60); };
+  const open=k=>{ const L=plansOf(k); if(!L.length){ try{ clipToast('Aucun document chargé pour cette échelle'); }catch(_){} return; } if(curK===k){ view(null); return; } placing=false; const pl=L.find(x=>pinPos(t,x))||L[0]; view(k,pl); };
+  wrap.addEventListener('click',e=>{
+   const a=e.target.closest('[data-a]'); if(a){ const d=a.dataset.a; if(d==='x') view(null); else if(d==='vue'&&cur) goVue(cur); else if(d==='place'){ placing=!placing; view(curK,cur); } return; }
+   const img=e.target.closest('#pjARCp'); if(img&&cur){ if(curK==='type') return; if(!placing){ goVue(cur); return; } const r=img.getBoundingClientRect(); const x=Math.min(.999,Math.max(.001,(e.clientX-r.left)/r.width)), y=Math.min(.999,Math.max(.001,(e.clientY-r.top)/r.height)); placing=false; if(!t.pos||t.pos.planId===cur.id) tpSave(t.id,cur.id,x,y,niv()); else { t.posAlt=t.posAlt||{}; t.posAlt[cur.id]={x:Math.round(x*10000)/10000,y:Math.round(y*10000)/10000}; (t.historique=t.historique||[]).push({date:today(),champ:'Position',ancienne:'—',nouvelle:(cur.nom||'Plan')+' ('+Math.round(x*100)+' %, '+Math.round(y*100)+' %)'}); try{ persist(); }catch(_){} } view(curK,cur); return; }
+   const f=e.target.closest('[data-s]'); if(f&&wrap.contains(f)) open(f.dataset.s); });
+  wrap.addEventListener('change',e=>{ const a=e.target.closest('[data-a=pick]'); if(a){ const pl=(state.plans||[]).find(x=>x.id===a.value); if(pl){ placing=false; view(curK,pl); } } });
+  window.__pjARC={id:t.id,open:pid=>{ const pl=(state.plans||[]).find(x=>x.id===pid); if(!pl) return; const T=normTD(pl.typeDoc); const k=T==='Perspective'?'bat':T==='Plan d’étage'?'niv':T==='Détail'?'pc':'type'; placing=false; view(k,pl); }};
+ }
  function buildCE(t){
   const ing=document.querySelector('#modalBody .tf-ing'); if(!ing||ing.querySelector('.pjCE')) return;
   const tdt=()=>((t.mbf&&t.mbf.typeDocTech)||''); const niv=()=>(document.getElementById('e-niveau')||{}).value||t.niveau;
@@ -18124,7 +18159,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
   wrap.querySelector('#pjTechT').onchange=e=>{ t.mbf=t.mbf||{}; t.mbf.typeDocTech=e.target.value; try{ persist(); }catch(_){} view(null); };
   window.__pjCE={id:t.id,open:pid=>{ const pl=(state.plans||[]).find(x=>x.id===pid); if(pl) view(pl); }};
   lists(); }
- window.pjCEOpen=(id,pid)=>{ let n=0; const w=()=>{ if(window.__pjCE&&window.__pjCE.id===id) window.__pjCE.open(pid); else if(n++<20) setTimeout(w,100); }; w(); };
+ window.pjCEOpen=(id,pid)=>{ let n=0; const w=()=>{ const pl0=(state.plans||[]).find(x=>x.id===pid); if(pl0&&['Perspective','Plan d’étage','Détail','Fiche produit','Plan de niveau'].includes(pl0.typeDoc||'Plan de niveau')&&window.__pjARC&&window.__pjARC.id===id) window.__pjARC.open(pid); else if(window.__pjCE&&window.__pjCE.id===id) window.__pjCE.open(pid); else if(n++<20) setTimeout(w,100); }; w(); };
  /* bouton « retour à la fiche » dans la vue en plan, à côté des filtres */
  (function(){ if(document.getElementById('pjBackFiche')) return; const b=document.createElement('button'); b.type='button'; b.id='pjBackFiche'; b.className='pjBackF'; b.hidden=true; b.textContent='↩ Fiche de l’ouvrage'; b.title='Revenir à la dernière vue de la fiche d’ouvrage'; b.onclick=()=>{ const L=window.pjLastFiche; if(!L) return; try{ openTaskDetail(L.id); if(L.planId) setTimeout(()=>{ try{ window.pjCEOpen(L.id,L.planId); }catch(e){} },400); }catch(e){ console.error(e); } }; document.body.appendChild(b); })();
  function openPicker(t,dir,after){
@@ -18167,6 +18202,18 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pjB{display:grid;grid-template-columns:minmax(96px,150px) 1fr minmax(96px,150px);gap:0;margin:0 0 12px;border:2px solid var(--pjB,#2D6CDF);border-radius:12px;overflow:visible;background:color-mix(in srgb,var(--pjB,#2D6CDF) 10%,transparent);position:relative}
 .pjB-time{--pjB:#2D6CDF}.pjB-late{--pjB:#D93636}.pjB-ok{--pjB:#2E9E5B}
 .tf-tech>.pjHideA{display:none !important}
+.pjARC-fr{position:relative;border:2px dashed color-mix(in srgb,currentColor 35%,transparent);border-radius:12px;padding:22px 10px 10px;margin:4px 0 8px}
+.pjARC-t{position:absolute;top:2px;left:10px;font:700 12px 'Space Grotesk',system-ui,sans-serif;letter-spacing:.1em;opacity:.7}
+.pjAF{position:relative;border:2px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:10px;padding:24px 10px 10px;margin:0;cursor:default;opacity:.55;min-width:0}
+.pjAF.has{opacity:1;border-color:#FFC400;cursor:pointer}
+.pjAF.has.on{background:color-mix(in srgb,#FFC400 20%,transparent)}
+.pjAF.none{cursor:not-allowed}
+.pjAF-l{position:absolute;top:3px;left:10px;font:600 12px system-ui,sans-serif;pointer-events:none}
+.pjAF-l em{font-style:normal;opacity:.7;font-weight:400}
+.pjAF>.pjAF{margin-top:2px}
+.pjAF[data-s=type]{padding-bottom:14px}
+.pjCE-m.pjWarn{color:#FFC400;font-weight:600}
+
 .pjB-todo{--pjB:#8A8F94}.pjB-ahead{--pjB:#2E9E5B}
 .pjB{background:linear-gradient(90deg,color-mix(in srgb,var(--pjB,#2D6CDF) 30%,transparent) var(--pjP,0%),color-mix(in srgb,var(--pjB,#2D6CDF) 8%,transparent) var(--pjP,0%)) !important}
 
