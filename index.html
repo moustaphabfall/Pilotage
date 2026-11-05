@@ -3923,17 +3923,21 @@ function planFormBatChanged(sel){
   miniPrompt('Nom du bâtiment :', '', v=>{ v=(v||'').trim(); if(v && !state.batiments.includes(v)) state.batiments.push(v); sel.innerHTML = planBatOptions(v||''); });
 }
 function planFormNivChanged(){ const z = document.getElementById('pl-zone'); if(z) z.innerHTML = planZoneOptions(document.getElementById('pl-niv').value, ''); }
+function arcTypeOpts(cur){ cur=cur||'Plan de niveau'; let A=[],T=[]; try{ A=window.pjArcTypes?window.pjArcTypes():[]; T=window.pjTechTypes?window.pjTechTypes():[]; }catch(e){} if(!A.length) A=['Plan de masse','Plan de niveau','Plan de toiture','Plan de façades','Plan de pièce / fiche de local']; const o=x=>`<option value="${esc(x)}" ${x===cur?'selected':''}>${esc(x)}</option>`; return '<optgroup label="Architecture">'+A.map(o).join('')+'</optgroup>'+(T.length?'<optgroup label="Ingénierie">'+T.map(o).join('')+'</optgroup>':'')+((A.concat(T)).includes(cur)?'':o(cur)); }
+const CE_LIST=['Architecture','Structure','Clos et couvert','CET'];
 function planFormFields(v){
   return `<div class="field"><label>Nom du plan</label><input type="text" id="pl-nom" value="${esc(v.nom||'Plan')}"></div>
     <div class="field"><label>Bâtiment</label><select id="pl-bat" onchange="planFormBatChanged(this)">${planBatOptions(v.batiment||'')}</select></div>
     <div class="field"><label>Niveau</label><select id="pl-niv" onchange="planFormNivChanged()">${state.niveaux.map(n=>`<option value="${esc(n)}" ${n===v.niveau?'selected':''}>${esc(n)}</option>`).join('')}</select></div>
+    <div class="field"><label>Corps d’état</label><select id="pl-ce">${CE_LIST.map(x=>`<option value="${x}" ${x===(v.ce||'Architecture')?'selected':''}>${x}</option>`).join('')}</select></div>
+    <div class="field"><label>Type de document</label><select id="pl-typedoc">${arcTypeOpts(v.typeDoc)}</select></div>
     <div class="field"><label>Zone (facultatif)</label><select id="pl-zone">${planZoneOptions(v.niveau, v.zoneId||'')}</select></div>
     <div class="field"><label>Lot</label><select id="pl-lot"><option value="">— Sans lot —</option>${(state.zones||[]).map(z=>`<option value="${esc(z)}" ${z===v.lot?'selected':''}>${esc(z)}</option>`).join('')}</select></div>`;
 }
 function planReadFields(){
   const b = document.getElementById('pl-bat').value;
   const niveau = document.getElementById('pl-niv').value, zid = document.getElementById('pl-zone').value || null, zz = zid && zoneById(zid);
-  return {nom:document.getElementById('pl-nom').value.trim() || 'Plan', batiment:b==='__new'?'':b, niveau, zoneId:(zz && zz.niveau===niveau) ? zid : null, lot:(document.getElementById('pl-lot')||{}).value||''};
+  return {nom:document.getElementById('pl-nom').value.trim() || 'Plan', typeDoc:(document.getElementById('pl-typedoc')||{}).value||'Plan de niveau', ce:(document.getElementById('pl-ce')||{}).value||'Architecture', batiment:b==='__new'?'':b, niveau, zoneId:(zz && zz.niveau===niveau) ? zid : null, lot:(document.getElementById('pl-lot')||{}).value||''};
 }
 function openPlanForm(src, w, h, nom){
   if(planUpdateTarget){ planUpdateConfirm(src, w, h); return; }
@@ -8079,6 +8083,7 @@ async function ficheExportPdf(id, mode){
 function openTaskDetail(id){ openTaskDetail0(id); try{ const mb=document.getElementById('modalBody'); if(mb && !mb.querySelector('.fiche-exp-bar')){ const bar=document.createElement('div'); bar.className='fiche-exp-bar'; bar.innerHTML=`<button type="button" class="tf-exp" onclick="ficheExportAsk('${String(id).replace(/'/g,'')}')">📤 Exporter la fiche</button>`; const x=mb.querySelector('.close-x'); if(x && x.nextSibling) mb.insertBefore(bar, x.nextSibling); else mb.prepend(bar); } }catch(e){ console.error(e); } { const bd=document.querySelector('#modalBody .modal-date-etat'); if(bd) bd.remove(); } setTimeout(()=>{ const q=document.getElementById("e-quoi"); if(q) bibAttach(q); try{ tpRender(id); }catch(e){ console.error(e); } },0); }
 /* ===== Mini-plan dans la fiche : seule la pastille de la tâche, à placer ou déplacer ===== */
 var tpZoom = 1, tpPlanSel = {};
+function tpPinShape(t){ const p=t.pos||{}, f=p.forme, z=p.sz; if(!f||f==='rond'||f==='libre') return ''; const c=tpColor(t); const base='margin:0;transform:translate(-50%,-50%);'; if(f==='cercle'&&z) return base+'background:transparent !important;border:3px solid '+c+';width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='rect'&&z) return base+'border-radius:3px;width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='ligne'&&z) return base+'border-radius:2px;height:5px;width:'+z.w*100+'%;'; if(f==='tri') return base+'border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%);'; return ''; }
 function tpColor(t){ return t.etat==='fait' ? '#4C7A5B' : (t.etat==='encours' ? '#C98A2B' : '#B4432D'); }
 function tpZonesHtml(pl){
   /* Zones et compartiments (contours en pointillés + nom) ; pas les pièces */
@@ -8092,30 +8097,33 @@ function tpRender(id, nivOverride){
   const w = document.getElementById('tpWrap'); if(!w) return;
   const t = taskById(id); if(!t) return;
   const niv = nivOverride || t.niveau;
-  const plans = (state.plans||[]).filter(p=>p.niveau===niv && p.src);
-  if(!plans.length){ w.innerHTML = `<div class="tp-msg">Aucun plan pour le niveau ${esc(niv||'—')}.</div>`; return; }
+  const tdc = (t.mbf&&t.mbf.typeDocArchi)||'';
+  const plans = (state.plans||[]).filter(p=>p.src && (tdc ? ((p.typeDoc||'Plan de niveau')===tdc && (tdc!=='Plan de niveau'||p.niveau===niv)) : p.niveau===niv));
+  if(!plans.length){ w.innerHTML = tdc&&tdc!=='Plan de niveau' ? `<div class="tp-msg">Aucun plan de type « ${esc(tdc)} » dans le projet. Ajoute-le dans Plans, en choisissant ce type de document.</div>` : `<div class="tp-msg">Aucun plan pour le niveau ${esc(niv||'—')}.</div>`; return; }
   let pl = plans.find(p=>p.id===tpPlanSel[id]) || plans.find(p=>t.pos && p.id===t.pos.planId) || plans[0];
   tpPlanSel[id] = pl.id;
-  const onPlan = t.pos && t.pos.planId===pl.id;
+  const prim = !t.pos || t.pos.planId===pl.id; const altPos = (!prim && t.posAlt) ? t.posAlt[pl.id] : null;
+  const dpos = prim ? t.pos : altPos; const onPlan = !!(dpos && (prim ? t.pos.planId===pl.id : true));
   const pz = onPlan ? (typeof pieceOfTask==='function' ? pieceOfTask(t) : null) : null;
   w.innerHTML = `<div class="tp-bar">${plans.length>1?`<select onchange="tpPlanSel['${id}']=this.value; tpRender('${id}','${esc(niv)}')">${plans.map(p=>`<option value="${p.id}" ${p.id===pl.id?'selected':''}>${esc(p.nom||p.id)}</option>`).join('')}</select>`:`<span class="tp-pl">${esc(pl.nom||niv)}</span>`}
       <span class="tp-z"><button type="button" class="ghost" onclick="tpZoom=Math.max(1,tpZoom-1); tpRender('${id}','${esc(niv)}')">−</button><b>${tpZoom}×</b><button type="button" class="ghost" onclick="tpZoom=Math.min(5,tpZoom+1); tpRender('${id}','${esc(niv)}')">+</button></span></div>
     <div class="tp-view" id="tpView"><div class="tp-inner" id="tpInner" style="width:${tpZoom*100}%">
       <img src="${planSrc(pl)}" alt="Plan ${esc(niv)}" draggable="false">
       ${tpZonesHtml(pl)}
-      ${onPlan?`<div class="tp-pin" id="tpPin" style="left:${t.pos.x*100}%; top:${t.pos.y*100}%; background:${tpColor(t)}" title="Glisser pour déplacer"></div>`:''}
+      ${onPlan?`<div class="tp-pin" id="tpPin" style="left:${dpos.x*100}%; top:${dpos.y*100}%; background:${tpColor(t)};${tpPinShape(t)}" title="Glisser pour déplacer"></div>`:''}
     </div></div>
     <div class="tp-msg" id="tpMsg">${onPlan ? `Pièce : <b>${esc(pz?pz.nom:'hors pièce')}</b> · touchez le plan ou glissez la pastille pour la déplacer.` : 'Pas encore placée sur ce plan : touchez le plan à l’endroit de la tâche.'}</div>`;
   const inner = document.getElementById('tpInner'), view = document.getElementById('tpView');
-  if(onPlan && tpZoom>1){ setTimeout(()=>{ view.scrollLeft = t.pos.x*inner.offsetWidth - view.clientWidth/2; view.scrollTop = t.pos.y*inner.offsetHeight - view.clientHeight/2; },30); }
+  if(onPlan && tpZoom>1){ setTimeout(()=>{ view.scrollLeft = dpos.x*inner.offsetWidth - view.clientWidth/2; view.scrollTop = dpos.y*inner.offsetHeight - view.clientHeight/2; },30); }
   const rel = ev=>{ const r = inner.getBoundingClientRect(); return {x:Math.min(.999,Math.max(.001,(ev.clientX-r.left)/r.width)), y:Math.min(.999,Math.max(.001,(ev.clientY-r.top)/r.height))}; };
-  inner.addEventListener('click', ev=>{ if(ev.target.id==='tpPin') return; const p = rel(ev); tpSave(id, pl.id, p.x, p.y, niv); });
+  const put=(x,y)=>{ if(prim) tpSave(id, pl.id, x, y, niv); else { t.posAlt=t.posAlt||{}; t.posAlt[pl.id]={x:Math.round(x*10000)/10000,y:Math.round(y*10000)/10000}; (t.historique=t.historique||[]).push({date:todayStr(), champ:'Position', ancienne:'—', nouvelle:(pl.nom||'Plan')+' ('+Math.round(x*100)+' %, '+Math.round(y*100)+' %)'}); persist(); tpRender(id, niv); } };
+  inner.addEventListener('click', ev=>{ if(ev.target.id==='tpPin') return; const p = rel(ev); put(p.x, p.y); });
   const pin = document.getElementById('tpPin');
   if(pin){
     let drag = false;
     pin.addEventListener('pointerdown', ev=>{ drag = true; pin.setPointerCapture(ev.pointerId); ev.preventDefault(); ev.stopPropagation(); });
     pin.addEventListener('pointermove', ev=>{ if(!drag) return; const p = rel(ev); pin.style.left = p.x*100+'%'; pin.style.top = p.y*100+'%'; });
-    pin.addEventListener('pointerup', ev=>{ if(!drag) return; drag = false; const p = rel(ev); tpSave(id, pl.id, p.x, p.y, niv); });
+    pin.addEventListener('pointerup', ev=>{ if(!drag) return; drag = false; const p = rel(ev); put(p.x, p.y); });
   }
 }
 function tpSave(id, planId, x, y, niv, ok){
@@ -18077,7 +18085,38 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
    m.onpointerdown=e=>e.stopPropagation(); m.onpointerup=e=>e.stopPropagation();
    m.onclick=e=>{ const x=e.target.closest('[data-e]'); if(!x) return; e.stopPropagation(); const k=x.dataset.e, anc=t.etat; if(k!==anc){ t.etat=k; t.historique=t.historique||[]; t.historique.push({date:today(),champ:'État',ancienne:ST_LBL[anc],nouvelle:ST_LBL[k]}); try{ persist(); renderAll(); openTaskDetail(t.id); return; }catch(_){} } m.remove(); draw(); };
    setTimeout(()=>document.addEventListener('pointerdown',function f(ev){ if(!m.contains(ev.target)){ m.remove(); document.removeEventListener('pointerdown',f); } }),0); }
-  draw(); g.before(b); }
+  draw(); g.before(b); try{ buildCE(t); }catch(e){ console.error(e); }
+  try{ const tw=document.getElementById('tpWrap'), tf=tw&&tw.closest('.field'); if(tf&&!document.getElementById('pjArcT')){ let L=[]; try{ L=window.pjArcTypes?window.pjArcTypes():[]; }catch(_){} if(!L.length) L=['Plan de niveau']; const cur=(t.mbf&&t.mbf.typeDocArchi)||'Plan de niveau'; const f=document.createElement('div'); f.className='field'; f.innerHTML='<label>Type de document architectural</label><select id="pjArcT">'+L.map(x=>'<option value="'+E(x)+'"'+(x===cur?' selected':'')+'>'+E(x)+'</option>').join('')+'</select>'; tf.before(f);
+   f.querySelector('select').onchange=e=>{ t.mbf=t.mbf||{}; t.mbf.typeDocArchi=e.target.value; try{ persist(); }catch(_){} const nv=(document.getElementById('e-niveau')||{}).value||t.niveau; try{ tpRender(t.id,nv); }catch(_){} }; } }catch(e){ console.error(e); } }
+
+ /* ---- cadre E : types de documents techniques + 3 zones (structure, clos et couvert, CET) + plan avec pastille ---- */
+ const CEZ=[['Structure','Structure'],['Clos et couvert','Clos et couvert'],['CET','Corps d’état techniques']];
+ function pinPos(t,pl){ return (t.pos&&t.pos.planId===pl.id)?t.pos:((t.posAlt||{})[pl.id]||null); }
+ function buildCE(t){
+  const ing=document.querySelector('#modalBody .tf-ing'); if(!ing||ing.querySelector('.pjCE')) return;
+  const tdt=()=>((t.mbf&&t.mbf.typeDocTech)||''); const niv=()=>(document.getElementById('e-niveau')||{}).value||t.niveau;
+  let T=[]; try{ T=window.pjTechTypes?window.pjTechTypes():[]; }catch(_){}
+  const wrap=document.createElement('div'); wrap.className='pjCE';
+  wrap.innerHTML='<div class="field"><label>Type de document technique</label><select id="pjTechT"><option value="">— Tous les types —</option>'+T.map(x=>'<option value="'+E(x)+'"'+(x===tdt()?' selected':'')+'>'+E(x)+'</option>').join('')+'</select></div><div class="pjCE-z" id="pjCEz"></div><div class="pjCE-v" id="pjCEv" hidden></div>';
+  const tf=ing.querySelector('.tf-t'); (tf?tf.after(wrap):ing.prepend(wrap));
+  let cur=null, placing=false;
+  const plansOf=ce=>(state.plans||[]).filter(p=>p.src&&p.ce===ce&&(!tdt()||p.typeDoc===tdt())&&(p.niveau===niv()||pinPos(t,p)));
+  const lists=()=>{ const z=wrap.querySelector('#pjCEz'); z.innerHTML=CEZ.map(([k,lab])=>{ const L=plansOf(k); return '<div class="pjCE-c"><h5>'+E(lab)+'</h5>'+(L.length?'<ul>'+L.map(p=>'<li><button type="button" data-pl="'+E(p.id)+'"'+(cur&&cur.id===p.id?' class="on"':'')+'>'+(pinPos(t,p)?'<i title="L’ouvrage est placé sur ce plan">●</i>':'<i class="no" title="Pas encore placé">○</i>')+E(p.nom||p.id)+'</button></li>').join('')+'</ul>':'<p class="pjCE-e">Aucun document</p>')+'</div>'; }).join(''); };
+  const last=pl=>{ window.pjLastFiche={id:t.id,planId:pl?pl.id:null}; const b=document.getElementById('pjBackFiche'); if(b) b.hidden=false; };
+  const goVue=pl=>{ last(pl); try{ closeModal(); state.repPlanParNiv=state.repPlanParNiv||{}; state.repPlanParNiv[pl.niveau]=pl.id; travauxNiveauActif=pl.niveau; persist(); showPage('travaux'); setTimeout(()=>{ try{ const d=document.getElementById('rtRibPlan'); if(d&&!d.open){ const sm=d.querySelector('summary'); if(sm) sm.click(); if(!d.open) d.open=true; } window.rtSelect(t.id,null); }catch(_){} },500); }catch(e){ console.error(e); } };
+  const view=pl=>{ const v=wrap.querySelector('#pjCEv'); const md=document.querySelector('#modalBody').closest('.modal'); if(!pl){ cur=null; v.hidden=true; v.innerHTML=''; if(md) md.classList.remove('pjBig'); lists(); return; }
+   cur=pl; last(pl); if(md) md.classList.add('pjBig'); const p=pinPos(t,pl);
+   v.hidden=false; v.innerHTML='<div class="pjCE-b"><b>'+E(pl.nom||pl.id)+'</b><span>'+E(pl.typeDoc||'')+'</span><button type="button" data-a="place" class="'+(placing?'on':'')+'">'+(placing?'Touche le plan…':'Placer la pastille ici')+'</button><button type="button" data-a="vue">⤢ Vue image</button><button type="button" data-a="x" aria-label="Fermer le plan">×</button></div><div class="pjCE-p tp-inner" id="pjCEp"><img src="'+E(typeof planSrc==='function'?planSrc(pl):pl.src)+'" alt="'+E(pl.nom||'Plan')+'" draggable="false">'+(p?'<div class="tp-pin" style="left:'+p.x*100+'%;top:'+p.y*100+'%;background:'+tpColor(t)+';'+tpPinShape(t)+'"></div>':'')+'</div><p class="pjCE-m">'+(p?'Pastille de l’ouvrage sur ce plan. Touche le plan pour l’ouvrir en vue image.':'L’ouvrage n’est pas encore placé sur ce plan : « Placer la pastille ici », puis touche l’endroit.')+'</p>';
+   lists(); setTimeout(()=>{ try{ v.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(_){} },60); };
+  wrap.addEventListener('click',e=>{ const b=e.target.closest('[data-pl]'); if(b){ const pl=(state.plans||[]).find(x=>x.id===b.dataset.pl); if(!pl) return; if(cur&&cur.id===pl.id) goVue(pl); else { placing=false; view(pl); } return; }
+   const a=e.target.closest('[data-a]'); if(a){ if(a.dataset.a==='x'){ placing=false; view(null); } else if(a.dataset.a==='vue'&&cur) goVue(cur); else if(a.dataset.a==='place'){ placing=!placing; view(cur); } return; }
+   const img=e.target.closest('#pjCEp'); if(img&&cur){ if(!placing){ goVue(cur); return; } const r=img.getBoundingClientRect(); const x=Math.min(.999,Math.max(.001,(e.clientX-r.left)/r.width)), y=Math.min(.999,Math.max(.001,(e.clientY-r.top)/r.height)); placing=false; if(!t.pos||t.pos.planId===cur.id) tpSave(t.id,cur.id,x,y,niv()); else { t.posAlt=t.posAlt||{}; t.posAlt[cur.id]={x:Math.round(x*10000)/10000,y:Math.round(y*10000)/10000}; (t.historique=t.historique||[]).push({date:today(),champ:'Position',ancienne:'—',nouvelle:(cur.nom||'Plan')+' ('+Math.round(x*100)+' %, '+Math.round(y*100)+' %)'}); try{ persist(); }catch(_){} } view(cur); } });
+  wrap.querySelector('#pjTechT').onchange=e=>{ t.mbf=t.mbf||{}; t.mbf.typeDocTech=e.target.value; try{ persist(); }catch(_){} view(null); };
+  window.__pjCE={id:t.id,open:pid=>{ const pl=(state.plans||[]).find(x=>x.id===pid); if(pl) view(pl); }};
+  lists(); }
+ window.pjCEOpen=(id,pid)=>{ let n=0; const w=()=>{ if(window.__pjCE&&window.__pjCE.id===id) window.__pjCE.open(pid); else if(n++<20) setTimeout(w,100); }; w(); };
+ /* bouton « retour à la fiche » dans la vue en plan, à côté des filtres */
+ (function(){ if(document.getElementById('pjBackFiche')) return; const b=document.createElement('button'); b.type='button'; b.id='pjBackFiche'; b.className='pjBackF'; b.hidden=true; b.textContent='↩ Fiche de l’ouvrage'; b.title='Revenir à la dernière vue de la fiche d’ouvrage'; b.onclick=()=>{ const L=window.pjLastFiche; if(!L) return; try{ openTaskDetail(L.id); if(L.planId) setTimeout(()=>{ try{ window.pjCEOpen(L.id,L.planId); }catch(e){} },400); }catch(e){ console.error(e); } }; document.body.appendChild(b); })();
  function openPicker(t,dir,after){
   const old=document.getElementById('pjLk'); if(old) old.remove();
   const ov=document.createElement('div'); ov.id='pjLk'; ov.className='pjLk';
@@ -18148,6 +18187,24 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pjLk-new button,.pjLk-f button{all:unset;cursor:pointer;padding:9px 14px;border:1.5px solid currentColor;border-radius:10px;font:600 13px 'IBM Plex Sans',system-ui,sans-serif}
 .pjLk-f{display:flex;gap:8px;justify-content:flex-end}.pjLk-f .pri{background:#FFC400;border-color:#FFC400;color:#0E0E0E}.pjLk-f .pri[disabled]{opacity:.4;cursor:not-allowed}
 @media(max-width:480px){.pjB{grid-template-columns:minmax(78px,110px) 1fr minmax(78px,110px)}.pjB b{font-size:13.5px}}
+
+.pjCE{display:flex;flex-direction:column;gap:10px;margin:6px 0 10px}
+.pjCE-z{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media(max-width:560px){.pjCE-z{grid-template-columns:1fr}}
+.pjCE-c{border:1.5px solid rgba(128,128,128,.4);border-radius:10px;padding:8px 10px;min-width:0}
+.pjCE-c h5{margin:0 0 6px;font:700 12px 'Space Grotesk',system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;opacity:.8}
+.pjCE-c ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.pjCE-c button{all:unset;cursor:pointer;display:flex;gap:6px;align-items:baseline;padding:5px 6px;border-radius:6px;font:500 13px 'IBM Plex Sans',system-ui,sans-serif;overflow-wrap:anywhere;width:100%;box-sizing:border-box}
+.pjCE-c button:hover,.pjCE-c button.on{background:rgba(255,196,0,.2)}.pjCE-c button:focus-visible{outline:2px solid #FFC400}
+.pjCE-c i{font-style:normal;color:#FFC400}.pjCE-c i.no{opacity:.45}
+.pjCE-e{margin:0;font-size:12px;opacity:.6}
+.pjCE-v{border:1.5px solid #FFC400;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.pjCE-b{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pjCE-b b{font:700 14px 'Space Grotesk',system-ui,sans-serif}.pjCE-b span{font-size:12px;opacity:.65;flex:1;min-width:60px}
+.pjCE-b button{all:unset;cursor:pointer;padding:6px 10px;border:1.5px solid currentColor;border-radius:8px;font:600 12.5px 'IBM Plex Sans',system-ui,sans-serif}.pjCE-b button.on{background:#FFC400;color:#0E0E0E;border-color:#FFC400}
+.pjCE-p{position:relative;overflow:auto;max-height:70vh;border-radius:8px;cursor:zoom-in;line-height:0}.pjCE-p img{display:block;width:100%;height:auto}
+.pjCE-p .tp-pin{pointer-events:none}.pjCE-m{margin:0;font-size:12px;opacity:.7}
+.modal.pjBig{max-width:min(1500px,97vw) !important;width:97vw !important}
+
 </style>
 <style id="ntStyle">
 /* ===== v135 : tous les tableaux en style Notion minimaliste (skill design-skills-user-interface) ===== */
@@ -18336,6 +18393,13 @@ body.plan-fs-on .rt-root.rt-fs .rt-planrow>.fp-btn[data-k=taches]{left:224px !im
 body.plan-fs-on .rt-root.rt-fs .rt-planrow>.fp-btn[data-k=pieces]{left:124px !important}
 body.plan-fs-on .rt-root.rt-fs .rt-planrow>.fp-btn[data-k=ouvrages]{left:174px !important}
 body.plan-fs-on .rt-root.rt-fs .rt-planrow>#rtBaseBtn{left:74px !important}
+
+.pjBackF{position:fixed;left:274px;bottom:19px;z-index:9000;height:40px;padding:0 14px;border-radius:20px;border:1px solid #FFC400;background:#0E0E0E;color:#FFC400;font:600 13px system-ui;box-shadow:0 2px 10px rgba(0,0,0,.35);cursor:pointer}
+.pjBackF[hidden]{display:none !important}
+@media(max-width:700px){.pjBackF{left:auto;right:12px}}
+
+body.plan-fs-on .rt-root.rt-fs .rt-planrow>#pjBackFiche{left:274px !important;width:40px !important;height:40px !important;display:inline-flex !important}
+body.plan-fs-on .rt-root.rt-fs .rt-planrow>#pjBackFiche[hidden]{display:none !important}
 body.plan-fs-on .fp-btn::after{top:auto !important; bottom:calc(100% + 6px)}
 body.plan-fs-on #rtCtx{left:284px !important}
 #rtHint.pj-idle{display:none !important} #rtCtx.pj-empty{display:none !important}
@@ -18910,7 +18974,7 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
   const pl=mb.querySelector('[data-planif]'); if(pl) pl.onclick=()=>window.pjPlanif('doc',id);
   const sb=mb.querySelector('[data-dsp]'); if(sb) sb.onclick=()=>pickSpec(sb,doc.ouvrage,doc.spec,v=>{ doc.spec=v; try{ persist(); }catch(_){} const s=mb.querySelector('#pjdfS'); if(s) s.innerHTML=v?esc(doc.ouvrage||'')+' · <b>'+esc(v)+'</b>':''; });
  }
- window.pjDocsList=DOCS; window.pjOpenDoc=openDocFiche;
+ window.pjDocsList=DOCS; window.pjOpenDoc=openDocFiche; window.pjArcTypes=()=>OUV.filter(o=>o.s==='A').map(o=>o.d); window.pjTechTypes=()=>['Note de calcul','Tableau de calcul','Fiche technique','Plan technique','Plan de terminaux','Plan d’équipements','Plan de distribution','Plan de production (local technique)'].concat(OUV.filter(o=>o.s!=='A').map(o=>o.d)).filter((x,i,a)=>a.indexOf(x)===i);
  /* ---------- redimensionner les colonnes ---------- */
  document.addEventListener('pointerdown',e=>{
   const h=e.target.closest&&e.target.closest('.pjd-rz'); if(!h) return; e.preventDefault(); e.stopPropagation();
