@@ -144,6 +144,7 @@
     PJ = {id:pr.id, nom:pr.nom, type:pr.type||'entreprise_generale', hebergement:pr.hebergement||null, types_autorises:pr.types_autorises||null, types_membre:(mem[pr.id]&&mem[pr.id].types_autorises)||null, fonction:(mem[pr.id]&&mem[pr.id].fonction)||null, role: glob ? 'admin' : m.role, fonctions: (glob || m.role==='admin') ? {} : (m.fonctions||{}), valide_jusqu: m.valide_jusqu||null, global:glob, projets:projets.filter(okP)};
     window.PILOTAGE_PROJET = PJ;
     window.PILOTAGE_ADM = adm; window.PILOTAGE_GENPW = genPw;
+    window.PILOTAGE_ACTIONS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_actions').insert({nom:row.nom}); if(error && error.code!=='23505') throw error; };
     window.PILOTAGE_LOTS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_lots').upsert(row,{onConflict:'code',ignoreDuplicates:true}); if(error) throw error; };
     window.PILOTAGE_SET_TYPE = async (pid, type)=>{ const {error} = await sb.from('projets').update({type}).eq('id', pid); if(error) throw error; };
     window.PILOTAGE_SET_TYPES_OK = async (pid, arr)=>{ const {error} = await sb.from('projets').update({types_autorises: (arr&&arr.length)?arr:null}).eq('id', pid); if(error) throw error; };
