@@ -18673,6 +18673,23 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
 .pjd-dep button{all:unset!important;cursor:pointer;display:flex!important;flex-direction:column;gap:2px;padding:12px 14px!important;border:1px solid #FFC400!important;border-radius:12px!important;background:#0E0E0E!important;color:#F2EFE6!important}
 .pjd-dep button span{font-size:12.5px;color:#B8B4A6}.pjd-dep button:hover{background:rgba(255,196,0,.1)!important}
 #pjDb td[data-dind]{cursor:pointer}
+
+#pjDb td.pjd-g,#pjDb th.pjd-g{width:58px;padding:0 0 0 4px!important;text-align:left;position:relative;overflow:visible!important}
+#pjDb .pjd-h{display:inline-block;width:20px;text-align:center;cursor:grab;color:#9B9A97;font-size:14px;letter-spacing:-2px;opacity:0;touch-action:none;user-select:none;-webkit-user-select:none;vertical-align:middle}
+#pjDb tr:hover .pjd-h,#pjDb.has-sel .pjd-h{opacity:1}
+#pjDb .pjd-ck{accent-color:#FFC400;width:15px;height:15px;margin:0 0 0 6px;vertical-align:middle;cursor:pointer;opacity:0}
+#pjDb tr:hover .pjd-ck,#pjDb .pjd-ck:checked,#pjDb.has-sel .pjd-ck,#pjDb th .pjd-ck{opacity:1}
+#pjDb th .pjd-ck{opacity:0}#pjDb thead:hover .pjd-ck,#pjDb.has-sel th .pjd-ck{opacity:1}
+#pjDb tbody tr.sel td{background:rgba(255,196,0,.16)!important}
+#pjDb tr.dragging td{opacity:.45}
+#pjDb tr.dtop td{box-shadow:inset 0 2px 0 #FFC400}#pjDb tr.dbot td{box-shadow:inset 0 -2px 0 #FFC400}
+#pjDb th.colsel,#pjDb td.colsel{background:rgba(255,196,0,.16)!important}
+#pjDb th.cl{box-shadow:inset 3px 0 0 #FFC400}#pjDb th.cr{box-shadow:inset -3px 0 0 #FFC400}
+body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:none}
+#pjDb .pjd-selbar{display:flex;align-items:center;gap:6px;margin:0 0 8px;padding:4px 8px;border:1px solid rgba(55,53,47,.16);border-radius:8px;width:max-content;max-width:100%;font-size:13.5px;color:#37352F;background:transparent}
+#pjDb .pjd-selc{color:#B8860B;font-weight:600;margin-right:6px}
+#pjDb .pjd-selbar button{background:none!important;border:0!important;box-shadow:none!important;color:#37352F!important;font:inherit;font-size:13.5px;padding:4px 8px!important;border-radius:6px!important;cursor:pointer;min-height:0!important;width:auto!important}
+#pjDb .pjd-selbar button:hover{background:rgba(55,53,47,.08)!important}
 </style>
 <script id="pjV140Js">
 (function(){
@@ -18979,21 +18996,55 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
   const isGed=id=>(typeof gedRows==='function'?gedRows():[]).some(x=>x.id===id);
   const GED_ST=['À jour','En attente','À mettre à jour'];
   async function storeFile(f){ if(f.size>15*1024*1024) throw new Error('Fichier trop volumineux (15 Mo maximum).'); if(window.PILOTAGE_BLOBS){ const u=await window.PILOTAGE_BLOBS.upload(f); return {id:u.id,name:f.name,type:f.type||'',size:f.size}; } if(f.size>2*1024*1024) throw new Error('Sans stockage en ligne, 2 Mo maximum.'); return {data:await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(f); }),name:f.name,type:f.type||'',size:f.size}; }
+ /* ===== Sélection, déplacement des lignes (poignée ⋮⋮) et des colonnes (appui long), comme Notion ===== */
+ const SEL=new Set(); let SELLAST=null;
+ const selBar=()=>SEL.size?'<div class="pjd-selbar"><span class="pjd-selc">'+SEL.size+' élément'+(SEL.size>1?'s':'')+' sélectionné'+(SEL.size>1?'s':'')+'</span><button type="button" data-seld="1">🗑 Supprimer</button><button type="button" data-selx="1">Désélectionner</button></div>':'';
+ const rowIds=d=>[...d.querySelectorAll('tbody tr[data-did]')].map(r=>r.dataset.did);
+ function updSel(){ const d=document.getElementById('pjDb'); if(!d) return; const rows=[...d.querySelectorAll('tbody tr[data-did]')];
+  rows.forEach(tr=>{ const on=SEL.has(tr.dataset.did); tr.classList.toggle('sel',on); const c=tr.querySelector('.pjd-ck'); if(c) c.checked=on; });
+  const all=d.querySelector('.pjd-ck[data-all]'); if(all){ const n=rows.filter(r=>SEL.has(r.dataset.did)).length; all.checked=n>0&&n===rows.length; all.indeterminate=n>0&&n<rows.length; }
+  d.classList.toggle('has-sel',SEL.size>0); const b=d.querySelector('.pjd-selbar'), h=selBar();
+  if(b){ if(h) b.outerHTML=h; else b.remove(); } else if(h){ const t=d.querySelector('table.pjd-t'); if(t) t.insertAdjacentHTML('beforebegin',h); } }
+ function gutterClick(e){ e.stopPropagation(); const ck=e.target.closest('.pjd-ck'); if(!ck) return true; const d=document.getElementById('pjDb'), ids=rowIds(d);
+  if(ck.dataset.all){ if(ck.checked) ids.forEach(x=>SEL.add(x)); else SEL.clear(); }
+  else { const id=ck.closest('tr[data-did]').dataset.did;
+   if(e.shiftKey&&SELLAST&&ids.includes(SELLAST)){ const a=ids.indexOf(SELLAST), b=ids.indexOf(id); ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(x=>SEL.add(x)); }
+   else if(ck.checked) SEL.add(id); else SEL.delete(id); SELLAST=id; }
+  updSel(); return true; }
+ function reorderRows(ids,tid,after){ const d=document.getElementById('pjDb'); const cur=rowIds(d); const rest=cur.filter(x=>!ids.includes(x)); let i=rest.indexOf(tid); if(i<0) return; if(after) i++; rest.splice(i,0,...cur.filter(x=>ids.includes(x)));
+  state.docOrder=rest.concat((state.docOrder||[]).filter(x=>!rest.includes(x))); if(DSORT){ DSORT=null; LSset('pj_dsort',null); } try{ persist(); }catch(_){} dbRender(); }
+ function rowDrag(e){ const h=e.target.closest&&e.target.closest('.pjd-h'); if(!h||(e.button||0)>0) return; const d=document.getElementById('pjDb'); const tr=h.closest('tr[data-did]'); e.preventDefault();
+  const rows=[...d.querySelectorAll('tbody tr[data-did]')], id=tr.dataset.did; const ids=(SEL.has(id)&&SEL.size>1)?rows.map(r=>r.dataset.did).filter(x=>SEL.has(x)):[id];
+  rows.forEach(r=>{ if(ids.includes(r.dataset.did)) r.classList.add('dragging'); }); document.body.classList.add('pjd-moving'); let tgt=null, after=false;
+  const mv=ev=>{ const y=ev.clientY; rows.forEach(r=>r.classList.remove('dtop','dbot')); let hit=null; for(const r of rows){ const b=r.getBoundingClientRect(); if(y<b.top+b.height/2){ hit=r; after=false; break; } } if(!hit){ hit=rows[rows.length-1]; after=true; } tgt=hit; if(!ids.includes(hit.dataset.did)) hit.classList.add(after?'dbot':'dtop'); };
+  const up=()=>{ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); document.body.classList.remove('pjd-moving'); rows.forEach(r=>r.classList.remove('dragging','dtop','dbot')); if(tgt&&!ids.includes(tgt.dataset.did)) reorderRows(ids,tgt.dataset.did,after); };
+  document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up); mv(e); }
+ function colDragStart(e){ const th=e.target.closest&&e.target.closest('th[data-dcol]'); if(!th||e.target.closest('.pjd-rz')||(e.button||0)>0) return; const d=document.getElementById('pjDb');
+  const ths=()=>[...d.querySelectorAll('thead th[data-dcol]')]; let active=false, tgt=null, after=false; const sx=e.clientX, sy=e.clientY, from=th.dataset.dcol;
+  const stopTouch=ev=>{ if(active) ev.preventDefault(); };
+  const timer=setTimeout(()=>{ active=true; th.classList.add('colsel'); const idx=ths().indexOf(th)+1; d.querySelectorAll('tbody tr').forEach(tr=>{ const c=tr.children[idx]; if(c) c.classList.add('colsel'); }); document.body.classList.add('pjd-moving'); try{ navigator.vibrate&&navigator.vibrate(12); }catch(_){} },380);
+  const end=()=>{ clearTimeout(timer); document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); document.removeEventListener('touchmove',stopTouch); document.body.classList.remove('pjd-moving'); };
+  const mv=ev=>{ if(!active){ if(Math.hypot(ev.clientX-sx,ev.clientY-sy)>8){ end(); } return; } ths().forEach(t=>t.classList.remove('cl','cr')); const x=ev.clientX; let hit=null; for(const t of ths()){ const b=t.getBoundingClientRect(); if(x<b.left+b.width/2){ hit=t; after=false; break; } } if(!hit){ hit=ths().pop(); after=true; } tgt=hit.dataset.dcol; if(tgt!==from) hit.classList.add(after?'cr':'cl'); };
+  const up=()=>{ const was=active; end(); if(!was) return; window.__pjColDrag=Date.now(); ths().forEach(t=>t.classList.remove('cl','cr','colsel')); d.querySelectorAll('.colsel').forEach(c=>c.classList.remove('colsel')); if(!tgt||tgt===from) return; const arr=dcolsOn().filter(k=>k!==from); let i=arr.indexOf(tgt); if(after) i++; arr.splice(i,0,from); LSset('pj_dcols',arr); dbRender(); };
+  document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up); document.addEventListener('touchmove',stopTouch,{passive:false}); }
+
  function dbRenderDocs(d){
   try{ gedSyncPlans(); }catch(_){} ensurePlanning(); const cs=dcolsOn(), P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
   const GR=(typeof gedRows==='function'?gedRows():[]).map(g=>({id:g.id,ged:true,nom:g.nom||'',docType:g.type||'',niveau:g.niveau||'',discipline:g.corps||'',phase:g.phase||'',indice:g.indice||'',etat:g.statut||'',date:g.date||'',fichier:(g.fichier&&g.fichier.name)||'',taille:(g.fichier&&g.fichier.size)||0,format:(g.fichier&&g.fichier.name&&(/\.([A-Za-z0-9]+)$/.exec(g.fichier.name)||[])[1]||'').toUpperCase(),emetteur:'',periode:'',zone:'',type:'',numero:'',_g:g}));
   let R=DOCS().concat(GR).map(x=>Object.assign({},x,{code:docCode(x,pn)})).filter(passD);
   if(FL.q){ const q=FL.q.toLowerCase(); R=R.filter(x=>[x.code,x.nom,x.docType,x.niveau,x.discipline,x.phase,x.indice,x.fichier].join(' ').toLowerCase().includes(q)); }
   if(DSORT&&cs.includes(DSORT.k)){ const k=DSORT.k, s=DSORT.d; R.sort((a,b)=>String(a[k]||'').localeCompare(String(b[k]||''),'fr',{numeric:true})*s); }
+  else if(Array.isArray(state.docOrder)&&state.docOrder.length){ const ix=x=>{ const i=state.docOrder.indexOf(x.id); return i<0?1e9:i; }; R.sort((a,b)=>ix(a)-ix(b)); }
   const chips=[]; if(FL.niv.length) chips.push(['niv','Niveau',sumTxt('niv')]); if(FL.from||FL.to) chips.push(['chrono','Date',sumTxt('chrono')]);
   const cell=(r,k)=>{ let v=r[k]; if(k==='date') v=frDate(v); else if(k==='etat') v=DET[v]||v; else if(k==='fichier') v=v?(v+(r.taille?' · '+fsz(r.taille):'')):'Aucune pièce jointe'; if(k==='nom'&&r.ged){ let src=''; try{ src=gedPlanSrc(r._g)||''; }catch(_){} return esc(v||'')+'<span class="pjd-open" data-dopen="1">OUVRIR</span>'; } if(k==='fichier'&&!r.fichier) return '<span class="pjd-add">⬆ Déposer</span>'; return esc(v||'')+(k==='nom'?'<span class="pjd-open" data-dopen="1">OUVRIR</span>':''); };
   const attr=k=>k==='indice'?' data-dind="1" title="Voir les indices précédents"':k==='fichier'?' data-dfile="1" title="Déposer la pièce jointe de cette ligne (montée d’indice si elle existe déjà)"':k==='etat'||k==='niveau'||k==='docType'?' data-dsel="'+k+'" title="Choisir"':(DTXT.includes(k)||k==='date'?' data-ded="'+k+'" title="Cliquer pour modifier"':'');
+  if(!d._pd){ d._pd=1; d.addEventListener('pointerdown',e=>{ rowDrag(e); colDragStart(e); }); }
   if(!d._q){ d._q=1; d.addEventListener('input',e=>{ const i=e.target.closest('.pjd-q'); if(!i) return; FL.q=i.value; const p=i.selectionStart; dbRenderDocs(d); const n=d.querySelector('.pjd-q'); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(_){} } }); }
   d.innerHTML='<div class="pjd-in">'+modeSw()+'<h1>Documents du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' document'+(R.length>1?'s':'')+'</div>'
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<input type="search" class="pjd-q" placeholder="Rechercher dans les documents…" value="'+esc(FL.q||'')+'">'+'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-dact="drop" title="Déposer des fichiers dans le projet">Déposer</button><button type="button" class="pjd-lnk" data-dact="add">+ Document</button><button type="button" class="pjd-lnk" data-dact="props">Propriétés</button></div>'
-   +'<table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34)+'px"><colgroup>'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr>'+cs.map(k=>'<th data-dsort="'+k+'"><span class="pjd-hl">'+DCOLS[k]+(DSORT&&DSORT.k===k?(DSORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th></th></tr></thead><tbody>'
-   +(R.length?R.map(r=>'<tr data-did="'+esc(r.id)+'">'+cs.map(k=>'<td'+attr(k)+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-ddel="1" title="Supprimer">✕</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+1)+'">Aucun document. Dépose un fichier ou ajoute un document.</td></tr>')
+   +selBar()+'<table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34+58)+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-dsort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+DCOLS[k]+(DSORT&&DSORT.k===k?(DSORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th></th></tr></thead><tbody>'
+   +(R.length?R.map(r=>'<tr data-did="'+esc(r.id)+'"'+(SEL.has(r.id)?' class="sel"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+attr(k)+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-ddel="1" title="Supprimer">✕</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun document. Dépose un fichier ou ajoute un document.</td></tr>')
    +'</tbody></table></div>';
  }
  /* ===== Déposer : nouveau document ou nouvel indice (historique des indices) ===== */
@@ -19029,16 +19080,19 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
  function docClick(e){
   const m=e.target.closest('[data-mode]'); if(m){ e.stopPropagation(); if(m.dataset.mode!==mode) setMode(m.dataset.mode); return true; }
   if(mode!=='etude') return false;
+  if(e.target.closest('[data-selx]')){ SEL.clear(); updSel(); return true; }
+  if(e.target.closest('[data-seld]')){ const n=SEL.size; miniConfirm('Supprimer '+n+' ligne'+(n>1?'s':'')+' ?',()=>{ const ids=[...SEL]; const pl=DOCS().filter(x=>ids.includes(x.id)&&x.planning).length; state.ged=gedRows().filter(x=>!ids.includes(x.id)); const L=DOCS(); for(let i=L.length-1;i>=0;i--) if(ids.includes(L[i].id)&&!L[i].planning) L.splice(i,1); SEL.clear(); try{ persist(); }catch(_){} if(pl) toast('Le planning ne se supprime pas.'); dbRender(); }); return true; }
+  if(e.target.closest('.pjd-g')) return gutterClick(e);
   const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='niv') FL.niv=[]; if(k==='chrono') FL.from=FL.to=''; after(); return true; }
   const da=e.target.closest('[data-dact]'); if(da){ const k=da.dataset.dact;
    if(k==='drop') depChoice();
    else if(k==='add'){ DOCS().unshift({id:'D'+Date.now().toString(36),nom:'Nouveau document',docType:'',niveau:FL.niv[0]||'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'A',format:'',etat:'aemettre',date:(typeof todayISO==='function'?todayISO():''),fichier:'',taille:0,etapeNom:'E'+(nTaches()+1)}); try{ persist(); }catch(_){} dbRender(); }
    else if(k==='props') popOpen(da,'<div class="pp-t">Propriétés du document</div>'+Object.keys(DCOLS).map(c=>'<label class="pp-i"><input type="checkbox" data-c="'+c+'"'+(dcolsOn().includes(c)?' checked':'')+'><span>'+DCOLS[c]+'</span></label>').join('')+'<button type="button" class="pp-lnk" data-def="1">Colonnes par défaut</button>',d=>{
-     d.querySelectorAll('[data-c]').forEach(i=>i.onchange=()=>{ let cs=dcolsOn(); const c=i.dataset.c; if(i.checked&&!cs.includes(c)) cs=Object.keys(DCOLS).filter(k=>cs.includes(k)||k===c); if(!i.checked) cs=cs.filter(k=>k!==c); if(!cs.length){ i.checked=true; return; } LSset('pj_dcols',cs); dbRender(); });
+     d.querySelectorAll('[data-c]').forEach(i=>i.onchange=()=>{ let cs=dcolsOn(); const c=i.dataset.c; if(i.checked&&!cs.includes(c)) cs=cs.concat(c); if(!i.checked) cs=cs.filter(k=>k!==c); if(!cs.length){ i.checked=true; return; } LSset('pj_dcols',cs); dbRender(); });
      d.querySelector('[data-def]').onclick=()=>{ LSset('pj_dcols',DDEF); popClose(); dbRender(); }; });
    return true; }
   if(e.target.closest('[data-rz]')||window.__pjRz) return true;
-  const th=e.target.closest('[data-dsort]'); if(th){ const k=th.dataset.dsort; DSORT=(!DSORT||DSORT.k!==k)?{k,d:1}:(DSORT.d>0?{k,d:-1}:null); LSset('pj_dsort',DSORT); dbRender(); return true; }
+  const th=e.target.closest('[data-dsort]'); if(th){ if(window.__pjColDrag&&Date.now()-window.__pjColDrag<500) return true; const k=th.dataset.dsort; DSORT=(!DSORT||DSORT.k!==k)?{k,d:1}:(DSORT.d>0?{k,d:-1}:null); LSset('pj_dsort',DSORT); dbRender(); return true; }
   const del=e.target.closest('[data-ddel]'); if(del){ e.stopPropagation(); const id=del.closest('tr[data-did]').dataset.did, L=DOCS(), i=L.findIndex(q=>q.id===id); if(i<0&&isGed(id)){ state.ged=gedRows().filter(x=>x.id!==id); try{ persist(); }catch(_){} dbRender(); return true; } if(i>=0&&L[i].planning){ toast('Le planning est l’ouvrage de base du projet : il ne se supprime pas.'); return true; } if(i>=0){ L.splice(i,1); try{ persist(); }catch(_){} dbRender(); } return true; }
   const gi=e.target.closest('td[data-dind]'); if(gi){ e.stopPropagation(); showHist(gi.closest('tr[data-did]').dataset.did); return true; }
   const gf=e.target.closest('td[data-dfile]'); if(gf){ e.stopPropagation(); const rid=gf.closest('tr[data-did]').dataset.did, o=findRow(rid); if(o&&hasFile(o)) miniConfirm('Un document existe déjà sur cette ligne. Monter en indice ('+(o.indice||'—')+' → '+nextInd(o.indice)+') ?',()=>bumpFile(rid)); else dropFiles(rid); return true; }
