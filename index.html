@@ -18135,10 +18135,10 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
   const tech=document.querySelector('#modalBody .tf-tech'); if(!tech||tech.querySelector('.pjARC')) return;
   tech.querySelectorAll(':scope>*:not(h4)').forEach(c=>c.classList.add('pjHideA'));
   const niv=()=>t.niveau; const pc=()=>{ try{ return pieceOfTask(t); }catch(_){ return null; } };
-  const plansOf=k=>{ const A=(state.plans||[]).filter(p=>p.src); const T=p=>normTD(p.typeDoc);
+  const plansOf=k=>{ const A=(state.plans||[]).filter(p=>p.src); const gOf=p=>(state.ged||[]).find(r=>r.planId===p.id&&!r.snapSrc); const T=p=>{ const g=gOf(p); return normTD((g&&g.type)||p.typeDoc); }; const LV=p=>{ const g=gOf(p); return p.niveau||(g&&g.niveau)||''; };
    if(k==='bat') return A.filter(p=>T(p)==='Perspective');
-   if(k==='niv') return A.filter(p=>T(p)==='Plan d’étage'&&p.niveau===niv());
-   if(k==='pc'){ const z=pc(); return A.filter(p=>T(p)==='Détail'&&(!p.niveau||p.niveau===niv())&&(!(p.pieceId||p.zoneId)||(z&&(p.pieceId===z.id||p.zoneId===z.id)))); }
+   if(k==='niv') return A.filter(p=>(T(p)==='Plan d’étage'||T(p)==='Plan de repérage')&&LV(p)===niv());
+   if(k==='pc'){ const z=pc(); return A.filter(p=>T(p)==='Détail'&&(!LV(p)||LV(p)===niv())&&(!(p.pieceId||p.zoneId)||(z&&(p.pieceId===z.id||p.zoneId===z.id)))); }
    return A.filter(p=>T(p)==='Fiche produit'); };
   const FR=[['bat','BÂT','perspective'],['niv','NN','plan d’étage'],['pc','PIÈCE','détail'],['type','TYPE','fiche produit']];
   const lab={bat:'',niv:niv()||'',pc:(pc()||{}).nom||'',type:''};
@@ -18162,7 +18162,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
    const img=e.target.closest('#pjARCp'); if(img&&cur){ if(curK==='type') return; const r=img.getBoundingClientRect(); const x=Math.min(.999,Math.max(.001,(e.clientX-r.left)/r.width)), y=Math.min(.999,Math.max(.001,(e.clientY-r.top)/r.height)); if(!t.pos||t.pos.planId===cur.id) tpSave(t.id,cur.id,x,y,niv()); else { t.posAlt=t.posAlt||{}; t.posAlt[cur.id]={x:Math.round(x*10000)/10000,y:Math.round(y*10000)/10000}; (t.historique=t.historique||[]).push({date:today(),champ:'Position',ancienne:'—',nouvelle:(cur.nom||'Plan')+' ('+Math.round(x*100)+' %, '+Math.round(y*100)+' %)'}); try{ persist(); }catch(_){} } view(curK,cur); setTimeout(()=>{ try{ if(cur) view(curK,cur); }catch(_){} },350); return; }
    const f=e.target.closest('[data-s]'); if(f&&wrap.contains(f)) open(f.dataset.s); });
   wrap.addEventListener('change',e=>{ const a=e.target.closest('[data-a=pick]'); if(a){ const pl=(state.plans||[]).find(x=>x.id===a.value); if(pl){ placing=false; view(curK,pl); } } });
-  window.__pjARC={id:t.id,open:pid=>{ const pl=(state.plans||[]).find(x=>x.id===pid); if(!pl) return; const T=normTD(pl.typeDoc); const k=T==='Perspective'?'bat':T==='Plan d’étage'?'niv':T==='Détail'?'pc':'type'; placing=false; view(k,pl); }};
+  window.__pjARC={id:t.id,open:pid=>{ const pl=(state.plans||[]).find(x=>x.id===pid); if(!pl) return; const g0=(state.ged||[]).find(r=>r.planId===pl.id&&!r.snapSrc); const T=normTD((g0&&g0.type)||pl.typeDoc); const k=T==='Perspective'?'bat':(T==='Plan d’étage'||T==='Plan de repérage')?'niv':T==='Détail'?'pc':'type'; placing=false; view(k,pl); }};
  }
  function buildCE(t){
   const ing=document.querySelector('#modalBody .tf-ing'); if(!ing||ing.querySelector('.pjCE')) return;
@@ -18186,7 +18186,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
   wrap.querySelector('#pjTechT').onchange=e=>{ t.mbf=t.mbf||{}; t.mbf.typeDocTech=e.target.value; try{ persist(); }catch(_){} view(null); };
   window.__pjCE={id:t.id,open:pid=>{ const pl=(state.plans||[]).find(x=>x.id===pid); if(pl) view(pl); }};
   lists(); }
- window.pjCEOpen=(id,pid)=>{ let n=0; const w=()=>{ const pl0=(state.plans||[]).find(x=>x.id===pid); if(pl0&&['Perspective','Plan d’étage','Détail','Fiche produit','Plan de niveau'].includes(pl0.typeDoc||'Plan de niveau')&&window.__pjARC&&window.__pjARC.id===id) window.__pjARC.open(pid); else if(window.__pjCE&&window.__pjCE.id===id) window.__pjCE.open(pid); else if(n++<20) setTimeout(w,100); }; w(); };
+ window.pjCEOpen=(id,pid)=>{ let n=0; const w=()=>{ const pl0=(state.plans||[]).find(x=>x.id===pid); if(pl0&&['Perspective','Plan d’étage','Plan de repérage','Détail','Fiche produit','Plan de niveau'].includes((((state.ged||[]).find(r=>r.planId===pl0.id&&!r.snapSrc)||{}).type)||pl0.typeDoc||'Plan de niveau')&&window.__pjARC&&window.__pjARC.id===id) window.__pjARC.open(pid); else if(window.__pjCE&&window.__pjCE.id===id) window.__pjCE.open(pid); else if(n++<20) setTimeout(w,100); }; w(); };
  /* bouton « retour à la fiche » dans la vue en plan, à côté des filtres */
  (function(){ if(document.getElementById('pjBackFiche')) return; const b=document.createElement('button'); b.type='button'; b.id='pjBackFiche'; b.className='pjBackF'; b.hidden=true; b.textContent='↩ Fiche de l’ouvrage'; b.title='Revenir à la dernière vue de la fiche d’ouvrage'; b.onclick=()=>{ const L=window.pjLastFiche; if(!L) return; try{ openTaskDetail(L.id); if(L.planId) setTimeout(()=>{ try{ window.pjCEOpen(L.id,L.planId); }catch(e){} },400); }catch(e){ console.error(e); } }; document.body.appendChild(b); })();
  function openPicker(t,dir,after){
