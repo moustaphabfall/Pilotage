@@ -18026,6 +18026,11 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
     const more=(t.dependances||[]).length>1?'<small style="display:block;opacity:.65">+ '+((t.dependances||[]).length-1)+' autre(s) étape(s) précédente(s) : '+E((t.dependances||[]).slice(1).map(d=>d).join(', '))+'</small>':'';
     const df=document.createElement('div'); df.innerHTML='<div class="field"><label>⬅ Étape précédente</label><input id="tf-prev" list="tfTasks" value="'+E(pr?lbl(pr):'')+'" placeholder="— choisir une tâche du projet —" onchange="tfDep(\''+t.id+'\',\'prev\',this)">'+more+'</div><div class="field"><label>➡ Étape suivante</label><input id="tf-next" list="tfTasks" value="'+E(nx?lbl(nx):'')+'" placeholder="— choisir une tâche du projet —" onchange="tfDep(\''+t.id+'\',\'next\',this)"></div><datalist id="tfTasks">'+(state.tasks||[]).filter(x=>x.id!==t.id).map(x=>'<option value="'+E(lbl(x))+'">').join('')+'</datalist>';
     if(depF){ depF.style.display='none'; depF.before(...df.childNodes); } else [...df.childNodes].forEach(n=>plan.appendChild(n));
+    try{ const m=(t.mbf=t.mbf||{}); const et=(m.etape=m.etape||{}); const num=(state.tasks||[]).indexOf(t)+1; const eb=document.createElement('div'); eb.className='field pjEtape';
+      eb.innerHTML='<label>Étape (événement)</label><div class="pjEt-g"><input data-et="nom" value="'+E(et.nom||('E'+num))+'" aria-label="Nom de l’étape"><label>Au plus tôt<input type="date" data-et="tot" value="'+E(et.tot||'')+'"></label><label>Au plus tard<input type="date" data-et="tard" value="'+E(et.tard||'')+'"></label></div><small class="pjEt-m"></small>';
+      const mg=()=>{ const a=eb.querySelector('[data-et=tot]').value,b=eb.querySelector('[data-et=tard]').value; eb.querySelector('.pjEt-m').textContent=(a&&b)?('Marge : '+Math.round((new Date(b)-new Date(a))/864e5)+' j'+(b<a?' (au plus tard avant au plus tôt : à corriger)':'')):'Marge : renseigne les deux dates'; }; mg();
+      eb.querySelectorAll('[data-et]').forEach(i=>i.onchange=()=>{ et[i.dataset.et]=i.value.trim(); mg(); try{ persist(); }catch(_){} });
+      plan.appendChild(eb); }catch(e){ console.error(e); }
     const mkSep=(c,h)=>{ const d=document.createElement('div'); d.className='tf-sep '+c; d.innerHTML=h; return d; }; g.append(mkSep('cons','Construction'),tech,ing,mkSep('gp','Gestion de projet <small>manipule la construction</small>'),plan,co,ph,au);
     const h3=mb.querySelector('h3'); if(h3&&!mb.querySelector('.tf-kind')){ const kd=document.createElement('div'); kd.className='tf-kind'; kd.textContent='Fiche d’ouvrage'; h3.before(kd); } if(fg){ fg.replaceWith(g); } else if(h3&&h3.nextSibling) mb.insertBefore(g,h3.nextSibling); else mb.appendChild(g);
     const md=mb.closest('.modal'); const wide=()=>{ if(md){ md.classList.add('fiche-wide'); md.classList.toggle('tf-wide',g.classList.contains('cols')); } }; wide();
@@ -18313,6 +18318,9 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
 .tf-grid.pjdf .tf-sep{grid-column:1 / -1 !important;grid-row:auto !important}
 .tf-grid.pjdf>.tf-box{grid-column:auto !important;grid-row:auto !important}
 @media (max-width:900px){.tf-grid.pjdf{grid-template-columns:1fr}}
+
+.pjEt-g{display:grid;grid-template-columns:minmax(80px,120px) 1fr 1fr;gap:8px;align-items:end}.pjEt-g label{font-size:11.5px;opacity:.8;display:flex;flex-direction:column;gap:3px}.pjEt-m{display:block;margin-top:4px;opacity:.7;font-size:12px}
+@media (max-width:600px){.pjEt-g{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){ #pjDb .pjd-mt{transition:none} }
 </style>
 <script id="pjV140Js">
@@ -18600,6 +18608,9 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
  let DSORT=LS('pj_dsort',null);
  const dcolsOn=()=>{ const c=(LS('pj_dcols',DDEF)||DDEF).filter(k=>DCOLS[k]); return c.length?c:DDEF; };
  const DOCS=()=>{ const S=ST(); S.documents=S.documents||[]; return S.documents; };
+ const nTaches=()=>DOCS().filter(d=>!d.planning).length;
+ /* chaque projet a par défaut une tâche « Planning » : la somme de ses documents (étude) ou ouvrages (exé) */
+ function ensurePlanning(){ const L=DOCS(); if(L.some(d=>d.planning)) return; L.unshift({id:'Dplanning',planning:true,nom:'Planning',docType:'Planning',niveau:'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'A',format:'',etat:'aemettre',date:'',fichier:'',taille:0,etapeNom:'E0',etapeTot:'',etapeTard:''}); try{ persist(); }catch(_){} }
  const docCode=(x,pn)=>[pn,x.emetteur,x.phase,x.periode,x.zone,x.niveau,x.discipline,x.type,x.numero,x.indice].filter(Boolean).join('-');
  const fsz=n=>!n?'':(n>1048576?(n/1048576).toFixed(1)+' Mo':Math.max(1,Math.round(n/1024))+' Ko');
  /* catalogue des documents d'étude, lu dans la base (tables mbf_*) */
@@ -18612,7 +18623,7 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
   return true;
  }
  function dbRenderDocs(d){
-  const cs=dcolsOn(), P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
+  ensurePlanning(); const cs=dcolsOn(), P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
   let R=DOCS().map(x=>Object.assign({},x,{code:docCode(x,pn)})).filter(passD);
   if(DSORT&&cs.includes(DSORT.k)){ const k=DSORT.k, s=DSORT.d; R.sort((a,b)=>String(a[k]||'').localeCompare(String(b[k]||''),'fr',{numeric:true})*s); }
   const chips=[]; if(FL.niv.length) chips.push(['niv','Niveau',sumTxt('niv')]); if(FL.from||FL.to) chips.push(['chrono','Date',sumTxt('chrono')]);
@@ -18627,7 +18638,7 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
  }
  function dropFiles(){
   const f=document.createElement('input'); f.type='file'; f.multiple=true;
-  f.onchange=()=>{ const L=Array.from(f.files||[]); if(!L.length) return; const t=(typeof todayISO==='function'?todayISO():''); L.forEach(file=>{ const m=/^(.*?)(?:\.([A-Za-z0-9]+))?$/.exec(file.name); DOCS().unshift({id:'D'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),nom:m[1],docType:'',niveau:FL.niv[0]||'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'A',format:(m[2]||'').toUpperCase(),etat:'aemettre',date:t,fichier:file.name,taille:file.size}); }); try{ persist(); }catch(_){} toast(L.length+' document'+(L.length>1?'s':'')+' ajouté'+(L.length>1?'s':'')); dbRender(); };
+  f.onchange=()=>{ const L=Array.from(f.files||[]); if(!L.length) return; const t=(typeof todayISO==='function'?todayISO():''); L.forEach(file=>{ const m=/^(.*?)(?:\.([A-Za-z0-9]+))?$/.exec(file.name); DOCS().unshift({id:'D'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),nom:m[1],docType:'',niveau:FL.niv[0]||'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'A',format:(m[2]||'').toUpperCase(),etat:'aemettre',date:t,fichier:file.name,taille:file.size,etapeNom:'E'+(nTaches()+1)}); }); try{ persist(); }catch(_){} toast(L.length+' document'+(L.length>1?'s':'')+' ajouté'+(L.length>1?'s':'')); dbRender(); };
   f.click();
  }
  function docClick(e){
@@ -18636,14 +18647,14 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
   const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='niv') FL.niv=[]; if(k==='chrono') FL.from=FL.to=''; after(); return true; }
   const da=e.target.closest('[data-dact]'); if(da){ const k=da.dataset.dact;
    if(k==='drop') dropFiles();
-   else if(k==='add'){ DOCS().unshift({id:'D'+Date.now().toString(36),nom:'Nouveau document',docType:'',niveau:FL.niv[0]||'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'A',format:'',etat:'aemettre',date:(typeof todayISO==='function'?todayISO():''),fichier:'',taille:0}); try{ persist(); }catch(_){} dbRender(); }
+   else if(k==='add'){ DOCS().unshift({id:'D'+Date.now().toString(36),nom:'Nouveau document',docType:'',niveau:FL.niv[0]||'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'A',format:'',etat:'aemettre',date:(typeof todayISO==='function'?todayISO():''),fichier:'',taille:0,etapeNom:'E'+(nTaches()+1)}); try{ persist(); }catch(_){} dbRender(); }
    else if(k==='props') popOpen(da,'<div class="pp-t">Propriétés du document</div>'+Object.keys(DCOLS).map(c=>'<label class="pp-i"><input type="checkbox" data-c="'+c+'"'+(dcolsOn().includes(c)?' checked':'')+'><span>'+DCOLS[c]+'</span></label>').join('')+'<button type="button" class="pp-lnk" data-def="1">Colonnes par défaut</button>',d=>{
      d.querySelectorAll('[data-c]').forEach(i=>i.onchange=()=>{ let cs=dcolsOn(); const c=i.dataset.c; if(i.checked&&!cs.includes(c)) cs=Object.keys(DCOLS).filter(k=>cs.includes(k)||k===c); if(!i.checked) cs=cs.filter(k=>k!==c); if(!cs.length){ i.checked=true; return; } LSset('pj_dcols',cs); dbRender(); });
      d.querySelector('[data-def]').onclick=()=>{ LSset('pj_dcols',DDEF); popClose(); dbRender(); }; });
    return true; }
   if(e.target.closest('[data-rz]')||window.__pjRz) return true;
   const th=e.target.closest('[data-dsort]'); if(th){ const k=th.dataset.dsort; DSORT=(!DSORT||DSORT.k!==k)?{k,d:1}:(DSORT.d>0?{k,d:-1}:null); LSset('pj_dsort',DSORT); dbRender(); return true; }
-  const del=e.target.closest('[data-ddel]'); if(del){ e.stopPropagation(); const id=del.closest('tr[data-did]').dataset.did, L=DOCS(), i=L.findIndex(q=>q.id===id); if(i>=0){ L.splice(i,1); try{ persist(); }catch(_){} dbRender(); } return true; }
+  const del=e.target.closest('[data-ddel]'); if(del){ e.stopPropagation(); const id=del.closest('tr[data-did]').dataset.did, L=DOCS(), i=L.findIndex(q=>q.id===id); if(i>=0&&L[i].planning){ toast('Le planning est la tâche de base du projet : il ne se supprime pas.'); return true; } if(i>=0){ L.splice(i,1); try{ persist(); }catch(_){} dbRender(); } return true; }
   const se=e.target.closest('td[data-dsel]'); if(se){ e.stopPropagation(); const doc=DOCS().find(q=>q.id===se.closest('tr[data-did]').dataset.did); if(!doc) return true; const k=se.dataset.dsel; let items=[];
    if(k==='etat') items=Object.keys(DET).map(v=>[v,DET[v]]);
    else if(k==='niveau') items=(ST().niveaux||[]).map(n=>[n,n]);
@@ -18728,7 +18739,7 @@ body.pj-etude #pjFilt [data-k=etat], body.pj-etude #pjFilt [data-k=met]{display:
   openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">Fiche de document</div><h3 style="padding-right:46px">'+esc(doc.nom||'Document')+'</h3><div class="tf-grid pjdf"><div class="tf-sep cons">Construction</div>'
    +'<section class="tf-box"><h4 class="tf-t">A · Architecture</h4>'+f('nom','Document')+sel('docType','Type de document',docTypes().map(x=>[x[0],x[0]]))+'<div class="field"><label>Ouvrage correspondant</label><div class="pjdf-v" id="pjdfO">'+esc(doc.ouvrage||'—')+'</div></div>'+sel('niveau','Niveau',(S.niveaux||[]).map(n=>[n,n]))+'<div class="field pjA"><div class="pjA-r"><button type="button" class="pjA-b" data-dsp="1">Spécifier le type</button></div><div class="pjA-s" id="pjdfS">'+(doc.spec?esc(doc.ouvrage||'')+' · <b>'+esc(doc.spec)+'</b>':'')+'</div></div></section>'
    +'<section class="tf-box"><h4 class="tf-t">E · Ingénierie</h4>'+f('discipline','Discipline')+f('emetteur','Émetteur')+sel('lot','Lot',LOTS.map(l=>[l.code,l.nom]))+f('type','Type (code)')+'</section>'
-   +'<div class="tf-sep gp">Gestion de projet <small>manipule la construction</small></div><section class="tf-box"><h4 class="tf-t">T · Planning</h4>'+f('date','Date','date')+f('indice','Indice')+sel('etat','État',Object.keys(DET).map(k=>[k,DET[k]]))+f('phase','Phase')+f('periode','Période')+'</section>'
+   +'<div class="tf-sep gp">Gestion de projet <small>manipule la construction</small></div><section class="tf-box"><h4 class="tf-t">T · Planning</h4>'+f('date','Date','date')+f('indice','Indice')+sel('etat','État',Object.keys(DET).map(k=>[k,DET[k]]))+f('phase','Phase')+f('periode','Période')+'<div class="field pjEtape"><label>Étape (événement)</label><div class="pjEt-g"><input data-df="etapeNom" value="'+esc(doc.etapeNom||'')+'" aria-label="Nom de l’étape"><label>Au plus tôt<input type="date" data-df="etapeTot" value="'+esc(doc.etapeTot||'')+'"></label><label>Au plus tard<input type="date" data-df="etapeTard" value="'+esc(doc.etapeTard||'')+'"></label></div></div>'+(doc.planning?'<p class="tf-soon">Le planning est la somme des documents : '+DOCS().filter(q=>!q.planning).length+' tâche(s), '+(DOCS().filter(q=>!q.planning).length+1)+' étape(s) (E0 à En).</p>':'')+'</section>'
    +'<section class="tf-box"><h4 class="tf-t">C · Devis</h4><p class="tf-soon">Coût de l’étude et devis liés à ce document : à venir.</p></section>'
    +'<section class="tf-box"><h4 class="tf-t">Fichier</h4><div class="pjdf-v">'+(doc.fichier?esc(doc.fichier)+(doc.taille?' · '+fsz(doc.taille):''):'Aucun fichier déposé')+'</div></section></div>');
   const mb=document.getElementById('modalBody'); const bd=mb.querySelector('.modal-date-etat'); if(bd) bd.remove();
