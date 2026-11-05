@@ -2894,7 +2894,7 @@ function render(){
   $("rtPieces").innerHTML=piecesOverlayHtml(rpl,!adding&&!drawing&&!placing&&!cloDraw,pieceSel,poly,null)+(cloDraw&&cloPts.length?`<svg class="pz-svg" viewBox="0 0 100 100" preserveAspectRatio="none" style="z-index:3;pointer-events:none"><polyline points="${cloPts.map(q=>(q[0]*100).toFixed(2)+","+(q[1]*100).toFixed(2)).join(" ")}" fill="none" stroke="#C0392B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${cloPts.map(q=>`<circle cx="${(q[0]*100).toFixed(2)}" cy="${(q[1]*100).toFixed(2)}" r="0.7" fill="#fff" stroke="#C0392B" stroke-width="2" vector-effect="non-scaling-stroke"/>`).join("")}</svg>`:"");
   if(adding&&ouvDraw&&ouvPts.length){const sp=ouvPts.map(q=>(q[0]*100).toFixed(2)+","+(q[1]*100).toFixed(2)).join(" ");$("rtPieces").insertAdjacentHTML("beforeend",`<svg class="pz-svg" viewBox="0 0 100 100" preserveAspectRatio="none" style="z-index:3;pointer-events:none"><polyline points="${sp}" fill="rgba(108,63,160,.18)" stroke="#6C3FA0" stroke-width="3" stroke-dasharray="6 3" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`+ouvPts.map(q=>`<div class="pz-v" style="left:${q[0]*100}%;top:${q[1]*100}%"></div>`).join(""))}
   try{ if(window.effRender) window.effRender(); }catch(e){ console.error(e); }
-  const zl=piecesOfNiveau(rpl.niveau).filter(z=>z.poly.planId===rpl.id);
+  const zl=piecesOfNiveau(rpl.niveau);
   const cnt={}; all.forEach(t=>{const z=pieceOfTask(t);if(z)cnt[z.id]=(cnt[z.id]||0)+1});
   $("rtPieceList").innerHTML=zl.length?(pieceToolbarHtml(zl.map(z=>z.id),"rt-tb")+zl.slice().sort((a,b)=>selRank(a.id,pieceSel,pieceChk)-selRank(b.id,pieceSel,pieceChk)).map(z=>{const st=pieceStats(z);return `<div class="rt-prow ${pieceSel===z.id?"is-sel":pieceChk.has(z.id)?"is-chk":""}"><input type="checkbox" class="pz-chk" ${pieceChk.has(z.id)?"checked":""} onclick="pieceChkToggle('${e_(z.id)}',event)" title="Sélectionner"><button type="button" class="rt-ent ${pieceSel===z.id?"on":""}" data-pz="${e_(z.id)}"><span class="rt-sw" style="background:${pieceColor(st)}"></span>${e_(z.nom)}<span class="rt-n">${cnt[z.id]||0} trav. · ${st.pct}%</span></button><button type="button" class="pz-x" onclick="pieceDelAsk(['${e_(z.id)}'])" title="Supprimer cette pièce" aria-label="Supprimer">✕</button></div>`}).join(""))+(pieceSel?`<button type="button" class="rt-btn" style="margin-top:6px" data-rtgo="1">↗ Familles et ouvrages de la pièce</button>`:""):`<p class="rt-empty">Aucune pièce. Utilisez « ⬠ Tracer une pièce ».</p>`;
   $("rtPieceChip").innerHTML=pieceSel?`<button type="button" class="rt-btn" data-pz="${e_(pieceSel)}" title="Retirer le filtre">${e_((zoneById(pieceSel)||{}).nom||"")} ×</button>`:"";
@@ -4074,7 +4074,7 @@ function ptInPoly(x, y, pts){
 }
 /* Pièces superposées : un élément appartient à la pièce la plus à droite (centre), puis la plus haute */
 function pieceAt(pl, x, y){
-  const c = piecesOfNiveau(pl.niveau).filter(z=>z.poly.planId===pl.id && ptInPoly(x,y,z.poly.pts)); if(!c.length) return null;
+  const c = piecesOfNiveau(pl.niveau).filter(z=>ptInPoly(x,y,z.poly.pts)); if(!c.length) return null;
   if(c.length===1) return c[0];
   return c.map(z=>({z, c:pieceCentroid(z.poly.pts)})).sort((a,b)=> (Math.abs(b.c[0]-a.c[0])>1e-4 ? b.c[0]-a.c[0] : a.c[1]-b.c[1]))[0].z;
 }
@@ -4128,7 +4128,7 @@ function pieceAvLayers(z, st, pts){
 const PZ_DEFS = `<defs><pattern id="pzHatchH" patternUnits="userSpaceOnUse" width="1" height="1.3"><line x1="0" x2="1" y1=".65" y2=".65" stroke="#8B5E4B" stroke-width="1.3" stroke-opacity=".75" vector-effect="non-scaling-stroke"/></pattern><pattern id="pzHatchV" patternUnits="userSpaceOnUse" width="1.3" height="1"><line y1="0" y2="1" x1=".65" x2=".65" stroke="#5B4B8A" stroke-width="1.3" stroke-opacity=".75" vector-effect="non-scaling-stroke"/></pattern></defs>`;
 /* Calque des pièces (polygones + noms + sommets en cours de tracé), commun à tous les plans */
 function piecesOverlayHtml(pl, live, selId, pending, clickFn){
-  const zs = piecesOfNiveau(pl.niveau).filter(z=>z.poly.planId===pl.id);
+  const zs = piecesOfNiveau(pl.niveau);
   const pts = a=>a.map(p=>(p[0]*100).toFixed(2)+','+(p[1]*100).toFixed(2)).join(' ');
   const polys = zs.map(z=>{
     const st = pieceStats(z), col = pieceColor(st), sel = z.id===selId, avOn = !!(pzView.ceil||pzView.sol||pzView.mur);
@@ -4180,7 +4180,7 @@ function ensureZoneFamille(ft, zid, niv){
 function pinLinkedPiece(t){
   if(!t||!t.pos||t.cloisonId||t.murId||t.etude) return null;
   const z = t.zoneChantierId && zoneById(t.zoneChantierId);
-  return (z && z.poly && z.poly.pts && z.poly.pts.length>2 && z.poly.planId===t.pos.planId) ? z : null;
+  return (z && z.poly && z.poly.pts && z.poly.pts.length>2 && (planById(z.poly.planId)||{}).niveau===(planById(t.pos.planId)||{}).niveau) ? z : null;
 }
 function pinInsidePt(P, x, y){
   if(ptInPoly(x,y,P)) return [x,y];
@@ -4285,7 +4285,7 @@ function wdFilter(pl, raw){
   const ex = new Set(wd.excl);
   const exist = cloList().filter(c=>c.planId===pl.id);
   const near = (x,y,pts,tol)=>{ for(let i=0;i<pts.length;i++){ const a=pts[i], b=pts[(i+1)%pts.length]; if(wdDistSeg(x*pl.w,y*pl.h,[a[0]*pl.w,a[1]*pl.h],[b[0]*pl.w,b[1]*pl.h])<=tol) return true; } return false; };
-  const pcs = piecesOfNiveau(pl.niveau).filter(z=>z.poly.planId===pl.id);
+  const pcs = piecesOfNiveau(pl.niveau);
   return raw.map((s,i)=>Object.assign({i}, s)).filter(s=>{
     const mx=(s.x1+s.x2)/2, my=(s.y1+s.y2)/2;
     if(exist.some(c=>{ for(let k=0;k<c.pts.length-1;k++){ if(wdDistSeg(mx*pl.w,my*pl.h,[c.pts[k][0]*pl.w,c.pts[k][1]*pl.h],[c.pts[k+1][0]*pl.w,c.pts[k+1][1]*pl.h])<=0.01*pl.w) return true; } return false; })) return false;
@@ -4309,7 +4309,7 @@ function wdToggle(i){ const k = wd.excl.indexOf(i); if(k>=0) wd.excl.splice(k,1)
 function wdKept(){ return wd.cands.filter(s=>!wd.excl.includes(s.i)); }
 function renderWallDetect(busyOnly){
   const pl = planById(wd.planId); if(!pl) return;
-  const kept = wdKept(), hasP = piecesOfNiveau(pl.niveau).some(z=>z.poly.planId===pl.id);
+  const kept = wdKept(), hasP = piecesOfNiveau(pl.niveau).length>0;
   const lines = wd.cands.map(s=>{ const off = wd.excl.includes(s.i); return `<line x1="${s.x1*100}" y1="${s.y1*100}" x2="${s.x2*100}" y2="${s.y2*100}" stroke="${off?'#9aa5ad':(s.pair?'#CC5F00':'#C0392B')}" stroke-width="${off?1.5:3.5}" ${off?'stroke-dasharray="4 3"':''} stroke-linecap="round" vector-effect="non-scaling-stroke" style="cursor:pointer; pointer-events:stroke;" onclick="wdToggle(${s.i})"><title>${off?'Exclue — cliquer pour réintégrer':'Cliquer pour exclure'}</title></line>`; }).join('');
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>🔍 Détection des cloisons — ${esc(pl.nom)}</h3>
     <p class="empty-note" style="margin:-4px 0 8px;">Repère les traits droits (horizontaux et verticaux) du plan ; les doubles traits de murs sont fusionnés en un axe (bleu). Vérifiez, excluez les faux positifs d'un clic, puis créez : chaque cloison devient aussi un travail.</p>
@@ -4401,7 +4401,7 @@ function rdRun(){
   }).catch(()=>{ rdt.busy = false; rdt.err = true; renderRoomDetect(); });
 }
 function rdRefresh(){
-  const pl = planById(rdt.planId), ex = piecesOfNiveau(pl.niveau).filter(z=>z.poly.planId===pl.id);
+  const pl = planById(rdt.planId), ex = piecesOfNiveau(pl.niveau);
   rdt.cands = (rdt.raw||[]).map((r,i)=>Object.assign({i}, r)).filter(r=>{ const c = pieceCentroid(r.pts); return !ex.some(z=>ptInPoly(c[0],c[1],z.poly.pts)); });
   renderRoomDetect();
 }
@@ -5166,7 +5166,7 @@ function pdetOpen(){
   const src=planSrc(pl); if(!src){ miniAlert('Plan indisponible.'); return; }
   const img=new Image(); img.onload=()=>{
     let regs; try{ regs=pdetRun(img,pl); }catch(e){ miniAlert('Détection impossible : '+e.message); return; }
-    const exist=state.zonesChantier.filter(z=>z.poly&&z.poly.planId===pl.id);
+    const exist=state.zonesChantier.filter(z=>z.poly&&(planById(z.poly.planId)||{}).niveau===pl.niveau);
     regs=regs.filter(r=>!exist.some(z=>pdetPip(r.cx,r.cy,z.poly.pts)));
     pdetNames(regs,pl);
     regs.sort((a,b)=>a.cy-b.cy||a.cx-b.cx); let k=0; regs.forEach(r=>{ if(!r.nom) r.nom='Pièce '+(++k); r.on=true; });
@@ -13720,7 +13720,7 @@ function mchPlan(){ const ps = mchPlansNiv(mchNiv); return ps.find(p=>p.id===mch
 function mchPip(pt, pts){ let ins=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const xi=pts[i][0], yi=pts[i][1], xj=pts[j][0], yj=pts[j][1]; if(((yi>pt[1])!==(yj>pt[1])) && (pt[0] < (xj-xi)*(pt[1]-yi)/((yj-yi)||1e-9)+xi)) ins=!ins; } return ins; }
 function mchArea(pts){ let a=0; for(let i=0,j=pts.length-1;i<pts.length;j=i++) a+=(pts[j][0]+pts[i][0])*(pts[j][1]-pts[i][1]); return Math.abs(a/2); }
 function mchZoneAt(planId, x, y){
-  const hits = (state.zonesChantier||[]).filter(z=>z.poly && z.poly.planId===planId && z.poly.pts && z.poly.pts.length>=3 && mchPip([x,y], z.poly.pts));
+  const hits = (state.zonesChantier||[]).filter(z=>z.poly && (planById(z.poly.planId)||{}).niveau===(planById(planId)||{}).niveau && z.poly.pts && z.poly.pts.length>=3 && mchPip([x,y], z.poly.pts));
   hits.sort((a,b)=>mchArea(a.poly.pts)-mchArea(b.poly.pts));
   return hits[0] || null;
 }
@@ -13794,7 +13794,7 @@ function mchRender(){
   }
 }
 function mchPolysSvg(pl){
-  const zs = (state.zonesChantier||[]).filter(z=>z.poly && z.poly.planId===pl.id && z.poly.pts && z.poly.pts.length>=3);
+  const zs = (state.zonesChantier||[]).filter(z=>z.poly && (planById(z.poly.planId)||{}).niveau===pl.niveau && z.poly.pts && z.poly.pts.length>=3);
   const cnt = {};
   if(mchMode==='pointage') (state.mchPointage||[]).forEach(p=>{ if(p.date===mchDate() && p.planId===pl.id && p.zoneId) cnt[p.zoneId]=(cnt[p.zoneId]||0)+1; });
   return `<svg class="mch-svg" viewBox="0 0 100 100" preserveAspectRatio="none">${zs.map(z=>`<polygon points="${z.poly.pts.map(q=>(q[0]*100).toFixed(2)+','+(q[1]*100).toFixed(2)).join(' ')}" class="${cnt[z.id]?'occ':''}" vector-effect="non-scaling-stroke"/>`).join('')}</svg>`;
@@ -16147,7 +16147,7 @@ const PG_FEATS=[
     const zoomAt=(f,cx,cy)=>{ const k2=Math.max(.4,Math.min(10,tf.k*f)), r=k2/tf.k; tf.x=cx-(cx-tf.x)*r; tf.y=cy-(cy-tf.y)*r; tf.k=k2; apply(); };
     const bump=(i,dv)=>{ const r=rep[i]; if(!r) return; r.n+=dv; if(r.n<=0) rep.splice(i,1); draw(); sumUp(); };
     const draw=()=>{ curPlan=plans.find(p=>p.id===pl.value); if(!curPlan){ st.innerHTML=''; return; }
-      const zz=zs.filter(z=>z.poly&&z.poly.planId===curPlan.id&&z.poly.pts&&z.poly.pts.length>2);
+      const zz=zs.filter(z=>z.poly&&(planById(z.poly.planId)||{}).niveau===curPlan.niveau&&z.poly.pts&&z.poly.pts.length>2);
       st.innerHTML='<div class="nt-vp"><div class="nt-pl"><img src="'+esc(planSrc(curPlan))+'" alt="plan" draggable="false"><svg viewBox="0 0 1 1" preserveAspectRatio="none">'+zz.map(z=>'<polygon points="'+z.poly.pts.map(q=>q[0]+','+q[1]).join(' ')+'"><title>'+esc(z.nom||'')+'</title></polygon>').join('')+'</svg>'
         +rep.filter(r=>r.planId===curPlan.id).map(r=>'<span class="nt-dot" data-i="'+rep.indexOf(r)+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%" title="'+esc((r.zone||'')+(r.zone?' · ':'')+r.n+' personne(s)')+'">'+dotH(r)+'</span>').join('')+'</div></div>';
       paintMode(); apply(); const im=st.querySelector('img'); if(!tf.init){ tf.init=1; if(im.complete) fit(); else im.onload=fit; }
@@ -18127,8 +18127,8 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
  function pjPinIc(t){ let m=null; try{ m=taskMetier(t); }catch(_){} return '<span class="pjPinIc">'+E(metierIcon(m))+'</span>'; }
  function pjBatName(n){ const id=(state.nivBat||{})[n]; const b=(state.batiments||[]).find(q=>q.id===id); return b?b.nom:''; }
  function pjTaskPiece(t){ try{ return pieceOfTask(t); }catch(_){ return null; } }
- function pjPinFallback(t,pl){ const z=pjTaskPiece(t); if(z&&z.poly&&z.poly.planId===pl.id&&z.poly.pts&&z.poly.pts.length>2){ try{ const c=pieceCentroid(z.poly.pts); return {x:c[0],y:c[1],planId:pl.id,auto:true}; }catch(_){} } return null; }
- function pjOver(t,pl){ let L=[]; try{ L=piecesOfNiveau(pl.niveau).filter(z=>z.poly&&z.poly.planId===pl.id&&z.poly.pts&&z.poly.pts.length>2); }catch(_){} if(!L.length) return ''; const mine=pjTaskPiece(t);
+ function pjPinFallback(t,pl){ const z=pjTaskPiece(t); if(z&&z.poly&&(planById(z.poly.planId)||{}).niveau===pl.niveau&&z.poly.pts&&z.poly.pts.length>2){ try{ const c=pieceCentroid(z.poly.pts); return {x:c[0],y:c[1],planId:pl.id,auto:true}; }catch(_){} } return null; }
+ function pjOver(t,pl){ let L=[]; try{ L=piecesOfNiveau(pl.niveau).filter(z=>z.poly&&z.poly.pts&&z.poly.pts.length>2); }catch(_){} if(!L.length) return ''; const mine=pjTaskPiece(t);
   return '<svg class="pjOv" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">'+L.map(z=>'<polygon points="'+z.poly.pts.map(q=>q[0]+','+q[1]).join(' ')+'" class="pjOv-z'+(mine&&mine.id===z.id?' mine':'')+'"/>').join('')+'</svg>'+L.map(z=>{ let c=[0,0]; try{ c=pieceCentroid(z.poly.pts); }catch(_){} return '<span class="pjOv-l'+(mine&&mine.id===z.id?' mine':'')+'" style="left:'+c[0]*100+'%;top:'+c[1]*100+'%">'+E(z.nom||'')+'</span>'; }).join(''); }
  function pjPill(t,p,placing){ let m=null,pc=null; try{ m=taskMetier(t); }catch(_){} try{ pc=pieceOfTask(t); }catch(_){} const col=m?metColor(m):'#FFC400'; const lab=t.quoi||t.id||'Ouvrage'; const ic=metierIcon(m); return '<div class="pjPillRow"><span class="pjPill'+(p?' put':'')+'" style="--c:'+col+'" title="Touche le plan pour placer ou déplacer la pastille"><span class="pjPill-i">'+E(ic)+'</span><span class="pjPill-t">'+E(lab)+'</span>'+(m?'<small>'+E(m.nom)+'</small>':'')+'</span><span class="pjPill-h">'+(pc?'Pièce : '+E(pc.nom||'')+' · ':'')+(p?'touche le plan pour la déplacer':'touche le plan pour la placer')+'</span></div>'; }
  function pinPos(t,pl){ return (t.pos&&t.pos.planId===pl.id)?t.pos:((t.posAlt||{})[pl.id]||null); }
