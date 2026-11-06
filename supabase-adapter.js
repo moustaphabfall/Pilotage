@@ -203,6 +203,7 @@
     const m = lsGet(BIO) || {}; m[me.id] = {id:b64(cred.rawId), at:Date.now()}; lsSet(BIO, m);
   }
   function bioOffer(){
+    return; /* proposition biométrie retirée à la demande */
     if(!window.PublicKeyCredential || bioGet(me.id)) return;
     const ask = ()=>{
       if(document.getElementById('pgBioOffer')) return;
