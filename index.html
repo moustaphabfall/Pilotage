@@ -18118,7 +18118,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
    m.onpointerdown=e=>e.stopPropagation(); m.onpointerup=e=>e.stopPropagation();
    m.onclick=e=>{ const x=e.target.closest('[data-e]'); if(!x) return; e.stopPropagation(); const k=x.dataset.e, anc=t.etat; if(k!==anc){ t.etat=k; t.historique=t.historique||[]; t.historique.push({date:today(),champ:'État',ancienne:ST_LBL[anc],nouvelle:ST_LBL[k]}); try{ persist(); renderAll(); openTaskDetail(t.id); return; }catch(_){} } m.remove(); draw(); };
    setTimeout(()=>document.addEventListener('pointerdown',function f(ev){ if(!m.contains(ev.target)){ m.remove(); document.removeEventListener('pointerdown',f); } }),0); }
-  draw(); g.before(b); try{ buildARC(t); }catch(e){ console.error(e); } try{ buildCE(t); }catch(e){ console.error(e); }
+  draw(); g.before(b); try{ buildARC(t); }catch(e){ console.error(e); } try{ buildCE(t); }catch(e){ console.error(e); } try{ buildDOCS(t); }catch(e){ console.error(e); }
   try{ const tw=document.getElementById('tpWrap'), tf=tw&&tw.closest('.field'); if(tf&&!document.getElementById('pjArcT')){ const L=ARC4.map(x=>x[0]); const cur=normTD(t.mbf&&t.mbf.typeDocArchi); const f=document.createElement('div'); f.className='field'; f.innerHTML='<label>Type de document architectural</label><select id="pjArcT">'+ARC4.map(x=>'<option value="'+E(x[0])+'"'+(x[0]===cur?' selected':'')+'>'+E(x[0])+' · '+E(x[1])+'</option>').join('')+'</select>'; tf.before(f);
    f.querySelector('select').onchange=e=>{ t.mbf=t.mbf||{}; t.mbf.typeDocArchi=e.target.value; try{ persist(); }catch(_){} const nv=(document.getElementById('e-niveau')||{}).value||t.niveau; try{ tpRender(t.id,nv); }catch(_){} }; } }catch(e){ console.error(e); } }
 
@@ -18133,6 +18133,26 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
  function pjPill(t,p,placing){ let m=null,pc=null; try{ m=taskMetier(t); }catch(_){} try{ pc=pieceOfTask(t); }catch(_){} const col=m?metColor(m):'#FFC400'; const lab=t.quoi||t.id||'Ouvrage'; const ic=metierIcon(m); return '<div class="pjPillRow"><span class="pjPill'+(p?' put':'')+'" style="--c:'+col+'" title="Touche le plan pour placer ou déplacer la pastille"><span class="pjPill-i">'+E(ic)+'</span><span class="pjPill-t">'+E(lab)+'</span>'+(m?'<small>'+E(m.nom)+'</small>':'')+'</span><span class="pjPill-h">'+(pc?'Pièce : '+E(pc.nom||'')+' · ':'')+(p?'touche le plan pour la déplacer':'touche le plan pour la placer')+'</span></div>'; }
  function pinPos(t,pl){ return (t.pos&&t.pos.planId===pl.id)?t.pos:((t.posAlt||{})[pl.id]||null); }
  /* ---- cadre ARC : boîtes imbriquées BAT > NN > PIÈCE > TYPE, chacune ouvre son plan s'il existe ---- */
+
+ function buildDOCS(t){
+  const au=document.querySelector('#modalBody .tf-autres'); if(!au||au.querySelector('.pjDOC')) return;
+  t.mbf=t.mbf||{}; t.mbf.docs=t.mbf.docs||[];
+  const box=document.createElement('div'); box.className='pjDOC'; au.appendChild(box);
+  const okUrl=u=>{ try{ const x=new URL(u); return x.protocol==='https:'; }catch(_){ return false; } };
+  const fromInput=v=>{ v=String(v||'').trim(); const m=v.match(/src\s*=\s*["']([^"']+)["']/i); return (m?m[1]:v).replace(/&amp;/g,'&'); };
+  const kind=u=>/excel|\.xlsx|xlsx/i.test(u)?'Excel':/word|\.docx|docx/i.test(u)?'Word':/project/i.test(u)?'Project':'Document';
+  function draw(){
+   const L=t.mbf.docs;
+   box.innerHTML='<div class="pjDOC-h"><b>Documents liés</b><small>Word, Excel… (lien « Intégrer » OneDrive / SharePoint)</small></div>'
+    +L.map((d,i)=>'<div class="pjDOC-c" data-i="'+i+'"><div class="pjDOC-t"><b>'+E(d.titre||d.type)+'</b><span>'+E(d.type)+'</span><a href="'+E(d.url)+'" target="_blank" rel="noopener">↗ ouvrir</a><button type="button" data-x="'+i+'" title="Retirer">×</button></div><iframe src="'+E(d.url)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"></iframe></div>').join('')
+    +'<div class="pjDOC-a"><input type="text" id="pjDOCu" placeholder="Coller le lien ou le code « Intégrer »"><input type="text" id="pjDOCn" placeholder="Nom (facultatif)"><button type="button" id="pjDOCb">+ Ajouter</button></div><div class="pjDOC-e" id="pjDOCe" hidden></div>';
+   box.querySelector('#pjDOCb').onclick=()=>{ const u=fromInput(box.querySelector('#pjDOCu').value), e=box.querySelector('#pjDOCe');
+    if(!okUrl(u)){ e.hidden=false; e.textContent='Lien non valide : il doit commencer par https://'; return; }
+    t.mbf.docs.push({url:u,titre:box.querySelector('#pjDOCn').value.trim(),type:kind(u)}); try{ persist(); }catch(_){} draw(); };
+   box.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{ t.mbf.docs.splice(+b.dataset.x,1); try{ persist(); }catch(_){} draw(); });
+  }
+  draw();
+ }
  function buildARC(t){
   const tech=document.querySelector('#modalBody .tf-tech'); if(!tech||tech.querySelector('.pjARC')) return;
   tech.querySelectorAll(':scope>*:not(h4)').forEach(c=>c.classList.add('pjHideA'));
@@ -18266,6 +18286,13 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 @media(max-width:560px){.pjB.pjB2{grid-template-columns:minmax(86px,110px) minmax(0,1fr) minmax(86px,110px)}.pjB2 .pjE-d i{font-size:9px}}
 
 .pjARC-fr{position:relative;border:0;border-radius:0;padding:4px 0 0;margin:4px 0 8px}
+
+.pjDOC{margin-top:10px;display:flex;flex-direction:column;gap:10px}.pjDOC-h{display:flex;flex-direction:column;gap:2px}.pjDOC-h small{opacity:.6}
+.pjDOC-c{border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:12px;overflow:hidden}
+.pjDOC-t{display:flex;align-items:center;gap:8px;padding:6px 10px}.pjDOC-t span{opacity:.6;font-size:12px}.pjDOC-t a{margin-left:auto;color:inherit;font-size:12px}
+.pjDOC-t button{border:0 !important;background:transparent !important;color:inherit !important;cursor:pointer;font-size:16px}
+.pjDOC-c iframe{width:100%;height:480px;border:0;display:block;background:#fff}
+.pjDOC-a{display:flex;flex-wrap:wrap;gap:6px}.pjDOC-a input{flex:1 1 180px;min-width:0}.pjDOC-e{color:#e5484d;font-size:12px}
 .pjARC-t{position:absolute;top:2px;left:10px;font:700 12px 'Space Grotesk',system-ui,sans-serif;letter-spacing:.1em;opacity:.7}
 .pjAF{position:relative;border:2px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:10px;padding:24px 10px 10px;margin:0;cursor:default;opacity:.55;min-width:0}
 .pjAF.has{opacity:1;border-color:#FFC400;cursor:pointer}
