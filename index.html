@@ -16077,10 +16077,10 @@ const PG_FEATS=[
       +(p.projets&&p.projets.length>1?'<select id="pgProfSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')+'</div>'
       +(p.valide_jusqu?'<div class="pgp-s"><div class="pgp-l">Accès</div><div class="pgp-v">valable jusqu’au <b>'+p.valide_jusqu.split('-').reverse().join('/')+'</b></div></div>':'')
       +'<div class="pgp-s"><div class="pgp-l">Données</div><div class="pgp-v">'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+(h.compte?'<small>'+esc(h.compte)+'</small>':''):'Base de l’outil')+'</div></div>'
-      +'<div class="pgp-a">'+((p.global||p.role==='admin')?'<button type="button" id="pgProfMg">⚙ Gérer le projet et les accès</button>':'')+'<button type="button" id="pgProfOut">🚪 Se déconnecter</button></div>';
+      +'<div class="pgp-a">'+((p.global||p.role==='admin')?'<button type="button" id="pgProfMg">⚙ Gérer le projet et les accès</button>':'')+(p.global?'<button type="button" id="pgProfDash">📊 Tableau de bord utilisateurs</button>':'')+'<button type="button" id="pgProfOut">🚪 Se déconnecter</button></div>';
     document.body.appendChild(c);
     const sw=c.querySelector('#pgProfSw'); if(sw) sw.onchange=()=>window.pilotageSwitchProjet&&window.pilotageSwitchProjet(sw.value);
-    const mg=c.querySelector('#pgProfMg'); if(mg) mg.onclick=()=>{ closeProfile(); showPage('projet'); };
+    const mg=c.querySelector('#pgProfMg'); if(mg) mg.onclick=()=>{ closeProfile(); showPage('projet'); }; const dsh=c.querySelector('#pgProfDash'); if(dsh) dsh.onclick=()=>{ closeProfile(); if(window.pjUsersDash) window.pjUsersDash(); };
     c.querySelector('#pgProfOut').onclick=()=>{ closeProfile(); window.pilotageLogout&&window.pilotageLogout(); };
     setTimeout(()=>{ const off=e=>{ if(!c.contains(e.target)&&!e.target.closest('#pgWho,#tabLogout')){ closeProfile(); document.removeEventListener('click',off,true); } }; document.addEventListener('click',off,true); },0);
   }
@@ -20315,6 +20315,60 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
     function resolve(){ const c=rowsOf(); if(!c.length){ close(); try{ miniAlert('Aucun document pour ce choix.'); }catch(_){} return; } if(c.length===1){ close(); onPick(c[0].id); return; } cand=c; step='doc'; draw(); }
     draw();
   };
+  /* ===== tableau de bord de l'administrateur général : usage uniquement, jamais le contenu des projets ===== */
+  (function(){
+    const css=document.createElement('style'); css.textContent='#dwWin .ud-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:0 0 14px}#dwWin .ud-kpi div{background:rgba(255,255,255,.06);border:1px solid rgba(255,196,0,.35);border-radius:14px;padding:10px 8px;text-align:center}#dwWin .ud-kpi b{display:block;font-size:20px;color:#FFC400}#dwWin .ud-kpi small{font-size:11px;opacity:.8}#dwWin .ud-w{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}#dwWin table.ud-t{border-collapse:collapse;width:100%;font-size:12.5px;min-width:440px}#dwWin .ud-t th{text-align:left;font-weight:600;opacity:.7;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.18);white-space:nowrap}#dwWin .ud-t td{padding:8px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}#dwWin .ud-t td.n{text-align:right;font-variant-numeric:tabular-nums}#dwWin .ud-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#777}#dwWin .ud-dot.on{background:#3DDC84}#dwWin .ud-dot.rec{background:#FFC400}#dwWin .ud-ini{font-size:22px;font-weight:700;color:#FFC400}#dwWin .ud-load{padding:30px;text-align:center;opacity:.8}';
+    document.head.appendChild(css);
+    const dayMs=864e5, fmtH=s=>{ const h=s/3600; return h>=10?Math.round(h)+' h':(h>=1?h.toFixed(1)+' h':Math.round(s/60)+' min'); };
+    const ago=iso=>{ if(!iso) return 'jamais'; const d=Date.now()-new Date(iso).getTime(); if(d<0||d<6e4) return 'à l’instant'; if(d<36e5) return 'il y a '+Math.round(d/6e4)+' min'; if(d<dayMs) return 'il y a '+Math.round(d/36e5)+' h'; const j=Math.round(d/dayMs); return 'il y a '+j+' j'; };
+    const dot=iso=>{ if(!iso) return ''; const d=Date.now()-new Date(iso).getTime(); return '<span class="ud-dot '+(d<15*6e4?'on':d<7*dayMs?'rec':'')+'"></span>'; };
+    const oct=n=>{ n=+n||0; return n>=1e9?(n/1e9).toFixed(1)+' Go':n>=1e6?(n/1e6).toFixed(1)+' Mo':n>=1e3?Math.round(n/1e3)+' Ko':n+' o'; };
+    window.pjUsersDash=function(){
+      if(!(window.PILOTAGE_PROJET&&window.PILOTAGE_PROJET.global)||!window.PILOTAGE_ADM) return;
+      let w=document.getElementById('dwWin'); if(!w){ w=document.createElement('div'); w.id='dwWin'; document.body.appendChild(w); }
+      let D=null, view=['home'];
+      const cur=()=>view[view.length-1];
+      function back(){ if(view.length<=1){ close(); return; } view.pop(); draw(); }
+      w.addEventListener('pointerdown',e=>{ if(e.target===w){ e.preventDefault(); back(); } });
+      const agg=(f,days)=>{ const lim=new Date(Date.now()-days*dayMs).toISOString().slice(0,10); let c=0,s=0,se=0,j=new Set(),last=null; D.activite.forEach(a=>{ if(!f(a)) return; if(a.jour>=lim){ c+=a.clics; s+=a.secondes; se+=a.sessions; j.add(a.jour); } if(!last||a.derniere>last) last=a.derniere; }); return {clics:c,sec:s,sessions:se,jours:j.size,last}; };
+      const uName=u=>u.nom||u.email||'—', pName=id=>((D.projets.find(p=>p.id===id)||{}).nom)||id;
+      const KPI=(pairs)=>'<div class="ud-kpi">'+pairs.map(x=>'<div><b>'+x[0]+'</b><small>'+x[1]+'</small></div>').join('')+'</div>';
+      const tile=(ic,lb,k)=>'<button type="button" class="pa-app" data-k="'+E(k)+'"><span class="pa-ic">'+ic+'</span><span class="pa-lb">'+E(lb)+'</span></button>';
+      function draw(){
+        let title='📊 Tableau de bord', body='';
+        if(!D){ body='<div class="ud-load">Chargement…</div>'; }
+        else {
+          const v=cur(), parts=v.split(':');
+          if(v==='home'){
+            const all=agg(()=>true,30), a7=new Set(D.activite.filter(a=>a.jour>=new Date(Date.now()-7*dayMs).toISOString().slice(0,10)).map(a=>a.user_id)).size;
+            body=KPI([[D.users.length,'utilisateurs'],[D.projets.length,'projets'],[a7,'actifs (7 j)'],[fmtH(all.sec),'durée (30 j)'],[all.clics,'clics (30 j)']])
+              +'<div class="pa-grid">'+tile('👥','Utilisateurs','users')+tile('🗂','Projets','projets')+tile('💾','Ressources','res')+'</div>';
+          } else if(v==='users'){
+            title='👥 Utilisateurs'; body='<div class="pa-grid">'+D.users.map(u=>tile('<span class="ud-ini">'+E((uName(u)[0]||'?').toUpperCase())+'</span>',uName(u),'u:'+u.id)).join('')+'</div>';
+          } else if(parts[0]==='u'){
+            const u=D.users.find(x=>x.id===parts[1]); title='👤 '+E(u?uName(u):'');
+            if(u){ const t=agg(a=>a.user_id===u.id,30), mem=D.membres.filter(m=>m.user_id===u.id);
+              body=KPI([[ago(u.last_sign_in_at),'dernière connexion'],[fmtH(t.sec),'durée (30 j)'],[t.clics,'clics (30 j)'],[t.jours,'jours actifs (30 j)'],[t.sessions,'sessions (30 j)']])
+                +'<div class="ud-w"><table class="ud-t"><thead><tr><th>Projet</th><th>Rôle</th><th>Dernière activité</th><th>Durée 30 j</th><th>Clics 30 j</th><th>Jours</th></tr></thead><tbody>'+(mem.length?mem.map(m=>{ const x=agg(a=>a.user_id===u.id&&a.projet_id===m.projet_id,30); return '<tr><td>'+E(pName(m.projet_id))+'</td><td>'+E(m.role||'')+(m.actif===false?' (inactif)':'')+'</td><td>'+dot(x.last)+ago(x.last)+'</td><td class="n">'+fmtH(x.sec)+'</td><td class="n">'+x.clics+'</td><td class="n">'+x.jours+'</td></tr>'; }).join(''):(u.role==='admin'?'<tr><td colspan="6">Administrateur général : accès à tous les projets</td></tr>':'<tr><td colspan="6">Aucun projet</td></tr>'))+'</tbody></table></div>'; }
+          } else if(v==='projets'){
+            title='🗂 Projets'; body='<div class="pa-grid">'+D.projets.map(p=>tile('🗂',p.nom||p.id,'p:'+p.id)).join('')+'</div>';
+          } else if(parts[0]==='p'){
+            const p=D.projets.find(x=>x.id===parts[1]); title='🗂 '+E(p?p.nom:''); const r=D.ressources.find(x=>x.projet_id===parts[1])||{};
+            const t=agg(a=>a.projet_id===parts[1],30), mem=D.membres.filter(m=>m.projet_id===parts[1]);
+            body=KPI([[mem.length,'membres'],[fmtH(t.sec),'durée (30 j)'],[t.clics,'clics (30 j)'],[r.nb_fichiers||0,'fichiers'],[oct((+r.octets_fichiers||0)+(+r.octets_donnees||0)),'espace utilisé']])
+              +'<div class="ud-w"><table class="ud-t"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Dernière activité</th><th>Durée 30 j</th><th>Clics 30 j</th><th>Jours</th></tr></thead><tbody>'+(mem.map(m=>{ const u=D.users.find(x=>x.id===m.user_id)||{}; const x=agg(a=>a.user_id===m.user_id&&a.projet_id===m.projet_id,30); return '<tr><td>'+E(uName(u))+'</td><td>'+E(m.role||'')+(m.actif===false?' (inactif)':'')+'</td><td>'+dot(x.last)+ago(x.last)+'</td><td class="n">'+fmtH(x.sec)+'</td><td class="n">'+x.clics+'</td><td class="n">'+x.jours+'</td></tr>'; }).join('')||'<tr><td colspan="6">Aucun membre</td></tr>')+'</tbody></table></div>';
+          } else if(v==='res'){
+            title='💾 Ressources'; body='<div class="ud-w"><table class="ud-t"><thead><tr><th>Projet</th><th>Documents</th><th>Fichiers</th><th>Taille fichiers</th><th>Taille données</th><th>Membres</th></tr></thead><tbody>'+D.projets.map(p=>{ const r=D.ressources.find(x=>x.projet_id===p.id)||{}; return '<tr><td>'+E(p.nom||p.id)+'</td><td class="n">'+(r.nb_docs||0)+'</td><td class="n">'+(r.nb_fichiers||0)+'</td><td class="n">'+oct(r.octets_fichiers)+'</td><td class="n">'+oct(r.octets_donnees)+'</td><td class="n">'+D.membres.filter(m=>m.projet_id===p.id).length+'</td></tr>'; }).join('')+'</tbody></table></div>';
+          }
+        }
+        w.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><button type="button" id="dwBk" aria-label="Retour" title="Retour">←</button><b>'+title+'</b><button type="button" id="dwX" aria-label="Fermer">×</button></div><div class="pa-b">'+body+'</div></div>';
+        w.querySelector('#dwBk').onclick=back; w.querySelector('#dwX').onclick=close;
+        w.querySelectorAll('.pa-app[data-k]').forEach(b=>b.onclick=()=>{ view.push(b.dataset.k); draw(); });
+      }
+      draw();
+      window.PILOTAGE_ADM({action:'stats'}).then(r=>{ D=r; D.users=D.users||[]; D.projets=D.projets||[]; D.membres=D.membres||[]; D.activite=D.activite||[]; D.ressources=D.ressources||[]; D.users.sort((a,b)=>String(b.last_sign_in_at||'').localeCompare(String(a.last_sign_in_at||''))); draw(); }).catch(e=>{ close(); try{ miniAlert('Chargement impossible : '+(e&&e.message||e)); }catch(_){} });
+    };
+  })();
   window.pjViewFlow=function(apply){
     const bats=(state.batiments||[]).filter(b=>b&&b.id), nivB=n=>{ const id=(state.nivBat||{})[n]; return id||(bats[0]&&bats[0].id)||''; };
     const S={fam:null,lot:null,bat:null,niv:null}; let step='fam'; const hist=[];

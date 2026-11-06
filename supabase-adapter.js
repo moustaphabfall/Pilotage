@@ -145,6 +145,15 @@
     PJ = {id:pr.id, nom:pr.nom, type:pr.type||'entreprise_generale', hebergement:pr.hebergement||null, types_autorises:pr.types_autorises||null, types_membre:(mem[pr.id]&&mem[pr.id].types_autorises)||null, fonction:(mem[pr.id]&&mem[pr.id].fonction)||null, role: glob ? 'admin' : m.role, fonctions: (glob || m.role==='admin') ? {} : (m.fonctions||{}), valide_jusqu: m.valide_jusqu||null, global:glob, projets:projets.filter(okP)};
     window.PILOTAGE_PROJET = PJ;
     window.PILOTAGE_ADM = adm; window.PILOTAGE_GENPW = genPw;
+    /* suivi d'usage (anonyme quant au contenu) : clics, durée active, sessions, par utilisateur et par projet */
+    if(!window.__pjTrack){ window.__pjTrack=1; let clics=0, sec=0, last=Date.now(), nouvelle=true;
+      const act=()=>{ last=Date.now(); };
+      document.addEventListener('click',()=>{ clics++; act(); },true);
+      ['keydown','pointerdown','touchstart','scroll','wheel'].forEach(e=>document.addEventListener(e,act,{passive:true,capture:true}));
+      setInterval(()=>{ if(document.visibilityState==='visible'&&Date.now()-last<60000) sec++; },1000);
+      const flush=async()=>{ if((!clics&&!sec)||!navigator.onLine||!window.PILOTAGE_PROJET||window.PILOTAGE_OFFLINE) return; const c=clics,s=sec,n=nouvelle; clics=0; sec=0; try{ const r=await sb.rpc('pj_track',{p_projet:window.PILOTAGE_PROJET.id,p_clics:c,p_sec:s,p_nouvelle:n}); if(r.error) throw r.error; nouvelle=false; }catch(e){ clics+=c; sec+=s; } };
+      setInterval(flush,30000); document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flush(); }); setTimeout(flush,5000); }
+
     window.PILOTAGE_ACTIONS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_actions').insert({nom:row.nom}); if(error && error.code!=='23505') throw error; };
     window.PILOTAGE_LOTS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_lots').upsert(row,{onConflict:'code',ignoreDuplicates:true}); if(error) throw error; };
     window.PILOTAGE_SET_TYPE = async (pid, type)=>{ const {error} = await sb.from('projets').update({type}).eq('id', pid); if(error) throw error; };
