@@ -7182,7 +7182,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v241</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v242</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -13284,7 +13284,7 @@ async function cauDocDl(id){
    '#ovWin .pa-ic{width:64px;height:64px;border-radius:16px;background:#0E0E0E;border:1px solid #FFC400;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 6px 16px rgba(0,0,0,.28)}'+
    '#ovWin .pa-lb{font-size:12.5px;font-weight:600;text-align:center;line-height:1.2;word-break:break-word}'+
    '#ovWin .ov-pad{width:100%;max-width:340px;aspect-ratio:1;margin:0 auto;background:#0E0E0E;border:1px solid #FFC400;border-radius:16px;touch-action:none;display:block}'+
-   '#ovWin .ov-row{display:flex;gap:10px;justify-content:center;margin-top:14px}';
+   '#ovWin .ov-row{display:flex;gap:10px;justify-content:center;margin-top:14px}#ovWin .ov-q{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:12px;font-size:15px}.pjG-plus{all:unset;box-sizing:border-box;width:38px;height:38px;border-radius:50%;border:2px solid #FFC400;color:#FFC400;display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;cursor:pointer;margin:0 8px}.pjG-plus:hover{background:rgba(255,196,0,.2)}.pjG-steps{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0 10px;font-size:13px}.pjG-steps small{display:block;opacity:.6;margin-bottom:4px}.pjG-st{display:inline-block;margin:2px 4px 2px 0;padding:3px 10px;border:1px solid #FFC400;border-radius:999px}.pjG-st u{cursor:pointer;text-decoration:none;opacity:.7;margin-left:4px}';
   document.head.appendChild(css);
   const nk=x=>String(x||'').toLowerCase().trim();
   const mine=doc=>{ const lot=nk(doc.discipline), L=(state.lotsProjet||[]).find(l=>nk(l.nom)===lot), mets=(state.metiers||[]);
@@ -13326,6 +13326,35 @@ async function cauDocDl(id){
     state.tasks.unshift(t); try{ if(typeof dtSync==='function') dtSync(); }catch(_){} try{ persist(); }catch(_){} try{ if(typeof save==='function') save(); }catch(_){} try{ if(typeof render==='function') render(); }catch(_){}
     st={}; list(); try{ const b=document.querySelector('.pjOuvBtn b'); if(b) b.textContent=window.pjOuvCount(cur); }catch(_){}
   }catch(e){ console.error(e); miniAlert('L’ouvrage n’a pas pu être créé.'); } }
+
+  /* ----- étapes avant / après : bibliothèque (documents + ouvrages) > action > date de fin ----- */
+  const ACTS=[['Commander','🛒'],['Valider','✅'],['Livrer','🚚'],['Fabriquer','🏭'],['Poser','🧱'],['Émettre','📤'],['Contrôler','🔎'],['Réceptionner','📦']];
+  function libItems(){ const bats=state.batiments||[], bn=n=>{ const id=(state.nivBat||{})[n]; const b=bats.find(x=>x.id===id); return b?b.nom:(bats[0]?bats[0].nom:''); }; const out=[]; const seen=new Set();
+    ((typeof window.pjDocsList==='function'?window.pjDocsList():[])).filter(d=>!d.planning).forEach(d=>{ seen.add(d.id); out.push({k:'doc',id:d.id,label:d.nom||'Document',niv:d.niveau||'',lot:d.discipline||'',bat:bn(d.niveau)}); });
+    (state.ged||[]).filter(g=>!g.snapSrc&&!seen.has(g.id)).forEach(g=>out.push({k:'doc',id:g.id,label:g.nom||'Document',niv:g.niveau||'',lot:g.corps||'',bat:bn(g.niveau)}));
+    const mets=state.metiers||[]; (state.tasks||[]).forEach(t=>{ const m=mets.find(x=>x.id===t.metierId); out.push({k:'task',id:t.id,label:t.quoi||t.id,niv:t.niveau||'',lot:t.lotNom||(m?m.nom:''),bat:bn(t.niveau)}); });
+    return out; }
+  window.pjStepAdd=function(kind,id,side){
+    const o=kind==='doc'?((window.pjDocsList?window.pjDocsList():[]).find(x=>x.id===id)||(state.ged||[]).find(x=>x.id===id)):(state.tasks||[]).find(x=>x.id===id); if(!o) return;
+    const F={q:'',bat:[],niv:[],lot:[]}, S={sel:null,act:'',fin:''}; const all=libItems();
+    const back=()=>{ close(); window.pjPlanif(kind,id); };
+    const opts=k=>{ const a=[...new Set(all.map(x=>x[k]).filter(Boolean))]; if(k==='niv'){ const O=(typeof nbOrder==='function'?nbOrder():[]); a.sort((x,y)=>{ const i=O.indexOf(x),j=O.indexOf(y); return (i<0?99:i)-(j<0?99:j); }); } return a; };
+    const pass=x=>(!F.bat.length||F.bat.includes(x.bat))&&(!F.niv.length||F.niv.includes(x.niv))&&(!F.lot.length||F.lot.includes(x.lot))&&(!F.q||nk(x.label+' '+x.lot+' '+x.niv).includes(nk(F.q)));
+    function grid(){ const g=W.querySelector('#stGrid'); const L=all.filter(pass).slice(0,80); g.innerHTML=L.map(x=>{ const on=S.sel&&S.sel.k===x.k&&S.sel.id===x.id; return '<button type="button" class="pa-app" data-i="'+E(x.k+'|'+x.id)+'"><span class="pa-ic" style="'+(on?'box-shadow:0 0 0 3px #FFC400':'')+'">'+(x.k==='task'?'🔧':'📄')+'</span><span class="pa-lb">'+E(x.label)+(on?' ✓':'')+'</span></button>'; }).join('')||'<p style="grid-column:1/-1;text-align:center;opacity:.6">Aucun résultat</p>';
+      g.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{ const [k,i]=b.dataset.i.split('|'); S.sel=all.find(x=>x.k===k&&x.id===i); grid(); W.querySelector('#stGo').disabled=false; }); }
+    function lib(){ const nb=k=>F[k].length?' ('+F[k].length+')':'';
+      draw('📚 Bibliothèque du projet','<input type="search" id="stQ" class="ov-q" placeholder="Rechercher un document ou un ouvrage…" value="'+E(F.q)+'"><div class="ov-row" style="margin:10px 0"><button type="button" class="ghost" data-f="bat">Bâtiment'+nb('bat')+'</button><button type="button" class="ghost" data-f="niv">Niveau'+nb('niv')+'</button><button type="button" class="ghost" data-f="lot">Lot'+nb('lot')+'</button></div><div class="pa-grid" id="stGrid"></div><div class="ov-row"><button type="button" class="primary" id="stGo"'+(S.sel?'':' disabled')+'>Associer une action</button></div>',back);
+      const q=W.querySelector('#stQ'); q.oninput=()=>{ F.q=q.value; grid(); }; grid();
+      W.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>filt(b.dataset.f)); W.querySelector('#stGo').onclick=actions; }
+    function filt(k){ const A=opts(k); draw('Filtre · '+({bat:'Bâtiment',niv:'Niveau',lot:'Lot'})[k],'<div class="pa-grid">'+A.map(v=>'<button type="button" class="pa-app" data-v="'+E(v)+'"><span class="pa-ic" style="'+(F[k].includes(v)?'box-shadow:0 0 0 3px #FFC400':'')+'">'+({bat:'🏢',niv:'🪜',lot:'🧰'})[k]+'</span><span class="pa-lb">'+E(v)+(F[k].includes(v)?' ✓':'')+'</span></button>').join('')+'</div><div class="ov-row"><button type="button" class="ghost" id="stClr">Tout afficher</button><button type="button" class="primary" id="stOk">Terminé</button></div>',lib);
+      W.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ const v=b.dataset.v, i=F[k].indexOf(v); if(i<0) F[k].push(v); else F[k].splice(i,1); filt(k); });
+      W.querySelector('#stClr').onclick=()=>{ F[k]=[]; filt(k); }; W.querySelector('#stOk').onclick=lib; }
+    function actions(){ draw('Associer une action','<div class="pa-grid">'+ACTS.map(a=>'<button type="button" class="pa-app" data-a="'+a[0]+'"><span class="pa-ic">'+a[1]+'</span><span class="pa-lb">'+a[0]+'</span></button>').join('')+'</div>',lib);
+      W.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{ S.act=b.dataset.a; fin(); }); }
+    function fin(){ draw('Date de fin','<div style="text-align:center"><p style="font-weight:700;margin:0 0 4px">'+E(S.act)+' · '+E(S.sel.label)+'</p><input type="date" id="stD" value="'+E(S.fin)+'" style="font-size:18px;padding:8px 12px;border-radius:12px"></div><div class="ov-row"><button type="button" class="primary" id="stAdd">Valider · Ajouter l’étape</button></div>',actions);
+      W.querySelector('#stD').onchange=e=>{ S.fin=e.target.value; };
+      W.querySelector('#stAdd').onclick=()=>{ S.fin=W.querySelector('#stD').value; if(!S.fin){ miniAlert('Renseigne la date de fin.'); return; } const key=side==='avant'?'etapesAvant':'etapesApres'; o[key]=o[key]||[]; o[key].push({id:'ST'+Date.now().toString(36),ref:{k:S.sel.k,id:S.sel.id},label:S.sel.label,action:S.act,fin:S.fin}); try{ persist(); }catch(_){} back(); }; }
+    close(); lib(); };
   window.pjOuvOpen=id=>{ const d=(typeof window.pjDocsList==='function'?window.pjDocsList():[]).find(x=>x.id===id); if(!d) return; cur=d; st={}; close(); home(); };
 })();
 </script>
@@ -19325,6 +19354,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   let preds=(doc.liens||[]).filter(l=>l.rel==='condition').map(l=>A.find(d=>d.id===l.id)).filter(Boolean);
   if(!preds.length){ const L=A.slice().reverse(), i=L.findIndex(d=>d.id===doc.id); if(i>0) preds=[L[i-1]]; }
   let start=''; preds.forEach(p=>{ const e=docFin(p,seen)||p.dateFin||p.date||''; if(e&&e>start) start=e; });
+  (doc.etapesAvant||[]).forEach(e=>{ if(e.fin&&e.fin>start) start=e.fin; });
   if(!start){ start=(doc.etapeDebut&&doc.etapeDebut.tot)||doc.date||todayISO(); }
   const n=parseInt(doc.duree,10); if(!(n>=0)) return start&&doc.duree!=null&&doc.duree!==''?start:''; return addDays(start,n); }
  const lotSoc=nom=>{ const k=String(nom||'').toLowerCase().trim(); const l=(ST().lotsProjet||[]).find(q=>String(q.nom).toLowerCase().trim()===k); return (l&&l.societe)||''; };
@@ -19638,10 +19668,12 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const debOk=!!(c.deb.nom&&c.deb.tot&&c.deb.tard), tOk=!!(c.kind==='doc'?c.o.tacheOk:(c.o.mbf||{}).tacheOk);
   const cir=(k,e,lab)=>'<button type="button" class="pjG-c" data-pe="'+k+'"'+(k==='fin'&&!tOk?' disabled aria-disabled="true"':'')+'><small>'+lab+'</small><b>'+esc(e.nom||'—')+'</b><span>'+(e.tot?sh(e.tot):'…')+' · '+(e.tard?sh(e.tard):'…')+'</span></button>';
   openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">Planning</div><h3 style="padding-right:46px">'+esc(c.label)+'</h3>'
-   +'<div class="pjG">'+cir('deb',c.deb,'Départ (input)')+'<button type="button" class="pjG-t" data-pe="tache" title="Ouvrir la fiche"'+(debOk?'':' disabled aria-disabled="true"')+'><span>'+esc(c.label)+'</span><i></i></button>'+cir('fin',c.fin,'Fin (output)')+'</div>'
+   +'<div class="pjG"><button type="button" class="pjG-plus" data-pe="addAvant" title="Ajouter une étape avant">＋</button>'+cir('deb',c.deb,'Départ (input)')+'<button type="button" class="pjG-t" data-pe="tache" title="Ouvrir la fiche"'+(debOk?'':' disabled aria-disabled="true"')+'><span>'+esc(c.label)+'</span><i></i></button>'+cir('fin',c.fin,'Fin (output)')+'<button type="button" class="pjG-plus" data-pe="addApres" title="Ajouter une étape après">＋</button></div>'
+   +(()=>{ const row=(arr,side)=>(arr||[]).map((e,i)=>'<span class="pjG-st"><b>'+esc(e.action||'')+'</b> · '+esc(e.label||'')+(e.fin?' · '+esc(sh(e.fin)):'')+' <u data-stdel="'+side+':'+i+'" title="Retirer">✕</u></span>').join(''); const a=row(c.o.etapesAvant,'avant'), b=row(c.o.etapesApres,'apres'); return (a||b)?'<div class="pjG-steps"><div><small>Avant</small>'+(a||'<em>—</em>')+'</div><div><small>Après</small>'+(b||'<em>—</em>')+'</div></div>':''; })()
    +'<p class="pjG-h">'+(!debOk?'1. Renseigne l’étape de départ (nom et les deux dates).':!tOk?'2. Ouvre l’ouvrage (la flèche) et remplis sa fiche.':'3. Renseigne l’étape de fin.')+'</p><div class="pjG-b"><button type="button" class="pp-lnk" data-pe="retour">← Retour à la fiche</button></div>');
   const mb=document.getElementById('modalBody'); const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
-  mb.querySelectorAll('[data-pe]').forEach(b=>b.onclick=()=>{ const k=b.dataset.pe; if(b.disabled) return; if(k==='tache'){ if(c.kind==='doc') c.o.tacheOk=true; else { c.o.mbf=c.o.mbf||{}; c.o.mbf.tacheOk=true; } try{ persist(); }catch(_){} c.fiche(); } else if(k==='retour') c.fiche(); else cercle(c,k); });
+  mb.querySelectorAll('[data-stdel]').forEach(u=>u.onclick=ev=>{ ev.stopPropagation(); const [sd,ix]=u.dataset.stdel.split(':'); miniConfirm('Retirer cette étape ?',()=>{ const arr=sd==='avant'?c.o.etapesAvant:c.o.etapesApres; if(arr) arr.splice(+ix,1); try{ persist(); }catch(_){} window.pjPlanif(c.kind,c.id); }); });
+  mb.querySelectorAll('[data-pe]').forEach(b=>b.onclick=()=>{ const k=b.dataset.pe; if(b.disabled) return; if(k==='addAvant'||k==='addApres'){ if(!debOk){ toast('Renseigne d’abord l’étape de départ (nom et les deux dates).'); return; } window.pjStepAdd(c.kind,c.id,k==='addAvant'?'avant':'apres'); } else if(k==='tache'){ if(c.kind==='doc') c.o.tacheOk=true; else { c.o.mbf=c.o.mbf||{}; c.o.mbf.tacheOk=true; } try{ persist(); }catch(_){} c.fiche(); } else if(k==='retour') c.fiche(); else cercle(c,k); });
  };
  function cercle(c,k){
   const e=c[k], titre=k==='deb'?'Départ (input)':'Fin (output)';
