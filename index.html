@@ -7201,7 +7201,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v271</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v272</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -15175,6 +15175,60 @@ function apcxOrtho(p){
   let ch=true; while(ch&&out.length>3){ ch=false; for(let i=0;i<out.length;i++){ const a=out[(i+out.length-1)%out.length],b=out[i],c=out[(i+1)%out.length]; const cr=Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])); if(cr<Math.hypot(c[0]-a[0],c[1]-a[1])*1.8){ out.splice(i,1); ch=true; break; } } }
   return out;
 }
+/* angles vifs : un chanfrein (coin arrondi par la détection) ou une bosse dans une porte devient un coin droit / un côté droit */
+function apcxRect(pts){
+  let p=pts.map(v=>v.slice()); const LIM=160;
+  const typ=(a,b)=>{ const dx=Math.abs(b[0]-a[0]),dy=Math.abs(b[1]-a[1]); if(dy<=dx*0.2) return 'h'; if(dx<=dy*0.2) return 'v'; return 'd'; };
+  for(let pass=0;pass<6;pass++){
+    const n=p.length; if(n<4) break; const T=p.map((a,i)=>typ(a,p[(i+1)%n])); if(!T.includes('d')||T.every(t=>t==='d')) break;
+    let st=-1; for(let i=0;i<n;i++){ if(T[(i+n-1)%n]!=='d'&&T[i]==='d'){ st=i; break; } } if(st<0) break;
+    const out=[]; let i=st, did=false;
+    /* on part du début d'une chaîne et on parcourt le polygone en entier */
+    let k=0;
+    while(k<n){ const idx=(st+k)%n;
+      if(T[idx]==='d'){ let m=0,len=0; while(T[(idx+m)%n]==='d'&&m<n){ len+=Math.hypot(p[(idx+m+1)%n][0]-p[(idx+m)%n][0],p[(idx+m+1)%n][1]-p[(idx+m)%n][1]); m++; }
+        const sV=p[idx], tV=p[(idx+m)%n], t1=T[(idx+n-1)%n], t2=T[(idx+m)%n];
+        if(len<LIM&&t1!=='d'&&t2!=='d'){ did=true;
+          const pb=p[(idx+n-1)%n], pa=p[(idx+m+1)%n];
+          if(t1!==t2){ const hx=t1==='v'?sV[0]:tV[0], hy=t1==='h'?sV[1]:tV[1]; out.push([hx,hy]); }
+          else if(t1==='h'){ const xm=(sV[0]+tV[0])/2; out.push([xm,sV[1]]); out.push([xm,tV[1]]); }
+          else { const ym=(sV[1]+tV[1])/2; out.push([sV[0],ym]); out.push([tV[0],ym]); }
+        } else { for(let q=0;q<=m;q++) out.push(p[(idx+q)%n]); }
+        k+=m+1; if(k>n) break;
+        /* le sommet de fin de chaîne (tV) est déjà traité : on saute au suivant */
+        continue; }
+      out.push(p[idx]); k++; }
+    if(!did) break; p=out;
+  }
+  /* sommets doublons ou alignés */
+  let ch=true; while(ch&&p.length>3){ ch=false; for(let i=0;i<p.length;i++){ const a=p[(i+p.length-1)%p.length],b=p[i],c=p[(i+1)%p.length];
+      if(Math.hypot(b[0]-a[0],b[1]-a[1])<3||Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]))<Math.hypot(c[0]-a[0],c[1]-a[1])*1.5){ p.splice(i,1); ch=true; break; } } }
+  return p;
+}
+/* axe des cloisons : chaque côté du contour (face intérieure du mur) est décalé de la moitié de l'épaisseur du mur qui le porte ;
+   là où il n'y a pas de mur (porte, fenêtre), on prend l'épaisseur médiane des murs voisins. Les sommets sont recalculés à l'intersection des côtés décalés. */
+function apcxAxis(e,pts){
+  const W=e.W,H=e.H,wl=e.wall,n=pts.length; if(n<3) return pts;
+  let sa=0; for(let i=0;i<n;i++){ const a=pts[i],b=pts[(i+1)%n]; sa+=a[0]*b[1]-b[0]*a[1]; }
+  const sg=sa>0?1:-1; /* sens du polygone : la normale sortante est (dy,-dx)*sg */
+  const E=[]; const th=[];
+  for(let i=0;i<n;i++){ const a=pts[i],b=pts[(i+1)%n]; const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy); if(L<1e-6){ E.push(null); continue; }
+    const ux=dx/L,uy=dy/L,nx=uy*sg,ny=-ux*sg; let t=0;
+    if(L>=8){ const ts=[]; for(const f of [0.25,0.5,0.75]){ const mx=a[0]+dx*f,my=a[1]+dy*f; let k=0,on=-1; for(;k<=10;k++){ const x=Math.round(mx+nx*k),y=Math.round(my+ny*k); if(x>=0&&y>=0&&x<W&&y<H&&wl[y*W+x]){ on=k; break; } }
+        if(on>=0){ let r=0; for(let q=on;q<on+120;q++){ const x=Math.round(mx+nx*q),y=Math.round(my+ny*q); if(x<0||y<0||x>=W||y>=H||!wl[y*W+x]) break; r++; } ts.push(on+r); } }
+      if(ts.length) { ts.sort((p,q)=>p-q); t=ts[(ts.length-1)>>1]; } }
+    E.push({a,ux,uy,nx,ny,L,t}); if(t>0) th.push(t); }
+  if(!th.length) return pts;
+  th.sort((p,q)=>p-q); const med=th[(th.length-1)>>1];
+  const lines=E.map(o=>{ if(!o) return null; let t=o.t>0?o.t:med; t=Math.max(med*0.5,Math.min(med*2,t)); const h=t/2; return {px:o.a[0]+o.nx*h,py:o.a[1]+o.ny*h,ux:o.ux,uy:o.uy}; });
+  const out=[];
+  for(let i=0;i<n;i++){ const l1=lines[(i+n-1)%n],l2=lines[i]; if(!l1||!l2){ out.push(pts[i].slice()); continue; }
+    const det=l1.ux*l2.uy-l1.uy*l2.ux;
+    if(Math.abs(det)<0.05){ out.push([l2.px,l2.py]); continue; }
+    const t=((l2.px-l1.px)*l2.uy-(l2.py-l1.py)*l2.ux)/det; const x=l1.px+l1.ux*t,y=l1.py+l1.uy*t;
+    if(Math.hypot(x-pts[i][0],y-pts[i][1])>med*3){ out.push([l2.px,l2.py]); } else out.push([x,y]); }
+  return out;
+}
 function regionAt(e,nx,ny,pl){
   const W=e.W,H=e.H,px=Math.round(nx*W),py=Math.round(ny*H);
   if(px<2||py<2||px>=W-2||py>=H-2) return null;
@@ -15198,13 +15252,15 @@ function regionAt(e,nx,ny,pl){
     for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){ if(vis[(y+y0)*W+x+x0]===st&&!d[(y+y0)*W+x+x0]) m[y*mw+x]=1; }
     for(let it=0;it<R;it++){ const m2=m.slice(); for(let y=1;y<mh-1;y++)for(let x=1;x<mw-1;x++){ const i=y*mw+x; if(m[i]) continue; if(e.wall[(y+y0)*W+x+x0]) continue; if(m[i-1]||m[i+1]||m[i-mw]||m[i+mw]) m2[i]=1; } m.set(m2); }
     /* fermeture : absorbe le mobilier collé aux murs et les crénelages, pour un contour de pièce propre */
-    let mc=m; const CL=8; for(let it=0;it<CL;it++){ const n2=mc.slice(); for(let y=1;y<mh-1;y++)for(let x=1;x<mw-1;x++){ const i=y*mw+x; if(!mc[i]&&(mc[i-1]||mc[i+1]||mc[i-mw]||mc[i+mw])) n2[i]=1; } mc=n2; }
+    let mc=m; const CL=3; for(let it=0;it<CL;it++){ const n2=mc.slice(); for(let y=1;y<mh-1;y++)for(let x=1;x<mw-1;x++){ const i=y*mw+x; if(!mc[i]&&(mc[i-1]||mc[i+1]||mc[i-mw]||mc[i+mw])) n2[i]=1; } mc=n2; }
     for(let it=0;it<CL;it++){ const n2=mc.slice(); for(let y=1;y<mh-1;y++)for(let x=1;x<mw-1;x++){ const i=y*mw+x; if(mc[i]&&!(mc[i-1]&&mc[i+1]&&mc[i-mw]&&mc[i+mw])) n2[i]=0; } mc=n2; }
     for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){ if(!m[y*mw+x]&&mc[y*mw+x]&&e.wall[(y+y0)*W+x+x0]&&false) mc[y*mw+x]=0; }
     let pts=pdetTrace(mc,mw,mh).map(p=>[p[0]+x0+0.5,p[1]+y0+0.5]);
-    let eps=4; pts=pdetSimplify(pts,eps); pts=apcxOrtho(pts); while(pts.length>40&&eps<24){ eps+=2; pts=apcxOrtho(pdetSimplify(pts,eps)); }
+    let eps=2.5; pts=pdetSimplify(pts,eps); pts=apcxOrtho(pts); while(pts.length>60&&eps<24){ eps+=2; pts=apcxOrtho(pdetSimplify(pts,eps)); }
     if(pts.length>1&&pts[0][0]===pts[pts.length-1][0]&&pts[0][1]===pts[pts.length-1][1]) pts.pop();
     if(pts.length<3) return null;
+    try{ const r0=apcxRect(pts); if(r0.length>=3) pts=r0; }catch(_){}
+    pts=apcxAxis(e,pts);
     const poly=pts.map(p=>[p[0]/W,p[1]/H]); const ar=area(poly);
     let nom=''; try{ const T=pl.texts||[]; const inn=T.filter(t=>pdetPip(t.x,t.y,poly)&&/[A-Za-zÀ-ÿ]{2,}/.test(t.s)); nom=inn.length?inn.sort((a,b)=>a.y-b.y||a.x-b.x).map(t=>t.s).join(' ').slice(0,40):''; }catch(_){}
     let exists=null; try{ const cx=poly.reduce((a,p)=>a+p[0],0)/poly.length, cy=poly.reduce((a,p)=>a+p[1],0)/poly.length;
