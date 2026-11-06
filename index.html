@@ -1425,7 +1425,7 @@ window.addEventListener('DOMContentLoaded',function(){ var b=document.getElement
     </div>
   </div>
 </div>
-<div id="miniPromptOverlay" style="display:none; position:fixed; inset:0; background:rgba(22,35,43,.5); z-index:10000; align-items:center; justify-content:center; padding:20px;">
+<div id="miniPromptOverlay" style="display:none; position:fixed; inset:0; background:rgba(22,35,43,.5); z-index:100001; align-items:center; justify-content:center; padding:20px;">
   <div style="background:#fff; border-radius:6px; padding:18px; max-width:340px; width:100%; border-top:4px solid var(--blueprint);">
     <div id="miniPromptMsg" style="font-size:14px; margin-bottom:10px; font-weight:500; white-space:pre-line;"></div>
     <input type="text" id="miniPromptInput" onkeydown="if(event.key==='Enter'){event.preventDefault(); miniPromptSubmit();} if(event.key==='Escape'){miniPromptCancel();}" style="margin-bottom:12px;">
@@ -7087,18 +7087,21 @@ function projLabel(){
 const archFold=new Set();
 window.archToggle=function(id){ if(archFold.has(id)) archFold.delete(id); else archFold.add(id); const bat=document.querySelector('.arch-bat[data-b="'+id+'"]'); if(!bat) return; const bd=bat.querySelector('.arch-body'), ic=bat.querySelector('.arch-ic'); const f=archFold.has(id); if(bd) bd.hidden=f; if(ic){ ic.setAttribute('aria-expanded',f?'false':'true'); ic.textContent=(f?'▸':'▾')+' 🏢'; } };
 function archEns(){ if(!Array.isArray(state.batiments)||!state.batiments.length) state.batiments=[{id:'B1',nom:'Bâtiment 1'}]; state.nivBat=state.nivBat||{}; const f=state.batiments[0].id; nbOrder().forEach(n=>{ if(!state.batiments.some(b=>b.id===state.nivBat[n])) state.nivBat[n]=f; }); }
-function archTreeHtml(o){
-  archEns(); const B=state.batiments;
-  return `<div class="arch-box" id="archBox" style="margin-top:18px">
-    <h4 style="margin:0 0 4px; font-size:14px">🏛 Architecture</h4>
-    <p class="empty-note" style="margin:0 0 8px">Bâtiment, puis niveaux. Cliquez sur un nom pour le renommer. Glissez la poignée ⋮⋮ d’un niveau pour changer l’ordre dans son bâtiment. Les pièces et les produits se gèrent ailleurs.</p>
+function archTreeHtml(o,only){
+  archEns(); const B=only?state.batiments.filter(b=>b.id===only):state.batiments;
+  return `<div class="arch-box" id="archBox" style="margin-top:${only?0:18}px">
+    ${only?'':'<h4 style="margin:0 0 4px; font-size:14px">🏛 Architecture</h4>'}
+    <p class="empty-note" style="margin:0 0 8px">Cliquez sur un nom pour le renommer. Glissez la poignée ⋮⋮ d’un niveau pour changer l’ordre. Les pièces et les produits se gèrent ailleurs.</p>
     <div id="nivRib" class="arch-tree">${B.map(b=>{ const L=o.filter(n=>state.nivBat[n]===b.id); return `<div class="arch-bat" data-b="${esc(b.id)}"><div class="arch-bh"><button type="button" class="arch-ic" title="Replier / déplier les niveaux" aria-expanded="${archFold.has(b.id)?'false':'true'}" onclick="archToggle('${esc(b.id)}')">${archFold.has(b.id)?'▸':'▾'} 🏢</button><b class="arch-bn" title="Cliquez pour renommer ce bâtiment" onclick="archRenameBat('${esc(b.id)}')">${esc(b.nom)} <small style="opacity:.5">✎</small></b><button type="button" class="niv-del" title="Supprimer ce bâtiment (vide)" onclick="archDelBat('${esc(b.id)}')" style="border:0;background:transparent;font-size:16px;cursor:pointer;padding:4px 8px">🗑</button></div><div class="arch-body"${archFold.has(b.id)?' hidden':''}><div class="arch-nl">${L.map((n,i)=>`<div class="niv-rb" tabindex="0" data-n="${esc(n)}"><span class="niv-rb-g">⋮⋮</span><span class="ouv-chip niv-rk" title="Cliquez pour saisir le rang" style="cursor:text">${i+1}</span><b style="flex:1;cursor:text" class="niv-name" title="Cliquez pour renommer ce niveau" onclick="event.stopPropagation();nivGestRename(this.closest('.niv-rb').dataset.n)">${esc(nbLab(n))} <small style="opacity:.5">✎</small></b><button type="button" class="niv-del" title="Supprimer ce niveau" aria-label="Supprimer ${esc(nbLab(n))}" onclick="event.stopPropagation();ribDeleteNiveau(this.closest('.niv-rb').dataset.n)" style="border:0;background:transparent;cursor:pointer;padding:4px 8px">✕</button></div>`).join('')||'<p class="empty-note" style="margin:4px 0 4px 8px">Aucun niveau</p>'}</div><button type="button" class="arch-addn" onclick="nivGestAdd('${esc(b.id)}')">＋ Ajouter un niveau</button></div></div>`; }).join('')}</div>
-    <div style="margin-top:10px"><button type="button" class="primary" onclick="archAddBat()">＋ Ajouter un bâtiment</button></div>
+    ${only?'':'<div style="margin-top:10px"><button type="button" class="primary" onclick="archAddBat()">＋ Ajouter un bâtiment</button></div>'}
   </div>`;
 }
+window.paOpenBat=function(id){ window.__paApp='archi:'+id; projParamEdit(); };
+window.archNewForm=function(){ const f=document.getElementById('archNewF'); if(!f) return; f.innerHTML='<div class="pa-f" style="margin-top:6px"><label>Nom du bâtiment</label><div style="display:flex;gap:8px"><input type="text" id="archNewN" placeholder="Bâtiment 2" style="flex:1" onkeydown="if(event.key===\'Enter\')archNewOk()"><button type="button" class="primary" onclick="archNewOk()">Valider</button></div></div>'; const i=document.getElementById('archNewN'); if(i) i.focus(); };
+window.archNewOk=function(){ const v=((document.getElementById('archNewN')||{}).value||'').trim(); if(!v) return; archEns(); if(state.batiments.some(b=>b.nom.toLowerCase()===v.toLowerCase())){ miniAlert('Ce bâtiment existe déjà.'); return; } state.batiments.push({id:'B'+Date.now().toString(36),nom:v}); persist(); projParamEdit(); };
 window.archAddBat=function(){ miniPrompt('Nom du nouveau bâtiment :','',v=>{ v=(v||'').trim(); if(!v) return; archEns(); if(state.batiments.some(b=>b.nom.toLowerCase()===v.toLowerCase())){ miniAlert('Ce bâtiment existe déjà.'); return; } state.batiments.push({id:'B'+Date.now().toString(36),nom:v}); persist(); projParamEdit(); }); };
 window.archRenameBat=function(id){ archEns(); const b=state.batiments.find(x=>x.id===id); if(!b) return; miniPrompt('Nouveau nom du bâtiment :',b.nom,v=>{ v=(v||'').trim(); if(!v||v===b.nom) return; b.nom=v; persist(); projParamEdit(); }); };
-window.archDelBat=function(id){ archEns(); const b=state.batiments.find(x=>x.id===id); if(!b) return; if(state.batiments.length<2){ miniAlert('Il faut au moins un bâtiment.'); return; } if(nbOrder().some(n=>state.nivBat[n]===id)){ miniAlert('Ce bâtiment contient encore des niveaux : déplacez-les ou supprimez-les d’abord.'); return; } state.batiments=state.batiments.filter(x=>x.id!==id); persist(); projParamEdit(); };
+window.archDelBat=function(id){ archEns(); const b=state.batiments.find(x=>x.id===id); if(!b) return; if(state.batiments.length<2){ miniAlert('Il faut au moins un bâtiment.'); return; } if(nbOrder().some(n=>state.nivBat[n]===id)){ miniAlert('Ce bâtiment contient encore des niveaux : déplacez-les ou supprimez-les d’abord.'); return; } miniConfirm('Supprimer le bâtiment « '+b.nom+' » ?',()=>{ state.batiments=state.batiments.filter(x=>x.id!==id); persist(); window.__paApp='archi'; projParamEdit(); }); };
 /* ===== Paramètres projet = écran d'accueil comme un smartphone : chaque rubrique est une « application » ===== */
 window.__paApp=window.__paApp||'';
 { const cm0=window.closeModal; if(cm0&&!cm0.__pa){ const cm=function(){ window.__paApp=''; const w=document.getElementById('paWin'); if(w) w.remove(); return cm0.apply(this,arguments); }; cm.__pa=1; window.closeModal=cm; } }
@@ -7110,7 +7113,8 @@ window.paBack=function(){ const k=window.__paApp||''; window.__paApp=k.indexOf('
 function paWinHtml(k,P,exe,o){
   const seg=(key,opts,cur)=>'<div class="pa-seg">'+opts.map(x=>'<button type="button" class="'+(cur===x[0]?'on':'')+'" onclick="projSet(\''+key+'\',\''+x[0]+'\')">'+esc(x[1])+'</button>').join('')+'</div>';
   if(k==='phases') return ['🚦 Phases','<div class="pa-f"><label>Phase du projet</label>'+seg('phase',PROJ_PHASES.map(x=>[x[0],x[1]]),P.phase)+'<small>'+esc((PROJ_PHASES.find(x=>x[0]===P.phase)||[])[2]||'')+'</small></div>'+(exe?'<div class="pa-f"><label>Étape en cours</label>'+seg('etape',PROJ_ETAPES,P.etape)+'<small>Étape de l’exécution : gros œuvre ou corps d’état secondaires</small></div>':'<p class="empty-note">En phase PRO, rien n’est traité pour l’instant : les étapes et le suivi par niveaux seront activés en phase EXE.</p>')];
-  if(k==='archi') return ['🏛 Architecture',archTreeHtml(o)];
+  if(k==='archi'){ archEns(); return ['🏛 Architecture','<div class="pa-grid pa-grid-sub">'+state.batiments.map(b=>'<button type="button" class="pa-app" onclick="paOpenBat(\''+esc(b.id)+'\')"><span class="pa-ic">🏢</span><span class="pa-lb">'+esc(b.nom)+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="archNewForm()"><span class="pa-ic">＋</span><span class="pa-lb">Créer un bâtiment</span></button></div><div id="archNewF"></div>']; }
+  if(k&&k.indexOf('archi:')===0){ archEns(); const b=state.batiments.find(x=>x.id===k.slice(6)); if(b) return ['🏢 '+esc(b.nom),archTreeHtml(o,b.id)]; }
   if(k==='obj') return ['🎯 Objectifs planning','<div class="obj-box" id="objBox"><div class="field" style="max-width:260px;"><label>Date de fin d\'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div><div id="objNiveauDetail" style="overflow-x:auto"></div></div>'];
   if(k==='lots') return ['🧱 Gestion des lots','<p class="empty-note" style="margin:0 0 10px">Les lots de base viennent de la bibliothèque. Vous pouvez en ajouter ou en retirer pour ce projet.</p>'+paBtns(PA_LOTS,'paOpenLots')];
   if(k&&k.indexOf('lots:')===0){ const f=k.slice(5), F=PA_LOTS.find(x=>x[0]===f)||[f,'','Lots '+f]; window.__lotsOnly=f; return [F[1]+' '+F[2],(typeof lotsFramesHtml==='function'?lotsFramesHtml():'')]; }
@@ -19812,8 +19816,122 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 #paWin .pa-h{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.12);font-size:17px}
 #paWin .pa-x{border:0 !important;background:transparent !important;color:inherit !important;font-size:24px;cursor:pointer;min-height:0 !important}
 #paWin .pa-b{padding:14px 18px 20px;overflow:auto}
+#paWin .pa-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:22px 26px;padding:10px 4px 16px}#paWin .pa-grid .pa-app{width:104px}
+#clipToast{z-index:100002!important}
 .pa-f{margin-bottom:16px}.pa-f label{display:block;font-weight:600;margin-bottom:6px}.pa-f small{display:block;margin-top:6px;opacity:.7}
 .pa-seg{display:flex;gap:8px;flex-wrap:wrap}.pa-seg button{flex:1 1 140px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.25) !important;background:transparent !important;color:inherit !important;font-weight:600;cursor:pointer}
 .pa-seg button.on{background:#FFC400 !important;color:#0E0E0E !important;border-color:#FFC400 !important}
 </style>
+<script id="pjCalJs">
+/* ===== Calage des plans sur 4 repères communs au projet (ref1…ref4, intersections de deux fils) ===== */
+(function(){
+  const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let W=null; // état de l'assistant
+  const css=document.createElement('style'); css.textContent=
+   '#calWin{position:fixed;inset:0;z-index:100000;background:rgba(22,35,43,.55);display:flex;flex-direction:column;font-family:inherit}'+
+   '#calWin .cbar{background:#fff;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #ddd}'+
+   '#calWin .cbar b{font-size:15px}#calWin .cbar .cm{flex:1;min-width:200px;font-size:14px}'+
+   '#calWin .cview{flex:1;overflow:auto;background:#e9ecef;position:relative}'+
+   '#calWin .cwrap{position:relative;display:inline-block;cursor:crosshair;line-height:0}'+
+   '#calWin .cwrap img{display:block;user-select:none;-webkit-user-drag:none}'+
+   '#calWin .cmk{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border:3px solid #E03131;border-radius:50%;pointer-events:none;box-sizing:border-box}'+
+   '#calWin .cmk.ok{border-color:#2F9E44}#calWin .cmk i{position:absolute;left:26px;top:-4px;font:700 12px sans-serif;color:#E03131;background:#fff;padding:1px 4px;border-radius:4px;font-style:normal;white-space:nowrap}'+
+   '#calWin .cmk.ok i{color:#2F9E44}'+
+   '#calWin button{padding:7px 14px!important;border-radius:8px!important;border:1px solid #bbb!important;background:#fff!important;cursor:pointer!important;font-size:14px!important}'+
+   '#calWin button.p{background:#F2C200!important;border-color:#F2C200!important;font-weight:700!important;color:#16232B!important}'+
+   '#calWin input{padding:6px 8px;border:1px solid #bbb;border-radius:6px;width:90px;font-size:14px}'+
+   '#calWin .cdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:20px 24px;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:min(440px,92vw);font-size:15px;line-height:1.45;z-index:3;text-align:center}'+
+   '#calWin .cdlg .cr{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}';
+  document.head.appendChild(css);
+  const cal=()=>state.calage;
+  const baseOf=()=>{ const c=cal(); return c&&c.planId?planById(c.planId):null; };
+  const src=pl=>{ try{return planSrc(pl)}catch(e){return pl.src} };
+  function close(){ const w=document.getElementById('calWin'); if(w) w.remove(); W=null; }
+  function ui(){
+    const pl=W.pl, i=W.i, base=W.mode==='base';
+    let w=document.getElementById('calWin'); if(!w){ w=document.createElement('div'); w.id='calWin'; document.body.appendChild(w); }
+    const nm='ref'+(i+1);
+    let msg='', dlg='';
+    if(W.step==='start'){
+      dlg=base?'<b>Repères du projet</b><br>Ce premier plan donne les 4 repères de base du projet (ref1 à ref4). Chaque repère est l’intersection de deux fils (un horizontal, un vertical).<div class="cr"><button class="p" id="calGo">Démarrer la saisie des 4 points de référence</button><button id="calCx">Plus tard</button></div>'
+        :'<b>Caler le plan « '+E(pl.nom)+' »</b><br>Vous allez indiquer sur ce plan les 4 repères du projet.<div class="cr"><button class="p" id="calGo">Démarrer</button><button id="calCx">Plus tard</button></div>';
+      msg='Calage du plan « '+E(pl.nom)+' »';
+    } else if(W.step==='click'){
+      if(base) msg='Nommez ce point <input id="calNm" value="'+nm+'" style="width:80px"> puis <b>cliquez dessus</b> sur le plan (intersection de deux fils).';
+      else { const r=cal().pts[i]; msg='<b>'+E(r.name)+'</b> : fil horizontal <b>'+E(r.h)+'</b>, fil vertical <b>'+E(r.v)+'</b>. Cliquez le point correspondant sur votre plan.'; }
+    } else if(W.step==='confirm'){
+      dlg=base?'Confirmez-vous ce point comme <b>'+E(W.name)+'</b> ?':'Confirmez-vous la position du repère <b>'+E(cal().pts[i].name)+'</b> ?';
+      dlg+='<div class="cr"><button class="p" id="calYes">Oui</button><button id="calNo">Non</button></div>'; msg='Point '+(i+1)+' / 4';
+    } else if(W.step==='fils'){
+      dlg='Quels fils forment le point <b>'+E(W.name)+'</b> ?<div class="cr"><label>Fil horizontal <input id="calH" placeholder="A"></label><label>Fil vertical <input id="calV" placeholder="1"></label></div><div class="cr"><button class="p" id="calOk">OK</button></div>'; msg='Point '+(i+1)+' / 4';
+    } else if(W.step==='dist'){
+      dlg='Distance réelle entre <b>'+E(W.def[0].name)+'</b> et <b>'+E(W.def[1].name)+'</b> en mètres (facultatif, donne l’échelle en mètres) :<div class="cr"><input id="calD" placeholder="ex. 12"></div><div class="cr"><button class="p" id="calDok">Terminer</button></div>'; msg='Dernière étape';
+    }
+    const mk=(W.pts||[]).map((p,k)=>'<div class="cmk ok" style="left:'+(p.x*W.k)+'px;top:'+(p.y*W.k)+'px"><i>ref'+(k+1)+'</i></div>').join('')+(W.tmp?'<div class="cmk" style="left:'+(W.tmp.x*W.k)+'px;top:'+(W.tmp.y*W.k)+'px"></div>':'');
+    w.innerHTML='<div class="cbar"><b>◎ Calage</b><span class="cm">'+msg+'</span><button id="calZm">−</button><button id="calZp">+</button><button id="calCx2">Fermer</button></div>'
+      +'<div class="cview" id="calView"><div class="cwrap" id="calWrap"><img id="calImg" src="'+E(src(pl))+'" width="'+Math.round(pl.w*W.k)+'">'+mk+'</div>'+(dlg?'<div class="cdlg">'+dlg+'</div>':'')+'</div>';
+    const $=id=>document.getElementById(id);
+    if(W.scroll){ $('calView').scrollLeft=W.scroll[0]; $('calView').scrollTop=W.scroll[1]; }
+    const keep=()=>{ const v=$('calView'); W.scroll=[v.scrollLeft,v.scrollTop]; };
+    const zoom=f=>{ keep(); W.k=Math.max(.1,Math.min(3,W.k*f)); ui(); };
+    $('calZm').onclick=()=>zoom(.8); $('calZp').onclick=()=>zoom(1.25); $('calCx2').onclick=close; if($('calCx')) $('calCx').onclick=close;
+    if($('calGo')) $('calGo').onclick=()=>{ W.step='click'; ui(); };
+    if(W.step==='click') $('calWrap').onclick=ev=>{ const r=$('calImg').getBoundingClientRect(); const x=(ev.clientX-r.left)/W.k, y=(ev.clientY-r.top)/W.k; if(base){ W.name=(($('calNm')||{}).value||nm).trim()||nm; } keep(); W.tmp={x:Math.round(x),y:Math.round(y)}; W.step='confirm'; ui(); };
+    if($('calYes')) $('calYes').onclick=()=>{ keep(); if(base){ W.step='fils'; ui(); } else accept(); };
+    if($('calNo')) $('calNo').onclick=()=>{ keep(); W.tmp=null; W.step='click'; ui(); };
+    if($('calOk')) $('calOk').onclick=()=>{ const h=$('calH').value.trim(), v=$('calV').value.trim(); if(!h||!v){ $('calH').style.borderColor=h?'#bbb':'#E03131'; $('calV').style.borderColor=v?'#bbb':'#E03131'; return; } W.def.push({name:W.name,h,v}); keep(); accept(); };
+    if($('calDok')) $('calDok').onclick=()=>{ const d=parseFloat(($('calD').value||'').replace(',','.')); W.dist=d>0?d:0; finish(); };
+  }
+  function accept(){
+    W.pts.push(W.tmp); W.tmp=null;
+    if(W.i<3){ W.i++; W.step='click'; W.name=null; ui(); }
+    else if(W.mode==='base'){ W.step='dist'; ui(); } else finish();
+  }
+  function fit(pl){ const v=Math.max(320,window.innerWidth-40); return Math.min(1,v/pl.w); }
+  /* moindres carrés : similitude (échelle, rotation, translation) du plan vers le plan de base */
+  function solve(P,B){
+    const n=P.length; let mx=0,my=0,bx=0,by=0; P.forEach((p,i)=>{mx+=p.x;my+=p.y;bx+=B[i].x;by+=B[i].y}); mx/=n;my/=n;bx/=n;by/=n;
+    let sa=0,sb=0,sn=0; P.forEach((p,i)=>{ const px=p.x-mx,py=p.y-my,qx=B[i].x-bx,qy=B[i].y-by; sa+=px*qx+py*qy; sb+=px*qy-py*qx; sn+=px*px+py*py; });
+    const a=sa/sn, b=sb/sn, tx=bx-(a*mx-b*my), ty=by-(b*mx+a*my);
+    let err=0; P.forEach((p,i)=>{ const X=a*p.x-b*p.y+tx, Y=b*p.x+a*p.y+ty; err=Math.max(err,Math.hypot(X-B[i].x,Y-B[i].y)); });
+    return {a,b,tx,ty,err};
+  }
+  function finish(){
+    const pl=W.pl;
+    if(W.mode==='base'){
+      const mpp=W.dist?W.dist/Math.hypot(W.pts[1].x-W.pts[0].x,W.pts[1].y-W.pts[0].y):0;
+      state.calage={planId:pl.id,pts:W.def.map((d,k)=>Object.assign({},d,{x:W.pts[k].x,y:W.pts[k].y})),mpp:mpp||0,w:pl.w,h:pl.h};
+      pl.cal={a:1,b:0,tx:0,ty:0,err:0,pts:W.pts.slice(),date:new Date().toISOString().slice(0,10)};
+      persist(); const planId=pl.id; close(); renderAll&&renderAll(); toast('Repères du projet enregistrés (ref1 à ref4).');
+    } else {
+      const B=cal().pts.map(p=>({x:p.x,y:p.y})); const s=solve(W.pts,B); s.pts=W.pts.slice(); s.date=new Date().toISOString().slice(0,10);
+      pl.cal=s; persist(); close(); renderAll&&renderAll();
+      const sc=Math.hypot(s.a,s.b), ang=Math.atan2(s.b,s.a)*180/Math.PI;
+      const m=cal().mpp?' · échelle '+(sc*cal().mpp*1000).toFixed(2)+' mm/px':'';
+      miniAlert('Plan calé sur les 4 repères'+m+'. Écart maximal : '+s.err.toFixed(1)+' px'+(Math.abs(ang)>.5?' (rotation '+ang.toFixed(1)+'°)':'')+(s.err>12?' ⚠ écart élevé : vérifiez les points.':''));
+    }
+  }
+  function toast(t){ try{ clipToast(t); }catch(e){ miniAlert(t); } }
+  window.calStart=function(planId){
+    const pl=planById(planId); if(!pl) return;
+    if(W) close();
+    const c=cal(); const mode=(!c||!c.planId||!planById(c.planId)||c.planId===pl.id)?'base':'plan';
+    if(mode==='base'&&c&&c.planId&&c.planId!==pl.id){}
+    W={pl,mode,i:0,pts:[],def:[],tmp:null,step:'start',k:fit(pl)};
+    ui();
+  };
+  /* coordonnées d'un point d'un plan dans le repère du projet (pixels du plan de base, et mètres si l'échelle est connue) ; Z = altitude du niveau si connue */
+  window.calCoords=function(planId,x,y){
+    const pl=planById(planId), c=cal(); if(!pl||!pl.cal||!c) return null; const s=pl.cal;
+    const X=s.a*x-s.b*y+s.tx, Y=s.b*x+s.a*y+s.ty, m=c.mpp||0;
+    const alt=(state.altitudes||{})[pl.niveau]; return {px:X,py:Y,x:m?X*m:null,y:m?(c.h-Y)*m:null,z:(alt==null?null:alt),niveau:pl.niveau};
+  };
+  window.calPlanOf=function(planId){ const pl=planById(planId); return !!(pl&&pl.cal); };
+  /* après le dépôt d'un plan : lancer l'assistant */
+  const sp=window.savePlan; window.savePlan=function(){ const n0=(state.plans||[]).length; sp.apply(this,arguments); try{ if((state.plans||[]).length>n0){ const pl=state.plans[state.plans.length-1]; setTimeout(()=>window.calStart(pl.id),700); } }catch(e){} };
+  const pu=window.planUpdateApply0; window.planUpdateApply0=function(){ const id=planUpdateTarget; pu.apply(this,arguments); try{ const pl=planById(id); if(pl){ const keepBase=cal()&&cal().planId===pl.id; if(keepBase){ delete state.calage; } pl.cal=null; setTimeout(()=>window.calStart(pl.id),700); } }catch(e){} };
+  /* bouton dans la fiche du plan */
+  const pe=window.planEditInfo; window.planEditInfo=function(id){ pe.apply(this,arguments); try{ const a=document.querySelector('#modalBody .modal-actions'); const pl=planById(id); if(a&&pl){ const b=document.createElement('button'); b.className='ghost'; b.textContent=pl.cal?'◎ Recaler (4 repères)':'◎ Caler (4 repères)'; b.onclick=()=>{ closeModal(); window.calStart(id); }; a.appendChild(b); const n=document.createElement('p'); n.className='empty-note'; n.textContent=pl.cal?(cal()&&cal().planId===pl.id?'Plan de base du projet.':'Plan calé sur les repères du projet.'):'Plan non calé sur les repères du projet.'; a.parentNode.insertBefore(n,a); } }catch(e){} };
+})();
+</script>
 </body></html>
