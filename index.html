@@ -7197,7 +7197,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v255</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v256</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -19552,10 +19552,9 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  function depChoice(){ openModal('<button class="close-x" onclick="closeModal()">×</button><h3 style="padding-right:46px">Déposer</h3><div class="pjd-dep"><button type="button" id="depNew"><b>Nouveau document</b><span>Déposer un ou plusieurs fichiers, une ligne par document</span></button><button type="button" id="depInd"><b>Nouvel indice</b><span>Mettre à jour un document existant (A → B…)</span></button></div>');
   const n=document.getElementById('depNew'), i=document.getElementById('depInd'); if(n) n.onclick=()=>{ closeModal(); dropFiles(); }; if(i) i.onclick=()=>pickIndice(); }
  function pickDoc(){ const P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
-  const GR=gedRows().map(g=>({id:g.id,nom:g.nom||'',docType:g.type||'',niveau:g.niveau||'',indice:g.indice||'',_g:g}));
+  const GR=gedRows().map(g=>({id:g.id,nom:g.nom||'',docType:g.type||'',niveau:g.niveau||'',indice:g.indice||'',discipline:g.corps||'',_g:g}));
   const R=DOCS().filter(d=>!d.planning).concat(GR).map(x=>Object.assign({},x,{code:docCode(x,pn)}));
-  openModal('<button class="close-x" onclick="closeModal()">×</button><h3 style="padding-right:46px">Mettre à jour un document</h3><p class="pjd-sub2">Choisissez le document que vous voulez mettre à jour</p><div id="pjIdxPick"><table class="pjd-t2"><thead><tr><th>Code</th><th>Nom du document</th><th>Type de document</th><th>Niveau</th><th>Indice</th></tr></thead><tbody>'+(R.map(r=>'<tr data-pid="'+esc(r.id)+'"><td>'+esc(r.code||'')+'</td><td>'+esc(r.nom||'')+'</td><td>'+esc(r.docType||'')+'</td><td>'+esc(r.niveau||'')+'</td><td>'+esc(r.indice||'')+'</td></tr>').join('')||'<tr><td colspan="5" class="pjd-empty">Aucun document</td></tr>')+'</tbody></table></div>');
-  document.querySelectorAll('#pjIdxPick tr[data-pid]').forEach(tr=>tr.onclick=()=>{ const id=tr.dataset.pid; closeModal(); setTimeout(()=>openFor(id),60); }); }
+  if(window.pjUpdFlow) window.pjUpdFlow(R,id=>setTimeout(()=>openFor(id),60)); }
  /* le premier indice d'un document est 0 : on ne peut pas déposer un indice supérieur tant que l'indice 0 (ligne grise) n'est pas déposé */
  const nrm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
  const fileInd=n=>{ const m=/ind(?:ice)?[ _.-]?([A-Za-z]|\d+)(?=[ _.\-)]|$)/i.exec(String(n||'').replace(/\.[A-Za-z0-9]+$/,'')); return m?m[1].toUpperCase():null; };
@@ -20272,6 +20271,33 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
   const lotsOf=f=>{ const M=mine(); return L().filter(l=>l.famille===f&&(!M||M.includes(nk(l.nom)))); };
   function close(){ const w=document.getElementById('dwWin'); if(w) w.remove(); }
   function grid(items){ return '<div class="pa-grid">'+items.map((x,i)=>'<button type="button" class="pa-app" data-i="'+i+'"><span class="pa-ic">'+x[0]+'</span><span class="pa-lb">'+E(x[1])+'</span></button>').join('')+'</div>'; }
+  window.pjUpdFlow=function(rows,onPick){
+    const CATS=[['🔧','Plan de local technique','Plan LT'],['🔀','Plan de distribution','Plan de distribution'],['🚰','Plan de terminaux','Plan de terminaux']];
+    const bats=(state.batiments||[]).filter(b=>b&&b.id), nivB=n=>{ const id=(state.nivBat||{})[n]; return id||(bats[0]&&bats[0].id)||''; };
+    const S={bat:null,niv:null,fam:null,lot:null,cat:null}; let step='bat', cand=null;
+    const order=['bat','niv','fam','lot','cat','doc'];
+    const lotFam=n=>{ const e=L().find(l=>nk(l.nom)===nk(n)); try{ return (e&&e.famille)||window.lotsApi.famOf(n); }catch(_){ return 'CEA'; } };
+    const rowBat=r=>r.batId||nivB(r.niveau);
+    const rowsOf=()=>rows.filter(r=>(!S.bat||rowBat(r)===S.bat.id)&&(!S.niv||r.niveau===S.niv)&&nk(r.discipline)===nk(S.lot)&&(!S.cat||r.docType===S.cat[2]));
+    function abort(){ close(); }
+    function back(){ const i=order.indexOf(step); if(i<=0){ abort(); return; } let j=i-1; if(step==='doc'&&S.fam!=='CET') j=order.indexOf('lot'); step=order[j]; draw(); }
+    function draw(){
+      let w=document.getElementById('dwWin'); if(!w){ w=document.createElement('div'); w.id='dwWin'; document.body.appendChild(w); w.addEventListener('pointerdown',e=>{ if(e.target===w){ e.preventDefault(); back(); } }); }
+      let title,items,act;
+      if(step==='bat'){ title='🏢 Bâtiment'; const B=bats.length?bats:[{id:'',nom:'Bâtiment 1'}]; items=B.map(b=>['🏢',b.nom]); act=i=>{ S.bat=B[i]; step='niv'; draw(); }; }
+      else if(step==='niv'){ title='🏬 Niveau'; let N=[]; try{ N=nbOrder(); }catch(_){ N=state.niveaux||[]; } N=N.filter(n=>!S.bat||!S.bat.id||nivB(n)===S.bat.id); items=N.map(n=>['🏬',n]); act=i=>{ S.niv=N[i]; step='fam'; draw(); }; }
+      else if(step==='fam'){ title='📂 Corps d’état'; items=FAMS.map(f=>[f[1],f[2]]); act=i=>{ S.fam=FAMS[i][0]; step='lot'; draw(); }; }
+      else if(step==='lot'){ const F=FAMS.find(f=>f[0]===S.fam), ls=lotsOf(S.fam).slice(); title=F[1]+' '+F[2]; const arc=S.fam==='CEA'?[{nom:'Architecture'}]:[]; const LL=arc.concat(ls); items=LL.map(l=>{ let ic='🗂'; try{ ic=l.nom==='Architecture'?'🏛':metierIcon({nom:l.nom}); }catch(_){} return [ic,l.nom]; });
+        act=i=>{ S.lot=LL[i].nom; S.cat=null; if(S.fam==='CET'){ step='cat'; draw(); } else resolve(); }; }
+      else if(step==='cat'){ title='📐 Type de plan'; items=CATS.map(c=>[c[0],c[1]]); act=i=>{ S.cat=CATS[i]; resolve(); }; }
+      else { title='📄 Document'; items=cand.map(r=>['📄',(r.nom||r.docType||'Document')+(r.indice!==undefined&&r.indice!==''?' · '+r.indice:'')]); act=i=>{ close(); onPick(cand[i].id); }; }
+      w.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><button type="button" id="dwBk" aria-label="Retour" title="Retour">←</button><b>'+E(title)+'</b><button type="button" id="dwX" aria-label="Fermer">×</button></div><div class="pa-b">'+(items.length?grid(items):'<p>Aucun choix</p>')+'</div></div>';
+      w.querySelector('#dwBk').onclick=back; w.querySelector('#dwX').onclick=abort;
+      w.querySelectorAll('.pa-app').forEach(b=>b.onclick=()=>act(+b.dataset.i));
+    }
+    function resolve(){ const c=rowsOf(); if(!c.length){ close(); try{ miniAlert('Aucun document pour ce choix.'); }catch(_){} return; } if(c.length===1){ close(); onPick(c[0].id); return; } cand=c; step='doc'; draw(); }
+    draw();
+  };
   window.__pgWiz=function(doc,done,cancel){
     if(doc.ged||doc.fichier||(doc.discipline&&doc.docType)) return false;
     const M=mine(); let fam='', lot=doc.discipline||'';
