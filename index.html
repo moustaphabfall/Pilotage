@@ -7165,7 +7165,7 @@ function paLotsBind(){ const g=document.getElementById('paLots'); if(!g) return;
   const end=()=>{ clearTimeout(t); t=null; if(!d) return; const b=d; d=null; b.classList.remove('lv-drag'); moved=Date.now(); const L=window.lotsApi.ensure(); const ids=tiles().map(x=>x.dataset.lot); const grp=ids.map(id=>L.find(l=>l.id===id)).filter(Boolean); let k=0; const out=L.map(l=>l.famille===f?grp[k++]:l); L.splice(0,L.length,...out); try{ persist(); }catch(_){} projParamEdit(); };
   g.addEventListener('pointerup',end); g.addEventListener('pointercancel',end); }
 function paAdminBar(k){ const d=document.getElementById('paWin'); if(!d||!paIsAdmin()) return; const pr=(k||'').split(':'); const ok=k==='archi'||(pr[0]==='archi'&&pr.length===2)||(pr[0]==='lots'&&pr.length===2); if(!ok) return;
-  const r=d.querySelector('.pa-r'); if(!r) return; const on=!!window.__paEdit; const b=document.createElement('button'); b.type='button'; b.className='pa-ed'; b.textContent=on?'Annuler':'Modifier'; b.onclick=()=>{ window.__paEdit=!window.__paEdit; projParamEdit(); }; r.insertBefore(b,r.firstChild);
+  const r=d.querySelector('.pa-r'); if(!r) return; const on=!!window.__paEdit; const b=document.createElement('button'); b.type='button'; b.className='pa-ed'; b.textContent=on?'Annuler':'✎'; b.title=on?'Annuler':'Modifier'; b.setAttribute('aria-label',on?'Annuler':'Modifier'); b.onclick=()=>{ window.__paEdit=!window.__paEdit; projParamEdit(); }; r.insertBefore(b,r.firstChild);
   if(!on) return;
   d.querySelectorAll('.pa-app[data-bat],.pa-app[data-lv],.pa-app[data-lot]').forEach(t=>{ const ic=t.querySelector('.pa-ic'); if(!ic) return; const e=document.createElement('span'); e.className='pa-bdg pa-bdg-e'; e.textContent='✎'; e.title='Modifier'; const x=document.createElement('span'); x.className='pa-bdg pa-bdg-d'; x.textContent='🗑'; x.title='Supprimer'; ic.appendChild(e); ic.appendChild(x);
    const f=pr[1];
@@ -7176,7 +7176,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v226</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v228</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -19305,11 +19305,15 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    L.push(base({nom:'Perspective · '+b.nom+' (3D / maquette)',docType:'Perspective',batId:b.id})); S.autoDocKeys[k]=1; ch=true; });
   (S.niveaux||[]).forEach(n=>{ const bid=(S.nivBat||{})[n]||''; const k='N:'+n+':'+bid; if(S.autoDocKeys[k]) return; const T=['Plan d’étage','Plan de repérage','Plan de niveau']; const ex=L.some(d=>d.niveau===n&&T.includes(d.docType))||G.some(g=>g.niveau===n&&T.includes(g.type||'Plan de niveau'))||(S.plans||[]).some(p=>p.niveau===n&&T.includes(p.typeDoc||'Plan de niveau')); if(ex) return;
    L.push(base({nom:'Plan d’étage · '+n,docType:'Plan d’étage',niveau:n})); S.autoDocKeys[k]=1; ch=true; });
-  /* documents attendus (grisés) selon les corps d'état choisis dans Paramètres projet > Gestion des lots */
-  const LO=Array.isArray(S.lotsProjet)?S.lotsProjet:[], hasF=f=>LO.some(l=>l.famille===f), NV=S.niveaux||[];
-  const addAuto=(docType,niv,disc,withNiv)=>{ const k='A:'+docType+':'+(niv||'')+':'+disc; if(S.autoDocKeys[k]) return;
-   const ex=L.some(d=>d.docType===docType&&(d.niveau||'')===(niv||'')&&(d.discipline||'')===disc)||G.some(g=>g.type===docType&&(g.niveau||'')===(niv||'')&&(g.corps||'')===disc)||(S.plans||[]).some(p=>p.typeDoc===docType&&(p.niveau||'')===(niv||'')&&(p.lot||'')===disc);
-   S.autoDocKeys[k]=1; ch=true; if(ex) return;
+  /* documents attendus (grisés) : synchronisés en permanence avec les lots du projet (Paramètres projet > Gestion des lots) */
+  const LO=Array.isArray(S.lotsProjet)?S.lotsProjet:[], hasF=f=>LO.some(l=>l.famille===f), NV=S.niveaux||[], NK=x=>String(x||'').toLowerCase().trim();
+  const FL_={GO:'Gros œuvre',CC:'Clos et couvert'};
+  const allowed=new Set(['','architecture'].concat(LO.map(l=>NK(l.nom))).concat(Object.keys(FL_).filter(hasF).map(f=>NK(FL_[f]))));
+  /* 1. retirer les lignes grises (sans fichier) d'un lot supprimé ou d'un niveau supprimé */
+  const before=L.length; for(let k=L.length-1;k>=0;k--){ const d=L[k]; if(d.auto&&!d.fichier&&(!allowed.has(NK(d.discipline))||(d.niveau&&!NV.includes(d.niveau)))){ L.splice(k,1); ch=true; } }
+  const addAuto=(docType,niv,disc,withNiv)=>{
+   const ex=L.some(d=>d.docType===docType&&(d.niveau||'')===(niv||'')&&NK(d.discipline)===NK(disc))||G.some(g=>g.type===docType&&(g.niveau||'')===(niv||'')&&NK(g.corps)===NK(disc))||(S.plans||[]).some(p=>p.typeDoc===docType&&(p.niveau||'')===(niv||'')&&NK(p.lot)===NK(disc));
+   if(ex) return; ch=true;
    L.push(base({nom:docType+(niv?' · '+niv:'')+(withNiv?' · '+disc:''),docType,niveau:niv||'',discipline:disc})); };
   if(hasF('GO')) NV.forEach(n=>{ addAuto('Plan de coffrage',n,'Gros œuvre'); addAuto('Plan de ferraillage',n,'Gros œuvre'); });
   if(hasF('CC')) NV.forEach(n=>{ addAuto('Plan de démolition extérieur',n,'Clos et couvert'); addAuto('Plan d’étanchéité',n,'Clos et couvert'); });
@@ -19319,6 +19323,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   try{ gedSyncPlans(); }catch(_){} ensurePlanning(); try{ ensureAutoDocs(); }catch(e){ console.error(e); } const cs=dcolsOn(), P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
   const GR=(typeof gedRows==='function'?gedRows():[]).filter(g=>!g.snapSrc).map(g=>({id:g.id,ged:true,nom:g.nom||'',docType:g.type||'',niveau:g.niveau||'',discipline:g.corps||'',phase:g.phase||'',indice:g.indice||'',etat:g.statut||'',date:g.date||'',fichier:(g.fichier&&g.fichier.name)||'',taille:(g.fichier&&g.fichier.size)||0,format:(g.fichier&&g.fichier.name&&(/\.([A-Za-z0-9]+)$/.exec(g.fichier.name)||[])[1]||'').toUpperCase(),emetteur:'',periode:'',zone:'',type:'',numero:'',liens:g.liens||[],versions:g.versions||[],_g:g}));
   let R=DOCS().concat(GR).map(x=>Object.assign({},x,{code:docCode(x,pn),projet:pn,batiment:(x.batId&&((state.batiments||[]).find(q=>q.id===x.batId)||{}).nom)||batOf(x.niveau),nature:x.ged?'architecture':natOf(x)})).filter(passD);
+  try{ const MQ=(ST().lotsMasques||[]), LO2=(ST().lotsProjet||[]).map(l=>String(l.nom).toLowerCase().trim()); if(MQ.length) R=R.filter(x=>{ const k=String(x.discipline||'').toLowerCase().trim(); return !k||LO2.includes(k)||!MQ.includes(k); }); }catch(_){}
   if(FL.q){ const q=FL.q.toLowerCase(); R=R.filter(x=>[x.code,x.nom,x.docType,x.niveau,x.discipline,x.phase,x.indice,x.fichier].join(' ').toLowerCase().includes(q)); }
   if(DSORT&&cs.includes(DSORT.k)){ const k=DSORT.k, s=DSORT.d; R.sort((a,b)=>(k==='discipline'&&window.lotsApi?(window.lotsApi.rank(a[k])-window.lotsApi.rank(b[k])):String(a[k]||'').localeCompare(String(b[k]||''),'fr',{numeric:true}))*s); }
   else if(Array.isArray(state.docOrder)&&state.docOrder.length){ const ix=x=>{ const i=state.docOrder.indexOf(x.id); return i<0?1e9:i; }; R.sort((a,b)=>ix(a)-ix(b)); }
@@ -19738,7 +19743,16 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  window.lotFold=function(f){ if(LFOLD.has(f)) LFOLD.delete(f); else LFOLD.add(f); const fr=document.querySelector('.lot-fr[data-f="'+f+'"]'); if(!fr) return; const b=fr.querySelector('.lot-body'), ic=fr.querySelector('.lot-ic'), x=LFOLD.has(f); if(b) b.hidden=x; if(ic){ ic.setAttribute('aria-expanded',x?'false':'true'); ic.textContent=(x?'▸':'▾')+' '+(FAM.find(q=>q[0]===f)||[])[3]; } };
  function cetVocab(){ const t=termes(); return `<details class="lot-voc"><summary>Vocabulaire des plans techniques (par étape de l’ouvrage)</summary><div class="lot-voc-g">${ETAPES.map(e=>`<button type="button" onclick="lotTerme('${e[0]}')"><span>${E_(e[1])}</span><b>${E_(t[e[0]])}</b></button>`).join('')}</div></details>`; }
  function redraw(){ if(document.getElementById('paWin')){ try{ projParamEdit(); }catch(e){} return; } const b=document.getElementById('lotsBox'); if(!b) return; const o=b.querySelector('details')&&b.querySelector('details').open; b.outerHTML=window.lotsFramesHtml(); if(o){ const d=document.querySelector('#lotsBox details'); if(d) d.open=true; } }
- window.lotDel=function(id){ const L=ensure(), l=L.find(x=>x.id===id); if(!l) return; miniConfirm('Retirer le lot « '+l.nom+' » du projet ?',()=>{ state.lotsProjet=L.filter(x=>x.id!==id); mask(l.nom,1); save(); redraw(); }); };
+ window.lotDocs=function(l,L){ const K=x=>nk(x), FLB={GO:'Gros œuvre',CC:'Clos et couvert'}; const last=FLB[l.famille]&&!L.some(x=>x.id!==l.id&&x.famille===l.famille); const keys=[K(l.nom)].concat(last?[K(FLB[l.famille])]:[]);
+  const docs=(state.documents||[]).filter(d=>keys.includes(K(d.discipline))), plans=(state.plans||[]).filter(p=>keys.includes(K(p.lot))), ged=(state.ged||[]).filter(g=>!g.snapSrc&&keys.includes(K(g.corps))&&!plans.some(p=>p.id===g.planId));
+  return {docs,plans,ged,n:docs.length+plans.length+ged.length,keys}; };
+ window.lotDel=function(id){ if(window.paIsAdmin&&!window.paIsAdmin()){ miniAlert('Seul un administrateur peut supprimer un lot.'); return; } const L=ensure(), l=L.find(x=>x.id===id); if(!l) return; const D=window.lotDocs(l,L);
+  const msg=(D.n?'Attention : '+D.n+' document'+(D.n>1?'s':'')+' de ce lot '+(D.n>1?'vont':'va')+' être supprimé'+(D.n>1?'s':'')+' définitivement.\n\n':'')+'Retirer le lot « '+l.nom+' » du projet ?';
+  miniConfirm(msg,()=>{ const K=x=>nk(x);
+   state.documents=(state.documents||[]).filter(d=>!D.keys.includes(K(d.discipline)));
+   const pid=new Set(D.plans.map(p=>p.id)); state.plans=(state.plans||[]).filter(p=>!pid.has(p.id));
+   state.ged=(state.ged||[]).filter(g=>!(pid.has(g.planId)||(D.keys.includes(K(g.corps)))||(g.origId&&pid.has(g.origId))));
+   state.lotsProjet=L.filter(x=>x.id!==id); mask(l.nom,1); save(); redraw(); try{ clipToast(D.n?D.n+' document(s) supprimé(s)':'Lot retiré'); }catch(_){} }); };
  window.lotRename=function(id){ const l=ensure().find(x=>x.id===id); if(!l) return; miniPrompt('Nom du lot',l.nom,v=>{ v=(v||'').trim(); if(!v) return; const old=l.nom; l.nom=v; const m=(state.metiers||[]).find(x=>x.id===l.metierId); if(m) m.nom=v; mask(old,1); mask(v,0); try{ (state.documents||[]).forEach(d=>{ if(nk(d.discipline)===nk(old)) d.discipline=v; }); (state.ged||[]).forEach(g=>{ if(nk(g.corps)===nk(old)) g.corps=v; }); (state.plans||[]).forEach(q=>{ if(nk(q.lot)===nk(old)) q.lot=v; }); }catch(e){} save(); redraw(); }); };
  window.lotNum=function(id){ const L=ensure(), i=L.findIndex(x=>x.id===id); if(i<0) return; miniPrompt('Numéro du lot (1 à '+L.length+')',String(i+1),v=>{ let n=parseInt(v,10); if(!n) return; n=Math.max(1,Math.min(L.length,n)); const [l]=L.splice(i,1); L.splice(n-1,0,l); save(); redraw(); }); };
  window.lotEtape=function(id){ const l=ensure().find(x=>x.id===id); if(!l) return; const k=l.etape?ETAPES.findIndex(e=>e[0]===l.etape):-1; l.etape=ETAPES[(k+1)%ETAPES.length][0]; save(); redraw(); };
@@ -19890,7 +19904,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 #paWin button.pa-app .pa-ic,#modalBody button.pa-app .pa-ic{width:64px!important;height:64px!important}
 #clipToast{z-index:100002!important}
 #paWin .pa-ic{position:relative}#paWin .lt-b{position:absolute;left:-6px;top:-6px;min-width:20px;height:20px;border-radius:10px;background:#FFC400;color:#0E0E0E;font:800 11px/20px sans-serif;text-align:center;font-style:normal;padding:0 4px}#paWin .lt-t{touch-action:none;user-select:none}
-#paWin .pa-ed{border:0!important;background:transparent!important;box-shadow:none!important;color:#FFC400!important;font-weight:700;font-size:14px;cursor:pointer;padding:4px 8px!important;min-height:0!important}
+#paWin .pa-ed{font-size:20px!important;border:0!important;background:transparent!important;box-shadow:none!important;color:#FFC400!important;font-weight:700;font-size:14px;cursor:pointer;padding:4px 8px!important;min-height:0!important}
 #paWin .pa-ic .pa-bdg{position:absolute;display:block!important;width:26px!important;height:26px!important;border-radius:13px!important;background:#FFC400!important;color:#0E0E0E!important;font-size:14px!important;line-height:26px!important;box-shadow:0 2px 6px rgba(0,0,0,.4);text-align:center;top:-8px;cursor:pointer}#paWin .pa-ic .pa-bdg-e{right:-9px;top:-9px}#paWin .pa-ic .pa-bdg-d{right:-9px;top:auto;bottom:-9px;background:#E5484D!important;color:#fff!important}
 #paWin .lv-n{font-size:26px;font-weight:800;color:#FFC400}#paWin .lv-t{touch-action:none;user-select:none}#paWin .lv-drag{opacity:.75;z-index:5;position:relative}#paWin .lv-drag .pa-ic{box-shadow:0 10px 24px rgba(0,0,0,.5)}
 .pa-f{margin-bottom:16px}.pa-f label{display:block;font-weight:600;margin-bottom:6px}.pa-f small{display:block;margin-top:6px;opacity:.7}
