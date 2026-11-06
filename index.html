@@ -7124,7 +7124,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v216</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v217</small></h3>
     <p class="empty-note" style="margin:0 0 14px">Touchez une application. Touchez en dehors pour revenir à ce menu.</p>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
@@ -19597,7 +19597,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   mb.querySelector('[data-nat]').onchange=e=>{ doc.nature=e.target.value; try{ persist(); }catch(_){} dbRender(); openDocFiche(doc.id); };
   draw(); }
  function openDocFiche(id){
-  const doc=DOCS().find(q=>q.id===id); if(!doc) return; if(natOf(doc)==='planning') return openPlanningFiche(doc); const S=ST();
+  const doc=DOCS().find(q=>q.id===id); if(!doc) return; if(natOf(doc)==='planning') return openPlanningFiche(doc); try{ if(window.__pgWiz&&window.__pgWiz(doc,()=>openDocFiche(id),()=>{ if(doc.nom==='Nouveau document'&&!doc.discipline&&!doc.docType){ const A=DOCS(), i=A.indexOf(doc); if(i>=0){ A.splice(i,1); try{ persist(); }catch(_){} dbRender(); } } })) return; }catch(e){ console.error(e); } const S=ST();
   const f=(k,lab,type)=>'<div class="field"><label>'+lab+'</label><input type="'+(type||'text')+'" data-df="'+k+'" value="'+esc(doc[k]||'')+'"></div>';
   const sel=(k,lab,items)=>'<div class="field"><label>'+lab+'</label><select data-df="'+k+'"><option value="">—</option>'+items.map(([v,l])=>'<option value="'+esc(v)+'"'+(doc[k]===v?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>';
   const o=OUV.find(q=>q.d===doc.docType);
@@ -19706,8 +19706,8 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  function icon(nom){ try{ return metierIcon({nom}); }catch(e){ return '🏗'; } }
  const TYPES={CEA:['Plan d’étage','Plan de repérage','Perspective','Détail','Fiche produit','Plan de pièce','Coupe','Façade','Plan de cloisonnement','Plan de plafond','Plan de sol','Plan de calepinage','Fiche technique'],
   GO:['Plan de coffrage','Plan de ferraillage','Plan de réservations','Plan d’implantation','Plan de fondations','Coupe structure','Plan de repérage','Note de calcul','Fiche technique'],
-  CC:['Plan de toiture','Plan de façade','Plan de démolition extérieur','Plan d’étanchéité','Détail de menuiserie extérieure','Coupe de façade','Plan de repérage','Fiche technique'],
-  CET:['Plan de distribution','Plan de terminaux','Plan d’équipements','Plan LT','Synoptique','Schéma de principe','Note de calcul','Tableau de calcul','Plan de réservations','Plan de repérage','Fiche technique']};
+  CC:['Plan de toiture','Plan de façade','Plan de démolition extérieur','Plan d’étanchéité','Plan de menuiserie extérieure','Détail de menuiserie extérieure','Coupe de façade','Plan de repérage','Fiche technique'],
+  CET:['Plan LT','Plan de distribution','Plan de terminaux','Synoptique','Plan d’équipements','Schéma de principe','Note de calcul','Tableau de calcul','Plan de réservations','Plan de repérage','Fiche technique']};
  function typesFor(lot){ lot=String(lot||'').trim(); if(!lot) return null; const e=ensure().find(l=>nk(l.nom)===nk(lot))||(LIB||[]).find(l=>nk(l.nom)===nk(lot)); const f=(e&&e.famille)||famOf(lot); return TYPES[f]||null; }
  window.lotsApi={ typesFor, TYPES, ensure, loadLib, lib:()=>LIB||[], FAM, famOf, addLot, libInsert, rank:nom=>{ const i=ensure().findIndex(l=>nk(l.nom)===nk(nom)); return i<0?1e9:i; },
   picker(inp,onPick){ if(inp._lp) return; inp._lp=1; inp.setAttribute('autocomplete','off'); let pop=null;
@@ -19944,6 +19944,57 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
   const pu=window.planUpdateApply0; window.planUpdateApply0=function(){ const id=planUpdateTarget; pu.apply(this,arguments); try{ const pl=planById(id); if(pl){ const keepBase=cal()&&cal().planId===pl.id; if(keepBase){ delete state.calage; } pl.cal=null; setTimeout(()=>window.calStart(pl.id),700); } }catch(e){} };
   /* bouton dans la fiche du plan */
   const pe=window.planEditInfo; window.planEditInfo=function(id){ pe.apply(this,arguments); try{ const a=document.querySelector('#modalBody .modal-actions'); const pl=planById(id); if(a&&pl){ const b=document.createElement('button'); b.className='ghost'; b.textContent=pl.cal?'◎ Recaler (4 repères)':'◎ Caler (4 repères)'; b.onclick=()=>{ closeModal(); window.calStart(id); }; a.appendChild(b); const n=document.createElement('p'); n.className='empty-note'; n.textContent=pl.cal?(cal()&&cal().planId===pl.id?'Plan de base du projet.':'Plan calé sur les repères du projet.'):'Plan non calé sur les repères du projet.'; a.parentNode.insertBefore(n,a); } }catch(e){} };
+})();
+</script>
+<script id="pjWizJs">
+/* ===== Assistant de dépôt : corps d'état > lot > type de document, en boutons-applications ===== */
+(function(){
+  const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const css=document.createElement('style'); css.textContent=
+   '#dwWin{position:fixed;inset:0;z-index:99991;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:max(12px,env(safe-area-inset-top)) 12px}'+
+   '#dwWin .pa-card{width:min(680px,100%);max-height:86vh;display:flex;flex-direction:column;background:var(--card,#23282F);color:var(--ink,#F4F2EC);border:1px solid #FFC400;border-radius:22px;box-shadow:0 20px 50px rgba(0,0,0,.5);overflow:hidden}'+
+   '#dwWin .pa-h{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.12);font-size:17px}#dwWin .pa-h b{flex:1}'+
+   '#dwWin .pa-h button{border:0!important;background:transparent!important;color:inherit!important;font-size:22px;cursor:pointer;min-height:0!important;padding:0 6px!important}'+
+   '#dwWin .pa-b{padding:14px 18px 20px;overflow:auto}#dwWin .pa-b p{margin:0 0 12px;opacity:.75;font-size:13px}'+
+   '#dwWin .pa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px 8px;padding:10px 0 16px}'+
+   '#dwWin button.pa-app{display:flex;flex-direction:column;align-items:center;gap:7px;border:0!important;background:transparent!important;box-shadow:none!important;outline:0!important;padding:0!important;border-radius:0!important;width:100%;min-width:0;height:auto!important;min-height:0!important;color:inherit!important;cursor:pointer}'+
+   '#dwWin .pa-ic{width:64px;height:64px;border-radius:16px;background:#0E0E0E;border:1px solid #FFC400;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 6px 16px rgba(0,0,0,.28)}'+
+   '#dwWin .pa-lb{font-size:12.5px;font-weight:600;text-align:center;line-height:1.2;word-break:break-word}';
+  document.head.appendChild(css);
+  const FAMS=[['CEA','🎨','CEA'],['GO','🏗️','Gros œuvre'],['CC','🏠','Clos et couvert'],['CET','⚡','CET']];
+  const TLAB={'Plan LT':'Plan de production (LT)','Synoptique':'Schéma / synoptique'};
+  const TIC=t=>/^perspective/i.test(t)?'🏙️':/^fiche/i.test(t)?'🏷️':/^(note|tableau)/i.test(t)?'🧮':/^coupe/i.test(t)?'✂️':/synopt|sch[ée]ma/i.test(t)?'🔀':/^d[ée]tail/i.test(t)?'🔍':'📐';
+  const L=()=>{ try{ return window.lotsApi.ensure(); }catch(e){ return state.lotsProjet||[]; } };
+  const mine=()=>{ const m=(window.PILOTAGE_PROJET||{}).mlots; return Array.isArray(m)&&m.length?m.map(x=>String(x).toLowerCase()):null; };
+  const nk=x=>String(x||'').toLowerCase();
+  const lotsOf=f=>{ const M=mine(); return L().filter(l=>l.famille===f&&(!M||M.includes(nk(l.nom)))); };
+  function close(){ const w=document.getElementById('dwWin'); if(w) w.remove(); }
+  function grid(items){ return '<div class="pa-grid">'+items.map((x,i)=>'<button type="button" class="pa-app" data-i="'+i+'"><span class="pa-ic">'+x[0]+'</span><span class="pa-lb">'+E(x[1])+'</span></button>').join('')+'</div>'; }
+  window.__pgWiz=function(doc,done,cancel){
+    if(doc.ged||doc.fichier||(doc.discipline&&doc.docType)) return false;
+    const M=mine(); let fam='', lot=doc.discipline||'';
+    const hist=[];
+    const lotFam=n=>{ const e=L().find(l=>nk(l.nom)===nk(n)); try{ return (e&&e.famille)||window.lotsApi.famOf(n); }catch(_){ return e&&e.famille||'CEA'; } };
+    if(lot) fam=lotFam(lot);
+    else if(M){ const mine1=L().filter(l=>M.includes(nk(l.nom))); if(mine1.length===1){ lot=mine1[0].nom; fam=mine1[0].famille; } }
+    let step=lot?'type':'fam';
+    const first=step;
+    function fin(type){ doc.discipline=lot; doc.docType=type; if(doc.nom==='Nouveau document'||!doc.nom) doc.nom=type+(doc.niveau?' · '+doc.niveau:'')+(fam==='CET'||fam==='GO'||fam==='CC'?(fam==='CET'?' · '+lot:''):''); try{ persist(); }catch(_){} close(); done(); }
+    function abort(){ close(); cancel&&cancel(); }
+    function back(){ if(step==='type'&&first==='type'){ abort(); return; } if(step==='lot'){ step='fam'; } else if(step==='type'){ step='lot'; } else { abort(); return; } draw(); }
+    function draw(){
+      let w=document.getElementById('dwWin'); if(!w){ w=document.createElement('div'); w.id='dwWin'; document.body.appendChild(w); w.addEventListener('pointerdown',e=>{ if(e.target===w){ e.preventDefault(); back(); } }); }
+      let title,msg,items,act;
+      if(step==='fam'){ title='📂 Corps d’état'; msg='À quel corps d’état appartient le document que vous allez déposer ?'; const ok=FAMS.filter(f=>lotsOf(f[0]).length||!M); items=(ok.length?ok:FAMS).map(f=>[f[1],f[2]]); act=i=>{ fam=(ok.length?ok:FAMS)[i][0]; step='lot'; draw(); }; }
+      else if(step==='lot'){ const F=FAMS.find(f=>f[0]===fam), ls=lotsOf(fam); title=F[1]+' '+F[2]; msg='Choisissez le lot.'; items=ls.map(l=>{ let ic='🗂'; try{ ic=metierIcon({nom:l.nom}); }catch(_){} return [ic,l.nom]; }); if(!M) items.push(['＋','Ajouter un lot']);
+        act=i=>{ if(i<ls.length){ lot=ls[i].nom; step='type'; draw(); } else miniPrompt('Nom du nouveau lot (ajouté aussi à la bibliothèque)','',v=>{ v=(v||'').trim(); if(!v) return; try{ window.lotsApi.addLot(v,fam); window.lotsApi.libInsert(v,fam); }catch(e){} lot=v; step='type'; draw(); }); }; }
+      else { const T=(window.lotsApi.TYPES||{})[fam]||[]; title='📐 Type de document'; msg=lot?'Lot : '+lot+'. Quel type de document ?':'Quel type de document ?'; items=T.map(t=>[TIC(t),TLAB[t]||t]); act=i=>fin(T[i]); }
+      w.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><button type="button" id="dwBk" aria-label="Retour" title="Retour">←</button><b>'+E(title)+'</b><button type="button" id="dwX" aria-label="Fermer">×</button></div><div class="pa-b"><p>'+E(msg)+'</p>'+grid(items)+'</div></div>';
+      w.querySelector('#dwBk').onclick=back; w.querySelector('#dwX').onclick=abort;
+      w.querySelectorAll('.pa-app').forEach(b=>b.onclick=()=>act(+b.dataset.i));
+    }
+    draw(); return true;
+  };
 })();
 </script>
 </body></html>
