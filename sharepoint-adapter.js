@@ -39,7 +39,7 @@
 
   async function setup(nomProjet){
     if(window.pilotageNotice){
-      const mod = (window.pilotageModuleName && window.pilotageModuleName()) || 'Bina';
+      const mod = (window.pilotageModuleName && window.pilotageModuleName()) || 'Been11';
       const ok = await window.pilotageNotice({title:'Ce que '+mod+' pourra faire chez vous', ok:'J’ai compris, continuer vers Microsoft',
         html:'<p>Une fois que vous aurez autorisé l’accès, <b>'+mod+'</b> n’aura que ces deux autorisations :</p><ul style="margin:6px 0 10px;padding-left:20px"><li>créer un dossier dans votre espace Microsoft ;</li><li>lire et écrire dans ce dossier, exclusivement.</li></ul><p><b>'+mod+'</b> n’accédera qu’à ce dossier, et à aucun autre dossier de votre espace.</p><p style="font-size:13px;color:#5b6a72">Microsoft affichera cette autorisation en termes généraux (« accès à vos fichiers ») : l’outil s’engage à n’utiliser que ce dossier. <a href="confidentialite.html" target="_blank" rel="noopener">En savoir plus</a></p>'});
       if(!ok) return null;
@@ -72,7 +72,7 @@
       try{
         let f = null; const r0 = await g(root.base+'/root:/'+enc(ROOT+'/'+nom));
         if(r0.ok) f = await r0.json();
-        else if(r0.status===404){ const r = await g(root.base+'/root:/'+enc(ROOT+'/'+nom+'/LISEZ-MOI.txt')+':/content?@microsoft.graph.conflictBehavior=replace', {method:'PUT', headers:{'Content-Type':'text/plain'}, body:'Données de l’application Bina (projet '+nom+'). Ne pas renommer ni supprimer ces fichiers.'}); if(!r.ok) throw new Error('Création du dossier refusée ('+r.status+')'); f = await gj(root.base+'/root:/'+enc(ROOT+'/'+nom)); }
+        else if(r0.status===404){ const r = await g(root.base+'/root:/'+enc(ROOT+'/'+nom+'/LISEZ-MOI.txt')+':/content?@microsoft.graph.conflictBehavior=replace', {method:'PUT', headers:{'Content-Type':'text/plain'}, body:'Données de l’application Been11 (projet '+nom+'). Ne pas renommer ni supprimer ces fichiers.'}); if(!r.ok) throw new Error('Création du dossier refusée ('+r.status+')'); f = await gj(root.base+'/root:/'+enc(ROOT+'/'+nom)); }
         else throw new Error('Erreur '+r0.status);
         close(); SCOPES = BASE_SCOPES;
         return {provider:'sharepoint', driveId:f.parentReference.driveId, itemId:f.id, nom:f.name, site:root.label, compte:acct.username};
@@ -111,7 +111,7 @@
       async probe(){ try{ const n = '.sonde-'+me.oid; await putFile(n,'ok','text/plain'); await g(url(n),{method:'DELETE'}); return true; }catch(e){ return false; } },
       async members(){ const v = (await gj(base+'/permissions')).value||[];
         return v.filter(p=>!p.link).map(p=>{ const u = (p.grantedToV2&&p.grantedToV2.user)||(p.grantedToIdentitiesV2&&p.grantedToIdentitiesV2[0]&&p.grantedToIdentitiesV2[0].user)||{}; const roles = p.roles||[]; return {id:p.id, nom:u.displayName||'', email:(u.email||'').toLowerCase(), role:roles.includes('owner')?'admin':(roles.includes('write')?'editeur':'lecteur'), herite:!!p.inheritedFrom}; }); },
-      async invite(email, role){ return gj(base+'/invite', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({requireSignIn:true, sendInvitation:true, roles:[role==='lecteur'?'read':'write'], recipients:[{email}], message:'Accès au projet « '+h.nom+' » (application Bina). Connectez-vous à l’application avec votre identifiant, puis autorisez Microsoft quand la fenêtre s’ouvre.'})}); },
+      async invite(email, role){ return gj(base+'/invite', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({requireSignIn:true, sendInvitation:true, roles:[role==='lecteur'?'read':'write'], recipients:[{email}], message:'Accès au projet « '+h.nom+' » (application Been11). Connectez-vous à l’application avec votre identifiant, puis autorisez Microsoft quand la fenêtre s’ouvre.'})}); },
       async setRole(id, role){ return gj(base+'/permissions/'+id, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({roles:[role==='lecteur'?'read':'write']})}); },
       async remove(id){ const r = await g(base+'/permissions/'+id, {method:'DELETE'}); if(!r.ok) throw new Error('Retrait refusé ('+r.status+')'); },
       async disconnect(){ try{ await app.logoutPopup({account:acct}); }catch(e){} }
