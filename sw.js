@@ -1,5 +1,5 @@
 /* Service worker : l'application s'ouvre hors ligne (coque en cache) ; Supabase et les polices passent toujours par le réseau. */
-const CACHE = 'pilotage-v214';
+const CACHE = 'pilotage-v215';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './config.js', './supabase-adapter.js', './sharepoint-adapter.js', './vendor/msal-browser.min.js', './icons/icon-192.png', './icons/icon-512.png'];
 const LIBS = ['./lib/pdf.min.js','./lib/pdf.worker.min.js','./lib/jspdf.umd.min.js','./lib/jspdf.plugin.autotable.min.js','./fonts/fonts.css','./fonts/space-grotesk-500-normal.woff2','./fonts/space-grotesk-600-normal.woff2','./fonts/space-grotesk-700-normal.woff2','./fonts/ibm-plex-sans-400-normal.woff2','./fonts/ibm-plex-sans-500-normal.woff2','./fonts/ibm-plex-sans-600-normal.woff2','./fonts/ibm-plex-sans-400-italic.woff2'];
 const OCR = ['./ocr/tesseract.min.js','./ocr/worker.min.js','./ocr/tesseract-core-simd-lstm.wasm.js','./ocr/tesseract-core-lstm.wasm.js','./ocr/fra.traineddata.gz'];  // lecture de texte (OCR) hors connexion
@@ -9,5 +9,5 @@ self.addEventListener('fetch', e => {
   const r = e.request; if (r.method !== 'GET') return;
   const u = new URL(r.url);
   if (u.origin !== location.origin) return;               // Supabase, CDN, polices : réseau
-  e.respondWith(fetch(r).then(res => { const cp = res.clone(); caches.open(CACHE).then(c => c.put(r, cp)); return res; }).catch(() => caches.match(r).then(m => m || caches.match('./index.html'))));
+  e.respondWith(fetch(r,{cache:'no-cache'}).then(res => { const cp = res.clone(); caches.open(CACHE).then(c => c.put(r, cp)); return res; }).catch(() => caches.match(r).then(m => m || caches.match('./index.html'))));
 });
