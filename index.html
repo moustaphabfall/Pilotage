@@ -7099,28 +7099,33 @@ function archTreeHtml(o){
 window.archAddBat=function(){ miniPrompt('Nom du nouveau bâtiment :','',v=>{ v=(v||'').trim(); if(!v) return; archEns(); if(state.batiments.some(b=>b.nom.toLowerCase()===v.toLowerCase())){ miniAlert('Ce bâtiment existe déjà.'); return; } state.batiments.push({id:'B'+Date.now().toString(36),nom:v}); persist(); projParamEdit(); }); };
 window.archRenameBat=function(id){ archEns(); const b=state.batiments.find(x=>x.id===id); if(!b) return; miniPrompt('Nouveau nom du bâtiment :',b.nom,v=>{ v=(v||'').trim(); if(!v||v===b.nom) return; b.nom=v; persist(); projParamEdit(); }); };
 window.archDelBat=function(id){ archEns(); const b=state.batiments.find(x=>x.id===id); if(!b) return; if(state.batiments.length<2){ miniAlert('Il faut au moins un bâtiment.'); return; } if(nbOrder().some(n=>state.nivBat[n]===id)){ miniAlert('Ce bâtiment contient encore des niveaux : déplacez-les ou supprimez-les d’abord.'); return; } state.batiments=state.batiments.filter(x=>x.id!==id); persist(); projParamEdit(); };
+/* ===== Paramètres projet = écran d'accueil comme un smartphone : chaque rubrique est une « application » ===== */
+window.__paApp=window.__paApp||'';
+{ const cm0=window.closeModal; if(cm0&&!cm0.__pa){ const cm=function(){ window.__paApp=''; const w=document.getElementById('paWin'); if(w) w.remove(); return cm0.apply(this,arguments); }; cm.__pa=1; window.closeModal=cm; } }
+const PA_APPS=[['phases','🚦','Phases'],['archi','🏛','Architecture'],['lots','🧱','Gestion des lots'],['obj','🎯','Objectifs planning']];
+const PA_LOTS=[['CEA','🎨','Lots CEA','Corps d’état architecturaux'],['GO','🏗️','Lots gros œuvre','Gros œuvre'],['CC','🏠','Lots clos couvert','Clos et couvert'],['CET','⚡','Lots CET','Corps d’état techniques']];
+function paBtns(items,onclickFn){ return '<div class="pa-grid">'+items.map(x=>'<button type="button" class="pa-app" onclick="'+onclickFn+'(\''+x[0]+'\')"><span class="pa-ic">'+x[1]+'</span><span class="pa-lb">'+esc(x[2])+'</span></button>').join('')+'</div>'; }
+window.paOpen=function(k){ window.__paApp=k||''; projParamEdit(); };
+window.paBack=function(){ const k=window.__paApp||''; window.__paApp=k.indexOf(':')>0?k.split(':')[0]:''; projParamEdit(); };
+function paWinHtml(k,P,exe,o){
+  const seg=(key,opts,cur)=>'<div class="pa-seg">'+opts.map(x=>'<button type="button" class="'+(cur===x[0]?'on':'')+'" onclick="projSet(\''+key+'\',\''+x[0]+'\')">'+esc(x[1])+'</button>').join('')+'</div>';
+  if(k==='phases') return ['🚦 Phases','<div class="pa-f"><label>Phase du projet</label>'+seg('phase',PROJ_PHASES.map(x=>[x[0],x[1]]),P.phase)+'<small>'+esc((PROJ_PHASES.find(x=>x[0]===P.phase)||[])[2]||'')+'</small></div>'+(exe?'<div class="pa-f"><label>Étape en cours</label>'+seg('etape',PROJ_ETAPES,P.etape)+'<small>Étape de l’exécution : gros œuvre ou corps d’état secondaires</small></div>':'<p class="empty-note">En phase PRO, rien n’est traité pour l’instant : les étapes et le suivi par niveaux seront activés en phase EXE.</p>')];
+  if(k==='archi') return ['🏛 Architecture',archTreeHtml(o)];
+  if(k==='obj') return ['🎯 Objectifs planning','<div class="obj-box" id="objBox"><div class="field" style="max-width:260px;"><label>Date de fin d\'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div><div id="objNiveauDetail" style="overflow-x:auto"></div></div>'];
+  if(k==='lots') return ['🧱 Gestion des lots','<p class="empty-note" style="margin:0 0 10px">Les lots de base viennent de la bibliothèque. Vous pouvez en ajouter ou en retirer pour ce projet.</p>'+paBtns(PA_LOTS,'paOpenLots')];
+  if(k&&k.indexOf('lots:')===0){ const f=k.slice(5), F=PA_LOTS.find(x=>x[0]===f)||[f,'','Lots '+f]; window.__lotsOnly=f; return [F[1]+' '+F[2],(typeof lotsFramesHtml==='function'?lotsFramesHtml():'')]; }
+  return null; }
+window.paOpenLots=function(f){ window.__paApp='lots:'+f; projParamEdit(); };
 function projParamEdit(){
-  const P = projEns(), exe = P.phase==='exe';
-  const sel = (key, opts, cur)=>`<select style="width:100%" onchange="projSet('${key}',this.value)">${opts.map(x=>`<option value="${x[0]}" ${cur===x[0]?'selected':''}>${esc(x[1])}</option>`).join('')}</select>`;
-  const det = (list,cur)=>{ const x = list.find(k=>k[0]===cur); return x ? esc(x[x.length-1]) : ''; };
-  const row = (name, val, detail)=>`<tr style="border-top:1px solid var(--line)"><td style="padding:8px 8px; font-weight:600; white-space:nowrap; vertical-align:top">${name}</td><td style="padding:6px 8px; min-width:170px; vertical-align:top">${val}</td><td style="padding:8px 8px; font-size:12px; color:var(--ink-soft); vertical-align:top">${detail}</td></tr>`;
-  const o = nbOrder();
+  const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
+  const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
+  window.__lotsOnly=null; const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>🏗 Paramètres projet</h3>
-    <table style="width:100%; border-collapse:collapse; font-size:13.5px"><thead><tr style="text-align:left; background:var(--paper); font-size:12px; color:var(--ink-soft)"><th style="padding:6px 8px">Paramètre</th><th style="padding:6px 8px">Valeur</th><th style="padding:6px 8px">Détail</th></tr></thead><tbody>
-      ${row('Phase du projet', sel('phase', PROJ_PHASES, P.phase), det(PROJ_PHASES,P.phase))}
-      ${exe ? row('Étape en cours (EXE)', sel('etape', PROJ_ETAPES.map(x=>[x[0],x[1]]), P.etape), 'Étape de l’exécution : gros œuvre ou corps d’état secondaires') : ''}
-      ${exe ? row('Schéma d’enchaînement', sel('schema', PROJ_SCHEMAS, P.schema), det(PROJ_SCHEMAS,P.schema)) : ''}
-    </tbody></table>
-    ${exe?'':'<p class="empty-note" style="margin-top:8px">En phase PRO, rien n’est traité pour l’instant : les étapes et le suivi par niveaux seront activés en phase EXE.</p>'}
-    <div class="obj-box" id="objBox" style="margin-top:18px">
-      <h4 style="margin:0 0 8px; font-size:14px">🎯 Objectifs planning</h4>
-      <div class="field" style="max-width:260px;"><label>Date de fin d'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div>
-      <div id="objNiveauDetail" style="overflow-x:auto"></div>
-    </div>
-    ${archTreeHtml(o)}
-    ${typeof lotsFramesHtml==='function'?lotsFramesHtml():''}
-    <div class="modal-actions"><button class="primary" onclick="closeModal(); try{ renderAll(); }catch(e){}">Terminé</button></div>`);
-  nbRibBind(); try{ renderObjectifsPanel(); }catch(e){ console.error(e); }
+    <p class="empty-note" style="margin:0 0 14px">Touchez une application. Touchez en dehors pour revenir à ce menu.</p>
+    ${paBtns(PA_APPS,'paOpen')}`);
+  const w=k?paWinHtml(k,P,exe,o):null;
+  if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><b>'+w[0]+'</b><button type="button" class="pa-x" aria-label="Fermer" onclick="paBack()">×</button></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
+  try{ nbRibBind(); }catch(e){} try{ if(k==='obj') renderObjectifsPanel(); }catch(e){ console.error(e); }
 }
 /* Ruban des niveaux : appui long puis glisser pour changer l'ordre */
 window.nivGestSaveClose=function(ord){ state.perimetre=state.perimetre||{niveaux:[]}; state.perimetre.niveaux=ord; try{ nbApplyOrder(); }catch(e){} persist(); try{ closeModal(); }catch(e){} try{ renderAll(); }catch(e){} try{ clipToast('Niveaux enregistrés'); }catch(e){} };
@@ -19661,7 +19666,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  function lotHtml(l,i){ const cet=l.famille==='CET';
   return `<div class="lot-row" data-id="${E_(l.id)}"><button type="button" class="lot-n" title="Cliquez pour changer le numéro" onclick="lotNum('${E_(l.id)}')">${i+1}</button><b class="lot-nom" title="Cliquez pour modifier" onclick="lotRename('${E_(l.id)}')">${E_(l.nom)} <small>✎</small></b><button type="button" class="lot-x" title="Retirer ce lot" aria-label="Retirer ${E_(l.nom)}" onclick="lotDel('${E_(l.id)}')">✕</button></div>`; }
  window.lotsFramesHtml=function(){ const L=ensure();
-  return `<div id="lotsBox">${FAM.map(f=>{ const ls=L.map((l,i)=>[l,i]).filter(x=>x[0].famille===f[0]);
+  return `<div id="lotsBox">${FAM.filter(f=>!window.__lotsOnly||f[0]===window.__lotsOnly).map(f=>{ const ls=L.map((l,i)=>[l,i]).filter(x=>x[0].famille===f[0]);
    return `<div class="lot-fr" data-f="${f[0]}"><h4 class="lot-h"><button type="button" class="lot-ic" title="Replier / déplier" aria-expanded="${LFOLD.has(f[0])?'false':'true'}" onclick="lotFold('${f[0]}')">${LFOLD.has(f[0])?'▸':'▾'} ${f[3]}</button> ${E_(f[1])} <small>${E_(f[2])}</small></h4><div class="lot-body"${LFOLD.has(f[0])?' hidden':''}><div class="lot-list">${ls.map(x=>lotHtml(x[0],x[1])).join('')||'<p class="empty-note" style="margin:4px 0">Aucun lot</p>'}</div><button type="button" class="lot-add" onclick="lotAdd('${f[0]}')">＋ Ajouter un lot</button><div class="lot-lib" id="lotLib-${f[0]}" hidden></div>${f[0]==='CET'?cetVocab():''}</div></div>`; }).join('')}</div>`; };
  window.lotFold=function(f){ if(LFOLD.has(f)) LFOLD.delete(f); else LFOLD.add(f); const fr=document.querySelector('.lot-fr[data-f="'+f+'"]'); if(!fr) return; const b=fr.querySelector('.lot-body'), ic=fr.querySelector('.lot-ic'), x=LFOLD.has(f); if(b) b.hidden=x; if(ic){ ic.setAttribute('aria-expanded',x?'false':'true'); ic.textContent=(x?'▸':'▾')+' '+(FAM.find(q=>q[0]===f)||[])[3]; } };
  function cetVocab(){ const t=termes(); return `<details class="lot-voc"><summary>Vocabulaire des plans techniques (par étape de l’ouvrage)</summary><div class="lot-voc-g">${ETAPES.map(e=>`<button type="button" onclick="lotTerme('${e[0]}')"><span>${E_(e[1])}</span><b>${E_(t[e[0]])}</b></button>`).join('')}</div></details>`; }
@@ -19795,4 +19800,20 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
  });
 })();
 </script>
+
+<style id="paCss">
+#modalBody .pa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px 12px;padding:6px 4px 14px}
+.pa-app{display:flex;flex-direction:column;align-items:center;gap:7px;background:transparent !important;border:0 !important;box-shadow:none !important;color:inherit !important;cursor:pointer;padding:0 !important;min-height:0 !important}
+.pa-ic{width:64px;height:64px;border-radius:16px;background:#0E0E0E;border:1px solid #FFC400;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 6px 16px rgba(0,0,0,.28);transition:transform .12s}
+.pa-app:active .pa-ic{transform:scale(.93)}
+.pa-lb{font-size:12.5px;font-weight:600;text-align:center;line-height:1.2}
+#paWin{position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:max(12px,env(safe-area-inset-top)) 12px}
+#paWin .pa-card{width:min(680px,100%);max-height:86vh;display:flex;flex-direction:column;background:var(--card,#23282F);color:var(--ink,#F4F2EC);border:1px solid #FFC400;border-radius:22px;box-shadow:0 20px 50px rgba(0,0,0,.5);overflow:hidden}
+#paWin .pa-h{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.12);font-size:17px}
+#paWin .pa-x{border:0 !important;background:transparent !important;color:inherit !important;font-size:24px;cursor:pointer;min-height:0 !important}
+#paWin .pa-b{padding:14px 18px 20px;overflow:auto}
+.pa-f{margin-bottom:16px}.pa-f label{display:block;font-weight:600;margin-bottom:6px}.pa-f small{display:block;margin-top:6px;opacity:.7}
+.pa-seg{display:flex;gap:8px;flex-wrap:wrap}.pa-seg button{flex:1 1 140px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.25) !important;background:transparent !important;color:inherit !important;font-weight:600;cursor:pointer}
+.pa-seg button.on{background:#FFC400 !important;color:#0E0E0E !important;border-color:#FFC400 !important}
+</style>
 </body></html>
