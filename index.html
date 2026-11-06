@@ -3961,6 +3961,10 @@ function openPlanForm(src, w, h, nom){
 }
 function savePlan(){
   const f = planReadFields();
+  /* un seul document par indice : le premier indice (0) doit être déposé avant tout indice supérieur */
+  if(!window._gedLink && !planUpdateTarget && window.pjGreyForPlan){ const gr=window.pjGreyForPlan(f); if(gr){ const ind=window.pjFileInd(f.nom); const go=()=>{ window._gedLink=window.pjAdoptGrey(gr.id); savePlan(); };
+    if(ind===null||ind==='0'){ go(); return; }
+    miniConfirm('L’indice 0 de « '+(gr.nom||'document')+' » n’est pas déposé : l’indice '+ind+' ne peut pas être déposé avant. Déposer ce fichier dans l’indice 0 ?',go); return; } }
   const pl = Object.assign({id:uid('PL'), w:planPendingImg.w, h:planPendingImg.h, src:planPendingImg.src, texts:planPendingImg.texts||[], date:todayStr(), version:1}, f);
   state.plans.push(pl); planSel = pl.id; planPendingImg = null; planPendingLot = '';
   try{ if(window._gedLink){ const r=(state.ged||[]).find(x=>x.id===window._gedLink); if(r){ r.planId=pl.id; r.nom=pl.nom||r.nom; if(pl.niveau) r.niveau=pl.niveau; if(pl.lot) r.corps=pl.lot; if(pl.typeDoc) r.type=pl.typeDoc; r.indice=r.indice||'0'; r.date=todayISO(); r.statut='avis'; } window._gedLink=null; } }catch(e){}
@@ -7182,7 +7186,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v244</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v247</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -13356,9 +13360,9 @@ async function cauDocDl(id){
       W.querySelector('#stClr').onclick=()=>{ F[k]=[]; filt(k); }; W.querySelector('#stOk').onclick=lib; }
     function actions(){ draw('Associer une action','<div class="pa-grid">'+ACTS.map(a=>'<button type="button" class="pa-app" data-a="'+a[0]+'"><span class="pa-ic">'+a[1]+'</span><span class="pa-lb">'+a[0]+'</span></button>').join('')+'</div>',lib);
       W.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{ S.act=b.dataset.a; fin(); }); }
-    function fin(){ draw('Date de fin','<div style="text-align:center"><p style="font-weight:700;margin:0 0 4px">'+E(S.act)+' · '+E(S.sel.label)+'</p><input type="date" id="stD" value="'+E(S.fin)+'" style="font-size:18px;padding:8px 12px;border-radius:12px"></div><div class="ov-row"><button type="button" class="primary" id="stAdd">Valider · Ajouter l’étape</button></div>',actions);
+    function fin(){ draw(side==='avant'?'Date de fin':'Date de début au plus tôt','<div style="text-align:center"><p style="font-weight:700;margin:0 0 4px">'+E(S.act)+' · '+E(S.sel.label)+'</p><input type="date" id="stD" value="'+E(S.fin)+'" style="font-size:18px;padding:8px 12px;border-radius:12px"></div><div class="ov-row"><button type="button" class="primary" id="stAdd">Valider · Ajouter l’étape</button></div>',actions);
       W.querySelector('#stD').onchange=e=>{ S.fin=e.target.value; };
-      W.querySelector('#stAdd').onclick=()=>{ S.fin=W.querySelector('#stD').value; if(!S.fin){ miniAlert('Renseigne la date de fin.'); return; } const key=side==='avant'?'etapesAvant':'etapesApres'; o[key]=o[key]||[]; o[key].push({id:'ST'+Date.now().toString(36),ref:{k:S.sel.k,id:S.sel.id},label:S.sel.label,action:S.act,fin:S.fin}); try{ persist(); }catch(_){} back(); }; }
+      W.querySelector('#stAdd').onclick=()=>{ S.fin=W.querySelector('#stD').value; if(!S.fin){ miniAlert('Renseigne la date.'); return; } const key=side==='avant'?'etapesAvant':'etapesApres'; o[key]=o[key]||[]; o[key].push(Object.assign({id:'ST'+Date.now().toString(36),ref:{k:S.sel.k,id:S.sel.id},label:S.sel.label,action:S.act,fin:S.fin},side==='apres'?{debut:S.fin}:{})); try{ persist(); }catch(_){} back(); }; }
     close(); lib(); };
   window.pjOuvOpen=id=>{ const d=(typeof window.pjDocsList==='function'?window.pjDocsList():[]).find(x=>x.id===id); if(!d) return; cur=d; st={}; close(); home(); };
 })();
@@ -19540,9 +19544,21 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const R=DOCS().filter(d=>!d.planning).concat(GR).map(x=>Object.assign({},x,{code:docCode(x,pn)}));
   openModal('<button class="close-x" onclick="closeModal()">×</button><h3 style="padding-right:46px">Mettre à jour un document</h3><p class="pjd-sub2">Choisissez le document que vous voulez mettre à jour</p><div id="pjIdxPick"><table class="pjd-t2"><thead><tr><th>Code</th><th>Nom du document</th><th>Type de document</th><th>Niveau</th><th>Indice</th></tr></thead><tbody>'+(R.map(r=>'<tr data-pid="'+esc(r.id)+'"><td>'+esc(r.code||'')+'</td><td>'+esc(r.nom||'')+'</td><td>'+esc(r.docType||'')+'</td><td>'+esc(r.niveau||'')+'</td><td>'+esc(r.indice||'')+'</td></tr>').join('')||'<tr><td colspan="5" class="pjd-empty">Aucun document</td></tr>')+'</tbody></table></div>');
   document.querySelectorAll('#pjIdxPick tr[data-pid]').forEach(tr=>tr.onclick=()=>{ const id=tr.dataset.pid; closeModal(); setTimeout(()=>openFor(id),60); }); }
- function dropFiles(targetId){
+ /* le premier indice d'un document est 0 : on ne peut pas déposer un indice supérieur tant que l'indice 0 (ligne grise) n'est pas déposé */
+ const nrm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ const fileInd=n=>{ const m=/ind(?:ice)?[ _.-]?([A-Za-z]|\d+)(?=[ _.\-)]|$)/i.exec(String(n||'').replace(/\.[A-Za-z0-9]+$/,'')); return m?m[1].toUpperCase():null; };
+ function greyFor(file){ const nm=nrm(file.name), niv=(typeof planNiveauFromName==='function')?planNiveauFromName(file.name):null; const lots=(ST().lotsProjet||[]).filter(l=>{ const t=nrm(l.nom).split(/[^a-z0-9]+/).filter(w=>w.length>=4)[0]; return t&&nm.includes(t.slice(0,6)); }); if(!lots.length) return null;
+  const C=DOCS().filter(d=>d.auto&&!d.fichier&&!d.planning&&(!niv||d.niveau===niv)&&lots.some(l=>nrm(l.nom)===nrm(d.discipline))); if(C.length===1) return C[0]; const P=C.filter(d=>/^Plan /.test(d.docType||'')&&lots.some(l=>nrm(d.docType)===nrm('Plan '+l.nom))); return P.length===1?P[0]:null; }
+  window.pjFileInd=fileInd;
+ window.pjGreyForPlan=f=>{ const lot=nrm(f.lot); if(!lot||!f.niveau) return null; const C=DOCS().filter(d=>d.auto&&!d.fichier&&!d.planning&&d.niveau===f.niveau&&nrm(d.discipline)===lot&&(d.docType===f.typeDoc||nrm(d.docType)===nrm('Plan '+f.lot))); return C.length===1?C[0]:null; };
+ window.pjAdoptGrey=id=>{ const dd=DOCS().find(x=>x.id===id); if(dd) adoptAsGed(dd); return id; };
+ function dropFiles(targetId,pre){
   const f=document.createElement('input'); f.type='file'; f.multiple=!targetId;
-  f.onchange=async()=>{ const L=Array.from(f.files||[]); if(!L.length) return; const t=(typeof todayISO==='function'?todayISO():''); let n=0, planDone=false;
+  f.onchange=()=>run(Array.from(f.files||[]));
+  const outerT=targetId;
+  const run=async(L)=>{ if(!L.length) return; let tgt0=outerT, skip=new Set();
+   if(!outerT){ L.forEach(file=>{ const c=greyFor(file); if(!c) return; const ind=fileInd(file.name); if(ind===null||ind==='0'){ if(L.length===1) tgt0=c.id; } else { skip.add(file); miniConfirm('L’indice 0 de « '+(c.nom||'document')+' » n’est pas déposé : l’indice '+ind+' ne peut pas être déposé avant. Déposer ce fichier dans l’indice 0 ?',()=>dropFiles(c.id,[file])); } }); L=L.filter(x=>!skip.has(x)); if(!L.length) return; }
+   const targetId=tgt0; const t=(typeof todayISO==='function'?todayISO():''); let n=0, planDone=false;
    for(const file of L){ try{
      if(!planDone){ const td=targetId?findRow(targetId):null, ty=td?(td.ged?td.g.type:td.docType):''; if(isPlanFile(file,ty)){ planDone=true; const mm=/^(.*?)(?:\.([A-Za-z0-9]+))?$/.exec(file.name); let gid=targetId; if(targetId){ if(td&&!td.ged) adoptAsGed(DOCS().find(x=>x.id===targetId)); } else { gid='G'+Date.now().toString(36)+Math.random().toString(36).slice(2,5); gedRows().push({id:gid,niveau:FL.niv[0]||'',corps:'',type:'Plan de repérage',nom:mm[1],phase:'',indice:'0',date:t,statut:'avis',lien:'',liens:[]}); } const g=gedRows().find(x=>x.id===gid), pl=g&&gedPlanOf(g); planFlow(file,gid,pl?pl.id:null); continue; } }
      const ref=await storeFile(file); const m=/^(.*?)(?:\.([A-Za-z0-9]+))?$/.exec(file.name);
@@ -19550,7 +19566,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
      else { gedRows().push({id:'G'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),niveau:FL.niv[0]||'',corps:'',type:'',nom:m[1],phase:'',indice:'0',date:t,statut:'avis',lien:'',fichier:ref}); }
      n++; }catch(e){ console.error(e); toast(e.message||'Le fichier n’a pas pu être envoyé.'); } }
    try{ persist(); }catch(_){} if(n) toast(n+' document'+(n>1?'s':'')+(targetId?' mis à jour':' déposé'+(n>1?'s':''))); dbRender(); };
-  f.click();
+  if(pre) run(pre); else f.click();
  }
  function docClick(e){
   const m=e.target.closest('[data-mode]'); if(m){ e.stopPropagation(); if(m.dataset.mode!==mode) setMode(m.dataset.mode); return true; }
@@ -19660,6 +19676,13 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(kind==='doc'){ const L=DOCS().filter(d=>!d.planning).slice().reverse(), i=L.findIndex(d=>d.id===id), o=L[i]; if(!o) return null;
    const fin=eOf(o); if(!fin.nom) fin.nom='E'+(i+1);
    let deb; if(i>0){ deb=eOf(L[i-1]); if(!deb.nom) deb.nom='E'+i; } else { deb=o.etapeDebut=o.etapeDebut||{nom:'E0',tot:'',tard:''}; }
+   /* règles : début au plus tôt = plus grande des fins au plus tard des tâches d'avant ; fin au plus tard = plus petit des débuts au plus tôt des tâches d'après */
+   try{ const pr=[]; (o.etapesAvant||[]).forEach(e=>{ if(e.fin) pr.push(e.fin); });
+    (o.liens||[]).filter(l=>l.rel==='condition').forEach(l=>{ const d=L.find(x=>x.id===l.id); if(d){ const f=eOf(d); if(f.tard) pr.push(f.tard); } });
+    const es=pr.length?pr.reduce((a,b)=>a>b?a:b):''; if(es){ deb.tot=es; } deb.dTot=!!es;
+    const su=[]; (o.etapesApres||[]).forEach(e=>{ const d=e.debut||e.fin; if(d) su.push(d); });
+    L.forEach(d=>{ if(d!==o&&(d.liens||[]).some(l=>l.rel==='condition'&&l.id===o.id)){ const dd=(d.etape&&d.etape.tot)||(d.etapeDebut&&d.etapeDebut.tot); if(dd) su.push(dd); } });
+    const lf=su.length?su.reduce((a,b)=>a<b?a:b):''; if(lf){ fin.tard=lf; } fin.dTard=!!lf; }catch(e){ console.error(e); }
    return {o,deb,fin,label:o.nom||'Document',kind,id,tache:'T'+(i)+(i+1),fiche:()=>openDocFiche(id)}; }
   const t=taskById(id); if(!t) return null; t.mbf=t.mbf||{}; const L=state.tasks||[], i=L.indexOf(t), pr=taskById((t.dependances||[])[0]);
   const fin=t.mbf.etape=t.mbf.etape||{nom:'',tot:'',tard:''}; if(!fin.nom) fin.nom='E'+(i+1);
@@ -19683,7 +19706,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  function cercle(c,k){
   const e=c[k], titre=k==='deb'?'Départ (input)':'Fin (output)';
   openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">'+titre+'</div><h3 style="padding-right:46px">'+esc(c.label)+'</h3>'
-   +'<div class="pjC"><div class="pjC-h"><label>Étape</label><input data-v="nom" value="'+esc(e.nom||'')+'" placeholder="E0, E1…"></div><div class="pjC-l"><label>Au plus tôt</label><input type="date" data-v="tot" value="'+esc(e.tot||'')+'"></div><div class="pjC-r"><label>Au plus tard</label><input type="date" data-v="tard" value="'+esc(e.tard||'')+'"></div></div>'
+   +'<div class="pjC"><div class="pjC-h"><label>Étape</label><input data-v="nom" value="'+esc(e.nom||'')+'" placeholder="E0, E1…"></div><div class="pjC-l"><label>Au plus tôt'+(e.dTot?' (calculé)':'')+'</label><input type="date" data-v="tot" value="'+esc(e.tot||'')+'"'+(e.dTot?' disabled':'')+'></div><div class="pjC-r"><label>Au plus tard'+(e.dTard?' (calculé)':'')+'</label><input type="date" data-v="tard" value="'+esc(e.tard||'')+'"'+(e.dTard?' disabled':'')+'></div></div>'
    +'<p class="pjG-h" id="pjCm"></p><div class="pjG-b"><button type="button" class="pp-lnk" data-pe="retour">← Retour au planning</button>'+(k==='fin'?' <button type="button" class="pp-lnk" data-pe="suite">Créer l’étape suivante →</button>':'')+'</div>');
   const mb=document.getElementById('modalBody'); const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
   const mg=()=>{ const a=e.tot,b=e.tard; const m=mb.querySelector('#pjCm'); if(m) m.textContent=(a&&b)?('Marge : '+Math.round((new Date(b)-new Date(a))/864e5)+' j'+(b<a?' — au plus tard avant au plus tôt, à corriger':'')):'Marge : renseigne les deux dates'; }; mg();
