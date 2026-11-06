@@ -7176,7 +7176,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v230</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v231</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -19324,6 +19324,10 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    const ex=L.some(d=>d.docType===docType&&(d.niveau||'')===(niv||'')&&NK(d.discipline)===NK(disc))||G.some(g=>g.type===docType&&(g.niveau||'')===(niv||'')&&NK(g.corps)===NK(disc))||(S.plans||[]).some(p=>p.typeDoc===docType&&(p.niveau||'')===(niv||'')&&NK(p.lot)===NK(disc));
    if(ex) return; ch=true;
    L.push(base({nom:docType+(niv?' · '+niv:'')+(withNiv?' · '+disc:''),docType,niveau:niv||'',discipline:disc})); };
+  /* architecture : minimum pour tout projet (toiture, façade, plan d'étage par niveau) + un plan par niveau pour chaque lot CEA créé */
+  addAuto('Plan de toiture','','Architecture'); addAuto('Plan de façade','','Architecture');
+  NV.forEach(n=>{ const T=['Plan d’étage','Plan de repérage','Plan de niveau']; const ex=L.some(d=>d.niveau===n&&T.includes(d.docType)&&(!d.discipline||NK(d.discipline)==='architecture'))||G.some(g=>g.niveau===n&&T.includes(g.type||'Plan de niveau'))||(S.plans||[]).some(p=>p.niveau===n&&T.includes(p.typeDoc||'Plan de niveau')); if(!ex){ addAuto('Plan d’étage',n,'Architecture'); } });
+  LO.filter(l=>l.famille==='CEA'&&NK(l.nom)!=='architecture').forEach(l=>{ NV.forEach(n=>addAuto('Plan '+l.nom,n,l.nom)); });
   if(hasF('GO')) NV.forEach(n=>{ addAuto('Plan de coffrage',n,'Gros œuvre'); addAuto('Plan de ferraillage',n,'Gros œuvre'); });
   if(hasF('CC')) NV.forEach(n=>{ addAuto('Plan de démolition extérieur',n,'Clos et couvert'); addAuto('Plan d’étanchéité',n,'Clos et couvert'); });
   LO.filter(l=>l.famille==='CET').forEach(l=>{ NV.forEach(n=>{ addAuto('Plan LT',n,l.nom,1); addAuto('Plan de distribution',n,l.nom,1); addAuto('Plan de terminaux',n,l.nom,1); }); addAuto('Synoptique','',l.nom,1); });
@@ -19332,11 +19336,11 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   try{ gedSyncPlans(); }catch(_){} ensurePlanning(); try{ ensureAutoDocs(); }catch(e){ console.error(e); } const cs=dcolsOn(), P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
   const GR=(typeof gedRows==='function'?gedRows():[]).filter(g=>!g.snapSrc).map(g=>({id:g.id,ged:true,nom:g.nom||'',docType:g.type||'',niveau:g.niveau||'',discipline:g.corps||'',phase:g.phase||'',indice:g.indice||'',etat:g.statut||'',date:g.date||'',fichier:(g.fichier&&g.fichier.name)||'',taille:(g.fichier&&g.fichier.size)||0,format:(g.fichier&&g.fichier.name&&(/\.([A-Za-z0-9]+)$/.exec(g.fichier.name)||[])[1]||'').toUpperCase(),emetteur:'',periode:'',zone:'',type:'',numero:'',liens:g.liens||[],versions:g.versions||[],_g:g}));
   let R=DOCS().concat(GR).map(x=>Object.assign({},x,{code:docCode(x,pn),projet:pn,batiment:(x.batId&&((state.batiments||[]).find(q=>q.id===x.batId)||{}).nom)||batOf(x.niveau),nature:x.ged?'architecture':natOf(x)})).filter(passD);
-  try{ const MQ=(ST().lotsMasques||[]), LO2=(ST().lotsProjet||[]).map(l=>String(l.nom).toLowerCase().trim()); if(MQ.length) R=R.filter(x=>{ const k=String(x.discipline||'').toLowerCase().trim(); return !k||LO2.includes(k)||!MQ.includes(k); }); }catch(_){}
+  try{ const MQ=(ST().lotsMasques||[]), LO2=(ST().lotsProjet||[]).map(l=>String(l.nom).toLowerCase().trim()); if(MQ.length) R=R.filter(x=>{ const k=String(x.discipline||'').toLowerCase().trim(); return !k||k==='architecture'||LO2.includes(k)||!MQ.includes(k); }); }catch(_){}
   if(FL.q){ const q=FL.q.toLowerCase(); R=R.filter(x=>[x.code,x.nom,x.docType,x.niveau,x.discipline,x.phase,x.indice,x.fichier].join(' ').toLowerCase().includes(q)); }
   if(DSORT&&cs.includes(DSORT.k)){ const k=DSORT.k, s=DSORT.d; R.sort((a,b)=>(k==='discipline'&&window.lotsApi?(window.lotsApi.rank(a[k])-window.lotsApi.rank(b[k])):String(a[k]||'').localeCompare(String(b[k]||''),'fr',{numeric:true}))*s); }
   else { const BT=(state.batiments||[]).map(b=>String(b.nom||'')), NO=(typeof nbOrder==='function'?nbOrder():(ST().niveaux||[])), DO=Array.isArray(state.docOrder)?state.docOrder:[];
-   const bi=x=>{ const i=BT.indexOf(String(x.batiment||'')); return i<0?1e6:i; }, ni=x=>{ const i=NO.indexOf(x.niveau); return i<0?1e6:i; }, li=x=>window.lotsApi?window.lotsApi.rank(x.discipline):0, di=x=>{ const i=DO.indexOf(x.id); return i<0?1e9:i; };
+   const bi=x=>{ const i=BT.indexOf(String(x.batiment||'')); return i<0?1e6:i; }, ni=x=>{ const i=NO.indexOf(x.niveau); return i<0?1e6:i; }, li=x=>String(x.discipline||'').toLowerCase().trim()==='architecture'?-1:(window.lotsApi?window.lotsApi.rank(x.discipline):0), di=x=>{ const i=DO.indexOf(x.id); return i<0?1e9:i; };
    R.sort((a,b)=>bi(a)-bi(b)||ni(a)-ni(b)||li(a)-li(b)||di(a)-di(b)); }
   R=groupDocs(R);
   R.forEach(r=>{ let ps=''; if(r.ged){ try{ ps=gedPlanSrc(r._g)||''; }catch(_){} } r._nf=!r.planning&&!r.fichier&&!ps; r._subs=subsOf(r); });
