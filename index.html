@@ -7197,7 +7197,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v256</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v257</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -19147,7 +19147,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const b=document.getElementById('pjViewBtn'); if(b.dataset.moved) return;
   if(document.getElementById('pjPop')){ popClose(); return; }
   popOpen(b,'<div class="pp-t">Vue</div><button type="button" class="pp-i'+(view==='table'?' on':'')+'" data-v="table">'+ICO.tab+'<span>Bibliothèque du projet</span></button><button type="button" class="pp-i'+(view==='plan'?' on':'')+'" data-v="plan">'+ICO.map+'<span>Plans</span></button>',d=>{
-   d.querySelectorAll('[data-v]').forEach(x=>x.onclick=()=>{ popClose(); setView(x.dataset.v); }); });
+   d.querySelectorAll('[data-v]').forEach(x=>x.onclick=()=>{ popClose(); const v=x.dataset.v; if(v==='table'&&window.pjViewFlow){ window.pjViewFlow(r=>{ FL.lot=r.lot; FL.bat=r.bat; FL.niv=r.niv; saveFl(); setView('table'); try{ filtDraw(); dbRender(); }catch(_){} }); } else setView(v); }); });
  }
  /* ---------- changement de vue ---------- */
  function dbEl(){ let d=document.getElementById('pjDb'); if(!d){ d=document.createElement('div'); d.id='pjDb'; document.body.appendChild(d); d.addEventListener('click',dbClick); } return d; }
@@ -20296,6 +20296,26 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
       w.querySelectorAll('.pa-app').forEach(b=>b.onclick=()=>act(+b.dataset.i));
     }
     function resolve(){ const c=rowsOf(); if(!c.length){ close(); try{ miniAlert('Aucun document pour ce choix.'); }catch(_){} return; } if(c.length===1){ close(); onPick(c[0].id); return; } cand=c; step='doc'; draw(); }
+    draw();
+  };
+  window.pjViewFlow=function(apply){
+    const bats=(state.batiments||[]).filter(b=>b&&b.id), nivB=n=>{ const id=(state.nivBat||{})[n]; return id||(bats[0]&&bats[0].id)||''; };
+    const S={fam:null,lot:null,bat:null,niv:null}; let step='fam'; const hist=[];
+    function abort(){ close(); }
+    function back(){ if(!hist.length){ abort(); return; } step=hist.pop(); draw(); }
+    function go(n){ hist.push(step); step=n; draw(); }
+    function done(){ close(); let lots=[]; if(S.fam==='ALL') lots=[]; else if(S.lot) lots=[S.lot]; else { lots=lotsOf(S.fam).map(l=>l.nom); if(S.fam==='CEA') lots.unshift('Architecture'); } apply({lot:lots,bat:S.bat?[S.bat.nom]:[],niv:S.niv?[S.niv]:[]}); }
+    function draw(){
+      let w=document.getElementById('dwWin'); if(!w){ w=document.createElement('div'); w.id='dwWin'; document.body.appendChild(w); w.addEventListener('pointerdown',e=>{ if(e.target===w){ e.preventDefault(); back(); } }); }
+      let title,items,act;
+      if(step==='fam'){ title='📂 Corps d’état'; items=[['🗂','Tous les corps d’état']].concat(FAMS.map(f=>[f[1],f[2]])); act=i=>{ if(i===0){ S.fam='ALL'; S.lot=null; go('bat'); } else { S.fam=FAMS[i-1][0]; go('lot'); } }; }
+      else if(step==='lot'){ const F=FAMS.find(f=>f[0]===S.fam), ls=lotsOf(S.fam); const LL=(S.fam==='CEA'?[{nom:'Architecture'}]:[]).concat(ls); title=F[1]+' '+F[2]; items=[['🗂','Tous les lots']].concat(LL.map(l=>{ let ic='🗂'; try{ ic=l.nom==='Architecture'?'🏛':metierIcon({nom:l.nom}); }catch(_){} return [ic,l.nom]; })); act=i=>{ S.lot=i?LL[i-1].nom:null; go('bat'); }; }
+      else if(step==='bat'){ title='🏢 Bâtiment'; items=[['🏢','Tous les bâtiments']].concat(bats.map(b=>['🏢',b.nom])); act=i=>{ S.bat=i?bats[i-1]:null; S.niv=null; if(i) go('niv'); else done(); }; }
+      else { title='🏬 Niveau'; let N=[]; try{ N=nbOrder(); }catch(_){ N=state.niveaux||[]; } N=N.filter(n=>!S.bat||nivB(n)===S.bat.id); items=[['🏬','Tous les niveaux']].concat(N.map(n=>['🏬',n])); act=i=>{ S.niv=i?N[i-1]:null; done(); }; }
+      w.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><button type="button" id="dwBk" aria-label="Retour" title="Retour">←</button><b>'+E(title)+'</b><button type="button" id="dwX" aria-label="Fermer">×</button></div><div class="pa-b">'+grid(items)+'</div></div>';
+      w.querySelector('#dwBk').onclick=back; w.querySelector('#dwX').onclick=abort;
+      w.querySelectorAll('.pa-app').forEach(b=>b.onclick=()=>act(+b.dataset.i));
+    }
     draw();
   };
   window.__pgWiz=function(doc,done,cancel){
