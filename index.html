@@ -3933,6 +3933,8 @@ const ARC4=[['Perspective','bâtiment'],['Plan d’étage','niveau'],['Détail',
 function normTD(x){ return (!x||x==='Plan de niveau')?'Plan d’étage':x; }
 function arcTypeOpts(cur){ cur=normTD(cur); let A=[],T=[]; try{ A=ARC4.map(x=>x[0]); T=window.pjTechTypes?window.pjTechTypes():[]; }catch(e){} if(!A.length) A=['Plan de masse','Plan de niveau','Plan de toiture','Plan de façades','Plan de pièce / fiche de local']; const o=x=>{ const k=ARC4.find(y=>y[0]===x); return `<option value="${esc(x)}" ${x===cur?'selected':''}>${esc(x)}${k?' · '+esc(k[1]):''}</option>`; }; return '<optgroup label="Architecture">'+A.map(o).join('')+'</optgroup>'+(T.length?'<optgroup label="Ingénierie">'+T.map(o).join('')+'</optgroup>':'')+((A.concat(T)).includes(cur)?'':o(cur)); }
 const CE_LIST=['Architecture','Structure','Clos et couvert','CET'];
+function planLotNames(cur){ let a=[]; try{ a=window.lotsApi.ensure().map(l=>l.nom); }catch(_){} (state.zones||[]).forEach(z=>{ if(!a.some(x=>String(x).toLowerCase()===String(z).toLowerCase())) a.push(z); }); if(cur&&!a.includes(cur)) a.push(cur); return a; }
+function planLinkDefaults(){ const r=window._gedLink?(state.ged||[]).find(x=>x.id===window._gedLink):null; if(!r) return {}; const lot=r.corps||''; let ce=''; try{ const l=window.lotsApi.ensure().find(q=>String(q.nom).toLowerCase()===String(lot).toLowerCase()); const f=(l&&l.famille)||(lot?window.lotsApi.famOf(lot):'CEA'); ce={CEA:'Architecture',GO:'Structure',CC:'Clos et couvert',CET:'CET'}[f]||'Architecture'; }catch(_){} return {lot, ce, typeDoc:r.type&&r.type!=='Plan de repérage'?r.type:'', niveau:r.niveau||''}; }
 function planFormFields(v){
   return `<div class="field"><label>Nom du plan</label><input type="text" id="pl-nom" value="${esc(v.nom||'Plan')}"></div>
     <div class="field"><label>Bâtiment</label><select id="pl-bat" onchange="planFormBatChanged(this)">${planBatOptions(v.batiment||'')}</select></div>
@@ -3940,7 +3942,7 @@ function planFormFields(v){
     <div class="field"><label>Corps d’état</label><select id="pl-ce">${CE_LIST.map(x=>`<option value="${x}" ${x===(v.ce||'Architecture')?'selected':''}>${x}</option>`).join('')}</select></div>
     <div class="field"><label>Type de document</label><select id="pl-typedoc">${arcTypeOpts(v.typeDoc)}</select></div>
     <div class="field"><label>Zone (facultatif)</label><select id="pl-zone">${planZoneOptions(v.niveau, v.zoneId||'')}</select></div>
-    <div class="field"><label>Lot</label><select id="pl-lot"><option value="">— Sans lot —</option>${(state.zones||[]).map(z=>`<option value="${esc(z)}" ${z===v.lot?'selected':''}>${esc(z)}</option>`).join('')}</select></div>`;
+    <div class="field"><label>Lot</label><select id="pl-lot"><option value="">— Sans lot —</option>${planLotNames(v.lot).map(z=>`<option value="${esc(z)}" ${z===v.lot?'selected':''}>${esc(z)}</option>`).join('')}</select></div>`;
 }
 function planReadFields(){
   const b = document.getElementById('pl-bat').value;
@@ -3952,7 +3954,7 @@ function openPlanForm(src, w, h, nom){
   planPendingImg = {src, w, h};
   const detNiv = planNiveauFromName(nom);
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>Nouveau plan</h3>
-    ${planFormFields({nom:nom||'Plan', niveau:detNiv||travauxNiveauActif||state.niveaux[0], lot:planPendingLot})}
+    ${(()=>{ const D=planLinkDefaults(); return planFormFields({nom:nom||'Plan', niveau:D.niveau||detNiv||travauxNiveauActif||state.niveaux[0], lot:D.lot||planPendingLot, ce:D.ce, typeDoc:D.typeDoc}); })()}
     ${detNiv?`<p class="empty-note" style="color:var(--moss)">✔ Niveau <strong>${esc(detNiv)}</strong> reconnu d'après le nom du fichier.</p>`:`<p class="empty-note">Niveau non reconnu d'après le nom du fichier : choisissez-le.</p>`}
     <p class="empty-note">${w}×${h} px · environ ${Math.round(src.length*0.75/1024)} Ko</p>
     <div class="modal-actions"><button class="primary" onclick="savePlan()">Ajouter le plan</button><button class="ghost" onclick="closeModal()">Annuler</button></div>`);
@@ -3961,7 +3963,7 @@ function savePlan(){
   const f = planReadFields();
   const pl = Object.assign({id:uid('PL'), w:planPendingImg.w, h:planPendingImg.h, src:planPendingImg.src, texts:planPendingImg.texts||[], date:todayStr(), version:1}, f);
   state.plans.push(pl); planSel = pl.id; planPendingImg = null; planPendingLot = '';
-  try{ if(window._gedLink){ const r=(state.ged||[]).find(x=>x.id===window._gedLink); if(r){ r.planId=pl.id; r.nom=pl.nom||r.nom; if(pl.niveau) r.niveau=pl.niveau; r.indice=r.indice||'A'; r.date=todayISO(); r.statut='avis'; } window._gedLink=null; } }catch(e){}
+  try{ if(window._gedLink){ const r=(state.ged||[]).find(x=>x.id===window._gedLink); if(r){ r.planId=pl.id; r.nom=pl.nom||r.nom; if(pl.niveau) r.niveau=pl.niveau; if(pl.lot) r.corps=pl.lot; if(pl.typeDoc) r.type=pl.typeDoc; r.indice=r.indice||'0'; r.date=todayISO(); r.statut='avis'; } window._gedLink=null; } }catch(e){}
   persist(); closeModal(); renderPlans(); renderAll(); wdOffer(pl.id);
 }
 function planEditInfo(id){
@@ -7180,7 +7182,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v239</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v241</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -19318,6 +19320,13 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  const batOf=n=>{ const id=(state.nivBat||{})[n]; const b=(state.batiments||[]).find(q=>q.id===id); return b?b.nom:''; };
  const batCode=n=>{ if((state.batiments||[]).length<2) return ''; const nm=batOf(n); if(!nm) return ''; const m=/(\d+)\s*$/.exec(nm); return m?'B'+m[1]:nm.replace(/[^A-Za-z0-9]/g,'').slice(0,3).toUpperCase(); };
  /* codification : projet - phase - bâtiment - niveau - émetteur - zone - discipline - type - n° - indice */
+ /* fin prévue = fin des antécédents (documents liés « condition », sinon le document précédent) + durée */
+ function docFin(doc,seen){ seen=seen||new Set(); if(seen.has(doc.id)) return ''; seen.add(doc.id); const A=DOCS().filter(d=>!d.planning);
+  let preds=(doc.liens||[]).filter(l=>l.rel==='condition').map(l=>A.find(d=>d.id===l.id)).filter(Boolean);
+  if(!preds.length){ const L=A.slice().reverse(), i=L.findIndex(d=>d.id===doc.id); if(i>0) preds=[L[i-1]]; }
+  let start=''; preds.forEach(p=>{ const e=docFin(p,seen)||p.dateFin||p.date||''; if(e&&e>start) start=e; });
+  if(!start){ start=(doc.etapeDebut&&doc.etapeDebut.tot)||doc.date||todayISO(); }
+  const n=parseInt(doc.duree,10); if(!(n>=0)) return start&&doc.duree!=null&&doc.duree!==''?start:''; return addDays(start,n); }
  const lotSoc=nom=>{ const k=String(nom||'').toLowerCase().trim(); const l=(ST().lotsProjet||[]).find(q=>String(q.nom).toLowerCase().trim()===k); return (l&&l.societe)||''; };
  const docCode=(x,pn)=>[pn,x.phase,batCode(x.niveau),x.niveau,lotSoc(x.discipline)||x.emetteur,x.periode,x.zone,x.discipline,x.type,x.numero,x.indice].filter(Boolean).join('-');
  const fsz=n=>!n?'':(n>1048576?(n/1048576).toFixed(1)+' Mo':Math.max(1,Math.round(n/1024))+' Ko');
@@ -19789,12 +19798,12 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">Fiche de document</div><h3 style="padding-right:46px">'+esc(doc.nom||'Document')+'</h3><div class="field pjdf-nat"><label>Nature du document</label><select data-nat="1">'+NAT.map(n=>'<option value="'+n[0]+'"'+(natOf(doc)===n[0]?' selected':'')+'>'+esc(n[1])+'</option>').join('')+'</select></div><div class="tf-grid pjdf">'
    +'<section class="tf-box">'+f('nom','Document')+sel('docType','Type de document',(()=>{ let L=docTypes().map(x=>[x[0],x[0]]); try{ const tl=window.lotsApi&&window.lotsApi.typesFor(doc.discipline); if(tl){ L=tl.map(x=>[x,x]); if(doc.docType&&!tl.includes(doc.docType)) L.push([doc.docType,doc.docType]); } }catch(_){} return L; })())+'<div class="field"><label>Ouvrages</label><button type="button" class="pjOuvBtn" data-ouv="1"><span class="pjOuvIc">🧰</span><span>Ouvrages</span><b>'+(window.pjOuvCount?window.pjOuvCount(doc):0)+'</b></button></div>'+sel('niveau','Niveau',(S.niveaux||[]).map(n=>[n,n]))+'</section>'
    +'<section class="tf-box">'+'<div class="field"><label>Lot</label><input type="text" data-df="discipline" data-lotpick="1" placeholder="Choisir ou créer un lot" value="'+esc(doc.discipline||'')+'"></div>'+'<div class="field"><label>Émetteur</label><div class="pjdf-v">'+esc(lotSoc(doc.discipline)||'—')+'</div></div><div class="field"><label>Type (code)</label><div class="pjdf-v">'+esc(docCode(doc,(window.PILOTAGE_PROJET||{}).nom||(S.projet&&S.projet.nom)||''))+'</div></div></section>'
-   +'<section class="tf-box"><button type="button" class="pjPlan" data-planif="1">'+(window.pjPlanLabel?window.pjPlanLabel('doc',doc.id):'<b>Planifier</b>')+'</button>'+f('date','Date','date')+f('indice','Indice')+sel('etat','État',Object.keys(DET).map(k=>[k,DET[k]]))+f('phase','Phase')+f('periode','Période')+(doc.planning?'<p class="tf-soon">Le planning est la somme des documents : '+DOCS().filter(q=>!q.planning).length+' ouvrage(s), '+(DOCS().filter(q=>!q.planning).length+1)+' étape(s) (E0 à En).</p>':'')+'</section>'
+   +'<section class="tf-box"><button type="button" class="pjPlan" data-planif="1">'+(window.pjPlanLabel?window.pjPlanLabel('doc',doc.id):'<b>Planifier</b>')+'</button>'+'<div class="field"><label>Durée (jours)</label><input type="number" min="0" step="1" data-df="duree" value="'+esc(doc.duree==null?'':doc.duree)+'"></div><div class="field"><label>Fin prévue</label><div class="pjdf-v">'+esc((()=>{ const e=docFin(doc); return e?frDate(e):'—'; })())+'</div></div>'+f('indice','Indice')+sel('etat','État',Object.keys(DET).map(k=>[k,DET[k]]))+f('phase','Phase')+f('periode','Période')+(doc.planning?'<p class="tf-soon">Le planning est la somme des documents : '+DOCS().filter(q=>!q.planning).length+' ouvrage(s), '+(DOCS().filter(q=>!q.planning).length+1)+' étape(s) (E0 à En).</p>':'')+'</section>'
    +'<section class="tf-box"></section>'
    +'<section class="tf-box"><h4 class="tf-t">Pièce jointe · indices</h4>'+histHtml(doc,doc.fichier)+'<button type="button" class="pjd-chg" data-charger="1">⬆ Mettre à jour</button></section>'+linksSec(id)+'</div>');
   const mb=document.getElementById('modalBody'); const bd=mb.querySelector('.modal-date-etat'); if(bd) bd.remove();
   const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
-  mb.querySelectorAll('[data-df]').forEach(i=>i.onchange=()=>{ const k=i.dataset.df; doc[k]=i.value.trim?i.value.trim():i.value; if(k==='docType'){ const q=OUV.find(x=>x.d===doc.docType); doc.ouvrage=q?q.n:''; doc.spec=''; const a=mb.querySelector('#pjdfO'); if(a) a.textContent=doc.ouvrage||'—'; const s=mb.querySelector('#pjdfS'); if(s) s.textContent=''; } try{ persist(); }catch(_){} dbRender(); });
+  mb.querySelectorAll('[data-df]').forEach(i=>i.onchange=()=>{ const k=i.dataset.df; doc[k]=i.value.trim?i.value.trim():i.value; if(k==='duree'){ doc.dateFin=docFin(doc)||''; setTimeout(()=>openDocFiche(id),30); } if(k==='docType'){ const q=OUV.find(x=>x.d===doc.docType); doc.ouvrage=q?q.n:''; doc.spec=''; const a=mb.querySelector('#pjdfO'); if(a) a.textContent=doc.ouvrage||'—'; const s=mb.querySelector('#pjdfS'); if(s) s.textContent=''; } try{ persist(); }catch(_){} dbRender(); });
   const nt=mb.querySelector('[data-nat]'); if(nt) nt.onchange=()=>{ doc.nature=nt.value; try{ persist(); }catch(_){} dbRender(); openDocFiche(id); };
   mb.querySelectorAll('[data-lotpick]').forEach(i=>{ if(window.lotsApi) window.lotsApi.picker(i); let v0=i.value; i.addEventListener('change',()=>{ setTimeout(()=>{ if(i.value!==v0){ doc.discipline=i.value.trim(); try{ persist(); }catch(_){} dbRender(); openDocFiche(doc.id); } },60); }); });
   const chg=mb.querySelector('[data-charger]'); if(chg) chg.onclick=()=>bumpFile(id); const lkb=mb.querySelector('[data-links]'); if(lkb) lkb.onclick=()=>openLinks(id);
