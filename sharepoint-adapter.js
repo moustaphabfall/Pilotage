@@ -10,7 +10,7 @@
   let app = null, acct = null, SCOPES = BASE_SCOPES;   /* Sites.ReadWrite.All demandé seulement si on choisit un site SharePoint */
   const esc = t=>String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const css = document.createElement('style');
-  css.textContent = '#pgSp{position:fixed;inset:0;z-index:99999;background:rgba(22,35,43,.85);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif}#pgSp .box{background:#fff;border-top:6px solid #F2A900;border-radius:10px;padding:22px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:10px;max-height:90vh;overflow:auto}#pgSp h2{margin:0;font-size:20px}#pgSp button{padding:12px;border:0;border-radius:6px;background:#CC5F00;color:#fff;font-size:16px;font-weight:600;cursor:pointer}#pgSp button.l{background:#eee;color:#222;font-weight:500;text-align:left}#pgSp .e{color:#B4432D;font-size:13px}#pgSp small{color:#666}#pgSp input{padding:11px;border:1px solid #ccc;border-radius:6px;font-size:16px}';
+  css.textContent = '#pgSp{position:fixed;inset:0;z-index:2147483000;background:rgba(14,14,14,.6);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));font-family:system-ui,-apple-system,sans-serif}#pgSp .box{position:relative;background:#fff;border-radius:22px;padding:22px 18px 18px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)}#pgSp h2{margin:0 36px;font-size:18px;text-align:center}#pgSp .x{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:#eee;color:#222;font-size:20px;padding:0}#pgSp .g{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}#pgSp .t{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;color:#222;font-size:13px;font-weight:500;padding:6px}#pgSp .t i{font-style:normal;width:64px;height:64px;border-radius:16px;background:#0E0E0E;color:#FFC400;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 4px 12px rgba(0,0,0,.2)}#pgSp button{min-height:44px;padding:12px;border:0;border-radius:12px;background:#CC5F00;color:#fff;font-size:16px;font-weight:600;cursor:pointer}#pgSp button.l{background:#eee;color:#222;font-weight:500;text-align:left}#pgSp .e{color:#B4432D;font-size:13px}#pgSp small{color:#666;text-align:center}#pgSp input{padding:11px;border:1px solid #ccc;border-radius:10px;font-size:16px}';
   document.head.appendChild(css);
   function screen(html){ let d = document.getElementById('pgSp'); if(!d){ d = document.createElement('div'); d.id = 'pgSp'; document.body.appendChild(d); } d.innerHTML = html; return d; }
   const close = ()=>{ const d = document.getElementById('pgSp'); if(d) d.remove(); };
@@ -47,9 +47,8 @@
     await connect();
     for(;;){
       const choix = await new Promise(done=>{
-        const d = screen('<div class="box"><h2>☁ Hébergement Microsoft</h2><small>Compte connecté : '+esc(acct.username)+'</small><p>Où enregistrer les données du projet ?</p>'
-          +'<button id="od">☁ Dans mon OneDrive (recommandé : aucun réglage)</button>'
-          +'<button class="l" id="sp">🏢 Dans un site SharePoint de mon entreprise</button><button class="l" id="no">Annuler</button><div class="e" id="e"></div></div>');
+        const d = screen('<div class="box"><button class="x" id="no" aria-label="Fermer">×</button><h2>Hébergement</h2><small>'+esc(acct.username)+'</small>'
+          +'<div class="g"><button class="t" id="od"><i>☁</i>OneDrive</button><button class="t" id="sp"><i>🏢</i>SharePoint</button></div><div class="e" id="e"></div></div>');
         d.querySelector('#od').onclick = ()=>done('od'); d.querySelector('#sp').onclick = ()=>done('sp'); d.querySelector('#no').onclick = ()=>done(null);
       });
       if(!choix){ close(); return null; }
