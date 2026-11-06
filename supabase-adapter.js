@@ -46,13 +46,13 @@
       const draw = (err, good)=>{
         const msg = `<div class="e" ${good?'style="color:#2a7a3b"':''}>${err||''}</div>`;
         const d = mode==='in'
-          ? screen(`<form><h2>🏗 Pilotage chantier</h2><small>Connexion</small>
+          ? screen(`<form><h2>🏗 Bina</h2><small>Connexion</small>
           <input name="email" type="email" placeholder="E-mail" required autocomplete="email"><input name="pw" type="password" placeholder="Mot de passe" minlength="8" required autocomplete="current-password">
           ${social.length?social.map(k=>'<button type="button" class="l" data-oa="'+k+'">'+SOCIAL[k]+'</button>').join('')+'<small style="text-align:center">ou avec votre identifiant :</small>':''}
           ${msg}<button type="submit">Se connecter</button>
           <button type="button" class="l" id="pgFg">Mot de passe oublié ?</button>
           <small style="text-align:center;opacity:.8">L’accès se fait sur invitation : demandez-le à votre administrateur.</small></form>`)
-          : screen(`<form><h2>🏗 Pilotage chantier</h2><small>Mot de passe oublié</small>
+          : screen(`<form><h2>🏗 Bina</h2><small>Mot de passe oublié</small>
           <p style="margin:0;font-size:13.5px">Saisissez votre e-mail : vous recevrez un lien pour choisir un nouveau mot de passe.</p>
           <input name="email" type="email" placeholder="E-mail" required autocomplete="email" value="${esc(lastEmail)}">
           ${msg}<button type="submit">Envoyer le lien</button>
@@ -85,7 +85,7 @@
     const err0 = await send();
     return new Promise(res=>{
       let timer = null;
-      const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>✉ Vérifiez votre identité</h2><p>Pour protéger votre compte <b>Pilotage Chantier</b>, un e-mail de vérification a été envoyé à <b>'+esc(email)+'</b>. Cliquez sur le lien qu’il contient : l’accès s’ouvre ensuite automatiquement.</p><small>Nécessaire à la première connexion et à chaque nouvel appareil.</small><div class="e" id="pgVe">'+(err0?esc(err0.message):'')+'</div><button class="l" id="pgVr">Renvoyer l’e-mail</button><button class="l" id="pgVb">Retour</button></div>');
+      const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Bina</div><h2>✉ Vérifiez votre identité</h2><p>Pour protéger votre compte <b>Bina</b>, un e-mail de vérification a été envoyé à <b>'+esc(email)+'</b>. Cliquez sur le lien qu’il contient : l’accès s’ouvre ensuite automatiquement.</p><small>Nécessaire à la première connexion et à chaque nouvel appareil.</small><div class="e" id="pgVe">'+(err0?esc(err0.message):'')+'</div><button class="l" id="pgVr">Renvoyer l’e-mail</button><button class="l" id="pgVb">Retour</button></div>');
       d.querySelector('#pgVr').onclick = async ()=>{ const e = await send(); d.querySelector('#pgVe').textContent = e ? e.message : 'E-mail renvoyé.'; };
       d.querySelector('#pgVb').onclick = ()=>{ clearInterval(timer); res(false); };
       timer = setInterval(async()=>{ try{ const {data:ok} = await sb.rpc('appareil_ok', {p_email:email, p_dev:DEV}); if(ok===true){ clearInterval(timer); const {error} = await sb.auth.signInWithPassword({email, password:pw}); if(error){ d.querySelector('#pgVe').textContent = error.message; return; } res(true); } }catch(e){} }, 3000);
@@ -96,10 +96,10 @@
   async function passwordUI(){
     let md = {}, mail = ''; try{ const g = await sb.auth.getSession(); const u = g.data && g.data.session && g.data.session.user; md = (u && u.user_metadata) || {}; mail = (u && u.email) || ''; }catch(e){}
     const H = t=>String(t||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const who = md.invite_par ? '<p><b>'+H(md.invite_par)+'</b> vous a invité(e) à rejoindre <b>Pilotage Chantier</b>'+(md.projet?' sur le projet <b>'+H(md.projet)+'</b>':'')+'.</p>' : '<p>Vous avez été invité(e) à rejoindre <b>Pilotage Chantier</b>.</p>';
+    const who = md.invite_par ? '<p><b>'+H(md.invite_par)+'</b> vous a invité(e) à rejoindre <b>Bina</b>'+(md.projet?' sur le projet <b>'+H(md.projet)+'</b>':'')+'.</p>' : '<p>Vous avez été invité(e) à rejoindre <b>Bina</b>.</p>';
     return new Promise(res=>{
       const draw = err=>{
-        const d = screen('<form><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>🔐 Créez votre compte</h2>'+who+(mail?'<small>Identifiant : '+H(mail)+'</small><br>':'')+'<small>Votre adresse e-mail est vérifiée. Choisissez maintenant votre mot de passe (8 caractères minimum) : personne d’autre ne le verra, pas même l’administrateur.</small>'
+        const d = screen('<form><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Bina</div><h2>🔐 Créez votre compte</h2>'+who+(mail?'<small>Identifiant : '+H(mail)+'</small><br>':'')+'<small>Votre adresse e-mail est vérifiée. Choisissez maintenant votre mot de passe (8 caractères minimum) : personne d’autre ne le verra, pas même l’administrateur.</small>'
           +'<input name="p1" type="password" placeholder="Nouveau mot de passe" minlength="8" required autocomplete="new-password"><input name="p2" type="password" placeholder="Confirmer le mot de passe" minlength="8" required autocomplete="new-password"><div class="e">'+(err||'')+'</div><button type="submit">Enregistrer et entrer</button></form>');
         d.querySelector('form').onsubmit = async ev=>{ ev.preventDefault(); const f = new FormData(ev.target), a = f.get('p1'), b = f.get('p2');
           if(a!==b){ draw('Les deux mots de passe ne sont pas identiques.'); return; }
@@ -213,7 +213,7 @@
   async function bioEnrol(){
     const user = {id:me.id, name:me.email||me.nom||'utilisateur', displayName:me.nom||me.email||'Utilisateur'};
     const ch = crypto.getRandomValues(new Uint8Array(32)), uid = new TextEncoder().encode(String(me.id)).slice(0,64);
-    const cred = await navigator.credentials.create({publicKey:{rp:{name:'Pilotage Chantier'}, user:{id:uid, name:user.name, displayName:user.displayName}, challenge:ch, pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}], authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'discouraged'}, timeout:60000, attestation:'none'}});
+    const cred = await navigator.credentials.create({publicKey:{rp:{name:'Bina'}, user:{id:uid, name:user.name, displayName:user.displayName}, challenge:ch, pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}], authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'discouraged'}, timeout:60000, attestation:'none'}});
     const m = lsGet(BIO) || {}; m[me.id] = {id:b64(cred.rawId), at:Date.now()}; lsSet(BIO, m);
   }
   function bioOffer(){
@@ -235,7 +235,7 @@
   function bioGate(sn){
     return new Promise(res=>{
       const b = bioGet(sn.me.id);
-      const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>📴 Mode hors réseau</h2><p>Pas de connexion internet. Validez avec l’empreinte ou le visage de ce téléphone pour rouvrir votre espace, <b>'+esc(sn.me.nom||sn.email||'')+'</b>.</p><button id="pgBioGo">🔒 Déverrouiller</button><div class="e" id="pgBioE" style="min-height:18px;margin-top:8px"></div><button class="l" id="pgBioX">Se connecter avec du réseau</button></div>');
+      const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Bina</div><h2>📴 Mode hors réseau</h2><p>Pas de connexion internet. Validez avec l’empreinte ou le visage de ce téléphone pour rouvrir votre espace, <b>'+esc(sn.me.nom||sn.email||'')+'</b>.</p><button id="pgBioGo">🔒 Déverrouiller</button><div class="e" id="pgBioE" style="min-height:18px;margin-top:8px"></div><button class="l" id="pgBioX">Se connecter avec du réseau</button></div>');
       const go = async ()=>{
         d.querySelector('#pgBioE').textContent = '';
         try{ await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)), allowCredentials:[{type:'public-key', id:unb64(b.id), transports:['internal']}], userVerification:'required', timeout:60000}}); res(true); }
@@ -249,7 +249,7 @@
     if(!unreached && await reach()) return null;
     const sn = lsGet(SNAP);
     if(snapOk(sn) && bioOk(sn)){ if(await bioGate(sn)) return sn; }
-    await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Pilotage Chantier</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application ne se rouvre qu’avec l’empreinte ou le visage activés au préalable, et jusqu’à vendredi soir. Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
+    await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Bina</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application ne se rouvre qu’avec l’empreinte ou le visage activés au préalable, et jusqu’à vendredi soir. Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
   }
   function startOffline(sn){
     me = sn.me; PJ = sn.PJ; window.PILOTAGE_PROJET = PJ; window.PILOTAGE_OFFLINE = true;
