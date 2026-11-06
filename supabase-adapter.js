@@ -128,8 +128,9 @@
     const today = new Date().toISOString().slice(0,10), glob = me.role==='admin';
     let projets = [], mem = {};
     { const r = await (pre?pre.p:sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at')); projets = r.data||[]; }
-    { const r = await (pre?pre.m:sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction').eq('user_id', me.id)); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
+    { const r = await (pre?pre.m:sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction,lots').eq('user_id', me.id)); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
     projets = projets.filter(p=>glob || (mem[p.id] && mem[p.id].actif));
+    projets.forEach(p=>{ const mm=mem[p.id]||{}; p.mrole=glob?'admin':(mm.role||''); p.mfn=mm.fonction||''; p.mlots=mm.lots||null; });
     if(!projets.length){
       await new Promise(()=>{ const d = screen('<div class="box"><h2>🚫 Aucun projet</h2><p>Votre compte n’est rattaché à aucun projet actif. Contactez l’administrateur.</p><button class="l" id="pgOut">Se déconnecter</button></div>'); d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); }; });
     }
@@ -155,6 +156,10 @@
     window.PILOTAGE_MEMBER_TYPES = {
       get: async pid=>{ const {data,error} = await sb.from('projet_membres').select('user_id,types_autorises').eq('projet_id',pid); if(error) throw error; const o={}; (data||[]).forEach(r=>o[r.user_id]=r.types_autorises); return o; },
       set: async (pid,uid,arr)=>{ const {error} = await sb.from('projet_membres').update({types_autorises:arr}).eq('projet_id',pid).eq('user_id',uid); if(error) throw error; }
+    };
+    window.PILOTAGE_MEMBER_LOTS = {
+      get: async pid=>{ const {data,error} = await sb.from('projet_membres').select('user_id,lots').eq('projet_id',pid); if(error) throw error; const o={}; (data||[]).forEach(r=>o[r.user_id]=r.lots||null); return o; },
+      set: async (pid,uid,arr)=>{ const {error} = await sb.rpc('set_membre_lots',{p_projet:pid,p_user:uid,p_lots:(arr&&arr.length)?arr:[]}); if(error) throw error; }
     };
     window.PILOTAGE_RESET_REQ = {
       create: async (pid, uid, email, nom)=>{ const {error} = await sb.from('demandes_reset').insert({projet_id:pid, user_id:uid, demandeur:me.id, email:email||null, nom:nom||null, demandeur_email:(me.email||null)}); if(error) throw error; },
@@ -255,7 +260,7 @@
     if(session && RET && /invite|recovery/.test(RET[1])){ await passwordUI(); session = null; banner = 'Mot de passe enregistré. Connectez-vous avec votre e-mail et ce nouveau mot de passe.'; }
     if(session && DV){ try{ await sb.rpc('appareil_valider', {p_dev:DV}); await sb.rpc('appareil_valider', {p_dev:DEV}); }catch(e){} try{ history.replaceState(null,'',location.pathname); }catch(e){} }   /* lien de vérification cliqué : cet appareil (et celui qui attend) sont validés */
     if(!session){ await loginUI(banner); ({data:{session}} = await sb.auth.getSession()); }
-    const pre = {p:Promise.resolve(sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at')), m:Promise.resolve(sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction').eq('user_id', session.user.id))};   /* lancées pendant la vérification du profil */
+    const pre = {p:Promise.resolve(sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at')), m:Promise.resolve(sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction,lots').eq('user_id', session.user.id))};   /* lancées pendant la vérification du profil */
     await profile(session.user);
     await chooseProjet(pre);
     try{ window.PILOTAGE_USER_EMAIL = session.user.email; }catch(e){}
