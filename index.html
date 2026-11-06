@@ -7095,6 +7095,27 @@ function archTreeHtml(o,only){
     ${only?'':'<div style="margin-top:10px"><button type="button" class="primary" onclick="archAddBat()">＋ Ajouter un bâtiment</button></div>'}
   </div>`;
 }
+function archLvHtml(bid,o){ const L=o.filter(n=>state.nivBat[n]===bid);
+  return '<div class="pa-grid" id="archLv">'+L.map((n,i)=>'<button type="button" class="pa-app lv-t" data-lv="'+esc(n)+'"><span class="pa-ic lv-n">'+(i+1)+'</span><span class="pa-lb">'+esc(n)+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="archLvNew()"><span class="pa-ic">＋</span><span class="pa-lb">Créer un niveau</span></button></div><div id="archLvF"></div>'; }
+window.archLvNew=function(){ const f=document.getElementById('archLvF'); if(!f) return; f.innerHTML='<div class="pa-f" style="margin-top:6px"><label>Nom du niveau</label><div style="display:flex;gap:8px"><input type="text" id="archLvN" placeholder="R+1" style="flex:1" onkeydown="if(event.key===\'Enter\')archLvOk()"><button type="button" class="primary" onclick="archLvOk()">Valider</button></div></div>'; const i=document.getElementById('archLvN'); if(i) i.focus(); };
+window.archLvOk=function(){ const v=((document.getElementById('archLvN')||{}).value||'').trim(); if(!v) return; const bid=(window.__paApp||'').split(':')[1]; if(state.niveaux.some(x=>x.toLowerCase()===v.toLowerCase())){ miniAlert('Ce niveau existe déjà.'); return; } archEns(); const ord=nbOrder().slice(); state.niveaux.push(v); state.nivBat[v]=bid||state.batiments[0].id; ord.push(v); nbRibSave(ord); };
+window.archLvRename=function(e){ const n=decodeURIComponent(e); miniPrompt('Nouveau nom du niveau :',n,v=>{ v=(v||'').trim(); if(!v||v===n) return; if(state.niveaux.some(x=>x.toLowerCase()===v.toLowerCase())){ miniAlert('Ce niveau existe déjà.'); return; }
+    state.niveaux=state.niveaux.map(x=>x===n?v:x); try{ if(state.nivBat&&state.nivBat[n]!==undefined){ state.nivBat[v]=state.nivBat[n]; delete state.nivBat[n]; } }catch(_){}
+    (state.zonesChantier||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; }); (state.zoneFamilles||[]).forEach(z=>{ if(z.niveau===n) z.niveau=v; });
+    (state.plans||[]).forEach(p=>{ if(p.niveau===n) p.niveau=v; }); (state.tasks||[]).forEach(t=>{ if(t.niveau===n) t.niveau=v; }); (state.ged||[]).forEach(r=>{ if(r.niveau===n) r.niveau=v; }); (state.documents||[]).forEach(r=>{ if(r.niveau===n) r.niveau=v; });
+    if(state.objectifs&&state.objectifs.datesNiveau&&state.objectifs.datesNiveau[n]!==undefined){ state.objectifs.datesNiveau[v]=state.objectifs.datesNiveau[n]; delete state.objectifs.datesNiveau[n]; }
+    if(state.niveauCotes&&state.niveauCotes[n]!==undefined){ state.niveauCotes[v]=state.niveauCotes[n]; delete state.niveauCotes[n]; }
+    try{ if(travauxNiveauActif===n) travauxNiveauActif=v; }catch(_){}
+    const bid=(window.__paApp||'').split(':')[1]; window.__paApp='archi:'+bid; nbRibSave(nbOrder().map(x=>x===n?v:x)); }); };
+window.archLvDel=function(e){ const n=decodeURIComponent(e); const bid=(window.__paApp||'').split(':')[1]; window.__paApp='archi:'+bid; ribDeleteNiveau(n); };
+function archLvBind(){ const g=document.getElementById('archLv'); if(!g) return; let t=null,d=null,sx=0,sy=0,moved=0;
+  const tiles=()=>[...g.querySelectorAll('.lv-t')];
+  g.addEventListener('click',ev=>{ const b=ev.target.closest('.lv-t'); if(!b) return; if(Date.now()-moved<400){ ev.preventDefault(); return; } const bid=(window.__paApp||'').split(':')[1]; window.__paApp='archi:'+bid+':'+encodeURIComponent(b.dataset.lv); projParamEdit(); });
+  g.addEventListener('pointerdown',ev=>{ const b=ev.target.closest('.lv-t'); if(!b) return; sx=ev.clientX; sy=ev.clientY; clearTimeout(t); t=setTimeout(()=>{ t=null; d=b; b.classList.add('lv-drag'); try{ b.setPointerCapture(ev.pointerId); }catch(_){} if(navigator.vibrate) try{ navigator.vibrate(15); }catch(_){} },380); });
+  g.addEventListener('pointermove',ev=>{ if(!d){ if(t&&Math.hypot(ev.clientX-sx,ev.clientY-sy)>9){ clearTimeout(t); t=null; } return; } ev.preventDefault(); let hit=null; tiles().forEach(x=>{ if(x===d) return; const r=x.getBoundingClientRect(); if(ev.clientX>r.left&&ev.clientX<r.right&&ev.clientY>r.top&&ev.clientY<r.bottom) hit=x; }); if(hit){ const a=tiles(), i=a.indexOf(d), j=a.indexOf(hit); g.insertBefore(d,j>i?hit.nextSibling:hit); } });
+  const end=ev=>{ clearTimeout(t); t=null; if(!d) return; const b=d; d=null; b.classList.remove('lv-drag'); moved=Date.now(); const bid=(window.__paApp||'').split(':')[1]; const grp=tiles().map(x=>x.dataset.lv), all=nbOrder().slice(); let k=0; const ord=all.map(n=>state.nivBat[n]===bid?grp[k++]:n); nbRibSave(ord); };
+  g.addEventListener('pointerup',end); g.addEventListener('pointercancel',end); }
+
 window.paOpenBat=function(id){ window.__paApp='archi:'+id; projParamEdit(); };
 window.archNewForm=function(){ const f=document.getElementById('archNewF'); if(!f) return; f.innerHTML='<div class="pa-f" style="margin-top:6px"><label>Nom du bâtiment</label><div style="display:flex;gap:8px"><input type="text" id="archNewN" placeholder="Bâtiment 2" style="flex:1" onkeydown="if(event.key===\'Enter\')archNewOk()"><button type="button" class="primary" onclick="archNewOk()">Valider</button></div></div>'; const i=document.getElementById('archNewN'); if(i) i.focus(); };
 window.archNewOk=function(){ const v=((document.getElementById('archNewN')||{}).value||'').trim(); if(!v) return; archEns(); if(state.batiments.some(b=>b.nom.toLowerCase()===v.toLowerCase())){ miniAlert('Ce bâtiment existe déjà.'); return; } state.batiments.push({id:'B'+Date.now().toString(36),nom:v}); persist(); projParamEdit(); };
@@ -7109,15 +7130,16 @@ const PA_APPS=[['interv','👥','Intervenants'],['phases','🚦','Phases'],['arc
 const PA_LOTS=[['CEA','🎨','Lots CEA','Corps d’état architecturaux'],['GO','🏗️','Lots gros œuvre','Gros œuvre'],['CC','🏠','Lots clos couvert','Clos et couvert'],['CET','⚡','Lots CET','Corps d’état techniques']];
 function paBtns(items,onclickFn){ return '<div class="pa-grid">'+items.map(x=>!x?'<span></span>':'<button type="button" class="pa-app" onclick="'+onclickFn+'(\''+x[0]+'\')"><span class="pa-ic">'+x[1]+'</span><span class="pa-lb">'+esc(x[2])+'</span></button>').join('')+'</div>'; }
 window.paOpen=function(k){ window.__paApp=k||''; projParamEdit(); };
-window.paBack=function(){ const k=window.__paApp||''; window.__paApp=k.indexOf(':')>0?k.split(':')[0]:''; projParamEdit(); };
+window.paBack=function(){ const k=window.__paApp||''; window.__paApp=/^archi:[^:]+:/.test(k)?k.split(':').slice(0,2).join(':'):(k.indexOf(':')>0?k.split(':')[0]:''); projParamEdit(); };
 function paWinHtml(k,P,exe,o){
   const seg=(key,opts,cur)=>'<div class="pa-seg">'+opts.map(x=>'<button type="button" class="'+(cur===x[0]?'on':'')+'" onclick="projSet(\''+key+'\',\''+x[0]+'\')">'+esc(x[1])+'</button>').join('')+'</div>';
   if(k==='interv') return ['👥 Intervenants','<div id="paIvHost"></div>'];
   if(k==='phases') return ['🚦 Phases','<div class="pa-f"><label>Phase du projet</label>'+seg('phase',PROJ_PHASES.map(x=>[x[0],x[1]]),P.phase)+'<small>'+esc((PROJ_PHASES.find(x=>x[0]===P.phase)||[])[2]||'')+'</small></div>'+(exe?'<div class="pa-f"><label>Étape en cours</label>'+seg('etape',PROJ_ETAPES,P.etape)+'<small>Étape de l’exécution : gros œuvre ou corps d’état secondaires</small></div>':'<p class="empty-note">En phase PRO, rien n’est traité pour l’instant : les étapes et le suivi par niveaux seront activés en phase EXE.</p>')];
   if(k==='archi'){ archEns(); return ['🏛 Architecture','<div class="pa-grid pa-grid-sub">'+state.batiments.map(b=>'<button type="button" class="pa-app" onclick="paOpenBat(\''+esc(b.id)+'\')"><span class="pa-ic">🏢</span><span class="pa-lb">'+esc(b.nom)+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="archNewForm()"><span class="pa-ic">＋</span><span class="pa-lb">Créer un bâtiment</span></button></div><div id="archNewF"></div>']; }
-  if(k&&k.indexOf('archi:')===0){ archEns(); const b=state.batiments.find(x=>x.id===k.slice(6)); if(b) return ['🏢 '+esc(b.nom),archTreeHtml(o,b.id)]; }
+  if(k&&/^archi:[^:]+:/.test(k)){ const pr=k.split(':'), n=decodeURIComponent(pr.slice(2).join(':')); return ['🏬 '+esc(n),'<div class="pa-grid"><button type="button" class="pa-app" onclick="archLvRename(\''+encodeURIComponent(n)+'\')"><span class="pa-ic">✎</span><span class="pa-lb">Renommer</span></button><button type="button" class="pa-app" onclick="archLvDel(\''+encodeURIComponent(n)+'\')"><span class="pa-ic">🗑</span><span class="pa-lb">Supprimer</span></button></div>']; }
+  if(k&&k.indexOf('archi:')===0){ archEns(); const b=state.batiments.find(x=>x.id===k.slice(6)); if(b) return ['🏢 '+esc(b.nom),archLvHtml(b.id,o),'<button type="button" class="pa-x" aria-label="Renommer" title="Renommer" onclick="archRenameBat(\''+esc(b.id)+'\')">✎</button><button type="button" class="pa-x" aria-label="Supprimer" title="Supprimer" onclick="archDelBat(\''+esc(b.id)+'\')">🗑</button>']; }
   if(k==='obj') return ['🎯 Objectifs planning','<div class="obj-box" id="objBox"><div class="field" style="max-width:260px;"><label>Date de fin d\'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div><div id="objNiveauDetail" style="overflow-x:auto"></div></div>'];
-  if(k==='lots') return ['🧱 Gestion des lots','<p class="empty-note" style="margin:0 0 10px">Les lots de base viennent de la bibliothèque. Vous pouvez en ajouter ou en retirer pour ce projet.</p>'+paBtns(PA_LOTS,'paOpenLots')];
+  if(k==='lots') return ['🧱 Gestion des lots',''+paBtns(PA_LOTS,'paOpenLots')];
   if(k&&k.indexOf('lots:')===0){ const f=k.slice(5), F=PA_LOTS.find(x=>x[0]===f)||[f,'','Lots '+f]; window.__lotsOnly=f; return [F[1]+' '+F[2],(typeof lotsFramesHtml==='function'?lotsFramesHtml():'')]; }
   return null; }
 window.paOpenLots=function(f){ window.__paApp='lots:'+f; projParamEdit(); };
@@ -7125,13 +7147,12 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v219</small></h3>
-    <p class="empty-note" style="margin:0 0 14px">Touchez une application. Touchez en dehors pour revenir à ce menu.</p>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v220</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
-  if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><b>'+w[0]+'</b><button type="button" class="pa-x" aria-label="Fermer" onclick="paBack()">×</button></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
+  if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><b>'+w[0]+'</b>'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" onclick="paBack()">×</button></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
   try{ if(k==='interv'){ const h=document.getElementById('paIvHost'), pg=document.getElementById('page-interloc'); if(h&&pg){ const a=document.getElementById('ilruban-interlocuteurs'); if(a){ a.style.display='block'; h.appendChild(a); } const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0'; bar.innerHTML='<button type="button" class="ghost" onclick="quickAddEntreprise()">+ Entreprise</button><button type="button" class="ghost" onclick="openFonctionsMgr()">✎ Fonctions</button>'; h.appendChild(bar); const ee=document.getElementById('entListPage'); if(ee){ h.appendChild(ee); } try{ renderInterlocuteurs(); }catch(e){} try{ if(ee) ee.innerHTML=renderEntreprisesList(); }catch(e){} } } }catch(e){ console.error(e); }
-  try{ nbRibBind(); }catch(e){} try{ if(k==='obj') renderObjectifsPanel(); }catch(e){ console.error(e); }
+  try{ nbRibBind(); }catch(e){} try{ archLvBind(); }catch(e){ console.error(e); } try{ if(k==='obj') renderObjectifsPanel(); }catch(e){ console.error(e); }
 }
 /* Ruban des niveaux : appui long puis glisser pour changer l'ordre */
 window.nivGestSaveClose=function(ord){ state.perimetre=state.perimetre||{niveaux:[]}; state.perimetre.niveaux=ord; try{ nbApplyOrder(); }catch(e){} persist(); try{ closeModal(); }catch(e){} try{ renderAll(); }catch(e){} try{ clipToast('Niveaux enregistrés'); }catch(e){} };
@@ -10061,7 +10082,7 @@ function ribDeleteNiveau(n){
     if(state.perimetre&&Array.isArray(state.perimetre.niveaux)) state.perimetre.niveaux = state.perimetre.niveaux.filter(x=>x!==n);
     if(travauxNiveauActif===n) travauxNiveauActif = state.niveaux[0]||null;
     ribRefresh();
-    try{ if(document.getElementById('nivRib')) projParamEdit(); }catch(e){}
+    try{ if(document.getElementById('nivRib')||document.getElementById('paWin')) projParamEdit(); }catch(e){}
   });
 }
 
@@ -19830,9 +19851,13 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 #paWin .pa-b{padding:14px 18px 20px;overflow:auto}
 #paWin .pa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px 8px;padding:10px 0 16px}#paWin .pa-grid .pa-app{width:100%;min-width:0}#paWin .pa-lb{word-break:break-word}
 #fnOverlay,#niOverlay,#miniPromptOverlay{z-index:100001!important}
+#paWin .pa-h,#dwWin .pa-h{position:relative;justify-content:center!important;min-height:54px}#paWin .pa-h b,#dwWin .pa-h b{flex:0 1 auto!important;text-align:center}
+#paWin .pa-h .pa-x:last-child,#dwWin #dwX{position:absolute;right:10px;top:50%;transform:translateY(-50%)}#paWin .pa-h .pa-x:not(:last-child){position:absolute;left:10px;top:50%;transform:translateY(-50%)}#paWin .pa-h .pa-x:not(:last-child)+.pa-x:not(:last-child){left:52px}#dwWin #dwBk{position:absolute;left:10px;top:50%;transform:translateY(-50%)}
+#paWin .lot-h{display:none!important}#paWin .lot-body[hidden]{display:block!important}#paWin .lot-fr{border:0!important;padding:0!important}
 #paWin button.pa-app,#modalBody button.pa-app{border:0!important;background:transparent!important;box-shadow:none!important;outline:0!important;padding:0!important;border-radius:0!important;width:100%;min-width:0;height:auto!important;min-height:0!important}
 #paWin button.pa-app .pa-ic,#modalBody button.pa-app .pa-ic{width:64px!important;height:64px!important}
 #clipToast{z-index:100002!important}
+#paWin .lv-n{font-size:26px;font-weight:800;color:#FFC400}#paWin .lv-t{touch-action:none;user-select:none}#paWin .lv-drag{opacity:.75;z-index:5;position:relative}#paWin .lv-drag .pa-ic{box-shadow:0 10px 24px rgba(0,0,0,.5)}
 .pa-f{margin-bottom:16px}.pa-f label{display:block;font-weight:600;margin-bottom:6px}.pa-f small{display:block;margin-top:6px;opacity:.7}
 .pa-seg{display:flex;gap:8px;flex-wrap:wrap}.pa-seg button{flex:1 1 140px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.25) !important;background:transparent !important;color:inherit !important;font-weight:600;cursor:pointer}
 .pa-seg button.on{background:#FFC400 !important;color:#0E0E0E !important;border-color:#FFC400 !important}
