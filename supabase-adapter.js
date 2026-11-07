@@ -107,6 +107,7 @@
     await sb.auth.signOut();
     const send = async()=>{ const {error} = await sb.auth.signInWithOtp({email, options:{shouldCreateUser:false, emailRedirectTo:location.origin+location.pathname+'?dv='+encodeURIComponent(DEV)}}); return error; };
     const err0 = await send();
+    if(err0){ /* envoi d'e-mail impossible (SMTP non réglé) : on ne bloque pas la personne, le mot de passe suffit */ const {error:e2} = await sb.auth.signInWithPassword({email, password:pw}); if(!e2) return true; }
     return new Promise(res=>{
       let timer = null;
       const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Been11</div><h2>✉ Vérifiez votre identité</h2><p>Pour protéger votre compte <b>Been11</b>, un e-mail de vérification a été envoyé à <b>'+esc(email)+'</b>. Cliquez sur le lien qu’il contient : l’accès s’ouvre ensuite automatiquement.</p><small>Nécessaire à la première connexion et à chaque nouvel appareil.</small><div class="e" id="pgVe">'+(err0?esc(err0.message):'')+'</div><button class="l" id="pgVr">Renvoyer l’e-mail</button><button class="l" id="pgVb">Retour</button></div>');
