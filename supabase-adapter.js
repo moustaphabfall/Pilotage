@@ -47,9 +47,8 @@
       const TST = '<div class="tst">TEST · version d’essai</div>';
       const reqUI = (err, good)=>{
         const d = screen(`<form>${TST}<h2>🌱 Première visite</h2>
-          <input name="nom" type="text" placeholder="Nom (facultatif)" autocomplete="name" maxlength="80">
+          <input name="nom" type="text" placeholder="Nom" required autocomplete="name" maxlength="80">
           <input name="email" type="email" placeholder="Adresse e-mail" required autocomplete="email" value="${esc(lastEmail)}" maxlength="160">
-          <input name="tel" type="tel" placeholder="Numéro de téléphone" required autocomplete="tel" maxlength="40">
           <div class="e" ${good?'style="color:#2a7a3b"':''}>${err||''}</div>
           <button type="submit" id="rqGo">Demander un accès</button>
           <button type="button" class="l" id="pgBk">‹ Retour à la connexion</button></form>`);
@@ -58,7 +57,7 @@
           ev.preventDefault(); const f = new FormData(ev.target), btn = d.querySelector('#rqGo'); btn.disabled = true; btn.textContent = 'Envoi…';
           lastEmail = String(f.get('email')||'').trim();
           try{
-            const r = await fetch(cfg.url+'/functions/v1/acces', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+cfg.anonKey}, body:JSON.stringify({action:'demande', email:lastEmail, telephone:String(f.get('tel')||'').trim(), nom:String(f.get('nom')||'').trim()})});
+            const r = await fetch(cfg.url+'/functions/v1/acces', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+cfg.anonKey}, body:JSON.stringify({action:'demande', email:lastEmail, nom:String(f.get('nom')||'').trim()})});
             const j = await r.json().catch(()=>({})); if(!r.ok || j.error) throw new Error(j.error||'Envoi impossible');
             const d2 = screen(`<div class="box">${TST}<h2>✅ Demande envoyée</h2><p>${j.existe?'Un compte existe déjà avec cette adresse : connectez-vous.':'Merci. Vous recevrez un e-mail dès que votre compte sera ouvert.'}</p><button id="rqOk">Retour à la connexion</button></div>`);
             d2.querySelector('#rqOk').onclick = ()=>{ mode = 'in'; draw(); };
