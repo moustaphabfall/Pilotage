@@ -59,7 +59,7 @@
           try{
             const r = await fetch(cfg.url+'/functions/v1/acces', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+cfg.anonKey}, body:JSON.stringify({action:'demande', email:lastEmail, nom:String(f.get('nom')||'').trim()})});
             const j = await r.json().catch(()=>({})); if(!r.ok || j.error) throw new Error(j.error||'Envoi impossible');
-            const d2 = screen(`<div class="box">${TST}<h2>✅ Demande envoyée</h2><p>${j.existe?'Un compte existe déjà avec cette adresse : connectez-vous.':'Merci. Vous recevrez un e-mail dès que votre compte sera ouvert.'}</p><button id="rqOk">Retour à la connexion</button></div>`);
+            const d2 = screen(`<div class="box">${TST}<h2>✅ Demande envoyée</h2><p>${j.existe?'Un compte existe déjà avec cette adresse : connectez-vous.':'Votre demande a été envoyée à l’administrateur.<br>Vous recevrez un lien de validation pour vous connecter à <b>Been11</b>.<br><br><b>Pensez à regarder vos courriers indésirables.</b>'}</p><button id="rqOk">Retour à la connexion</button></div>`);
             d2.querySelector('#rqOk').onclick = ()=>{ mode = 'in'; draw(); };
           }catch(e){ reqUI(e.message||'Erreur', false); }
         };
@@ -114,6 +114,28 @@
       d.querySelector('#pgVr').onclick = async ()=>{ const e = await send(); d.querySelector('#pgVe').textContent = e ? e.message : 'E-mail renvoyé.'; };
       d.querySelector('#pgVb').onclick = ()=>{ clearInterval(timer); res(false); };
       timer = setInterval(async()=>{ try{ const {data:ok} = await sb.rpc('appareil_ok', {p_email:email, p_dev:DEV}); if(ok===true){ clearInterval(timer); const {error} = await sb.auth.signInWithPassword({email, password:pw}); if(error){ d.querySelector('#pgVe').textContent = error.message; return; } res(true); } }catch(e){} }, 3000);
+    });
+  }
+
+
+  /* lien d'invitation Been11 (?invit=…) : valable 24 h tant que le mot de passe n'est pas choisi, puis inutilisable */
+  async function invitUI(tok){
+    const call = async body=>{ const r = await fetch(cfg.url+'/functions/v1/acces', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+cfg.anonKey}, body:JSON.stringify(body)}); const j = await r.json().catch(()=>({})); return {ok:r.ok && !j.error, j}; };
+    let info; try{ info = await call({action:'invit_info', token:tok}); }catch(e){ info = {ok:false, j:{error:'Connexion impossible. Réessayez avec du réseau.'}}; }
+    if(!info.ok) return new Promise(res=>{ const d = screen('<div class="box"><div class="tst">TEST · version d’essai</div><h2>🔗 Lien d’invitation</h2><p>'+esc(info.j.error||'Lien invalide')+'</p><button id="ivGo">Aller à la connexion</button></div>'); d.querySelector('#ivGo').onclick = ()=>res(''); });
+    const mail = info.j.email||'', par = info.j.par||'';
+    return new Promise(res=>{
+      const draw = err=>{
+        const d = screen('<form><div class="tst">TEST · version d’essai</div><h2>🔐 Créez votre compte</h2><p>'+(par?'<b>'+esc(par)+'</b> vous a invité(e) à rejoindre <b>Been11</b>.':'Vous avez été invité(e) à rejoindre <b>Been11</b>.')+'</p><small>Identifiant : '+esc(mail)+'</small><small>Choisissez votre mot de passe (8 caractères minimum).</small>'
+          +'<input name="p1" type="password" placeholder="Nouveau mot de passe" minlength="8" required autocomplete="new-password"><input name="p2" type="password" placeholder="Confirmer le mot de passe" minlength="8" required autocomplete="new-password"><div class="e">'+esc(err||'')+'</div><button type="submit" id="ivOk">Enregistrer et continuer</button></form>');
+        d.querySelector('form').onsubmit = async ev=>{ ev.preventDefault(); const f = new FormData(ev.target), a = f.get('p1'), b2 = f.get('p2');
+          if(a!==b2){ draw('Les deux mots de passe ne sont pas identiques.'); return; }
+          const bt = d.querySelector('#ivOk'); bt.disabled = true; bt.textContent = 'Enregistrement…';
+          try{ const r = await call({action:'invit_set', token:tok, password:a}); if(!r.ok){ draw(r.j.error||'Erreur'); return; }
+            res('Mot de passe enregistré. Connectez-vous avec '+mail+' et votre nouveau mot de passe.'); }
+          catch(e){ draw('Connexion impossible. Réessayez.'); } };
+      };
+      draw('');
     });
   }
 
@@ -314,6 +336,8 @@
     if(!up){ const sn = await offlineEntry(true); if(sn) return startOffline(sn); }
     let {data:{session}} = sess0;
     let banner = null;
+    const INV = new URLSearchParams(location.search).get('invit');
+    if(INV){ banner = await invitUI(INV) || null; try{ history.replaceState(null,'',location.pathname); }catch(e){} try{ await sb.auth.signOut(); }catch(e){} session = null; }
     if(session && RET && /invite|recovery/.test(RET[1])){ await passwordUI(); session = null; banner = 'Mot de passe enregistré. Connectez-vous avec votre e-mail et ce nouveau mot de passe.'; }
     if(session && DV){ try{ await sb.rpc('appareil_valider', {p_dev:DV}); await sb.rpc('appareil_valider', {p_dev:DEV}); }catch(e){} try{ history.replaceState(null,'',location.pathname); }catch(e){} }   /* lien de vérification cliqué : cet appareil (et celui qui attend) sont validés */
     if(!session){ await loginUI(banner); ({data:{session}} = await sb.auth.getSession()); }
