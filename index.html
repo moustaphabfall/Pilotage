@@ -6449,20 +6449,21 @@ function handleZoneChange(sel){
     if(v){ state.zones.push(v); persist(); sel.innerHTML=zoneOptions(v); } else sel.value=fallback;
   });
 }
-function entrepriseOptions(sel){ return '<option value="">—</option>'+state.entreprises.map(e=>`<option value="${esc(e)}" ${e===sel?'selected':''}>${esc(e)}</option>`).join('')+`<option value="__autre__">+ Entreprise</option>`; }
+function socList(){ const u=[]; (state.entreprises||[]).concat(state.societes||[]).forEach(x=>{ if(x&&!u.some(y=>y.toLowerCase()===String(x).toLowerCase())) u.push(x); }); return u.sort(ALPHA); }
+function entrepriseOptions(sel){ return '<option value="">— Choisir une société —</option>'+socList().map(e=>`<option value="${esc(e)}" ${e===sel?'selected':''}>${esc(e)}</option>`).join('')+`<option value="__autre__">＋ Ajouter une société</option>`; }
 function handleEntrepriseChange(sel){
   if(sel.value!=='__autre__') return;
-  miniPrompt('Nouvelle entreprise :', '', v=>{
-    if(v){ state.entreprises.push(v); persist(); sel.innerHTML=entrepriseOptions(v); } else sel.value='';
+  miniPrompt('Nom de la société', '', v=>{ v=(v||'').trim();
+    if(v){ state.entreprises=state.entreprises||[]; state.societes=state.societes||[]; const ex=socList().find(x=>x.toLowerCase()===v.toLowerCase()); if(ex) v=ex; else { state.entreprises.push(v); state.societes.push(v); } persist(); sel.innerHTML=entrepriseOptions(v); } else sel.value='';
   });
 }
-function fonctionOptions(sel){ state.fonctions.sort(ALPHA); return state.fonctions.map(f=>`<option value="${esc(f)}" ${f===sel?'selected':''}>${esc(f)}</option>`).join('')+`<option value="__gerer__">✎ Modifier la liste…</option><option value="__autre__">+ Autre…</option>`; }
+function fonctionOptions(sel){ state.fonctions.sort(ALPHA); return state.fonctions.map(f=>`<option value="${esc(f)}" ${f===sel?'selected':''}>${esc(f)}</option>`).join('')+`<option value="__gerer__">✎ Modifier la liste…</option><option value="__autre__">＋ Ajouter un rôle</option>`; }
 let _fnPrev = '';
 function handleFonctionChange(sel){
   if(sel.value==='__gerer__'){ sel.value = state.fonctions.includes(_fnPrev)?_fnPrev:(state.fonctions[0]||''); openFonctionsMgr(); return; }
   if(sel.value!=='__autre__'){ _fnPrev = sel.value; return; }
   const fallback = state.fonctions[0]||'';
-  miniPrompt('Nouvelle fonction :', '', v=>{
+  miniPrompt('Nom du rôle', '', v=>{ v=(v||'').trim();
     if(v){ if(!state.fonctions.includes(v)) state.fonctions.push(v); persist(); sel.innerHTML=fonctionOptions(v); _fnPrev=v; } else sel.value=fallback;
   });
 }
@@ -7164,13 +7165,13 @@ function paLotIc(n){ try{ return metierIcon({nom:n}); }catch(e){ return '🗂'; 
 function paLotsView(k){ const pr=k.split(':'), f=pr[1], F=PA_LOTS.find(x=>x[0]===f)||[f,'🗂','Lots '+f], L=paLotsSorted();
   if(pr[2]==='new'){ const have=new Set(L.map(l=>String(l.nom).toLowerCase())), MQ=state.lotsMasques||[]; const lib=(window.lotsApi.lib()||[]).filter(x=>x.famille===f&&!have.has(String(x.nom).toLowerCase())).filter(x=>true);
     return ['＋ Créer un lot '+esc(PA_FAMN[f]||f),'<div class="pa-grid">'+lib.map((x,i)=>'<button type="button" class="pa-app" data-ln="'+esc(x.nom)+'" onclick="paLotPick(\''+f+'\',this.dataset.ln)"><span class="pa-ic">'+paLotIc(x.nom)+'</span><span class="pa-lb">'+esc(x.nom)+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="paLotOther(\''+f+'\')"><span class="pa-ic">＋</span><span class="pa-lb">Autre lot…</span></button></div>']; }
-  if(pr[2]&&pr[3]==='soc'){ const l=L.find(x=>x.id===pr[2]); if(l){ const S=(state.societes=state.societes||[]); return ['🏢 Société · '+esc(l.nom),'<div class="pa-grid">'+S.map(n=>'<button type="button" class="pa-app" data-sn="'+esc(n)+'" onclick="paSocSet(\''+f+'\',\''+esc(l.id)+'\',this.dataset.sn)"><span class="pa-ic">🏢</span><span class="pa-lb">'+esc(n)+(l.societe===n?' ✓':'')+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="paSocNew(\''+f+'\',\''+esc(l.id)+'\')"><span class="pa-ic">＋</span><span class="pa-lb">Nouvelle société</span></button>'+(l.societe?'<button type="button" class="pa-app" onclick="paSocSet(\''+f+'\',\''+esc(l.id)+'\',\'\')"><span class="pa-ic">✕</span><span class="pa-lb">Aucune</span></button>':'')+'</div>']; } }
+  if(pr[2]&&pr[3]==='soc'){ const l=L.find(x=>x.id===pr[2]); if(l){ const S=socList(); return ['🏢 Société · '+esc(l.nom),'<div class="pa-grid">'+S.map(n=>'<button type="button" class="pa-app" data-sn="'+esc(n)+'" onclick="paSocSet(\''+f+'\',\''+esc(l.id)+'\',this.dataset.sn)"><span class="pa-ic">🏢</span><span class="pa-lb">'+esc(n)+(l.societe===n?' ✓':'')+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="paSocNew(\''+f+'\',\''+esc(l.id)+'\')"><span class="pa-ic">＋</span><span class="pa-lb">Nouvelle société</span></button>'+(l.societe?'<button type="button" class="pa-app" onclick="paSocSet(\''+f+'\',\''+esc(l.id)+'\',\'\')"><span class="pa-ic">✕</span><span class="pa-lb">Aucune</span></button>':'')+'</div>']; } }
   if(pr[2]){ const l=L.find(x=>x.id===pr[2]); if(l) return [paLotIc(l.nom)+' '+esc(l.nom),'<div class="pa-grid"><button type="button" class="pa-app" onclick="paSocOpen(\''+f+'\',\''+esc(l.id)+'\')"><span class="pa-ic">🏢</span><span class="pa-lb">'+esc(l.societe||'Société')+'</span></button><button type="button" class="pa-app" onclick="paLotRen(\''+f+'\',\''+esc(l.id)+'\')"><span class="pa-ic">✎</span><span class="pa-lb">Renommer</span></button><button type="button" class="pa-app" onclick="paLotDel(\''+f+'\',\''+esc(l.id)+'\')"><span class="pa-ic">🗑</span><span class="pa-lb">Retirer</span></button></div>']; }
   const mine=L.map((l,i)=>[l,i+1]).filter(x=>(x[0].famille||window.lotsApi.famOf(x[0].nom))===f);
   return [F[1]+' '+F[2],'<div class="pa-grid" id="paLots">'+mine.map(x=>'<button type="button" class="pa-app lt-t" data-lot="'+esc(x[0].id)+'"><span class="pa-ic"><i class="lt-b">'+x[1]+'</i>'+paLotIc(x[0].nom)+'</span><span class="pa-lb">'+esc(x[0].nom)+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="paLotNew(\''+f+'\')"><span class="pa-ic">＋</span><span class="pa-lb">Créer un lot '+esc(PA_FAMN[f]||f)+'</span></button></div>']; }
 window.paSocOpen=function(f,id){ window.__paApp='lots:'+f+':'+id+':soc'; projParamEdit(); };
 window.paSocSet=function(f,id,nom){ const l=window.lotsApi.ensure().find(x=>x.id===id); if(l){ if(nom) l.societe=nom; else delete l.societe; try{ persist(); }catch(_){} } window.__paApp='lots:'+f+':'+id; projParamEdit(); };
-window.paSocNew=function(f,id){ miniPrompt('Nom de la société','',v=>{ v=(v||'').trim(); if(!v) return; state.societes=state.societes||[]; if(!state.societes.some(x=>x.toLowerCase()===v.toLowerCase())) state.societes.push(v); else v=state.societes.find(x=>x.toLowerCase()===v.toLowerCase()); window.paSocSet(f,id,v); }); };
+window.paSocNew=function(f,id){ miniPrompt('Nom de la société','',v=>{ v=(v||'').trim(); if(!v) return; state.societes=state.societes||[]; state.entreprises=state.entreprises||[]; { const ex=socList().find(x=>x.toLowerCase()===v.toLowerCase()); if(ex) v=ex; else { state.societes.push(v); state.entreprises.push(v); } } window.paSocSet(f,id,v); }); };
 window.paLotNew=function(f){ window.lotsApi.loadLib(()=>{ window.__paApp='lots:'+f+':new'; projParamEdit(); }); };
 window.paLotPick=function(f,nom){ window.lotsApi.addLot(nom,f); window.__paApp='lots:'+f; projParamEdit(); };
 window.paLotOther=function(f){ miniPrompt('Nom du nouveau lot (ajouté aussi à la bibliothèque)','',v=>{ v=(v||'').trim(); if(!v) return; window.lotsApi.addLot(v,f); window.lotsApi.libInsert(v,f); window.__paApp='lots:'+f; projParamEdit(); }); };
@@ -7201,7 +7202,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v283</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v284</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -8540,11 +8541,11 @@ function importData(input){
 function openNewInterloc(presetTaskId){
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>Ajouter un interlocuteur</h3>
     <div class="row2">
-      <div class="field"><label>Nom</label><input type="text" id="i-nom"></div>
-      <div class="field"><label>Fonction</label><select id="i-fonction" onchange="handleFonctionChange(this)">${fonctionOptions()}</select></div>
+      <div class="field"><label>Société</label><select id="i-entreprise" onchange="handleEntrepriseChange(this)">${entrepriseOptions()}</select></div>
+      <div class="field"><label>Rôle</label><select id="i-fonction" onchange="handleFonctionChange(this)">${fonctionOptions()}</select></div>
     </div>
     <div class="row2">
-      <div class="field"><label>Entreprise</label><select id="i-entreprise" onchange="handleEntrepriseChange(this)">${entrepriseOptions()}</select></div>
+      <div class="field"><label>Nom</label><input type="text" id="i-nom"></div>
       <div class="field"><label>Coordonnées</label><input type="text" id="i-coord"></div>
     </div>
     ${presetTaskId ? `<div class="field"><label>Rôle sur l’ouvrage ${presetTaskId}</label><select id="i-role-preset"><option value="acteur">Acteur</option><option value="influenceur">Influenceur</option><option value="decideur">Décideur</option></select></div>` : ''}
@@ -13525,7 +13526,7 @@ async function cauDocDl(id){
 })();
 </script>
 <script>
-/* ===== En-tête épuré (v283) : nom + Vue collés au bouton latéral, recherche discrète, boîte à outils en icône, bloc bâtiment allégé ===== */
+/* ===== En-tête épuré (v284) : nom + Vue collés au bouton latéral, recherche discrète, boîte à outils en icône, bloc bâtiment allégé ===== */
 (function(){
   const st=document.createElement('style'); st.id='pjV280'; st.textContent=`
 #chOpenBtn{display:none!important}
@@ -20650,7 +20651,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v283';
+  const VER='v284';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
