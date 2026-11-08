@@ -258,7 +258,7 @@
       supprimer: async pid=>{ const {error}=await sb.rpc('projet_supprimer',{p_id:pid}); if(error) throw error; },
       dupliquer: async (src,id,nom)=>{ const {error}=await sb.rpc('projet_dupliquer',{p_src:src,p_id:id,p_nom:nom}); if(error) throw error; }
     };
-    window.pilotageSwitchProjet = id2=>{ try{ if(PJ&&PJ.id&&id2!==PJ.id) localStorage.setItem('pilotage_pid', PJ.id); localStorage.setItem('pg_projet', id2); }catch(e){} location.reload(); };
+    window.pilotageSwitchProjet = async id2=>{ try{ if(PJ&&PJ.id&&id2!==PJ.id) localStorage.setItem('pilotage_pid', PJ.id); localStorage.setItem('pg_projet', id2); }catch(e){} try{ await Promise.race([sb.auth.refreshSession(), new Promise(r=>setTimeout(r,2500))]); }catch(e){} location.reload(); };   /* jeton rafraîchi avant le rechargement : pas de déconnexion au changement de projet */
   }
 
   /* ===== Réouverture hors réseau (mauvaise couverture sur chantier) =====
@@ -340,6 +340,7 @@
     if(INV){ banner = await invitUI(INV) || null; try{ history.replaceState(null,'',location.pathname); }catch(e){} try{ await sb.auth.signOut(); }catch(e){} session = null; }
     if(session && RET && /invite|recovery/.test(RET[1])){ await passwordUI(); session = null; banner = 'Mot de passe enregistré. Connectez-vous avec votre e-mail et ce nouveau mot de passe.'; }
     if(session && DV){ try{ await sb.rpc('appareil_valider', {p_dev:DV}); await sb.rpc('appareil_valider', {p_dev:DEV}); }catch(e){} try{ history.replaceState(null,'',location.pathname); }catch(e){} }   /* lien de vérification cliqué : cet appareil (et celui qui attend) sont validés */
+    if(!session){ try{ const r = await sb.auth.refreshSession(); if(r&&r.data&&r.data.session) session = r.data.session; }catch(e){} if(!session){ await new Promise(r=>setTimeout(r,500)); try{ ({data:{session}} = await sb.auth.getSession()); }catch(e){} } }   /* ne pas redemander le mot de passe si le jeton a seulement expiré */
     if(!session){ await loginUI(banner); ({data:{session}} = await sb.auth.getSession()); }
     const pre = {p:Promise.resolve(sb.from('projets').select('id,nom,hebergement,type,types_autorises,archive').order('created_at')), m:Promise.resolve(sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction,lots').eq('user_id', session.user.id))};   /* lancées pendant la vérification du profil */
     await profile(session.user);
