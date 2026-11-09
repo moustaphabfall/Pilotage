@@ -7153,7 +7153,7 @@ function paWinHtml(k,P,exe,o){
   if(k==='archi'){ archEns(); return ['🏛 Architecture','<div class="pa-grid pa-grid-sub" id="archBats">'+state.batiments.map(b=>'<button type="button" class="pa-app" data-bat="'+esc(b.id)+'" onclick="paOpenBat(\''+esc(b.id)+'\')"><span class="pa-ic">🏢</span><span class="pa-lb">'+esc(b.nom)+'</span></button>').join('')+'<button type="button" class="pa-app" onclick="archNewForm()"><span class="pa-ic">＋</span><span class="pa-lb">Créer un bâtiment</span></button></div><div id="archNewF"></div>']; }
   if(k&&/^archi:[^:]+:/.test(k)){ const pr=k.split(':'), n=decodeURIComponent(pr.slice(2).join(':')); return ['🏬 '+esc(n),'<div class="pa-grid"><button type="button" class="pa-app" onclick="archLvRename(\''+encodeURIComponent(n)+'\')"><span class="pa-ic">✎</span><span class="pa-lb">Renommer</span></button><button type="button" class="pa-app" onclick="archLvDel(\''+encodeURIComponent(n)+'\')"><span class="pa-ic">🗑</span><span class="pa-lb">Supprimer</span></button></div>']; }
   if(k&&k.indexOf('archi:')===0){ archEns(); const b=state.batiments.find(x=>x.id===k.slice(6)); if(b) return ['🏢 '+esc(b.nom),archLvHtml(b.id,o),!paIsAdmin()?'':'<button type="button" class="pa-x" aria-label="Renommer" title="Renommer" onclick="archRenameBat(\''+esc(b.id)+'\')">✎</button><button type="button" class="pa-x" aria-label="Supprimer" title="Supprimer" onclick="archDelBat(\''+esc(b.id)+'\')">🗑</button>']; }
-  if(k==='obj') return ['🎯 Objectifs planning','<div class="obj-box" id="objBox"><div class="field" style="max-width:260px;"><label>Date de fin d\'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div><div id="objNiveauDetail" style="overflow-x:auto"></div></div>'];
+  if(k==='obj') return ['🎯 Objectifs planning','<div class="obj-box" id="objBox"><div id="objBatBar" class="pa-chips" style="margin:0 0 12px"></div><div class="field" style="max-width:260px;"><label>Date de fin d\'ouvrage (globale)</label><input type="date" id="objDateGlobale" onchange="saveObjectifs()"></div><div id="objNiveauDetail" style="overflow-x:auto"></div></div>'];
   if(k==='refs'||/^refs:\d+$/.test(k)){ const c=state.calage, ok=c&&c.planId&&planById(c.planId), adm=paIsAdmin();
    if(k==='refs'){ if(!ok) return ['📍 Points de référence','<div class="pa-grid"><button type="button" class="pa-app" onclick="paRefDeposit()"><span class="pa-ic">📐</span><span class="pa-lb">Déposer le plan archi</span></button></div>'];
     return ['📍 Points de référence','<div class="pa-grid">'+(c.pts||[]).map((q,i)=>'<button type="button" class="pa-app" data-ref="'+i+'" onclick="paRefOpen('+i+')"><span class="pa-ic">📍</span><span class="pa-lb">'+esc(q.name||('ref'+(i+1)))+'</span></button>').join('')+(adm?'<button type="button" class="pa-app" onclick="calAddRef()"><span class="pa-ic">➕</span><span class="pa-lb">Ajouter une référence</span></button><button type="button" class="pa-app" onclick="paRefReplace()"><span class="pa-ic">📐</span><span class="pa-lb">Remplacer le plan</span></button>':'')+'</div>']; }
@@ -11097,7 +11097,9 @@ function renderObjectifsNiveau(){
   const g=state.objectifs.dateGlobale, today=new Date(); today.setHours(0,0,0,0);
   const fr=d=>d.toLocaleDateString('fr-FR');
   const _f=dashFilters();
-  const rows=state.niveaux.filter(n=>_f.niv==='tous'||n===_f.niv).map(n=>{
+  const BT=state.batiments||[]; if(window.__objBat&&!BT.some(x=>x.id===window.__objBat)) window.__objBat='';
+  const bb=document.getElementById('objBatBar'); if(bb){ bb.style.display=BT.length>1?'flex':'none'; bb.innerHTML=[['','Tous les bâtiments']].concat(BT.map(x=>[x.id,x.nom||x.id])).map(x=>'<button type="button" class="pa-chip'+((window.__objBat||'')===x[0]?' on':'')+'" style="'+((window.__objBat||'')===x[0]?'background:#F2C200 !important;color:#111 !important;border-color:#F2C200 !important':'')+'" onclick="setObjBat(\''+String(x[0]).replace(/'/g,'')+'\')">'+esc(x[1])+'</button>').join(''); }
+  const rows=state.niveaux.filter(n=>(_f.niv==='tous'||n===_f.niv)&&(!window.__objBat||state.nivBat[n]===window.__objBat)).map(n=>{
     const ts=state.tasks.filter(t=>t.niveau===n&&(_f.zon==='toutes'||t.zone===_f.zon)&&(_f.ent==='toutes'||taskEntreprise(t)===_f.ent));
     let pct=0; try{ pct=ts.length?Math.round(tPctMean(ts)):0; }catch(e){}
     const o=objNiv(n);
@@ -11116,6 +11118,7 @@ function renderObjectifsNiveau(){
   box.innerHTML=`<div style="overflow-x:auto;"><table class="obj-tab"><thead><tr><th>Niveau</th><th>Avancement</th><th>Date de fin visée</th><th>% cible</th><th>Écart</th></tr></thead><tbody>${rows}</tbody></table></div>
   <p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0;">Sans date saisie, la date visée est déduite en rétroplanning (date globale − plus longue chaîne de dépendances du niveau).</p>`;
 }
+function setObjBat(id){ window.__objBat=id||''; renderObjectifsNiveau(); }
 function setObjNiv(n,k,v){ const o=objNiv(n); if(k==='pctCible') o.pctCible=v===''?null:Math.max(0,Math.min(100,+v)); else { o.dateFin=v||null; state.objectifs.datesNiveau[n]=v||null; } persist(); renderObjectifsNiveau(); }
 function setDateNiveau(niveau,val){ setObjNiv(niveau,'dateFin',val); }
 
@@ -20792,7 +20795,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v343';
+  const VER='v344';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
