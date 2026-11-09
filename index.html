@@ -20741,7 +20741,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v331';
+  const VER='v332';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
@@ -21506,5 +21506,23 @@ window.pjMetierDedupe=dedupe;
 const oldPush=window.metierPushSorted; 
 if(typeof metierPushSorted==='function'){ const o=metierPushSorted; window.metierPushSorted=metierPushSorted=function(m){ const e=(state.metiers||[]).find(x=>key(x.nom)===key(m&&m.nom)); if(e){ try{ clipToast('Ce métier existe déjà'); }catch(_){} return e; } return o(m); }; }
 setInterval(()=>{ const n=dedupe(); if(n){ try{ clipToast('Métiers en double fusionnés ('+n+')'); }catch(e){} } },1500);
+})();</script>
+<script id="pjNoDupJs">(function(){
+/* Aucune duplication automatique : un ouvrage n'est dupliqué que sur demande (bouton « Dupliquer l’ouvrage ») */
+const o=window.ouvSubmit2; if(typeof o==='function'){ window.ouvSubmit2=function(){ const n=Date.now(); if(window._ouvAt&&n-window._ouvAt<2500) return; window._ouvAt=n; return o.apply(this,arguments); }; }
+const num=id=>+(String(id).replace(/\D/g,''))||0;
+function clean(){ try{
+  if(typeof state==='undefined'||!state||!Array.isArray(state.tasks)) return 0;
+  const g={}; state.tasks.forEach(t=>{ if(t&&!t.deleted&&t.parentTaskId&&t.murPiece&&t.murIdx!=null){ (g[t.murPiece+'|'+t.murIdx+'|'+t.parentTaskId]=g[t.murPiece+'|'+t.murIdx+'|'+t.parentTaskId]||[]).push(t); } });
+  const rm=new Set(); const sc=t=>(t.metierId?2:0)+((t.etat&&t.etat!=='afaire')||t.pct?2:0)+((t.photos&&t.photos.length)?1:0);
+  Object.values(g).forEach(a=>{ if(a.length<2) return; a.sort((x,y)=>sc(y)-sc(x)||num(x.id)-num(y.id)); a.slice(1).forEach(t=>rm.add(t.id)); });
+  if(!rm.size) return 0;
+  let ch=true; while(ch){ ch=false; state.tasks.forEach(t=>{ if(t.parentTaskId&&rm.has(t.parentTaskId)&&!rm.has(t.id)){ rm.add(t.id); ch=true; } }); }
+  state.tasks=state.tasks.filter(t=>!rm.has(t.id));
+  state.tasks.forEach(t=>{ if(Array.isArray(t.dependances)) t.dependances=t.dependances.filter(i=>!rm.has(i)); });
+  try{ persist(); }catch(e){} try{ renderAll(); }catch(e){} try{ window.rtRender&&window.rtRender(); }catch(e){}
+  return rm.size; }catch(e){ console.error(e); return 0; } }
+window.pjNoDupClean=clean;
+setInterval(()=>{ const n=clean(); if(n){ try{ clipToast(n+' doublon'+(n>1?'s':'')+' de mur supprimé'+(n>1?'s':'')); }catch(e){} } },1500);
 })();</script>
 </body></html>
