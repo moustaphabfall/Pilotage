@@ -2938,7 +2938,7 @@ function render(){
     if(JRSET.has(t.id)) b.classList.add("jour");
     { const fm=p.forme; if(fm&&fm!=="rond"&&fm!=="libre"){ b.classList.add("f-"+fm); if(fm==="cercle"){const c=t.etat==="fait"?"#2f7d4f":t.etat==="encours"?"#E8B500":colorOf(t);b.style.background="color-mix(in srgb,"+c+" 30%,transparent)";b.style.border="3px solid "+c;b.style.color=c} if(fm==="ligne") b.textContent="" } }
     { const ftI=taskFamille(t); if(!t.etude&&t.etat!=="fait"&&p.forme!=="ligne"&&ftI&&ftI.icone){ b.textContent=ftI.icone; b.title=`${t.id} ${t.quoi||""}`+(numOf(t)?" (n° "+numOf(t)+")":"") }
-      if(p.sz&&["ligne","rect","tri","cercle"].includes(p.forme)){ b.style.width=(p.sz.w*100)+"%"; b.style.height=(p.sz.h*100)+"%" } }
+      if(p.sz&&["ligne","rect","tri","cercle"].includes(p.forme)){ b.style.width=(p.sz.w*100)+"%"; b.style.height=(p.sz.h*100)+"%" } if(p.forme==="tri") b.style.translate="0 -16.667%"; }
     { const pi=prestaIcon(t); if(pi){ b.textContent=pi; b.classList.add('presta'); b.title=`${t.id} ${t.quoi||''} — prestation`; } }
     { const z=_pcOf(t); if(z&&!t.etude&&(!p.forme||p.forme==="rond"||p.forme==="libre")){ const xs=z.poly.pts.map(q=>q[0]),ys=z.poly.pts.map(q=>q[1]); const fw=Math.max(...xs)-Math.min(...xs), fh=(Math.max(...ys)-Math.min(...ys))*_ar; const n=_pcN[z.id]||1; const fr=Math.min(fw,fh)*0.6/Math.pow(n,0.35); b.style.setProperty("--pfrac",fr.toFixed(5)); b.classList.add("rt-pz"); } }
     if(!t.etude && (!p.forme||p.forme==="rond"||p.forme==="libre")){
@@ -5380,7 +5380,9 @@ function pdbZoneOpts(r){
   const zs = state.zonesChantier.filter(z=>!z.poly && z.niveau===r.niveau).sort((a,b)=>ALPHA(a.nom,b.nom));
   return pdbOpt('', '— aucune —', !r.zoneId)+zs.map(z=>pdbOpt(z.id, zonePath(z.id), z.id===r.zoneId)).join('');
 }
-function polyCentroid(pts){ let x=0,y=0; pts.forEach(p=>{x+=p[0];y+=p[1];}); return [x/pts.length, y/pts.length]; }
+function polyCentroid(pts){ /* centre de gravité surfacique (aire) ; moyenne des sommets si le polygone est dégénéré */
+  const n=pts.length; let A=0,cx=0,cy=0; for(let i=0;i<n;i++){ const a=pts[i],b=pts[(i+1)%n], c=a[0]*b[1]-b[0]*a[1]; A+=c; cx+=(a[0]+b[0])*c; cy+=(a[1]+b[1])*c; }
+  if(Math.abs(A)<1e-9){ let x=0,y=0; pts.forEach(p=>{x+=p[0];y+=p[1];}); return [x/n, y/n]; } A*=.5; return [cx/(6*A), cy/(6*A)]; }
 function pdbEdit(tid, field, v){
   const t = taskById(tid); if(!t) return;
   const hist = (champ, a, b)=>{ t.historique = t.historique||[]; t.historique.push({date:todayStr(), champ, ancienne:String(a), nouvelle:String(b)}); };
@@ -7196,7 +7198,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v310</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v311</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -13520,7 +13522,7 @@ async function cauDocDl(id){
 })();
 </script>
 <script>
-/* ===== En-tête épuré (v310) : nom + Vue collés au bouton latéral, recherche discrète, boîte à outils en icône, bloc bâtiment allégé ===== */
+/* ===== En-tête épuré (v311) : nom + Vue collés au bouton latéral, recherche discrète, boîte à outils en icône, bloc bâtiment allégé ===== */
 (function(){
   const st=document.createElement('style'); st.id='pjV280'; st.textContent=`
 #chOpenBtn{display:none!important}
@@ -15723,7 +15725,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   setInterval(tick,1200);
   function ftMurs(){ let ft=(state.familleTypes||[]).find(f=>!f.estBase&&normK(f.nom)==='murs'); if(!ft){ ft={id:uid('ft'),nom:'Murs',icone:'🧱',items:['Zone sécurisée','Zone propre en fin d’intervention'],lot:null,familleBaseId:(familleTypeById('ft-base-murs')?'ft-base-murs':((state.familleTypes.find(f=>f.estBase)||{}).id||null))}; state.familleTypes.push(ft); } return ft; }
   window.pieceMursCreer=function(z){ if(!z||!z.poly||!z.poly.pts||z.poly.pts.length<3) return 0; if((state.tasks||[]).some(t=>t.murPiece===z.id)) return 0;
-    const pts=z.poly.pts, n=pts.length, cx=pts.reduce((a,p)=>a+p[0],0)/n, cy=pts.reduce((a,p)=>a+p[1],0)/n, ft=ftMurs(), zf=ensureZoneFamille(ft,z.id,z.niveau), today=todayStr();
+    const pts=z.poly.pts, n=pts.length, [cx,cy]=polyCentroid(pts), ft=ftMurs(), zf=ensureZoneFamille(ft,z.id,z.niveau), today=todayStr();
     const base={niveau:z.niveau,zone:z.nom,zoneChantierId:z.id,zoneChantierIds:[z.id],zoneFamilleId:zf?zf.id:null,support:'mur',etat:'afaire',pct:0,quand:today,murPiece:z.id};
     const g=taskBase(nextTaskId(),'Murs — '+z.nom,z.niveau,Object.assign({},base,{pos:{planId:z.poly.planId,x:+cx.toFixed(4),y:+cy.toFixed(4)}})); state.tasks.unshift(g);
     const used={}; let k=0;
@@ -20738,7 +20740,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v310';
+  const VER='v311';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
