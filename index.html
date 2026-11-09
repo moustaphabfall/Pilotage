@@ -7198,7 +7198,7 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v320</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v321</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
@@ -13522,7 +13522,7 @@ async function cauDocDl(id){
 })();
 </script>
 <script>
-/* ===== En-tête épuré (v320) : nom + Vue collés au bouton latéral, recherche discrète, boîte à outils en icône, bloc bâtiment allégé ===== */
+/* ===== En-tête épuré (v321) : nom + Vue collés au bouton latéral, recherche discrète, boîte à outils en icône, bloc bâtiment allégé ===== */
 (function(){
   const st=document.createElement('style'); st.id='pjV280'; st.textContent=`
 #chOpenBtn{display:none!important}
@@ -20740,7 +20740,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v320';
+  const VER='v321';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
@@ -21312,5 +21312,20 @@ body.pj-cot-on #rtPlan{cursor:crosshair}
     if(!id){ last=null; return; }
     const els=document.querySelectorAll('#rtRoot .rt-pin[data-rtw="'+CSS.escape(id)+'"],#rtRoot .met-wb[data-wt="'+CSS.escape(id)+'"]'); els.forEach(x=>x.classList.add('pj-hl'));
     if(id!==last){ last=id; const e=els[0]; if(e){ try{ const r=e.getBoundingClientRect(); if(r.width&&(r.top<60||r.bottom>innerHeight-60||r.left<0||r.right>innerWidth)) e.scrollIntoView({block:'center',inline:'center',behavior:'smooth'}); }catch(_){} } } }catch(_){} },300);
+})();</script>
+
+<script id="pjInheritJs">(function(){
+  /* un sous-ouvrage hérite de son ouvrage mère : même niveau (donc même bâtiment), même pièce (donc même compartiment), même lot, même métier, même famille.
+     Si la mère n'a encore rien, elle prend la valeur commune de ses sous-ouvrages (rien n'est perdu). */
+  const F=['niveau','zoneChantierId','zoneFamilleId','metierId','lotId'];
+  function sync(){ try{ const T=(state.tasks||[]).filter(t=>!t.deleted); if(!T.length) return; const by={}; T.forEach(t=>{ by[t.id]=t; }); const kids={}; T.forEach(t=>{ if(t.parentTaskId&&by[t.parentTaskId]) (kids[t.parentTaskId]=kids[t.parentTaskId]||[]).push(t); });
+    let ch=false; const ids=Object.keys(kids);
+    /* 1. la mère vide adopte la valeur unanime de ses enfants */
+    ids.forEach(pid=>{ const p=by[pid], K=kids[pid]; F.forEach(f=>{ if(p[f]) return; const v=K.map(k=>k[f]); if(v[0]&&v.every(x=>x===v[0])){ p[f]=v[0]; ch=true; } }); });
+    /* 2. les enfants suivent la mère, du haut vers le bas */
+    const depth=id=>{ let d=0,k=by[id]; while(k&&k.parentTaskId&&d<8){ d++; k=by[k.parentTaskId]; } return d; };
+    ids.sort((a,b)=>depth(a)-depth(b)).forEach(pid=>{ const p=by[pid]; kids[pid].forEach(k=>{ F.forEach(f=>{ if(p[f]&&k[f]!==p[f]){ k[f]=p[f]; ch=true; } }); }); });
+    if(ch){ try{ persist(); }catch(_){} try{ renderJour(); }catch(_){} try{ window.rtRender&&window.rtRender(); }catch(_){} } }catch(e){ console.error(e); } }
+  setInterval(sync,1500); setTimeout(sync,2500);
 })();</script>
 </body></html>
