@@ -20792,7 +20792,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v340';
+  const VER='v341';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
@@ -21651,5 +21651,53 @@ function row(){ try{ if(!isSA()) return; const pv=document.getElementById('sbPro
   b.onclick=e=>{ e.stopPropagation(); try{ window.pgProfView&&window.pgProfView(false); }catch(_){} compose(); }; t.after(b); }catch(e){} }
 window.pjAnnCompose=compose;
 setInterval(row,1200); setTimeout(poll,5000); setInterval(poll,60000);
+})();</script>
+<script id="pjIntervJs">(function(){
+const E=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const enc=x=>encodeURIComponent(x), dec=x=>{ try{ return decodeURIComponent(x); }catch(e){ return x; } };
+const HIER=['directeur','direction','responsable','chargé d','charge d','conducteur','chef de chantier','chef','ingénieur','ingenieur','architecte','économiste','economiste','bet','coordinat','maître','maitre','contremaître','contremaitre','compagnon','ouvrier'];
+const rank=f=>{ const t=String(f||'').toLowerCase(); const i=HIER.findIndex(k=>t.includes(k)); return i<0?999:i; };
+const fnList=()=>{ const a=[]; (state.fonctions||[]).concat((state.interlocuteurs||[]).map(i=>i.fonction)).forEach(f=>{ if(f&&!a.some(x=>x.toLowerCase()===String(f).toLowerCase())) a.push(f); }); return a.map((f,i)=>[f,i]).sort((x,y)=>rank(x[0])-rank(y[0])||x[1]-y[1]).map(x=>x[0]); };
+const per=i=>'<div class="pa-per" style="cursor:pointer" onclick="openEditInterloc(\''+E(i.id)+'\')"><b>'+E(i.nom)+'</b><small>'+E([i.fonction,i.entreprise].filter(Boolean).join(' · '))+'</small>'+(i.coordonnees?'<small>'+E(i.coordonnees)+'</small>':'')+'</div>';
+const addTile=(fn,lb)=>'<button type="button" class="pa-app" onclick="'+fn+'"><span class="pa-ic">＋</span><span class="pa-lb">'+lb+'</span></button>';
+const _pw=window.paWinHtml;
+window.paWinHtml=function(k){
+  if(k==='interv') return ['👥 Intervenants','<div class="pa-grid"><button type="button" class="pa-app" onclick="paOpen(\'soc\')"><span class="pa-ic">🏢</span><span class="pa-lb">Société</span></button><button type="button" class="pa-app" onclick="paOpen(\'fn\')"><span class="pa-ic">🪪</span><span class="pa-lb">Fonction</span></button>'+addTile('paIvAdd()','Ajouter un intervenant')+'</div>'];
+  if(k==='fn'){ const L=fnList(), P=state.interlocuteurs||[];
+    return ['🪪 Fonctions','<div class="pa-lab">Du plus haut au plus bas dans la hiérarchie</div><div class="pa-grid">'+L.map(f=>{ const n=P.filter(i=>i.fonction===f).length; return '<button type="button" class="pa-app" onclick="paFnGo(\''+enc(f).replace(/\'/g,'%27')+'\')"><span class="pa-ic">👤</span><span class="pa-lb">'+E(f)+(n?' ('+n+')':'')+'</span></button>'; }).join('')+addTile('paFnAdd()','Ajouter une fonction')+'</div>']; }
+  if(k&&k.indexOf('fn:')===0){ const f=dec(k.slice(3)); const L=(state.interlocuteurs||[]).filter(i=>i.fonction===f);
+    return ['👤 '+E(f),(L.length?L.map(per).join(''):'<p class="empty-note">Aucun intervenant pour cette fonction.</p>')+'<div class="pa-grid">'+addTile('paIvAdd(\'\',\''+enc(f).replace(/\'/g,'%27')+'\')','Ajouter un intervenant')+'</div>']; }
+  const r=_pw.apply(this,arguments);
+  if(k&&k.indexOf('soc:')===0&&r&&!/^soc:[^:]+:r:/.test(k)){ const n=dec(k.split(':')[1]); const L=(state.interlocuteurs||[]).filter(i=>i.entreprise===n);
+    r[1]+='<div class="pa-lab">Intervenants de la société</div>'+(L.length?L.map(per).join(''):'<p class="empty-note">Aucun intervenant pour le moment.</p>')+'<div class="pa-grid">'+addTile('paIvAdd(\''+enc(n).replace(/\'/g,'%27')+'\')','Ajouter un intervenant')+'</div>'; }
+  return r; };
+const _pb=window.paBack;
+window.paBack=function(){ const k=window.__paApp||''; if(k==='fn'){ window.__paApp='interv'; projParamEdit(); return; } if(/^fn:/.test(k)){ window.__paApp='fn'; projParamEdit(); return; } return _pb.apply(this,arguments); };
+window.paFnGo=e=>{ window.__paApp='fn:'+e; projParamEdit(); };
+window.paFnAdd=()=>miniPrompt('Nom de la fonction','',v=>{ v=(v||'').trim(); if(!v) return; state.fonctions=state.fonctions||[]; if(!state.fonctions.some(x=>x.toLowerCase()===v.toLowerCase())) state.fonctions.push(v); persist(); window.__paApp='fn'; projParamEdit(); });
+window.paIvAdd=(ent,fn)=>{ window.__ivPre={ent:ent?dec(ent):'',fn:fn?dec(fn):''}; openNewInterloc(); };
+const back=()=>{ const k=window.__ivBack; window.__ivBack=null; if(k){ window.__paApp=k; try{ projParamEdit(); }catch(e){} } };
+window.ivCancel=()=>{ closeModal(); back(); };
+window.openNewInterloc=function(presetTaskId){
+  const pre=window.__ivPre||{}; window.__ivPre=null; window.__ivBack=window.__paApp||null;
+  openModal('<button class="close-x" onclick="ivCancel()">×</button><h3>Ajouter un intervenant</h3>'
+   +'<div class="row2"><div class="field"><label>Société</label><select id="i-entreprise" onchange="handleEntrepriseChange(this)">'+entrepriseOptions(pre.ent)+'</select></div>'
+   +'<div class="field"><label>Fonction / rôle</label><select id="i-fonction" onchange="handleFonctionChange(this)">'+fonctionOptions(pre.fn)+'</select></div></div>'
+   +'<div class="row2"><div class="field"><label>Prénom</label><input type="text" id="i-prenom" autocomplete="off"></div><div class="field"><label>Nom</label><input type="text" id="i-nom" autocomplete="off"></div></div>'
+   +'<div class="row2"><div class="field"><label>Téléphone</label><input type="tel" id="i-tel" autocomplete="off"></div><div class="field"><label>Adresse e-mail</label><input type="email" id="i-mail" autocomplete="off"></div></div>'
+   +(presetTaskId?'<div class="field"><label>Rôle sur l’ouvrage '+E(presetTaskId)+'</label><select id="i-role-preset"><option value="acteur">Acteur</option><option value="influenceur">Influenceur</option><option value="decideur">Décideur</option></select></div>':'')
+   +'<div class="modal-actions"><button class="primary" onclick="createInterloc(\''+(presetTaskId||'')+'\')">Créer l’intervenant</button><button class="ghost" onclick="'+(presetTaskId?'closeModal(); openTaskDetail(\''+presetTaskId+'\')':'ivCancel()')+'">Annuler</button></div>');
+  setTimeout(()=>{ const a=document.getElementById('i-prenom'); if(a&&innerWidth>700) a.focus(); },80);
+};
+window.createInterloc=function(returnTaskId){
+  const g=id=>(document.getElementById(id)||{value:''}).value.trim();
+  const pn=g('i-prenom'), nm=g('i-nom'); const nom=(pn+' '+nm).trim();
+  if(!nom){ const f=document.getElementById('i-prenom'); if(f) f.focus(); return; }
+  const taches=[]; if(returnTaskId){ taches.push({taskId:returnTaskId, role:g('i-role-preset')||'acteur'}); }
+  const tel=g('i-tel'), mail=g('i-mail');
+  state.interlocuteurs.unshift({ id:uid('I'), nom, prenom:pn, nomFamille:nm, tel, email:mail, fonction:g('i-fonction'), entreprise:g('i-entreprise'), coordonnees:[tel,mail].filter(Boolean).join(' · '), taches });
+  persist(); closeModal();
+  if(returnTaskId){ renderAll(); openTaskDetail(returnTaskId); } else { try{ renderAll(); }catch(e){} back(); }
+};
 })();</script>
 </body></html>
