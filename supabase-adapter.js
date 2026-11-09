@@ -216,6 +216,11 @@
     window.PILOTAGE_PROJET = PJ;
     window.PILOTAGE_ADM = adm; window.PILOTAGE_GENPW = genPw;
     window.PILOTAGE_ACC = ACC;
+    /* annonces du super administrateur : lues par tous les utilisateurs connectés */
+    window.PILOTAGE_ANN = {
+      list: async ()=>{ const r = await sb.from('annonces').select('id,created_at,titre,message,etapes,action').eq('actif', true).order('created_at',{ascending:false}).limit(5); if(r.error) throw r.error; return r.data||[]; },
+      publish: async row=>{ const r = await sb.from('annonces').insert({titre:String(row.titre||'').slice(0,120), message:String(row.message||'').slice(0,600), etapes:(row.etapes||[]).slice(0,3), action:row.action||null}).select('id').single(); if(r.error) throw r.error; return r.data; }
+    };
     window.PILOTAGE_EVAL = async (row)=>{ const {data:{session}} = await sb.auth.getSession(); const {error} = await sb.from('evaluations').insert(Object.assign({user_id:me.id, email:(session&&session.user&&session.user.email)||null, projet_id:(window.PILOTAGE_PROJET&&window.PILOTAGE_PROJET.id)||null}, row)); if(error) throw error; };
     if(window.PILOTAGE_ESSAI && !window.__pjEssaiT){ window.__pjEssaiT = setInterval(async ()=>{ try{ const r = await sb.rpc('pj_essai_statut'); if(!r.error && r.data && r.data.expire) location.reload(); }catch(e){} }, 300000); }
     /* suivi d'usage (anonyme quant au contenu) : clics, durée active, sessions, par utilisateur et par projet */
