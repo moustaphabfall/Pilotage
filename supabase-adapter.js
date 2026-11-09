@@ -189,13 +189,16 @@
     { const r = await (pre?pre.m:sb.from('projet_membres').select('projet_id,role,fonctions,valide_jusqu,actif,types_autorises,fonction,lots').eq('user_id', me.id)); (r.data||[]).forEach(m=>mem[m.projet_id]=m); }
     projets = projets.filter(p=>glob || (mem[p.id] && mem[p.id].actif));
     projets.forEach(p=>{ const mm=mem[p.id]||{}; p.mrole=glob?'admin':(mm.role||''); p.mfn=mm.fonction||''; p.mlots=mm.lots||null; });
-    if(!projets.length && !glob && window.PILOTAGE_ESSAI){
-      const nomC = String(me.nom||'').split(/\s+/)[0];
-      await new Promise(res=>{ const d = screen('<div class="box"><div class="tst">TEST · version d’essai</div><h2>👋 Bienvenue'+(nomC?' '+esc(nomC):'')+'</h2><p>Vous utilisez la version test de Been11 (jusqu’au '+esc(window.PILOTAGE_ESSAI.fin)+'). En cours ou à la fin de la période d’essai, nous vous demanderons de remplir un formulaire d’évaluation. Merci de nous remonter tous vos retours : le bouton « Évaluation » reste en bas à droite de chaque page.</p><button id="pgGo">Continuer</button></div>'); d.querySelector('#pgGo').onclick = ()=>res(); });
-      await new Promise(()=>{ const d = screen('<form><div class="tst">TEST · version d’essai</div><h2>🏗 Créez un projet pour commencer</h2><input name="nom" type="text" placeholder="Nom du projet" required maxlength="80" autocomplete="off"><div class="e" id="pjE"></div><button type="submit" id="pjGo">Créer le projet</button><button type="button" class="l" id="pgOut">Se déconnecter</button></form>');
+    /* première connexion : aucun projet -> la seule chose possible est de créer un projet (écran bloquant) */
+    if(!projets.length && (glob || window.PILOTAGE_ESSAI)){
+      const nomC = String(me.nom||'').split(/\s+/)[0], essai = !glob && window.PILOTAGE_ESSAI;
+      await new Promise(()=>{ const d = screen('<form>'+(essai?'<div class="tst">TEST · version d’essai</div>':'')+'<h2>🏗 Veuillez créer un projet pour commencer</h2>'+(nomC?'<p>Bonjour '+esc(nomC)+', donnez un nom à votre premier projet.</p>':'')+(essai?'<p style="font-size:13px;opacity:.8">Version test jusqu’au '+esc(window.PILOTAGE_ESSAI.fin)+' : le bouton « Évaluation » reste en bas à droite de chaque page pour nous remonter vos retours.</p>':'')+'<input name="nom" type="text" placeholder="Nom du projet" required maxlength="80" autocomplete="off"><div class="e" id="pjE"></div><button type="submit" id="pjGo">Créer le projet</button><button type="button" class="l" id="pgOut">Se déconnecter</button></form>');
         d.querySelector('#pgOut').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); };
         d.querySelector('form').onsubmit = async ev=>{ ev.preventDefault(); const b = d.querySelector('#pjGo'); b.disabled = true; b.textContent = 'Création…';
-          try{ const j = await ACC({action:'essai_projet_create', nom:new FormData(ev.target).get('nom')}); try{ localStorage.setItem('pg_projet', j.id); }catch(e){} location.reload(); }
+          try{ const nom = String(new FormData(ev.target).get('nom')||'').trim(); let j;
+            if(essai) j = await ACC({action:'essai_projet_create', nom});
+            else { const id = (nom.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12)||'PROJET')+Math.random().toString(36).slice(2,5).toUpperCase(); await adm({action:'p_projet_create', id, nom}); j = {id}; }
+            try{ localStorage.setItem('pg_projet', j.id); }catch(e){} location.reload(); }
           catch(e){ d.querySelector('#pjE').textContent = e.message||'Erreur'; b.disabled = false; b.textContent = 'Créer le projet'; } }; });
     }
     if(!projets.length){
