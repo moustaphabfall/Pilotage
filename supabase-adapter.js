@@ -198,7 +198,7 @@
           try{ const nom = String(new FormData(ev.target).get('nom')||'').trim(); let j;
             if(essai) j = await ACC({action:'essai_projet_create', nom});
             else { const id = (nom.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12)||'PROJET')+Math.random().toString(36).slice(2,5).toUpperCase(); await adm({action:'p_projet_create', id, nom}); j = {id}; }
-            try{ localStorage.setItem('pg_projet', j.id); }catch(e){} location.reload(); }
+            try{ localStorage.setItem('pg_projet', j.id); localStorage.setItem('pj_tuto_start','1'); }catch(e){} location.reload(); }
           catch(e){ d.querySelector('#pjE').textContent = e.message||'Erreur'; b.disabled = false; b.textContent = 'Créer le projet'; } }; });
     }
     if(!projets.length){
