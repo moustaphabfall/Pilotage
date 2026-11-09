@@ -20741,7 +20741,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v330';
+  const VER='v331';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
@@ -21391,6 +21391,10 @@ html[data-theme="sombre"] .jr-card .t b,html[data-theme="sombre"] .jr-card .m{co
     const f=inp.closest('.field'); if(f){ const lab=f.querySelector('label'); if(lab) lab.innerHTML='Famille <small style="color:var(--ink-soft)">(celle de l’ouvrage mère — non modifiable)</small>'; f.querySelectorAll('button.ghost').forEach(b=>{ b.style.display='none'; }); const nf=document.getElementById('e-newfam'); if(nf) nf.style.display='none'; }
     const ms=document.getElementById('e-metier'); if(ms){ const lab=ms.closest('.field')&&ms.closest('.field').querySelector('label'); if(lab) lab.innerHTML='Métier <small style="color:var(--ink-soft)">(à préciser pour cet ouvrage)</small>'; }
   }catch(e){ console.error(e); } }
+  /* choisir un métier ne doit jamais toucher à la famille verrouillée d'un sous-ouvrage */
+  function keepFam(fn){ return function(prefix){ const inp=document.getElementById(prefix+'-famille-t'), sel=document.getElementById(prefix+'-famille'); const lock=inp&&inp.dataset.pjLock; const v=sel&&sel.value, tv=inp&&inp.value; if(lock) return; return fn.apply(this,arguments); }; }
+  try{ if(typeof onMetierFilter==='function'){ const f=keepFam(onMetierFilter); window.onMetierFilter=onMetierFilter=f; } }catch(e){ try{ window.onMetierFilter=keepFam(window.onMetierFilter); }catch(_){} }
+  try{ if(typeof famTSync==='function'){ const f=keepFam(famTSync); window.famTSync=famTSync=f; } }catch(e){}
   const od=window.openTaskDetail; if(typeof od==='function'){ window.openTaskDetail=function(id){ const r=od.apply(this,arguments); setTimeout(()=>fiche(id),80); setTimeout(()=>fiche(id),500); return r; }; }
 })();</script>
 
@@ -21477,5 +21481,30 @@ html[data-theme="blanc"] #pjGraph .pjg-iso span{border-color:#F2C200}
   setInterval(()=>{ try{ const pg=document.getElementById('page-planif'); if(pg&&pg.classList.contains('active')) build(false); }catch(_){} },1500);
   /* liste des ouvrages : tag orange « à vérifier » */
   const orj=window.renderJour; if(typeof orj==='function'){ window.renderJour=function(){ const r=orj.apply(this,arguments); try{ document.querySelectorAll('[data-jrcard]').forEach(c=>{ const t=taskById(c.dataset.jrcard); if(!t||!t.aVerifier) return; c.style.borderLeftColor=OR; const b=c.querySelector('.t b'); if(b&&!b.querySelector('.pj-ver')) b.insertAdjacentHTML('beforeend','<span class="pj-tag pj-ver" style="border-color:'+OR+';color:'+OR+' !important">à vérifier</span>'); }); }catch(_){} return r; }; }
+})();</script>
+<style id="pjMetierUniqCss"></style>
+<script id="pjMetierUniqJs">(function(){
+/* Règle importante : chaque métier est unique (un seul métier par nom, sans accent ni casse) */
+const key=n=>String(n||'').replace(/œ/gi,'oe').replace(/æ/gi,'ae').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+function walk(o,map,seen){ if(!o||typeof o!=='object'||seen.has(o)) return; seen.add(o);
+  if(Array.isArray(o)){ o.forEach(x=>walk(x,map,seen)); return; }
+  for(const k in o){ const v=o[k];
+    if(k==='metierId'&&typeof v==='string'&&map[v]) o[k]=map[v];
+    else if(k==='metierIds'&&Array.isArray(v)) o[k]=[...new Set(v.map(x=>map[x]||x))];
+    else if(v&&typeof v==='object') walk(v,map,seen); } }
+function dedupe(){ try{
+  if(typeof state==='undefined'||!state||!Array.isArray(state.metiers)) return 0;
+  const first={}, map={}, keep=[]; let n=0;
+  state.metiers.forEach(m=>{ const k=key(m&&m.nom); if(!k){ keep.push(m); return; }
+    if(first[k]){ map[m.id]=first[k].id; if(!first[k].couleur&&m.couleur) first[k].couleur=m.couleur; n++; } else { first[k]=m; keep.push(m); } });
+  if(!n) return 0;
+  state.metiers=keep; walk(state,map,new Set());
+  try{ persist(); }catch(e){} try{ if(typeof renderTravaux==='function') renderTravaux(); }catch(e){} try{ if(typeof renderJour==='function') renderJour(); }catch(e){}
+  return n; }catch(e){ console.error(e); return 0; } }
+window.pjMetierDedupe=dedupe;
+/* ajout : refuse un doublon et réutilise l'existant */
+const oldPush=window.metierPushSorted; 
+if(typeof metierPushSorted==='function'){ const o=metierPushSorted; window.metierPushSorted=metierPushSorted=function(m){ const e=(state.metiers||[]).find(x=>key(x.nom)===key(m&&m.nom)); if(e){ try{ clipToast('Ce métier existe déjà'); }catch(_){} return e; } return o(m); }; }
+setInterval(()=>{ const n=dedupe(); if(n){ try{ clipToast('Métiers en double fusionnés ('+n+')'); }catch(e){} } },1500);
 })();</script>
 </body></html>
