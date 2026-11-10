@@ -13448,6 +13448,9 @@ async function cauDocDl(id){
   const tile=t=>()=>[...document.querySelectorAll('#overlay .pa-app,#overlay button')].find(x=>rectOf(x)&&x.textContent.includes(t))||null;
   const P1='Partie 1 · Créer le projet', P2='Partie 2 · Paramétrer le projet', P3='Partie 3 · Bâtiment et niveaux', P4='Partie 4 · Découvrir les vues', P5='Partie 5 · Découvrir chaque fonction';
   const closeMod=()=>{ try{ if(document.getElementById('overlay')&&document.getElementById('overlay').classList.contains('open')) closeModal(); }catch(e){} };
+  const dwT=()=>{ const b=$('#dwWin .pa-h b'); return b?b.textContent:''; };
+  const dcell=k=>()=>{ try{ const ids=window.__ttRowIds; const trs=[...document.querySelectorAll('#pjDb tbody tr[data-did]')]; if(!trs.length) return null; const nw=ids?trs.filter(t=>!ids.has(t.dataset.did)):[]; const tr=nw.length?nw[nw.length-1]:trs[trs.length-1]; const at=(k==='nom'||k==='discipline')?'[data-ded="'+k+'"]':'[data-dsel="'+k+'"]'; return tr.querySelector('td'+at); }catch(e){ return null; } };
+  const dgo=k=>()=>{ try{ const c=dcell(k)(); if(c&&c.scrollIntoView) c.scrollIntoView({block:'center',inline:'center'}); }catch(e){} };
   const paHome=()=>{ try{ const o=document.getElementById('overlay'); if(o&&o.classList.contains('open')&&window.__paApp&&typeof window.paOpen==='function') window.paOpen(''); }catch(e){} };
   const STEPS=[
     {part:P1,k:'click',sel:()=>narrow()?$('#menuOpen'):$('#menuBtn'),t:'🎉 Bravo, vous venez de créer votre premier projet',p:'Cliquez sur le bouton menu pour voir l’ensemble de vos projets.',after:()=>{ if(!narrow()){ setTimeout(()=>{ document.body.classList.remove('sb-off'); },120); } },wait:650},
@@ -13461,8 +13464,11 @@ async function cauDocDl(id){
     {part:P3,k:'ok',sel:tile('Architecture'),t:'🪜 Créer les niveaux',p:'Ajoute tes niveaux : R-1, RDC, R+1…'},
     {part:P4,k:'click',sel:()=>$('#pjViewBtn'),pre:()=>{ closeMod(); closeMenu(); flowOn(); },t:'👁 La vue',p:'Touche le bouton Vue.',wait:450},
     {part:P4,k:'click',sel:()=>$('#pjPop [data-v=table]'),t:'🗂 Bibliothèque projet',p:'Ici, tous tes plans et documents, rangés par bâtiment et par niveau. Touche la base de données.',wait:800},
-    {part:P4,k:'click',sel:()=>$('#pjDb [data-dact=add]'),pre:()=>{ const b=$('#pjDb [data-mode=etude]'); if(b&&b.getAttribute('aria-pressed')!=='true') b.click(); },t:'📥 Dépose ton premier document',p:'Touche « + Document » puis choisis un fichier sur ton appareil.',wait:700},
-    {part:P4,k:'do',sel:()=>$('#pjDb .pjd-scroll'),t:'✍️ Remplis ton document',p:'Complète sa ligne : nom, niveau, corps d’état, état. Quand c’est fait, touche « C’est fait » pour passer à la suite.',onNext:()=>{ try{ const g=(state.ged||[]).slice(-1)[0]; window.__ttDocNiv=(g&&g.niveau)||''; }catch(e){} }},
+    {part:P4,k:'click',sel:()=>$('#pjDb [data-dact=add]'),pre:()=>{ try{ window.__ttRowIds=new Set([...document.querySelectorAll('#pjDb tbody tr[data-did]')].map(t=>t.dataset.did)); }catch(e){} const b=$('#pjDb [data-mode=etude]'); if(b&&b.getAttribute('aria-pressed')!=='true') b.click(); },t:'📥 Dépose ton premier document',p:'Touche « + Document » puis choisis un fichier sur ton appareil.',wait:700},
+    {part:P4,k:'wait',sel:()=>$('#dwWin .pa-grid'),done:t0=>!$('#dwWin')||dwT()!==t0,t:'📂 Choisis le corps d’état',p:'Touche le corps d’état auquel appartient ton document.'},
+    {part:P4,k:'wait',sel:()=>$('#dwWin .pa-grid'),skip:()=>!$('#dwWin')||/Type de document/.test(dwT()),done:t0=>!$('#dwWin')||dwT()!==t0,t:'🧱 Choisis le lot',p:'Touche le lot concerné par ton document.'},
+    {part:P4,k:'wait',sel:()=>$('#dwWin .pa-grid'),skip:()=>!$('#dwWin'),done:t0=>!$('#dwWin'),t:'📐 Choisis le type de document',p:'Touche le type de ton document (plan, note de calcul, rapport…).'},
+    {part:P4,k:'do',sel:()=>{ const c=dcell('nom')(); return c?c.closest('tr'):null; },pre:dgo('nom'),skip:()=>!dcell('nom')(),t:'✍️ Complète ton document',p:'Sa ligne est en surbrillance : touche une case pour renseigner le niveau, l’état ou la date. Quand c’est fait, touche « C’est fait » pour passer à la suite.',onNext:()=>{ try{ const c=dcell('niveau')(); window.__ttDocNiv=c?c.textContent.trim():''; }catch(e){} }},
     {part:P4,k:'click',sel:()=>$('#pjViewBtn'),pre:()=>{ const p=$('#pjPop'); if(p) p.remove(); flowOn(); },t:'👁 La vue',p:'Rouvre le menu Vue.',wait:450},
     {part:P4,k:'click',sel:()=>$('#pjPop [data-v=plan]'),t:'🗺 Vue en plan',p:'Touche la vue en plan : c’est ici que tu poses et suis tes tâches.',wait:800},
     {part:P4,k:'click',sel:()=>{ const n=window.__ttDocNiv; let e=null; try{ if(n) e=$('#pjPick .pk-c[data-n="'+CSS.escape(n)+'"]'); }catch(_){} return e||$('#pjPick .pk-c'); },t:'🗺 Choisis ton plan',p:'Touche le niveau du plan que tu viens de déposer.',wait:900},
@@ -13500,6 +13506,13 @@ async function cauDocDl(id){
         const t0=Date.now(); const poll=()=>{ if(cur!==i) return; let ok=false; try{ ok=S.done(m); }catch(e){} if(ok||Date.now()-t0>600000){ tm=setTimeout(()=>go(i+1),S.wait||600); } else tm=setTimeout(poll,600); };
         tm=setTimeout(poll,1500);
       };
+      return;
+    }
+    if(S.k==='wait'){
+      const r1=rectOf(S.sel?S.sel():null);
+      root.innerHTML=(r1?'<div class="tt-ring pulse" style="left:'+(r1.left-4)+'px;top:'+(r1.top-4)+'px;width:'+(r1.width+8)+'px;height:'+(r1.height+8)+'px;border-radius:12px"></div>':'')
+        +'<div class="tt-card" style="top:max(14px,env(safe-area-inset-top));padding:10px 14px"><div class="tt-app">'+(S.part||'Been11')+'</div><h3>'+S.t+'</h3><p style="margin-bottom:4px">'+S.p+'</p><div class="tt-hint" style="margin:0">👆 Fais ton choix dans la fenêtre</div></div>';
+      const t0=dwT(); clearInterval(mv); mv=setInterval(()=>{ if(cur!==i||!root){ clearInterval(mv); return; } let ok=false; try{ ok=S.done(t0); }catch(e){} if(ok){ clearInterval(mv); tm=setTimeout(()=>go(i+1),450); } },350);
       return;
     }
     if(S.k==='do'){
@@ -20809,7 +20822,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v348';
+  const VER='v349';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
