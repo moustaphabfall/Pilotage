@@ -13410,7 +13410,9 @@ async function cauDocDl(id){
   const uid=()=>{ try{ return (window.PILOTAGE_USER&&window.PILOTAGE_USER.id)||'local'; }catch(e){ return 'local'; } };
   const KEY=()=>'pj_tuto_'+uid();
   const seen=()=>{ try{ return localStorage.getItem(KEY())==='1'; }catch(e){ return false; } };
-  const mark=()=>{ try{ localStorage.setItem(KEY(),'1'); }catch(e){} };
+  const mark=()=>{ try{ localStorage.setItem(KEY(),'1'); localStorage.removeItem(RKEY()); }catch(e){} };
+  const RKEY=()=>'pj_tuto_r_'+uid();
+  const resumeAt=()=>{ try{ const v=localStorage.getItem(RKEY()); return v==null?-1:(+v||0); }catch(e){ return -1; } };
   if(!document.getElementById('pjTutoCss')){ const st=document.createElement('style'); st.id='pjTutoCss'; st.textContent=
     '#pjTuto{position:fixed;inset:0;pointer-events:none;z-index:2147482500;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}'
    +'#pjTuto .tt-p{pointer-events:auto;position:fixed;background:rgba(10,14,18,.78)}'
@@ -13469,7 +13471,8 @@ async function cauDocDl(id){
   function go(i){
     clearTimeout(tm); clearInterval(mv); if(clk){ document.removeEventListener('click',clk,true); clk=null; }
     while(i<STEPS.length-1 && STEPS[i].skip && STEPS[i].skip()) i++;
-    cur=i; const S=STEPS[i]; try{ if(S.pre) S.pre(); }catch(e){}
+    cur=i; try{ localStorage.setItem(RKEY(),String(i)); }catch(e){}
+    const S=STEPS[i]; try{ if(S.pre) S.pre(); }catch(e){}
     if(root) root.innerHTML='';
     tm=setTimeout(()=>render(i),S.pre?420:60);
   }
@@ -13561,7 +13564,15 @@ async function cauDocDl(id){
         const end=()=>{ dr=false; c.classList.remove('tt-d'); }; gb.addEventListener('pointerup',end); gb.addEventListener('pointercancel',end); }
       const r=c.getBoundingClientRect(), top=(r.top+r.height/2)<vh()/2;
       h.style.setProperty('--tt-b',top?'0px':(vh()-r.top+10)+'px'); h.style.setProperty('--tt-t',top?(r.bottom+10)+'px':'0px'); h.classList.add('tt-on'); }catch(e){} },250); })();
-  window.pjTuto=function(){ stop(false); closeAll(); setTimeout(()=>go(0),120); };
+  window.pjTuto=function(){ stop(false); try{ localStorage.removeItem(RKEY()); }catch(e){} closeAll(); setTimeout(()=>go(0),120); };
+  /* ----- bouton « Visite guidée » : reprise à l'étape suivant la dernière étape comprise ----- */
+  (function(){ const c=document.createElement('style'); c.textContent='#pjTutoResume{position:fixed;right:10px;top:50%;transform:translateY(-50%);z-index:2147482400;display:none;align-items:center;gap:6px;padding:12px 14px;border-radius:999px;border:2px solid #111;background:#F5B000;color:#111;font:700 14px system-ui,-apple-system,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.35);cursor:pointer}#pjTutoResume.on{display:inline-flex}'; document.head.appendChild(c);
+    const b=document.createElement('button'); b.type='button'; b.id='pjTutoResume'; b.innerHTML='🎓 Visite guidée'; document.body.appendChild(b);
+    b.onclick=()=>{ stop(false); root=document.createElement('div'); root.id='pjTuto'; document.body.appendChild(root); const n=resumeAt();
+      root.innerHTML='<div class="tt-p" style="inset:0"></div><div class="tt-card" style="top:50%;transform:translate(-50%,-50%)"><div class="tt-app">Been11</div><h3>Reprendre la visite guidée ?</h3><p>Vous reprendrez à l’étape qui suit la dernière étape comprise.</p><div class="tt-row"><button type="button" class="tt-sk" data-k="no">Non</button><button type="button" class="tt-go" data-k="yes">Oui</button></div></div>';
+      root.querySelector('[data-k=no]').onclick=()=>stop(false);
+      root.querySelector('[data-k=yes]').onclick=()=>{ stop(false); setTimeout(()=>go(Math.max(0,Math.min(n,STEPS.length-1))),120); }; };
+    setInterval(()=>{ try{ const show=!!window.PILOTAGE_PROJET&&!root&&cur<0&&resumeAt()>=0; b.classList.toggle('on',show); }catch(e){} },700); })();
   window.pjTutoAsk=function(){ stop(false); if(!root){ root=document.createElement('div'); root.id='pjTuto'; document.body.appendChild(root); }
     root.innerHTML='<div class="tt-p" style="inset:0"></div><div class="tt-card" style="top:50%;transform:translate(-50%,-50%)"><div class="tt-app">Been11</div><h3>Veux-tu lancer le tutoriel ?</h3><p>Une visite guidée : à chaque étape, tout est grisé sauf l’élément à utiliser.</p><div class="tt-row"><button type="button" class="tt-sk" data-k="later">Plus tard</button><button type="button" class="tt-go" data-k="yes">Oui</button></div></div>';
     root.querySelector('[data-k=yes]').onclick=()=>{ stop(false); closeAll(); setTimeout(()=>go(0),120); };
@@ -20823,7 +20834,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v355';
+  const VER='v356';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
