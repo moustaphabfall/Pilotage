@@ -16235,11 +16235,12 @@ const PG_FEATS=[
     if(p&&p.role!=='admin'){
       PG_FEATS.forEach(f=>{
         if(!pgCan(f.k)){ document.body.classList.add(cls(f.k)); if(f.sel) css.push('body.'+cls(f.k)+' '+f.sel.split(',').join(',body.'+cls(f.k)+' ')+'{display:none!important}'); else css.push('body.'+cls(f.k)+' .tab[data-page="'+f.k+'"]{display:none!important}'); }
-        f.subs.forEach(s=>{ if(!pgCan(s.k)){ document.body.classList.add(cls(s.k)); css.push('body.'+cls(s.k)+' '+s.sel.split(',').join(',body.'+cls(s.k)+' ')+'{display:none!important}'); } });
+        f.subs.forEach(s=>{ if(s.sel&&!pgCan(s.k)){ document.body.classList.add(cls(s.k)); css.push('body.'+cls(s.k)+' '+s.sel.split(',').join(',body.'+cls(s.k)+' ')+'{display:none!important}'); } });
       });
     }
     let el=document.getElementById('pgxCss'); if(!el){ el=document.createElement('style'); el.id='pgxCss'; document.head.appendChild(el); } el.textContent=css.join('\n');
     const tp=document.getElementById('tabProjet'); if(tp) tp.style.display=PJ()||true?'':'none';
+    try{ pgFields(); }catch(e){}
   }
   window.pgApply=apply;
 
@@ -16284,6 +16285,20 @@ const PG_FEATS=[
     const mx=b.closest('.mx'); const P=PG_ROLE_PRESETS[b.dataset.pre]; if(!mx||!P) return;
     mx.querySelectorAll('[data-f]').forEach(i=>{ i.checked=!P.no.includes(i.dataset.f); });
     mx.dataset.role=b.dataset.pre; mx.querySelectorAll('.mx-pre button').forEach(x=>x.classList.toggle('on',x===b)); },true);
+  /* Données des fiches (ouvrage / document) regroupées en cadres — un interrupteur par donnée, par membre */
+  const PG_DL={batiment:'Bâtiment',niveau:'Niveau',zone:'Zone',discipline:'Lot',type:'Type',nature:'Nature',docType:'Type de document',format:'Format',phase:'Phase',periode:'Période',date:'Date',etat:'Visa',emetteur:'Émetteur',indice:'Indice',liens:'Documents liés',code:'Code',numero:'N°',ouvrage:'Ouvrage'};
+  const PG_CADRES=[
+    {k:'cadre.arch',l:'📐 Cadre Architecture',o:['Pièce','Mur','Zone','Niveau','Position','Support'],d:['batiment','niveau','zone']},
+    {k:'cadre.ing',l:'🧮 Cadre Ingénieur',o:['Famille','Métier','Sous-ouvrages'],d:['discipline','type','nature','docType','format']},
+    {k:'cadre.plan',l:'🗓️ Cadre Planning',o:['Pour le'],d:['phase','periode','date']},
+    {k:'cadre.suivi',l:'✅ Cadre Suivi',o:['État','Notes'],d:['etat','emetteur','indice','liens','code','numero','ouvrage']}
+  ];
+  PG_CADRES.forEach(c=>PG_FEATS.push({k:c.k,l:c.l,subs:c.o.map(x=>({k:'ch.o.'+x,l:'Ouvrage · '+x})).concat(c.d.map(x=>({k:'ch.d.'+x,l:'Document · '+PG_DL[x]})))}));
+  window.pgFieldOn=function(t,k){ const p=PJ(); if(!p||p.role==='admin') return true; for(const c of PG_CADRES){ if((t==='o'?c.o:c.d).includes(k)) return pgCan(c.k)&&pgCan('ch.'+t+'.'+k); } return true; };
+  function pgFields(){ const p=PJ(); const css=[]; if(p&&p.role!=='admin'){ PG_CADRES.forEach(c=>c.d.forEach(k=>{ if(!pgFieldOn('d',k)) css.push('.modal .field:has([data-df="'+k+'"])'); })); }
+    let el=document.getElementById('pgxFld'); if(!el){ el=document.createElement('style'); el.id='pgxFld'; document.head.appendChild(el); } el.textContent=css.length?css.join(',')+'{display:none!important}':''; hideOuv(); }
+  function hideOuv(){ const p=PJ(); if(!p||p.role==='admin') return; document.querySelectorAll('dl.pm-b dt').forEach(dt=>{ const l=dt.textContent.trim(); const f=PG_CADRES.some(c=>c.o.includes(l)); if(!f) return; const on=pgFieldOn('o',l); dt.style.display=on?'':'none'; if(dt.nextElementSibling&&dt.nextElementSibling.tagName==='DD') dt.nextElementSibling.style.display=on?'':'none'; }); }
+  new MutationObserver(()=>{ try{ hideOuv(); }catch(e){} }).observe(document.body,{childList:true,subtree:true});
   function matrix(prefix,fonctions){
     return '<div class="mx"'+(fonctions&&fonctions._role?' data-role="'+esc(fonctions._role)+'"':'')+'><div class="mx-pre pgs-f"><b style="font-size:12.5px">Rôle :</b>'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-pre="'+esc(r)+'"'+(fonctions&&fonctions._role===r?' class="on"':'')+'>'+esc(r)+'</button>').join('')+'</div>'+PG_FEATS.map(f=>{
       const on=fonctions[f.k]!==false;
@@ -19786,7 +19801,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  const DTXT=['nom','emetteur','phase','periode','zone','discipline','type','numero','indice','format'];
  let DSORT=LS('pj_dsort',null);
  try{ if(!LS('pj_dcols_v2',0)){ LSset('pj_dcols',null); LSset('pj_dcols_v2',1); } if(!LS('pj_dcols_v3',0)){ LSset('pj_dcols',null); LSset('pj_dcols_v3',1); } }catch(_){}
- const dcolsOn=()=>{ const c=(LS('pj_dcols',DDEF)||DDEF).filter(k=>DCOLS[k]); return c.length?c:DDEF; };
+ const dcolsOn=()=>{ const c=(LS('pj_dcols',DDEF)||DDEF).filter(k=>DCOLS[k]&&(!window.pgFieldOn||pgFieldOn('d',k))); return c.length?c:DDEF; };
  const DOCS=()=>{ const S=ST(); S.documents=S.documents||[]; return S.documents; };
  const nTaches=()=>DOCS().filter(d=>!d.planning).length;
  /* chaque projet a par défaut un ouvrage « Planning » : la somme de ses documents (étude) ou ouvrages (exé) */
@@ -20847,7 +20862,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v358';
+  const VER='v360';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
