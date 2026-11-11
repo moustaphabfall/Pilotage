@@ -16315,6 +16315,26 @@ const PG_FEATS=[
     }).join('')+'</div>';
   }
   function readMatrix(root){ const o={}; const mx=root.querySelector('.mx'); const R=mx&&mx.dataset.role&&PG_ROLE_PRESETS[mx.dataset.role]; if(R) o._role=mx.dataset.role; root.querySelectorAll('[data-f]').forEach(i=>{ const k=i.dataset.f; if(!i.checked) o[k]=false; else if(R&&R.no.includes(k)) o[k]=true; }); return o; }
+  /* ===== Gestion des fonctionnalités : réglages par défaut de chaque rôle (administrateur général) ===== */
+  async function loadRoleDefaults(){ try{ const r=await window.PILOTAGE_ADM({action:'roles_get'}); (r.roles||[]).forEach(x=>{ if(PG_ROLE_PRESETS[x.role]&&Array.isArray(x.no)) PG_ROLE_PRESETS[x.role].no=x.no; }); try{ pgApply(); }catch(e){} return true; }catch(e){ return false; } }
+  { let tries=0; const iv=setInterval(()=>{ tries++; if(tries>40){ clearInterval(iv); return; } if(!PJ()||typeof window.PILOTAGE_ADM!=='function') return; clearInterval(iv); loadRoleDefaults(); },1500); }
+  function openFeatMgr(){
+    const old=document.getElementById('pgFeatMgr'); if(old) old.remove();
+    const ov=document.createElement('div'); ov.id='pgFeatMgr'; ov.setAttribute('role','dialog');
+    ov.style.cssText='position:fixed;inset:0;z-index:2147483050;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto';
+    const css='#pgFeatMgr .fm{background:#0d1013;color:#f5d36a;border:1.5px solid rgba(255,196,0,.6);border-radius:20px;width:min(760px,100%);padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.5)}#pgFeatMgr .fm h3{margin:0 0 12px;text-align:center;font-size:17px}#pgFeatMgr .fm-top{position:relative}#pgFeatMgr .fm-bk{position:absolute;left:0;top:-4px;background:none;border:0;color:inherit;font-size:26px;cursor:pointer}#pgFeatMgr .fm-x{position:absolute;right:0;top:-2px;background:none;border:1px solid rgba(255,196,0,.5);color:inherit;border-radius:10px;padding:4px 10px;cursor:pointer}#pgFeatMgr .fm-r{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}@media(max-width:560px){#pgFeatMgr .fm-r{grid-template-columns:repeat(2,minmax(0,1fr))}}#pgFeatMgr .fm-r button{min-height:70px;border-radius:14px;border:1.5px solid rgba(255,196,0,.55);background:transparent;color:inherit;font:600 13px system-ui;padding:8px;cursor:pointer}#pgFeatMgr .mx-pre{display:none}#pgFeatMgr .fm-save{display:block;margin:14px auto 0;padding:11px 22px;border-radius:14px;border:0;background:#FFC400;color:#111;font:700 14px system-ui;cursor:pointer}#pgFeatMgr .fm-msg{text-align:center;margin-top:8px;font-size:13px;min-height:18px}';
+    const draw=role=>{
+      if(!role){ ov.innerHTML='<style>'+css+'</style><div class="fm"><div class="fm-top"><h3>🎛 Gestion des fonctionnalités</h3><button type="button" class="fm-x">✕ Fermer</button></div><p style="text-align:center;font-size:13px;margin:0 0 12px">Choisissez un rôle puis réglez ses fonctionnalités par défaut.</p><div class="fm-r">'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-r="'+esc(r)+'">'+esc(r)+'</button>').join('')+'</div></div>';
+        ov.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>draw(b.dataset.r)); }
+      else{ ov.innerHTML='<style>'+css+'</style><div class="fm"><div class="fm-top"><button type="button" class="fm-bk" aria-label="Retour">‹</button><h3>'+esc(role)+'</h3><button type="button" class="fm-x">✕ Fermer</button></div>'+matrix('f',{_role:role})+'<button type="button" class="fm-save">Enregistrer</button><div class="fm-msg"></div></div>';
+        ov.querySelector('.fm-bk').onclick=()=>draw(null);
+        ov.querySelector('.fm-save').onclick=async()=>{ const no=[]; ov.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) no.push(i.dataset.f); }); const m=ov.querySelector('.fm-msg'); m.textContent='Enregistrement…';
+          try{ await window.PILOTAGE_ADM({action:'roles_set',role,no}); PG_ROLE_PRESETS[role].no=no; try{ pgApply(); }catch(e){} m.textContent='Réglages du rôle enregistrés'; }catch(e){ m.textContent='Échec : '+(e.message||e); } }; }
+      const x=ov.querySelector('.fm-x'); if(x) x.onclick=()=>ov.remove(); };
+    ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+    document.body.appendChild(ov); draw(null);
+  }
+  window.openFeatMgr=openFeatMgr;
   const wrap=()=>document.getElementById('pgWrap');
   let FL={pj:new Set(),u:'',fn:new Set(),role:new Set(),val:new Set(),act:new Set(),ty:new Set()}, memTypes={}, memFn={}, memLots={}, colOpen=null; let pgMode='settings'; const actIds=()=>{ const p=PJ(); return pgMode==='members'?((p.projets||[]).map(x=>x.id).concat(p.projets&&p.projets.length?[]:[p.id])):selProjets(); };
   let cache=null, caches={}, mF='', openF=null, cred='', headHtml='', rtok=0, rtry=0;
@@ -16580,7 +16600,7 @@ const PG_FEATS=[
         +(()=>{ const all=Object.keys(PG_TYPES), okT=((p.types_autorises&&p.types_autorises.length)?p.types_autorises:all).filter(k=>p.global||!(p.types_membre&&p.types_membre.length)||p.types_membre.includes(k)), cur=pilotageType(); const lst=all.filter(k=>okT.includes(k)||k===cur); return adm?'<select id="pvTy" class="pv-sel" aria-label="Type d’espace de travail">'+lst.map(k=>'<option value="'+k+'"'+(k===cur?' selected':'')+'>'+esc(PG_ACR[k]+' — '+PG_TYPES[k])+'</option>').join('')+'</select>':'<small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small>'; })()
         +(p.global?'<button type="button" id="pvTyOk" class="pv-lnk">Types autorisés…</button>':'')+'</div>':'')
       +(p&&!adm?'<button type="button" class="pv-row" data-a="proj"><span class="sb-ic">'+ICO_GEAR+'</span><span>Mon projet</span></button>':'')
-      +(adm?'<div class="sb-box" id="sbAct"><button type="button" data-m="settings">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-m="invite">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-m="members">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button></div>':'')
+      +(adm?'<div class="sb-box" id="sbAct"><button type="button" data-m="settings">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-m="invite">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-m="members">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button><button type="button" data-m="features"><span style="font-size:18px;line-height:1">🎛</span><span>Gestion des fonctionnalités</span></button></div>':'')
       +'<div class="sb-pl" id="sbProj"><div class="sb-t">Liste des projets <em class="sb-sum">'+esc(sum)+'</em></div>'
       +(L.length>1?'<button type="button" class="sb-all" id="sbAll">Tout sélectionner</button>':'')
       +'<div class="sb-list" id="sbList">'+L.map(x=>'<label class="sb-it'+(p&&x.id===p.id?' cur':'')+'"><input type="checkbox" data-id="'+esc(x.id)+'" '+(sel.includes(x.id)?'checked':'')+'><span class="sb-pt"><b>'+esc(x.nom)+'</b><small><span class="sb-tag">'+esc(PG_ACR[pgTypeKey(x.type)])+'</span>'+esc(PG_TYPES[pgTypeKey(x.type)])+'</small></span></label>').join('')+'</div>'
@@ -16601,7 +16621,7 @@ const PG_FEATS=[
       const to=pv.querySelector('#pvTyOk'); if(to) to.onclick=e=>{ e.stopPropagation(); pgTypeWin(); }; }
     pv.querySelector('#pvBack').onclick=()=>setView(false); { const bk=pv.querySelector('#pvBack'); bk.textContent='✕ Fermer'; }
     pv.querySelector('#pvData').onclick=e=>{ e.stopPropagation(); openDataWin(); };
-    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); pgOpen(b.dataset.m); });
+    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); if(b.dataset.m==='features'){ openFeatMgr(); return; } pgOpen(b.dataset.m); });
     const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ pgOpen('settings'); try{ closeTabMenu(); }catch(_){} };
     { const hb=pv.querySelector('#pvHost'); if(hb&&adm){ hb.onclick=()=>{ setView(false); pgOpen('host'); }; } else if(hb){ hb.style.cursor='default'; } }
     pv.querySelector('#pvOut').onclick=()=>{ if(window.pilotageLogout) window.pilotageLogout(); };
@@ -20870,7 +20890,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v363';
+  const VER='v364';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };

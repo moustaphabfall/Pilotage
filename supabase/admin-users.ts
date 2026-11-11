@@ -23,6 +23,21 @@ Deno.serve(async (req) => {
     const b = await req.json();
     const today = iso(new Date());
 
+    /* ---------- Réglages par défaut des fonctionnalités par rôle ---------- */
+    if (b.action === 'roles_get') {
+      const { data } = await admin.from('role_defaults').select('role,no');
+      return J({ roles: data || [] });
+    }
+    if (b.action === 'roles_set') {
+      if (!isGlobal) return J({ error: 'Réservé à l’administrateur général' }, 403);
+      const role = String(b.role || '').trim();
+      if (!role) return J({ error: 'Rôle requis' }, 400);
+      const no = Array.isArray(b.no) ? b.no.map((x: unknown) => String(x)) : [];
+      const { error } = await admin.from('role_defaults').upsert({ role, no, updated_at: new Date().toISOString() });
+      if (error) return J({ error: error.message }, 400);
+      return J({ ok: true });
+    }
+
     /* ---------- Actions globales (administrateur général) ---------- */
     if (!String(b.action).startsWith('p_')) {
       if (!isGlobal) return J({ error: 'Réservé aux administrateurs' }, 403);
