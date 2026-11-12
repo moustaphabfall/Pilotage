@@ -235,6 +235,8 @@
     window.PILOTAGE_ACTIONS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_actions').insert({nom:row.nom}); if(error && error.code!=='23505') throw error; };
     window.PILOTAGE_LOTS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_lots').upsert(row,{onConflict:'code',ignoreDuplicates:true}); if(error) throw error; };
     window.PILOTAGE_SET_TYPE = async (pid, type)=>{ const {error} = await sb.from('projets').update({type}).eq('id', pid); if(error) throw error; };
+    window.PILOTAGE_METIER = { get: async pid=>{ try{ const {data,error} = await sb.from('projets').select('metier').eq('id',pid).maybeSingle(); if(error) return null; return (data&&data.metier)||null; }catch(e){ return null; } }, set: async (pid,m)=>{ const {error} = await sb.from('projets').update({metier:m||null}).eq('id',pid); if(error) throw error; } };
+    try{ window.PILOTAGE_METIER.get(PJ.id).then(m=>{ PJ.metier=m; try{ localStorage.setItem('pg_metier_'+PJ.id, m||''); }catch(e){} }); }catch(e){}
     window.PILOTAGE_SET_TYPES_OK = async (pid, arr)=>{ const {error} = await sb.from('projets').update({types_autorises: (arr&&arr.length)?arr:null}).eq('id', pid); if(error) throw error; };
     window.PILOTAGE_MEMBER_FN = {
       get: async pid=>{ const {data,error} = await sb.from('projet_membres').select('user_id,fonction').eq('projet_id',pid); if(error) throw error; const o={}; (data||[]).forEach(r=>o[r.user_id]=r.fonction||''); return o; },
