@@ -16306,13 +16306,33 @@ const PG_FEATS=[
     let el=document.getElementById('pgxFld'); if(!el){ el=document.createElement('style'); el.id='pgxFld'; document.head.appendChild(el); } el.textContent=css.length?css.join(',')+'{display:none!important}':''; hideOuv(); }
   function hideOuv(){ const p=PJ(); if(!p||p.role==='admin') return; document.querySelectorAll('dl.pm-b dt').forEach(dt=>{ const l=dt.textContent.trim(); const f=PG_CADRES.some(c=>c.o.includes(l)); if(!f) return; const on=pgFieldOn('o',l); dt.style.display=on?'':'none'; if(dt.nextElementSibling&&dt.nextElementSibling.tagName==='DD') dt.nextElementSibling.style.display=on?'':'none'; }); }
   new MutationObserver(()=>{ try{ hideOuv(); }catch(e){} }).observe(document.body,{childList:true,subtree:true});
+  /* Arbre des fonctionnalités selon Mafatihul Bishri : Construction {A architecture, E ingénierie} + Gestion de projet {T planning, C devis} */
+  const PG_TREE=[
+    {t:'🏗 Construction',top:['travaux'],c:[
+      {t:'A · Architecture',it:[['vue','vue.lib','vue.plan'],'travaux.plan','travaux.pieces','travaux.cloisons',['cadre.arch','*']]},
+      {t:'E · Ingénierie',it:['travaux.ouvrages','rex',['cadre.ing','*']]}]},
+    {t:'🧭 Gestion de projet',top:['dashboard','interloc','parametres'],c:[
+      {t:'T · Planning',it:['planif','travaux.avancement','travaux.journal',['cadre.plan','*']]},
+      {t:'C · Devis',it:['refac']},
+      {t:'Suivi',it:[['cadre.suivi','*']]}]}
+  ];
+  (function(){ const c=document.createElement('style'); c.textContent='.mx.mxt{display:block}.mx.mxt .mx-pre{margin-bottom:10px}.mx.mxt .tn{margin:6px 0;border-left:2px solid rgba(255,196,0,.35);padding-left:10px}.mx.mxt .tn .tn{margin-left:8px}.mx.mxt .ts{cursor:pointer;font-weight:700;font-size:13.5px;padding:8px 2px;list-style:none;display:flex;align-items:center;gap:6px}.mx.mxt .tn.shut>:not(.ts){display:none}.mx.mxt .ts::before{content:"›";display:inline-block;transition:transform .15s;font-size:16px}.mx.mxt .tn:not(.shut)>.ts::before{transform:rotate(90deg)}.mx.mxt .lv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 8px}@media(max-width:560px){.mx.mxt .lv{grid-template-columns:repeat(2,minmax(0,1fr))}}.mx.mxt .ts label.sw{min-height:40px;flex:0 0 auto;padding:6px 14px;flex-direction:row}'; document.head.appendChild(c); })();
+  document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('.mx.mxt .ts'); if(!t||e.target.closest('label.sw')) return; t.parentElement.classList.toggle('shut'); });
   function matrix(prefix,fonctions){
-    return '<div class="mx"'+(fonctions&&fonctions._role?' data-role="'+esc(fonctions._role)+'"':'')+'><div class="mx-pre pgs-f"><b style="font-size:12.5px">Rôle :</b>'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-pre="'+esc(r)+'"'+(fonctions&&fonctions._role===r?' class="on"':'')+'>'+esc(r)+'</button>').join('')+'</div>'+PG_FEATS.map(f=>{
-      const eff=k=>fonctions[k]===false?false:fonctions[k]===true?true:((PG_ROLE_PRESETS[fonctions._role]||{no:[]}).no.includes(k)?false:true);
-      const on=eff(f.k);
-      return '<div class="g"><label class="sw"><input type="checkbox" data-f="'+f.k+'" '+(on?'checked':'')+'><i></i><b>'+esc(f.l)+'</b></label>'
-        +f.subs.map(s=>'<label class="sw sub"><input type="checkbox" data-f="'+s.k+'" '+(eff(s.k)?'checked':'')+'><i></i>'+esc(s.l)+'</label>').join('')+'</div>';
-    }).join('')+'</div>';
+    fonctions=fonctions||{};
+    const eff=k=>fonctions[k]===false?false:fonctions[k]===true?true:((PG_ROLE_PRESETS[fonctions._role]||{no:[]}).no.includes(k)?false:true);
+    const LAB={}, SUBS={}; PG_FEATS.forEach(f=>{ LAB[f.k]=f.l; SUBS[f.k]=f.subs.map(x=>x.k); f.subs.forEach(x=>{ LAB[x.k]=x.l; }); });
+    const btn=(k,sub)=>'<label class="sw'+(sub?' sub':'')+'"><input type="checkbox" data-f="'+k+'" '+(eff(k)?'checked':'')+'><i></i>'+(sub?esc(LAB[k]||k):'<b>'+esc(LAB[k]||k)+'</b>')+'</label>';
+    const seen={};
+    const item=it=>{ if(typeof it==='string'){ seen[it]=1; return {leaf:btn(it,true)}; }
+      const k=it[0]; seen[k]=1; const kids=(it[1]==='*'?SUBS[k]||[]:it.slice(1)); kids.forEach(x=>seen[x]=1);
+      return {node:'<div class="tn shut"><div class="ts">'+btn(k,false)+'</div><div class="lv">'+kids.map(x=>btn(x,true)).join('')+'</div></div>'}; };
+    const branch=b=>{ const its=b.it.map(item); const leaves=its.filter(x=>x.leaf).map(x=>x.leaf).join('');
+      return '<div class="tn"><div class="ts">'+esc(b.t)+'</div>'+(leaves?'<div class="lv">'+leaves+'</div>':'')+its.filter(x=>x.node).map(x=>x.node).join('')+'</div>'; };
+    let h=PG_TREE.map(g=>{ (g.top||[]).forEach(k=>seen[k]=1); return '<div class="tn"><div class="ts">'+esc(g.t)+'</div>'+((g.top||[]).length?'<div class="lv">'+g.top.map(k=>btn(k,false)).join('')+'</div>':'')+g.c.map(branch).join('')+'</div>'; }).join('');
+    const rest=[]; PG_FEATS.forEach(f=>{ if(!seen[f.k]) rest.push(btn(f.k,false)); f.subs.forEach(x=>{ if(!seen[x.k]) rest.push(btn(x.k,true)); }); });
+    if(rest.length) h+='<div class="tn"><div class="ts">Autres</div><div class="lv">'+rest.join('')+'</div></div>';
+    return '<div class="mx mxt"'+(fonctions._role?' data-role="'+esc(fonctions._role)+'"':'')+'><div class="mx-pre pgs-f"><b style="font-size:12.5px">Rôle :</b>'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-pre="'+esc(r)+'"'+(fonctions._role===r?' class="on"':'')+'>'+esc(r)+'</button>').join('')+'</div>'+h+'</div>';
   }
   function readMatrix(root){ const o={}; const mx=root.querySelector('.mx'); const R=mx&&mx.dataset.role&&PG_ROLE_PRESETS[mx.dataset.role]; if(R) o._role=mx.dataset.role; root.querySelectorAll('[data-f]').forEach(i=>{ const k=i.dataset.f; if(!i.checked) o[k]=false; else if(R&&R.no.includes(k)) o[k]=true; }); return o; }
   /* ===== Gestion des fonctionnalités : réglages par défaut de chaque rôle (administrateur général) ===== */
@@ -20890,7 +20910,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v366';
+  const VER='v367';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
