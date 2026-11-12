@@ -16,11 +16,15 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
 .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:5}
 .bar .t{font-size:14px} .go{padding:13px 20px;border-radius:12px;border:0;background:var(--amb);color:var(--ink);font:700 16px inherit;cursor:pointer} .go[disabled]{opacity:.45;cursor:default}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px;z-index:20} .ov .bx{background:#fff;border-radius:14px;padding:18px;max-width:420px;width:100%} .ov .bx h3{margin:0 0 8px} .ov .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px} .ov button{padding:11px 16px;border-radius:10px;border:1px solid var(--ink);background:#fff;font:600 15px inherit;cursor:pointer} .ov button.p{background:var(--amb);border-color:var(--amb)}
+.pj{display:flex;flex-direction:column;gap:6px;margin:8px 0} .pj .it{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px} .pj .it span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .pj .it button{border:0;background:none;font-size:18px;cursor:pointer;padding:0 6px}
+.msb{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--ink);background:#fff;font:700 15px inherit;cursor:pointer}
+.fb{max-width:560px!important;max-height:86vh;display:flex;flex-direction:column} .fb .ls{overflow:auto;border:1px solid var(--line);border-radius:10px;margin:8px 0;min-height:160px} .fb .ls button{display:flex;gap:8px;align-items:center;width:100%;text-align:left;padding:11px 12px;border:0;border-bottom:1px solid #eee;background:#fff;font:inherit;cursor:pointer} .fb .tabs{display:flex;gap:6px} .fb .tabs button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--ink);background:#fff;font:600 14px inherit;cursor:pointer} .fb .tabs button.on{background:var(--ink);color:#fff} .fb .cr{font-size:13px;color:#5b6770;margin-top:6px;word-break:break-word}
 .msg{max-width:520px;margin:60px auto;text-align:center;padding:0 18px} .msg .big{font-size:48px}
 </style></head><body>
 <div class="top"><b id="ttl">Votre demande</b><p id="sub"></p></div>
 <main id="app"><p class="hint">Chargement…</p></main>
 <script src="config.js"></script>
+<script src="vendor/msal-browser.min.js"></script>
 <script>
 (function(){
   const cfg=window.PILOTAGE_CONFIG||{}, T=new URLSearchParams(location.search).get('t')||'', API=(cfg.url||'')+'/functions/v1/demande-client';
@@ -29,7 +33,7 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
   const uid=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   const TYPES=['Nettoyage','Logistique','Gardiennage','Homme trafic','Autre'], URG=['Normale','Haute','Urgente'];
-  let D=null, rep=[], sign=1, lvl='', F={};
+  let D=null, rep=[], sign=1, lvl='', F={}, PJS=[];
   const hdr=h=>fetch(API+h,{headers:{apikey:cfg.anonKey||''}});
   const fin=(big,t,p)=>{ app.innerHTML='<div class="msg"><div class="big">'+big+'</div><h2>'+esc(t)+'</h2><p>'+esc(p||'')+'</p></div>'; const b=document.querySelector('.bar'); if(b) b.remove(); };
   if(!/^[A-Za-z0-9_-]{24,64}$/.test(T)) return fin('⚠️','Lien invalide','Ouvrez le lien tel que vous l’avez reçu par e-mail.');
@@ -48,7 +52,8 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
     if(!av) h+='<div class="card"><h2 style="margin-top:0">Votre demande</h2><label>Société / client<input id="fSoc" value="'+esc(F.societe)+'"></label><label>Site / adresse d’intervention<input id="fSite" value="'+esc(F.site)+'" placeholder="ex. Entrepôt Nord, 12 rue des Lilas"></label>'
       +'<div class="r"><label>Prestation<select id="fTy">'+TYPES.map(t=>'<option>'+t+'</option>').join('')+'</select></label><label>Urgence<select id="fUr">'+URG.map(t=>'<option>'+t+'</option>').join('')+'</select></label></div>'
       +'<div class="r"><label>Du<input type="date" id="fDe" value="'+F.debut+'"></label><label>Au<input type="date" id="fFi" value="'+F.fin+'"></label><label>De<input type="time" id="fHd" value="08:00"></label><label>À<input type="time" id="fHf" value="16:00"></label></div>'
-      +'<label>Description / consignes<textarea id="fDs" rows="3" placeholder="Nature des tâches, accès, matériel, risques…"></textarea></label></div>';
+      +'<label>Description / consignes<textarea id="fDs" rows="3" placeholder="Nature des tâches, accès, matériel, risques…"></textarea></label>'
+      +(cfg.msClientId&&window.msal?'<div style="margin-top:10px"><b style="font-size:13px">Plans</b><div class="pj" id="pjL"></div><button type="button" class="msb" id="msB">📎 Joindre un plan depuis mon espace Microsoft (OneDrive / SharePoint)</button></div>':'')+'</div>';
     else h+='<div class="card"><b>Plan validé</b><p class="hint">Touchez le plan pour <b>ajouter</b> une personne, appuyez longuement sur une pastille pour en <b>retirer</b> une. Puis clôturez la modification.</p></div>';
     h+='<h2>Personnes demandées</h2>'+(plans.length?'<div class="chips" id="lv">'+lv.map(l=>'<button type="button" data-l="'+esc(l)+'" class="'+(l===lvl?'on':'')+'">'+esc(l)+'</button>').join('')+'</div>'
       +'<div class="mode"><button type="button" id="mP" class="on">＋ Ajouter</button><button type="button" id="mM">－ Retirer</button></div><div class="hint">Touchez le plan : une pastille = 1 personne. Touchez une pastille pour en ajouter ; appui long (ou mode « Retirer ») pour en enlever.</div><div id="st"></div>'
@@ -58,8 +63,37 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
     app.insertAdjacentHTML('afterend','<div class="bar"><div class="t" id="tot"></div><button class="go" id="go" disabled>'+(av?'Clôturer la modification':'Clôturer ma demande')+'</button></div>');
     app.querySelectorAll('#lv button').forEach(b=>b.onclick=()=>{ lvl=b.dataset.l; app.querySelectorAll('#lv button').forEach(x=>x.classList.toggle('on',x===b)); draw(); });
     const mP=$('mP'), mM=$('mM'); if(mP){ mP.onclick=()=>{ sign=1; mP.classList.add('on'); mM.classList.remove('on'); }; mM.onclick=()=>{ sign=-1; mM.classList.add('on'); mP.classList.remove('on'); }; }
+    const msB=$('msB'); if(msB) msB.onclick=msIntro;
     app.querySelectorAll('input,select,textarea').forEach(e=>e.oninput=()=>{ if(noPlan()) draw(); check(); }); $('go').onclick=confirmClose; draw(); check();
   }
+  /* ----- Plans joints depuis l'espace Microsoft du client : seul le lien du document choisi est transmis ----- */
+  let msApp=null, msAcct=null; const GRAPH='https://graph.microsoft.com/v1.0', MS_SCOPES=['Files.Read.All'];
+  function pjDraw(){ const l=$('pjL'); if(!l) return; l.innerHTML=PJS.map((x,i)=>'<div class="it">📄 <span>'+esc(x.nom)+'</span><button type="button" data-i="'+i+'" aria-label="Retirer">✕</button></div>').join(''); l.querySelectorAll('button').forEach(b=>b.onclick=()=>{ PJS.splice(+b.dataset.i,1); pjDraw(); }); }
+  function msIntro(){ const o=document.createElement('div'); o.className='ov';
+    o.innerHTML='<div class="bx"><h3>Connexion à votre espace Microsoft</h3><p>Vous allez vous connecter à votre espace Microsoft (OneDrive / SharePoint) : vous serez redirigé vers Microsoft pour vous identifier, puis vous choisirez vos documents.</p><p><b>Been11 n’a pas accès à votre espace ni à vos autres fichiers.</b> Seul le lien du document que vous choisissez est transmis à votre contact. Vous restez le seul à gérer vos données et leurs droits d’accès.</p><div class="row"><button type="button" id="no">Annuler</button><button type="button" class="p" id="yes">Continuer vers Microsoft</button></div><p class="hint" id="msE"></p></div>';
+    document.body.appendChild(o); o.querySelector('#no').onclick=()=>o.remove();
+    o.querySelector('#yes').onclick=async()=>{ const b=o.querySelector('#yes'); b.disabled=true; b.textContent='Connexion…';
+      try{ if(!msApp){ msApp=new msal.PublicClientApplication({auth:{clientId:cfg.msClientId,authority:'https://login.microsoftonline.com/'+(cfg.msTenant||'common'),redirectUri:cfg.msRedirect||(location.origin+location.pathname.replace(/[^/]*$/,''))},cache:{cacheLocation:'sessionStorage'}}); await msApp.initialize(); }
+        msAcct=(await msApp.loginPopup({scopes:MS_SCOPES,prompt:'select_account'})).account; o.remove(); msBrowse(); }
+      catch(e){ b.disabled=false; b.textContent='Continuer vers Microsoft'; o.querySelector('#msE').textContent='Connexion impossible : '+((e&&e.message)||'annulée'); } }; }
+  async function msTok(){ const rq={scopes:MS_SCOPES,account:msAcct}; try{ return (await msApp.acquireTokenSilent(rq)).accessToken; }catch(e){ return (await msApp.acquireTokenPopup(rq)).accessToken; } }
+  async function msGet(path){ const r=await fetch(path.startsWith('http')?path:GRAPH+path,{headers:{Authorization:'Bearer '+await msTok()}}); if(!r.ok) throw new Error('Microsoft '+r.status); return r.json(); }
+  function msBrowse(){ const o=document.createElement('div'); o.className='ov'; let tab='me', stack=[];
+    o.innerHTML='<div class="bx fb"><h3>Choisir un plan</h3><div class="tabs"><button type="button" data-tb="me" class="on">Mon OneDrive</button><button type="button" data-tb="sh">Partagés avec moi</button></div><div class="cr" id="fbC"></div><div class="ls" id="fbL"></div><div class="row"><button type="button" id="fbX">Terminer</button></div></div>';
+    document.body.appendChild(o); o.querySelector('#fbX').onclick=()=>o.remove();
+    const L=o.querySelector('#fbL'), C=o.querySelector('#fbC');
+    const load=async()=>{ L.innerHTML='<p class="hint" style="padding:12px">Chargement…</p>'; const cur=stack[stack.length-1];
+      C.textContent=(tab==='me'?'Mon OneDrive':'Partagés avec moi')+stack.map(x=>' › '+x.nom).join('');
+      try{ const sel='?$select=id,name,size,webUrl,folder,file,remoteItem,parentReference&$top=200';
+        const j=await msGet(cur?'/drives/'+cur.drive+'/items/'+cur.id+'/children'+sel:(tab==='me'?'/me/drive/root/children'+sel:'/me/drive/sharedWithMe'+sel));
+        const it=(j.value||[]).map(v=>{ const r=v.remoteItem||v; return {nom:v.name||r.name,id:r.id,drive:(r.parentReference&&r.parentReference.driveId)||'',dossier:!!(r.folder||v.folder),url:r.webUrl||v.webUrl||'',taille:r.size||v.size||0}; }).sort((a,b)=>(b.dossier-a.dossier)||a.nom.localeCompare(b.nom));
+        L.innerHTML=(stack.length?'<button type="button" data-up>‹ Retour</button>':'')+(it.length?it.map((x,i)=>'<button type="button" data-i="'+i+'">'+(x.dossier?'📁':'📄')+' <span>'+esc(x.nom)+'</span></button>').join(''):'<p class="hint" style="padding:12px">Aucun document ici.</p>');
+        const up=L.querySelector('[data-up]'); if(up) up.onclick=()=>{ stack.pop(); load(); };
+        L.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{ const x=it[+b.dataset.i]; if(x.dossier){ if(!x.drive){ return; } stack.push(x); load(); return; }
+          if(!PJS.some(p=>p.url===x.url)) PJS.push({nom:x.nom,url:x.url,taille:x.taille}); pjDraw(); b.style.background='#fff7e0'; b.insertAdjacentText('beforeend',' ✓'); }); }
+      catch(e){ L.innerHTML='<p class="hint" style="padding:12px">Lecture impossible : '+esc((e&&e.message)||'')+'</p>'; } };
+    o.querySelectorAll('[data-tb]').forEach(b=>b.onclick=()=>{ tab=b.dataset.tb; stack=[]; o.querySelectorAll('[data-tb]').forEach(x=>x.classList.toggle('on',x===b)); load(); });
+    load(); }
   const noPlan=()=>!((D&&D.snapshot&&D.snapshot.plans)||[]).length; const total=()=>noPlan()?Math.max(0,+(($('fNb')||{}).value)||0):rep.reduce((a,r)=>a+r.n,0);
   function inPoly(x,y,pts){ let c=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1]; if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) c=!c; } return c; }
   function draw(){
@@ -87,6 +121,7 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
     document.body.appendChild(o); o.querySelector('#no').onclick=()=>o.remove();
     o.querySelector('#yes').onclick=async()=>{ const yb=o.querySelector('#yes'); yb.disabled=true; yb.textContent='Envoi…';
       const R={nb:total(),repart:noPlan()?[]:rep.map(r=>({id:r.id,planId:r.planId,niveau:r.niveau,zone:r.zone,x:r.x,y:r.y,n:r.n}))};
+      if(PJS.length) R.plansJoints=PJS.map(x=>({nom:x.nom,url:x.url,taille:x.taille}));
       if(!av) Object.assign(R,{societe:val('fSoc'),site:val('fSite'),type:val('fTy'),urgence:val('fUr'),debut:val('fDe'),fin:val('fFi')||val('fDe'),hDebut:val('fHd'),hFin:val('fHf'),desc:val('fDs')});
       try{ const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json',apikey:cfg.anonKey||''},body:JSON.stringify({t:T,reponse:R})}); const j=await r.json().catch(()=>({})); o.remove();
         if(r.ok&&j.ok) fin('✅','Demande clôturée','Merci ! Votre demande a été envoyée à '+(D.responsable||'votre contact')+'.'); else alert((j&&j.error)||'Envoi impossible, réessayez.'); }
