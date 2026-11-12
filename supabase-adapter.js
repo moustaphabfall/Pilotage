@@ -326,8 +326,8 @@
   async function offlineEntry(unreached){
     if(!unreached && await reach()) return null;
     const sn = lsGet(SNAP);
-    if(snapOk(sn) && bioOk(sn)){ if(await bioGate(sn)) return sn; }
-    await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Been11</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application ne se rouvre qu’avec l’empreinte ou le visage activés au préalable, et jusqu’à vendredi soir. Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
+    if(snapOk(sn)) return sn;   /* réouverture locale sans empreinte ni visage : il suffit d'une connexion avec réseau dans la semaine */
+    await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Been11</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application se rouvre en local si vous vous êtes connecté avec du réseau cette semaine (jusqu’à vendredi soir). Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
   }
   function startOffline(sn){
     me = sn.me; PJ = sn.PJ; window.PILOTAGE_PROJET = PJ; window.PILOTAGE_OFFLINE = true;
