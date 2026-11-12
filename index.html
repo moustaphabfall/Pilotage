@@ -16916,10 +16916,13 @@ const PG_FEATS=[
     if(ch){ save(); const a=document.querySelector('.page.active'); if(a&&a.id==='page-net-demandes') render('net-demandes'); } }
   setInterval(()=>{ const a=document.querySelector('.page.active'); if(a&&a.id==='page-net-demandes') importReponses(); },30000);
   /* ---------- Workflow de la demande ---------- */
-  const WF=['Demande envoyée par le client','Reçue — en cours de traitement','Traitée — affectation validée','Affectation reçue par les agents','Pointage en cours','Pointage validé par le responsable'];
+  const WF=['Enregistrement de la demande','Reçue — en cours de traitement','Traitée — affectation validée','Affectation reçue par les agents','Pointage en cours','Pointage validé par le responsable'];
   function wfStage(d){ const n=net(); if(!d.id||d.statut==='envoyee') return 1; const affs=n.affectations.filter(a=>a.demandeId===d.id), recs=n.ptv.filter(r=>r.demandeId===d.id), hasPt=n.pointages.some(p=>affs.some(a=>a.id===p.affId));
     if(d.statut==='terminee'||(hasPt&&recs.length&&recs.every(r=>r.stage==='valide'))) return 7; if(hasPt||recs.length) return 5; if(d.affValide) return 4; return 2; }
-  function wfHtml(d){ const cur=wfStage(d); return '<div class="wf" id="wf">'+WF.map((t,i)=>{ const k=i+1, cls=cur===7?(k===6?'fin':'done'):(k<cur?'done':k===cur?'cur':''); return '<span class="'+cls+'"><i>'+(cls==='done'||cls==='fin'?'✓':k)+'</i>'+esc(t)+'</span>'; }).join('')+'</div>'; }
+  /* statut : seule l'étape actuelle est affichée, l'étape suivante apparaît en gris */
+  function wfHtml(d){ const cur=wfStage(d); const st=(k,on,fin)=>'<span class="'+(fin?'fin':on?'cur':'')+'" style="'+(on||fin?'background:#FFC400;border-color:#FFC400;color:#111;font-weight:700':'opacity:.4;filter:grayscale(1)')+'"><i'+(on||fin?' style="color:#111"':'')+'>'+(fin?'✓':k)+'</i>'+esc(WF[k-1])+'</span>';
+    if(cur>=7) return '<div class="wf" id="wf">'+st(6,false,true)+'</div>';
+    return '<div class="wf" id="wf">'+st(cur,true,false)+(cur<6?st(cur+1,false,false):'')+'</div>'; }
   function demandeForm(d,mini){
     const n = net(), nw = !d; mini = nw; d = d || {statut:'recue', type:'Nettoyage', urgence:'Normale', nb:1, debut:today(), fin:today(), hDebut:'08:00', hFin:'16:00'};
     modal('<h3>'+(nw?'➕ Nouvelle demande client':'✏️ Demande n° '+esc(d.num))+'</h3>'+wfHtml(nw?{}:d)
@@ -20924,7 +20927,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v369';
+  const VER='v370';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
