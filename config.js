@@ -9,3 +9,4 @@ window.PILOTAGE_CONFIG.msClientId = '8c2f5e1a-445b-41dd-800c-60957f3d4add';     
 // window.PILOTAGE_CONFIG.backend = 'supabase';
 window.PILOTAGE_CONFIG.inactiviteMin = 30;   // déconnexion automatique après N minutes sans activité (5 minimum)
 window.PILOTAGE_CONFIG.tuto = true;   // visite guidée : active sur la version test uniquement
+window.PILOTAGE_CONFIG.demo = true;   // données de démonstration : version test uniquement
