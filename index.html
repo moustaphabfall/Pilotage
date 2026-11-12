@@ -16910,8 +16910,9 @@ const PG_FEATS=[
   async function importReponses(){ const P=window.PILOTAGE_DEMANDES; if(!P||Date.now()-impLast<15000) return; impLast=Date.now(); let rows; try{ rows=await P.list(); }catch(e){ return; } const n=net(), cur=(window.PILOTAGE_PROJET&&PILOTAGE_PROJET.id)||''; let ch=0;
     for(const r of rows){
       if(r.statut==='clos'&&r.reponse){ const d=by(n.demandes,r.demande_id), R=r.reponse; if(d){ if(Array.isArray(R.plansJoints)&&R.plansJoints.length&&!d.plansJoints){ d.plansJoints=R.plansJoints.map(x=>({nom:String(x.nom||''),url:String(x.url||'')})).filter(x=>/^https:\/\//.test(x.url)); R.desc=(R.desc?R.desc+'\n':'')+d.plansJoints.map(x=>'Plan joint (espace Microsoft du client) : '+x.nom+' — '+x.url).join('\n'); } const rp=(R.repart||[]).map(x=>Object.assign({projetId:cur},x));
-          Object.assign(d,{type:R.type||d.type,urgence:R.urgence||d.urgence,debut:R.debut||d.debut,fin:R.fin||R.debut||d.fin,hDebut:R.hDebut||d.hDebut,hFin:R.hFin||d.hFin,desc:R.desc||'',repart:rp,nb:Math.max(1,+R.nb||rp.reduce((a,x)=>a+x.n,0)||1)}); if(R.site) d.site=R.site; d.statut='recue'; (d.histo=d.histo||[]).push({d:today(),s:'recue',p:(d.demandeur&&d.demandeur.nom)||'Client'}); ch++; }
-        try{ await P.remove(r.token); }catch(e){} }
+          Object.assign(d,{type:R.type||d.type,urgence:R.urgence||d.urgence,debut:R.debut||d.debut,fin:R.fin||R.debut||d.fin,hDebut:R.hDebut||d.hDebut,hFin:R.hFin||d.hFin,desc:R.desc||'',repart:rp,nb:Math.max(1,+R.nb||rp.reduce((a,x)=>a+x.n,0)||1)}); if(R.site) d.site=R.site; d.statut='recue'; (d.histo=d.histo||[]).push({d:today(),s:'recue',p:(d.demandeur&&d.demandeur.nom)||'Client'}); ch++; try{ save(); }catch(e){}
+          try{ await P.remove(r.token); }catch(e){} }   /* le lien n'est supprimé que si la réponse a bien été rattachée à sa demande : sinon elle reste en base, rien n'est perdu */
+        }
       else if(r.statut==='envoye'&&new Date(r.expire)<new Date()){ try{ await P.remove(r.token); }catch(e){} } }
     if(ch){ save(); const a=document.querySelector('.page.active'); if(a&&a.id==='page-net-demandes') render('net-demandes'); } }
   setInterval(()=>{ const a=document.querySelector('.page.active'); if(a&&a.id==='page-net-demandes') importReponses(); },30000);
@@ -20927,7 +20928,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v371';
+  const VER='v372';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
