@@ -13663,7 +13663,8 @@ body:has(#page-dashboard.active):not(.lv-open):not(.plan-fs-on) #dgBar{display:b
 <script>
 /* ===== Fenêtres toujours au premier plan : toute fenêtre qui s'ouvre passe au-dessus des autres ===== */
 (function(){
-  let top=100100; const SKIP={pjTuto:1,miniAlertBox:1,pjPop:1,pjDb:1,pjPick:1};
+  let top=100100; const SKIP={pjTuto:1,miniAlertBox:1,pjPop:1,pjDb:1,pjPick:1,pgPop:1,pgTypeWin:1,pgAct:1};
+  { const c=document.createElement('style'); c.textContent='#pgPop{z-index:2147483200!important}#pgTypeWin,#pgAct{z-index:2147483100!important}'; document.head.appendChild(c); }
   const big=el=>{ try{ const cs=getComputedStyle(el); if(cs.position!=='fixed'||cs.display==='none'||cs.visibility==='hidden') return false; const r=el.getBoundingClientRect(); return el.getAttribute('role')==='dialog'||(r.width>=innerWidth*.85&&r.height>=innerHeight*.85); }catch(e){ return false; } };
   function raise(el){ if(!el||el.nodeType!==1||SKIP[el.id]||(el.closest&&el.closest('#pjTuto'))) return; if(!big(el)) return; if(el.__pjz&&el.__pjz>=top) return; top++; el.__pjz=top; el.style.setProperty('z-index',String(top),'important'); }
   new MutationObserver(ms=>{ ms.forEach(m=>{ if(m.type==='childList') m.addedNodes.forEach(n=>{ if(n.nodeType===1){ n.__pjv=true; raise(n); } }); else if(m.type==='attributes'){ const t=m.target; if(t.nodeType!==1) return; let vis=false; try{ vis=getComputedStyle(t).display!=='none'; }catch(e){} const was=t.__pjv; t.__pjv=vis; if(vis&&!was) raise(t); } }); }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});
@@ -16133,6 +16134,10 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     ces:['Directeur','Chargé d’affaires','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon']
   };
   window.PG_FONCTIONS=PG_FONCTIONS;
+  /* métiers d'un espace « Corps d'état secondaire » (cahier des charges §4) */
+  const PG_METIERS=['Gros œuvre','Électricien (CFO / CFA)','CVC','Plombier','Sprinklage','Plaquiste','Faux plafond','Solier (sols souples)','Carreleur','Peintre','Étancheur','Couvreur','Façadier','Menuisier extérieur','Menuisier intérieur','Serrurier-métallier','Ascensoriste','VRD'];
+  window.PG_METIERS=PG_METIERS;
+  window.pilotageMetier=function(){ const p=window.PILOTAGE_PROJET; if(!p) return ''; if(p.metier) return p.metier; try{ return localStorage.getItem('pg_metier_'+p.id)||''; }catch(e){ return ''; } };
   window.pilotageType=function(){ const p=window.PILOTAGE_PROJET; return pgTypeKey((p&&p.type) || (typeof state!=='undefined'&&state&&state.projet&&state.projet.type) || 'entreprise_generale'); };
   window.pilotageModuleName=function(){ return pilotageType()==='nettoyage' ? 'Pilotage Nettoyage' : 'Been11'; };
   /* message important (ton positif, pas d'alerte rouge) : renvoie une promesse true (continuer) / false (annuler) */
@@ -16163,13 +16168,17 @@ const PG_FEATS=[
     {k:'planif',l:'🗓️ Planification',subs:[]},
     {k:'refac',l:'💶 Finance',subs:[]},
     {k:'rex',l:'🧠 Retours d’expérience',subs:[]},
-    {k:'parametres',l:'⚙ Paramètres (niveaux, phase)',subs:[],sel:'.tab[onclick*="projParamEdit"]'}
+    {k:'parametres',l:'⚙ Autres paramètres',subs:[],sel:'.tab[onclick*="projParamEdit"]'},
+    {k:'vue',l:'👁 Vue',subs:[{k:'vue.lib',l:'Bibliothèque du projet',sel:'#pjLibBtn'},{k:'vue.plan',l:'Plan',sel:'#pjPlanBtn'}],sel:'#pjViewBtn'}
   ];
   window.PG_FEATS=PG_FEATS;
   const PJ=()=>window.PILOTAGE_PROJET||null;
   const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const isAdm=()=>{ const p=PJ(); return !!p&&p.role==='admin'; };
-  window.pgCan=function(k){ const p=PJ(); if(!p||p.role==='admin') return true; return !(p.fonctions&&p.fonctions[k]===false); };
+  window.pgCan=function(k){ const p=PJ(); if(!p||p.role==='admin') return true; const f=p.fonctions||{};
+    if(f[k]===false) return false; if(f[k]===true) return true;   /* exception individuelle : prime sur le rôle */
+    const R=window.PG_ROLE_PRESETS&&f._role&&window.PG_ROLE_PRESETS[f._role]; if(R) return !R.no.includes(k);   /* sinon : réglage du rôle */
+    return true; };
   const cls=k=>'pgx-'+k.replace(/\./g,'_');
 
   const st=document.createElement('style');
@@ -16235,11 +16244,12 @@ const PG_FEATS=[
     if(p&&p.role!=='admin'){
       PG_FEATS.forEach(f=>{
         if(!pgCan(f.k)){ document.body.classList.add(cls(f.k)); if(f.sel) css.push('body.'+cls(f.k)+' '+f.sel.split(',').join(',body.'+cls(f.k)+' ')+'{display:none!important}'); else css.push('body.'+cls(f.k)+' .tab[data-page="'+f.k+'"]{display:none!important}'); }
-        f.subs.forEach(s=>{ if(!pgCan(s.k)){ document.body.classList.add(cls(s.k)); css.push('body.'+cls(s.k)+' '+s.sel.split(',').join(',body.'+cls(s.k)+' ')+'{display:none!important}'); } });
+        f.subs.forEach(s=>{ if(s.sel&&!pgCan(s.k)){ document.body.classList.add(cls(s.k)); css.push('body.'+cls(s.k)+' '+s.sel.split(',').join(',body.'+cls(s.k)+' ')+'{display:none!important}'); } });
       });
     }
     let el=document.getElementById('pgxCss'); if(!el){ el=document.createElement('style'); el.id='pgxCss'; document.head.appendChild(el); } el.textContent=css.join('\n');
     const tp=document.getElementById('tabProjet'); if(tp) tp.style.display=PJ()||true?'':'none';
+    try{ pgFields(); }catch(e){}
   }
   window.pgApply=apply;
 
@@ -16271,14 +16281,84 @@ const PG_FEATS=[
     const d=Math.round((new Date(m.valide_jusqu)-new Date(today))/864e5);
     return '<span class="'+(d<=5?'warn':'ok')+'">jusqu’au '+fmt(m.valide_jusqu)+' ('+d+' j)</span>';
   }
+  /* Rôles métier : réglages par défaut des fonctionnalités (cahier des charges §3) — modifiables ensuite une à une */
+  const PG_ROLE_PRESETS={
+    'Directeur de travaux':{no:['travaux.cloisons','travaux.journal']},
+    'Conducteur de travaux':{no:[]},
+    'Chef de chantier':{no:['interloc','refac','parametres','cadre.ing']},
+    'Chef d’équipe':{no:['interloc','refac','parametres','rex','planif','travaux.journal','cadre.ing','cadre.plan']},
+    'Poseur':{no:['interloc','refac','parametres','rex','planif','travaux.journal','travaux.pieces','travaux.cloisons','cadre.ing','cadre.plan','vue.lib']}
+  };
+  window.PG_ROLE_PRESETS=PG_ROLE_PRESETS;
+  document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.mx-pre [data-pre]'); if(!b) return; e.preventDefault();
+    const mx=b.closest('.mx'); const P=PG_ROLE_PRESETS[b.dataset.pre]; if(!mx||!P) return;
+    mx.querySelectorAll('[data-f]').forEach(i=>{ i.checked=!P.no.includes(i.dataset.f); });
+    mx.dataset.role=b.dataset.pre; mx.querySelectorAll('.mx-pre button').forEach(x=>x.classList.toggle('on',x===b)); },true);
+  /* fonctionnalités en boutons (type menu iPhone, 4 par ligne) : un appui = activé (jaune) / désactivé */
+  (function(){ const c=document.createElement('style'); c.textContent='.mx{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.mx .mx-pre{grid-column:1/-1}.mx .g{display:contents}.mx label.sw{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:64px;padding:8px 6px;border-radius:14px;border:1.5px solid rgba(255,196,0,.55);background:transparent;text-align:center;cursor:pointer;font-size:12.5px;line-height:1.2;-webkit-tap-highlight-color:transparent}.mx label.sw input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}.mx label.sw i{display:none}.mx label.sw b{font-size:13px}.mx label.sw:has(input:checked){background:#FFC400;border-color:#FFC400;color:#111}.mx label.sw.sub{min-height:52px;opacity:.95}.mx label.sw:not(:has(input:checked)){opacity:.6}@media(max-width:560px){.mx{grid-template-columns:repeat(2,minmax(0,1fr))}}'; document.head.appendChild(c); })();
+  /* Données des fiches (ouvrage / document) regroupées en cadres — un interrupteur par donnée, par membre */
+  const PG_DL={batiment:'Bâtiment',niveau:'Niveau',zone:'Zone',discipline:'Lot',type:'Type',nature:'Nature',docType:'Type de document',format:'Format',phase:'Phase',periode:'Période',date:'Date',etat:'Visa',emetteur:'Émetteur',indice:'Indice',liens:'Documents liés',code:'Code',numero:'N°',ouvrage:'Ouvrage'};
+  const PG_CADRES=[
+    {k:'cadre.arch',l:'📐 Cadre Architecture',o:['Pièce','Mur','Zone','Niveau','Position','Support'],d:['batiment','niveau','zone']},
+    {k:'cadre.ing',l:'🧮 Cadre Ingénieur',o:['Famille','Métier','Sous-ouvrages'],d:['discipline','type','nature','docType','format']},
+    {k:'cadre.plan',l:'🗓️ Cadre Planning',o:['Pour le'],d:['phase','periode','date']},
+    {k:'cadre.suivi',l:'✅ Cadre Suivi',o:['État','Notes'],d:['etat','emetteur','indice','liens','code','numero','ouvrage']}
+  ];
+  PG_CADRES.forEach(c=>PG_FEATS.push({k:c.k,l:c.l,subs:c.o.map(x=>({k:'ch.o.'+x,l:'Ouvrage · '+x})).concat(c.d.map(x=>({k:'ch.d.'+x,l:'Document · '+PG_DL[x]})))}));
+  window.pgFieldOn=function(t,k){ const p=PJ(); if(!p||p.role==='admin') return true; for(const c of PG_CADRES){ if((t==='o'?c.o:c.d).includes(k)) return pgCan(c.k)&&pgCan('ch.'+t+'.'+k); } return true; };
+  function pgFields(){ const p=PJ(); const css=[]; if(p&&p.role!=='admin'){ PG_CADRES.forEach(c=>c.d.forEach(k=>{ if(!pgFieldOn('d',k)) css.push('.modal .field:has([data-df="'+k+'"])'); })); }
+    let el=document.getElementById('pgxFld'); if(!el){ el=document.createElement('style'); el.id='pgxFld'; document.head.appendChild(el); } el.textContent=css.length?css.join(',')+'{display:none!important}':''; hideOuv(); }
+  function hideOuv(){ const p=PJ(); if(!p||p.role==='admin') return; document.querySelectorAll('dl.pm-b dt').forEach(dt=>{ const l=dt.textContent.trim(); const f=PG_CADRES.some(c=>c.o.includes(l)); if(!f) return; const on=pgFieldOn('o',l); dt.style.display=on?'':'none'; if(dt.nextElementSibling&&dt.nextElementSibling.tagName==='DD') dt.nextElementSibling.style.display=on?'':'none'; }); }
+  new MutationObserver(()=>{ try{ hideOuv(); }catch(e){} }).observe(document.body,{childList:true,subtree:true});
+  /* Arbre des fonctionnalités selon Mafatihul Bishri : Construction {A architecture, E ingénierie} + Gestion de projet {T planning, C devis} */
+  const PG_TREE=[
+    {t:'🏗 Construction',top:['travaux'],c:[
+      {t:'A · Architecture',it:[['vue','vue.lib','vue.plan'],'travaux.plan','travaux.pieces','travaux.cloisons',['cadre.arch','*']]},
+      {t:'E · Ingénierie',it:['travaux.ouvrages','rex',['cadre.ing','*']]}]},
+    {t:'🧭 Gestion de projet',top:['dashboard','interloc','parametres'],c:[
+      {t:'T · Planning',it:['planif','travaux.avancement','travaux.journal',['cadre.plan','*']]},
+      {t:'C · Devis',it:['refac']},
+      {t:'Suivi',it:[['cadre.suivi','*']]}]}
+  ];
+  (function(){ const c=document.createElement('style'); c.textContent='.mx.mxt{display:block}.mx.mxt .mx-pre{margin-bottom:10px}.mx.mxt .tn{margin:6px 0;border-left:2px solid rgba(255,196,0,.35);padding-left:10px}.mx.mxt .tn .tn{margin-left:8px}.mx.mxt .ts{cursor:pointer;font-weight:700;font-size:13.5px;padding:8px 2px;list-style:none;display:flex;align-items:center;gap:6px}.mx.mxt .tn.shut>:not(.ts){display:none}.mx.mxt .ts::before{content:"›";display:inline-block;transition:transform .15s;font-size:16px}.mx.mxt .tn:not(.shut)>.ts::before{transform:rotate(90deg)}.mx.mxt .lv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 8px}@media(max-width:560px){.mx.mxt .lv{grid-template-columns:repeat(2,minmax(0,1fr))}}.mx.mxt .ts label.sw{min-height:40px;flex:0 0 auto;padding:6px 14px;flex-direction:row}'; document.head.appendChild(c); })();
+  document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('.mx.mxt .ts'); if(!t||e.target.closest('label.sw')) return; t.parentElement.classList.toggle('shut'); });
   function matrix(prefix,fonctions){
-    return '<div class="mx">'+PG_FEATS.map(f=>{
-      const on=fonctions[f.k]!==false;
-      return '<div class="g"><label class="sw"><input type="checkbox" data-f="'+f.k+'" '+(on?'checked':'')+'><i></i><b>'+esc(f.l)+'</b></label>'
-        +f.subs.map(s=>'<label class="sw sub"><input type="checkbox" data-f="'+s.k+'" '+(fonctions[s.k]!==false?'checked':'')+'><i></i>'+esc(s.l)+'</label>').join('')+'</div>';
-    }).join('')+'</div>';
+    fonctions=fonctions||{};
+    const eff=k=>fonctions[k]===false?false:fonctions[k]===true?true:((PG_ROLE_PRESETS[fonctions._role]||{no:[]}).no.includes(k)?false:true);
+    const LAB={}, SUBS={}; PG_FEATS.forEach(f=>{ LAB[f.k]=f.l; SUBS[f.k]=f.subs.map(x=>x.k); f.subs.forEach(x=>{ LAB[x.k]=x.l; }); });
+    const btn=(k,sub)=>'<label class="sw'+(sub?' sub':'')+'"><input type="checkbox" data-f="'+k+'" '+(eff(k)?'checked':'')+'><i></i>'+(sub?esc(LAB[k]||k):'<b>'+esc(LAB[k]||k)+'</b>')+'</label>';
+    const seen={};
+    const item=it=>{ if(typeof it==='string'){ seen[it]=1; return {leaf:btn(it,true)}; }
+      const k=it[0]; seen[k]=1; const kids=(it[1]==='*'?SUBS[k]||[]:it.slice(1)); kids.forEach(x=>seen[x]=1);
+      return {node:'<div class="tn shut"><div class="ts">'+btn(k,false)+'</div><div class="lv">'+kids.map(x=>btn(x,true)).join('')+'</div></div>'}; };
+    const branch=b=>{ const its=b.it.map(item); const leaves=its.filter(x=>x.leaf).map(x=>x.leaf).join('');
+      return '<div class="tn"><div class="ts">'+esc(b.t)+'</div>'+(leaves?'<div class="lv">'+leaves+'</div>':'')+its.filter(x=>x.node).map(x=>x.node).join('')+'</div>'; };
+    let h=PG_TREE.map(g=>{ (g.top||[]).forEach(k=>seen[k]=1); return '<div class="tn"><div class="ts">'+esc(g.t)+'</div>'+((g.top||[]).length?'<div class="lv">'+g.top.map(k=>btn(k,false)).join('')+'</div>':'')+g.c.map(branch).join('')+'</div>'; }).join('');
+    const rest=[]; PG_FEATS.forEach(f=>{ if(!seen[f.k]) rest.push(btn(f.k,false)); f.subs.forEach(x=>{ if(!seen[x.k]) rest.push(btn(x.k,true)); }); });
+    if(rest.length) h+='<div class="tn"><div class="ts">Autres</div><div class="lv">'+rest.join('')+'</div></div>';
+    return '<div class="mx mxt"'+(fonctions._role?' data-role="'+esc(fonctions._role)+'"':'')+'><div class="mx-pre pgs-f"><b style="font-size:12.5px">Rôle :</b>'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-pre="'+esc(r)+'"'+(fonctions._role===r?' class="on"':'')+'>'+esc(r)+'</button>').join('')+'</div>'+h+'</div>';
   }
-  function readMatrix(root){ const o={}; root.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) o[i.dataset.f]=false; }); return o; }
+  function readMatrix(root){ const o={}; const mx=root.querySelector('.mx'); const R=mx&&mx.dataset.role&&PG_ROLE_PRESETS[mx.dataset.role]; if(R) o._role=mx.dataset.role; root.querySelectorAll('[data-f]').forEach(i=>{ const k=i.dataset.f; if(!i.checked) o[k]=false; else if(R&&R.no.includes(k)) o[k]=true; }); return o; }
+  /* ===== Gestion des fonctionnalités : réglages par défaut de chaque rôle (administrateur général) ===== */
+  async function loadRoleDefaults(){ try{ const r=await window.PILOTAGE_ROLES({action:'roles_get'}); (r.roles||[]).forEach(x=>{ if(PG_ROLE_PRESETS[x.role]&&Array.isArray(x.no)) PG_ROLE_PRESETS[x.role].no=x.no; }); try{ pgApply(); }catch(e){} return true; }catch(e){ return false; } }
+  { let tries=0; const iv=setInterval(()=>{ tries++; if(tries>40){ clearInterval(iv); return; } if(!PJ()||typeof window.PILOTAGE_ROLES!=='function') return; clearInterval(iv); loadRoleDefaults(); },1500); }
+  function openFeatMgr(){
+    const old=document.getElementById('pgFeatMgr'); if(old) old.remove();
+    const ov=document.createElement('div'); ov.id='pgFeatMgr'; ov.setAttribute('role','dialog');
+    ov.style.cssText='position:fixed;inset:0;z-index:2147483050;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto';
+    const css='#pgFeatMgr .fm{background:#0d1013;color:#f5d36a;border:1.5px solid rgba(255,196,0,.6);border-radius:20px;width:min(760px,100%);padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.5)}#pgFeatMgr .fm h3{margin:0 0 12px;text-align:center;font-size:17px}#pgFeatMgr .fm-top{position:relative}#pgFeatMgr .fm-bk{position:absolute;left:0;top:-4px;background:none;border:0;color:inherit;font-size:26px;cursor:pointer}#pgFeatMgr .fm-x{position:absolute;right:0;top:-2px;background:none;border:1px solid rgba(255,196,0,.5);color:inherit;border-radius:10px;padding:4px 10px;cursor:pointer}#pgFeatMgr .fm-r{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}@media(max-width:560px){#pgFeatMgr .fm-r{grid-template-columns:repeat(2,minmax(0,1fr))}}#pgFeatMgr .fm-r button{min-height:70px;border-radius:14px;border:1.5px solid rgba(255,196,0,.55);background:transparent;color:inherit;font:600 13px system-ui;padding:8px;cursor:pointer}#pgFeatMgr .mx-pre{display:none}#pgFeatMgr .fm-save{display:block;margin:14px auto 0;padding:11px 22px;border-radius:14px;border:0;background:#FFC400;color:#111;font:700 14px system-ui;cursor:pointer}#pgFeatMgr .fm-msg{text-align:center;margin-top:8px;font-size:13px;min-height:18px}';
+    const draw=role=>{
+      if(!role){ ov.innerHTML='<style>'+css+'</style><div class="fm"><div class="fm-top"><h3>🎛 Gestion des fonctionnalités</h3><button type="button" class="fm-x">✕ Fermer</button></div><p style="text-align:center;font-size:13px;margin:0 0 12px">Choisissez un rôle puis réglez ses fonctionnalités par défaut.</p><div class="fm-r">'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-r="'+esc(r)+'">'+esc(r)+'</button>').join('')+'</div></div>';
+        ov.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>draw(b.dataset.r)); }
+      else{ ov.innerHTML='<style>'+css+'</style><div class="fm"><div class="fm-top"><button type="button" class="fm-bk" aria-label="Retour">‹</button><h3>'+esc(role)+'</h3><button type="button" class="fm-x">✕ Fermer</button></div>'+matrix('f',{_role:role})+'<button type="button" class="fm-save">Enregistrer</button><div class="fm-msg"></div></div>';
+        ov.querySelector('.fm-bk').onclick=()=>draw(null);
+        ov.querySelector('.fm-save').onclick=async()=>{ const no=[]; ov.querySelectorAll('[data-f]').forEach(i=>{ if(!i.checked) no.push(i.dataset.f); }); const m=ov.querySelector('.fm-msg'); m.textContent='Enregistrement…';
+          try{ await window.PILOTAGE_ROLES({action:'roles_set',role,no}); PG_ROLE_PRESETS[role].no=no; try{ pgApply(); }catch(e){} m.textContent='Réglages du rôle enregistrés'; }catch(e){ m.textContent='Échec : '+(e.message||e); } }; }
+      const x=ov.querySelector('.fm-x'); if(x) x.onclick=()=>ov.remove(); };
+    ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+    document.body.appendChild(ov); draw(null);
+  }
+  window.openFeatMgr=openFeatMgr;
   const wrap=()=>document.getElementById('pgWrap');
   let FL={pj:new Set(),u:'',fn:new Set(),role:new Set(),val:new Set(),act:new Set(),ty:new Set()}, memTypes={}, memFn={}, memLots={}, colOpen=null; let pgMode='settings'; const actIds=()=>{ const p=PJ(); return pgMode==='members'?((p.projets||[]).map(x=>x.id).concat(p.projets&&p.projets.length?[]:[p.id])):selProjets(); };
   let cache=null, caches={}, mF='', openF=null, cred='', headHtml='', rtok=0, rtry=0;
@@ -16353,8 +16433,8 @@ const PG_FEATS=[
       +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
       +'<td>'+statut(m,today)+(m.confirme===false?'<br><span class="warn">⏳ invitation envoyée, pas encore activée</span>':'')+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
       +'<td><label class="sw"><input type="checkbox" data-act '+(m.actif?'checked':'')+' '+(m.moi?'disabled':'')+'><i></i></label></td>'
-      +'<td>'+(m.role==='admin'?'':'<button data-fn>Fonctionnalités</button> ')+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">'+(PJ().global?'Réinitialiser le compte':'Demander la réinitialisation')+'</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
-      +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="5">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
+      +'<td>'+'<button data-fn>🎛 Gérer les fonctionnalités'+((m.fonctions&&m.fonctions._role)?' · '+esc(m.fonctions._role):'')+'</button> '+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">'+(PJ().global?'Réinitialiser le compte':'Demander la réinitialisation')+'</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
+      +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="5">'+'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+(m.role==='admin'?'<div style="font-size:12.5px;opacity:.8;margin:4px 0 8px">Administrateur du projet : voit toujours tout. Ces réglages s’appliqueront si son droit d’accès change.</div>':'')+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button> <button type="button" data-fdef>Réglages par défaut des rôles</button>'+'</td></tr>'
       +'<tr data-pp="'+m.user_id+'" hidden><td colspan="5"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')
       +'</table></div>');
       return '<div class="pgs" data-pj="'+esc(pj.id)+'">'+(multi?'<div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div>':'')+out.join('')+'</div>'; };
@@ -16377,8 +16457,8 @@ const PG_FEATS=[
           +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
           +'<td>'+statut(m,today2)+(m.confirme===false?'<br><span class="warn">⏳ invitation envoyée, pas encore activée</span>':'')+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
           +'<td><label class="sw"><input type="checkbox" data-act '+(m.actif?'checked':'')+' '+(m.moi?'disabled':'')+'><i></i></label></td>'
-          +'<td>'+(m.role==='admin'?'':'<button data-fn>Fonctionnalités</button> ')+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">'+(PJ().global?'Réinitialiser le compte':'Demander la réinitialisation')+'</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
-          +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="8">'+(m.role==='admin'?'':'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button>')+'</td></tr>'
+          +'<td>'+'<button data-fn>🎛 Gérer les fonctionnalités'+((m.fonctions&&m.fonctions._role)?' · '+esc(m.fonctions._role):'')+'</button> '+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">'+(PJ().global?'Réinitialiser le compte':'Demander la réinitialisation')+'</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
+          +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="8">'+'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+(m.role==='admin'?'<div style="font-size:12.5px;opacity:.8;margin:4px 0 8px">Administrateur du projet : voit toujours tout. Ces réglages s’appliqueront si son droit d’accès change.</div>':'')+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button> <button type="button" data-fdef>Réglages par défaut des rôles</button>'+'</td></tr>'
           +'<tr data-pp="'+m.user_id+'" hidden><td colspan="8"><div class="row"><input type="number" min="0" step="any" placeholder="Montant" data-mt style="width:110px"><label><input type="checkbox" data-pr> paiement reçu et validé</label><button class="p" data-prolong="'+m.user_id+'" disabled>Prolonger 1 mois</button></div></td></tr>').join('')+'</tbody>'; }).join('');
       body.push('<div class="card" style="overflow:auto"><table class="mtab"><thead><tr>'+th('pj','Projet')+th('u','Utilisateur')+th('fn','Rôle')+'<th>Types d’espace autorisés</th>'+th('role','Droit d’accès')+th('val','Validité')+th('act','Actif')+'<th>Actions</th></tr></thead>'+bodies+'</table></div>'); }
     if(pgMode==='settings') body.push(window.pgNivHtml?pgNivHtml():'');
@@ -16408,7 +16488,7 @@ const PG_FEATS=[
       tr.querySelector('[data-role]').onchange=e=>run(async()=>{ await admP_({action:'p_update',user_id:id,role:e.target.value}); const m=(caches[pj]||{members:[]}).members.find(x=>x.user_id===id); if(pj===PJ().id) hostSync('role',m&&m.email,e.target.value); });
       tr.querySelector('[data-act]').onchange=e=>run(()=>admP_({action:'p_update',user_id:id,actif:e.target.checked}));
       const fn=tr.querySelector('[data-fn]'); if(fn) fn.onclick=()=>{ openF=openF===key?null:key; fr.hidden=openF!==key; };
-      const fs=fr.querySelector('[data-fsave]'); if(fs) fs.onclick=()=>run(async()=>{ await admP_({action:'p_update',user_id:id,fonctions:readMatrix(fr)}); msg('Fonctionnalités enregistrées'); });
+      const fd=fr.querySelector('[data-fdef]'); if(fd) fd.onclick=()=>openFeatMgr(); const fs=fr.querySelector('[data-fsave]'); if(fs) fs.onclick=()=>run(async()=>{ await admP_({action:'p_update',user_id:id,fonctions:readMatrix(fr)}); msg('Fonctionnalités enregistrées'); });
       const rs=tr.querySelector('[data-rs]'); if(rs) rs.onclick=()=>run(async()=>{ await admP_({action:'p_resend',user_id:id,redirectTo:location.origin+location.pathname}); msg('Invitation renvoyée'); });
       tr.querySelector('[data-rp]').onclick=()=>{ pp.hidden=!pp.hidden; };
       const pw=tr.querySelector('[data-pw]'); if(pw) pw.onclick=()=>{ const m=(caches[pj]||{members:[]}).members.find(x=>x.user_id===id); if(!PJ().global){ if(!confirm('Demander la réinitialisation du compte de '+(m.nom||m.email)+' ? Elle sera envoyée après validation du super administrateur.')) return; run(async()=>{ await window.PILOTAGE_RESET_REQ.create(pj,id,m.email,m.nom); msg('Demande transmise au super administrateur'); }); return; } if(!confirm('Envoyer à '+(m.nom||m.email)+' un e-mail pour choisir un nouveau mot de passe ?')) return; run(async()=>{ await admP_({action:'p_reset',user_id:id,redirectTo:location.origin+location.pathname}); msg('E-mail de réinitialisation envoyé à '+m.email); }); };
@@ -16456,7 +16536,7 @@ const PG_FEATS=[
     const w=who(), p=w.p, h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{}, col=RC[w.key]||RC.lecteur;
     const c=document.createElement('div'); c.id='pgProf';
     c.innerHTML='<div class="pgp-h">'+avatar(w.nm,52)+'<div class="pgp-n"><b>'+esc(w.nm||'Utilisateur')+'</b>'+(w.email?'<small>'+esc(w.email)+'</small>':'')+'<span class="pgp-r" style="background:'+col[0]+';color:'+col[1]+'">'+esc(w.role)+'</span></div></div>'
-      +'<div class="pgp-s"><div class="pgp-l">Projet</div><div class="pgp-v"><b>'+esc(p.nom||'')+'</b><small>'+esc(PG_ACR[pilotageType()]+' — '+PG_TYPES[pilotageType()])+'</small></div>'
+      +'<div class="pgp-s"><div class="pgp-l">Projet</div><div class="pgp-v"><b>'+esc(p.nom||'')+'</b><small>'+esc(PG_ACR[pilotageType()]+' — '+PG_TYPES[pilotageType()]+(pilotageType()==='ces'&&pilotageMetier()?' · '+pilotageMetier():''))+'</small></div>'
       +(p.projets&&p.projets.length>1?'<select id="pgProfSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')+'</div>'
       +(p.valide_jusqu?'<div class="pgp-s"><div class="pgp-l">Accès</div><div class="pgp-v">valable jusqu’au <b>'+p.valide_jusqu.split('-').reverse().join('/')+'</b></div></div>':'')
       +'<div class="pgp-s"><div class="pgp-l">Données</div><div class="pgp-v">'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+(h.compte?'<small>'+esc(h.compte)+'</small>':''):'Base de l’outil')+'</div></div>'
@@ -16478,12 +16558,21 @@ const PG_FEATS=[
     const ov=document.createElement('div'); ov.id='pgTypeWin'; ov.setAttribute('role','dialog'); ov.style.cssText='position:fixed;inset:0;z-index:99980;background:rgba(22,35,43,.5);display:flex;align-items:center;justify-content:center;padding:14px';
     ov.innerHTML='<div style="background:#fff;border-top:6px solid #F2A900;border-radius:14px;padding:16px 18px;width:min(460px,100%);max-height:90vh;overflow:auto;box-shadow:0 18px 60px rgba(0,0,0,.35)"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:17px">Type d’espace de travail</b><button type="button" data-x style="padding:6px 12px;border:1px solid #d6d6d6;border-radius:8px;background:#fff;cursor:pointer;font-weight:600">✕ Fermer</button></div>'
       +'<small style="color:#666">'+(glob?'Cochez les types que ce projet est autorisé à utiliser, puis choisissez le type actif.':'Types autorisés par l’administrateur de l’outil.')+'</small><div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">'
-      +all.map(k=>'<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid '+(k===cur?'#F2A900':'#e3e3e3')+';border-radius:10px;background:'+(k===cur?'#fff7e0':'#fff')+'">'+(glob?'<input type="checkbox" data-ok="'+k+'" '+(ok.includes(k)?'checked':'')+' title="Autorisé" style="width:18px;height:18px;min-width:0;flex:none;margin:0;padding:0">':'')+'<button type="button" data-t="'+k+'" '+(ok.includes(k)?'':'disabled')+' style="flex:1;display:block;width:auto;text-align:left;justify-content:flex-start;border:0;padding:0;background:none;font:inherit;color:inherit;cursor:'+(ok.includes(k)?'pointer':'not-allowed')+';opacity:'+(ok.includes(k)?1:.45)+'"><b>'+esc(PG_ACR[k])+'</b> — '+esc(PG_TYPES[k])+(k===cur?' ✓':'')+'</button></div>').join('')+'</div>'
+      +all.map(k=>'<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid '+(k===cur?'#F2A900':'#e3e3e3')+';border-radius:10px;background:'+(k===cur?'#fff7e0':'#fff')+'">'+(glob?'<input type="checkbox" data-ok="'+k+'" '+(ok.includes(k)?'checked':'')+' title="Autorisé" style="width:18px;height:18px;min-width:0;flex:none;margin:0;padding:0">':'')+'<button type="button" data-t="'+k+'" '+(ok.includes(k)?'':'disabled')+' style="flex:1;display:block;width:auto;text-align:left;justify-content:flex-start;border:0;padding:0;background:none;font:inherit;color:inherit;cursor:'+(ok.includes(k)?'pointer':'not-allowed')+';opacity:'+(ok.includes(k)?1:.45)+'"><b>'+esc(PG_ACR[k])+'</b> — '+esc(PG_TYPES[k])+(k==='ces'&&pilotageMetier()?' · '+esc(pilotageMetier()):'')+(k===cur?' ✓':'')+(k==='ces'?' ›':'')+'</button></div>').join('')+'</div>'
       +(glob?'<div style="margin-top:10px;text-align:right"><button type="button" data-save style="padding:8px 14px;border:0;border-radius:8px;background:#CC5F00;color:#fff;font-weight:600;cursor:pointer">Enregistrer les types autorisés</button></div>':'')+'<div id="pgTypeMsg" style="margin-top:8px;font-size:13px;color:#B4432D"></div></div>';
     document.body.appendChild(ov);
     const close=()=>ov.remove(), msg=t=>{ ov.querySelector('#pgTypeMsg').textContent=t; };
     ov.addEventListener('click',e=>{ if(e.target===ov||e.target.closest('[data-x]')) close(); });
-    ov.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{ try{ await window.PILOTAGE_SET_TYPE(p.id,b.dataset.t); p.type=b.dataset.t; location.reload(); }catch(e){ msg(e.message); } });
+    const metWin=()=>{ const box=ov.firstElementChild, curM=pilotageMetier(); let extra=[]; try{ extra=JSON.parse(localStorage.getItem('pg_metiers_plus')||'[]'); }catch(e){}
+      const L=PG_METIERS.concat(extra.filter(x=>!PG_METIERS.includes(x))); if(curM&&!L.includes(curM)) L.push(curM);
+      box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><button type="button" data-bk style="border:0;background:none;font-size:24px;cursor:pointer;padding:0 8px">‹</button><b style="font-size:17px;flex:1;text-align:center">Corps d’état secondaire</b><button type="button" data-x style="padding:6px 12px;border:1px solid #d6d6d6;border-radius:8px;background:#fff;cursor:pointer;font-weight:600">✕ Fermer</button></div><div style="margin-top:12px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">'
+        +L.map(m=>'<button type="button" data-met="'+esc(m)+'" style="min-height:62px;padding:6px;border-radius:12px;border:1.5px solid '+(m===curM?'#F2A900':'#e3e3e3')+';background:'+(m===curM?'#fff7e0':'#fff')+';font:600 12.5px system-ui;color:#222;cursor:pointer">'+esc(m)+(m===curM?' ✓':'')+'</button>').join('')
+        +'<button type="button" data-metadd style="min-height:62px;padding:6px;border-radius:12px;border:1.5px dashed #F2A900;background:#fff;font:700 12.5px system-ui;color:#222;cursor:pointer">＋ Ajouter</button></div><div id="pgTypeMsg" style="margin-top:8px;font-size:13px;color:#B4432D"></div>';
+      box.querySelector('[data-bk]').onclick=e=>{ e.stopPropagation(); close(); pgTypeWin(); };
+      const pick=async m=>{ try{ if(!window.PILOTAGE_METIER) throw new Error('Réglage du métier indisponible sur cet hébergement'); await window.PILOTAGE_METIER.set(p.id,m); try{ localStorage.setItem('pg_metier_'+p.id,m); }catch(e){} p.metier=m; if(pilotageType()!=='ces'){ await window.PILOTAGE_SET_TYPE(p.id,'ces'); p.type='ces'; } location.reload(); }catch(e){ msg(e.message||String(e)); } };
+      box.querySelectorAll('[data-met]').forEach(b=>b.onclick=()=>pick(b.dataset.met));
+      box.querySelector('[data-metadd]').onclick=()=>{ const n=(window.prompt('Nom du métier à ajouter')||'').trim(); if(!n) return; try{ const ex=JSON.parse(localStorage.getItem('pg_metiers_plus')||'[]'); if(!ex.includes(n)){ ex.push(n); localStorage.setItem('pg_metiers_plus',JSON.stringify(ex)); } }catch(e){} pick(n); }; };
+    ov.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{ if(b.dataset.t==='ces'){ metWin(); return; } try{ await window.PILOTAGE_SET_TYPE(p.id,b.dataset.t); p.type=b.dataset.t; location.reload(); }catch(e){ msg(e.message); } });
     const sv=ov.querySelector('[data-save]'); if(sv) sv.onclick=async()=>{ const a=[...ov.querySelectorAll('[data-ok]:checked')].map(i=>i.dataset.ok); if(!a.length){ msg('Autorisez au moins un type.'); return; } try{ await window.PILOTAGE_SET_TYPES_OK(p.id,a.length===all.length?null:a); p.types_autorises=a.length===all.length?null:a; close(); pgTypeWin(); }catch(e){ msg(e.message); } };
   }
   window.pgTypeWin=pgTypeWin;
@@ -16565,7 +16654,7 @@ const PG_FEATS=[
       const to=pv.querySelector('#pvTyOk'); if(to) to.onclick=e=>{ e.stopPropagation(); pgTypeWin(); }; }
     pv.querySelector('#pvBack').onclick=()=>setView(false); { const bk=pv.querySelector('#pvBack'); bk.textContent='✕ Fermer'; }
     pv.querySelector('#pvData').onclick=e=>{ e.stopPropagation(); openDataWin(); };
-    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); pgOpen(b.dataset.m); });
+    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); if(b.dataset.m==='features'){ openFeatMgr(); return; } pgOpen(b.dataset.m); });
     const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ pgOpen('settings'); try{ closeTabMenu(); }catch(_){} };
     { const hb=pv.querySelector('#pvHost'); if(hb&&adm){ hb.onclick=()=>{ setView(false); pgOpen('host'); }; } else if(hb){ hb.style.cursor='default'; } }
     pv.querySelector('#pvOut').onclick=()=>{ if(window.pilotageLogout) window.pilotageLogout(); };
@@ -16794,9 +16883,10 @@ const PG_FEATS=[
     const n=net(), c=by(n.clients,d.clientId)||{nom:'—'}, pj=projsOf(c).find(x=>x.id===d.projetId)||{}, rq=d.demandeur||{}, P=window.PILOTAGE_DEMANDES; let url='', err='';
     if(P){ try{ url=await P.create({demande_id:d.id,demandeur:rq.nom,email:rq.email,societe:c.nom,responsable:who(),snapshot:{site:d.site||'',plans:[],zones:[]}}); }catch(e){ err=(e&&e.message)||String(e); } }
     const resp=who()||'Votre contact', subj='Votre demande de prestation'+(pj.nom?' — '+pj.nom:''), body='Bonjour '+(rq.nom||'')+',\n\n'+resp+' vous invite à formaliser votre demande de prestation'+(pj.nom?' pour le projet « '+pj.nom+' »':'')+'.\nMerci de remplir le formulaire en ligne :\n'+url+'\n\nCe lien est personnel et valable 7 jours.\n\nCordialement,\n'+resp;
-    const o=modal('<h3>✉ Lien de demande — '+esc(d.num)+'</h3>'+(url?'<p>Envoyez ce lien à <b>'+esc(rq.nom||'')+'</b> ('+esc(rq.email||'')+') : il remplira lui-même la demande (prestation, dates, horaires, effectifs).</p><label>Lien<input id="lkU" readonly value="'+esc(url)+'"></label><div class="nt-b"><button id="lkC">📋 Copier le lien</button><button class="pri" id="lkS" hidden>✉ Envoyer depuis mon compte Microsoft</button><button id="lkM">Ouvrir mon mail (prérempli)</button></div><p class="nt-s" id="lkR"></p><p class="nt-s">Valable 7 jours. Dès que le demandeur clôture sa demande, elle apparaît ici avec le statut « Reçue ».</p>':'<p class="nt-w">Le formulaire en ligne n’est disponible qu’avec l’hébergement dans la base de l’outil'+(err?' ('+esc(err)+')':'')+'. Ouvrez la demande et saisissez-la vous-même.</p>')+'<div class="nt-b"><button data-x>Fermer</button></div>');
+    const o=modal('<h3>✉ Lien de demande — '+esc(d.num)+'</h3>'+(url?'<p>Envoyez ce lien à <b>'+esc(rq.nom||'')+'</b> ('+esc(rq.email||'')+') : il remplira lui-même la demande (prestation, dates, horaires, effectifs).</p><label>Lien<input id="lkU" readonly value="'+esc(url)+'"></label><div class="nt-b"><button id="lkC">📋 Copier le lien</button><button class="pri" id="lkR2" hidden>✉ Envoyer par e-mail</button><button class="pri" id="lkS" hidden>✉ Envoyer depuis mon compte Microsoft</button><button id="lkM">Ouvrir mon mail (prérempli)</button></div><p class="nt-s" id="lkR"></p><p class="nt-s">Valable 7 jours. Dès que le demandeur clôture sa demande, elle apparaît ici avec le statut « Reçue ».</p>':'<p class="nt-w">Le formulaire en ligne n’est disponible qu’avec l’hébergement dans la base de l’outil'+(err?' ('+esc(err)+')':'')+'. Ouvrez la demande et saisissez-la vous-même.</p>')+'<div class="nt-b"><button data-x>Fermer</button></div>');
     const cp=o.querySelector('#lkC'); if(cp) cp.onclick=()=>{ try{ navigator.clipboard.writeText(url); cp.textContent='✔ Copié'; }catch(e){ o.querySelector('#lkU').select(); } };
     const ml=o.querySelector('#lkM'); if(ml) ml.onclick=()=>openMail(rq.email,subj,body);
+    const r2=o.querySelector('#lkR2'); if(r2&&window.PILOTAGE_SENDMAIL&&rq.email){ r2.hidden=false; r2.onclick=async()=>{ r2.disabled=true; r2.textContent='Envoi…'; try{ await window.PILOTAGE_SENDMAIL({action:'demande_lien',to:rq.email,nom:rq.nom||'',responsable:who()||'',projet:pj.nom||'',url}); r2.textContent='✔ Envoyé à '+rq.email; (d.histo=d.histo||[]).push({d:today(),s:d.statut,p:'lien envoyé à '+rq.email}); save(); }catch(e){ r2.disabled=false; r2.textContent='✉ Envoyer par e-mail'; o.querySelector('#lkR').innerHTML='<span class="nt-w">Envoi impossible : '+esc(e.message||'')+'. Utilisez « Ouvrir mon mail ».</span>'; } }; }
     const sb=o.querySelector('#lkS'), M=window.PILOTAGE_MAIL;
     if(sb&&M&&M.available()&&rq.email){ sb.hidden=false; sb.onclick=async()=>{ sb.disabled=true; sb.textContent='Envoi…'; try{ await M.send(rq.email,subj,body); sb.textContent='✔ Envoyé à '+rq.email; (d.histo=d.histo||[]).push({d:today(),s:d.statut,p:'lien envoyé à '+rq.email}); save(); }catch(e){ sb.disabled=false; sb.textContent='✉ Envoyer depuis mon compte Microsoft'; o.querySelector('#lkR').innerHTML='<span class="nt-w">Envoi impossible : '+esc(e.message||'')+'. Utilisez « Ouvrir mon mail ».</span>'; } }; }
   }
@@ -16819,17 +16909,21 @@ const PG_FEATS=[
   let impLast=0;
   async function importReponses(){ const P=window.PILOTAGE_DEMANDES; if(!P||Date.now()-impLast<15000) return; impLast=Date.now(); let rows; try{ rows=await P.list(); }catch(e){ return; } const n=net(), cur=(window.PILOTAGE_PROJET&&PILOTAGE_PROJET.id)||''; let ch=0;
     for(const r of rows){
-      if(r.statut==='clos'&&r.reponse){ const d=by(n.demandes,r.demande_id), R=r.reponse; if(d){ const rp=(R.repart||[]).map(x=>Object.assign({projetId:cur},x));
-          Object.assign(d,{type:R.type||d.type,urgence:R.urgence||d.urgence,debut:R.debut||d.debut,fin:R.fin||R.debut||d.fin,hDebut:R.hDebut||d.hDebut,hFin:R.hFin||d.hFin,desc:R.desc||'',repart:rp,nb:Math.max(1,+R.nb||rp.reduce((a,x)=>a+x.n,0)||1)}); if(R.site) d.site=R.site; d.statut='recue'; (d.histo=d.histo||[]).push({d:today(),s:'recue',p:(d.demandeur&&d.demandeur.nom)||'Client'}); ch++; }
-        try{ await P.remove(r.token); }catch(e){} }
+      if(r.statut==='clos'&&r.reponse){ const d=by(n.demandes,r.demande_id), R=r.reponse; if(d){ if(Array.isArray(R.plansJoints)&&R.plansJoints.length&&!d.plansJoints){ d.plansJoints=R.plansJoints.map(x=>({nom:String(x.nom||''),url:String(x.url||'')})).filter(x=>/^https:\/\//.test(x.url)); R.desc=(R.desc?R.desc+'\n':'')+d.plansJoints.map(x=>'Plan joint (espace Microsoft du client) : '+x.nom+' — '+x.url).join('\n'); } const rp=(R.repart||[]).map(x=>Object.assign({projetId:cur},x));
+          Object.assign(d,{type:R.type||d.type,urgence:R.urgence||d.urgence,debut:R.debut||d.debut,fin:R.fin||R.debut||d.fin,hDebut:R.hDebut||d.hDebut,hFin:R.hFin||d.hFin,desc:R.desc||'',repart:rp,nb:Math.max(1,+R.nb||rp.reduce((a,x)=>a+x.n,0)||1)}); if(R.site) d.site=R.site; d.statut='recue'; (d.histo=d.histo||[]).push({d:today(),s:'recue',p:(d.demandeur&&d.demandeur.nom)||'Client'}); ch++; try{ save(); }catch(e){}
+          try{ await P.remove(r.token); }catch(e){} }   /* le lien n'est supprimé que si la réponse a bien été rattachée à sa demande : sinon elle reste en base, rien n'est perdu */
+        }
       else if(r.statut==='envoye'&&new Date(r.expire)<new Date()){ try{ await P.remove(r.token); }catch(e){} } }
     if(ch){ save(); const a=document.querySelector('.page.active'); if(a&&a.id==='page-net-demandes') render('net-demandes'); } }
   setInterval(()=>{ const a=document.querySelector('.page.active'); if(a&&a.id==='page-net-demandes') importReponses(); },30000);
   /* ---------- Workflow de la demande ---------- */
-  const WF=['Demande envoyée par le client','Reçue — en cours de traitement','Traitée — affectation validée','Affectation reçue par les agents','Pointage en cours','Pointage validé par le responsable'];
+  const WF=['Enregistrement de la demande','Reçue — en cours de traitement','Traitée — affectation validée','Affectation reçue par les agents','Pointage en cours','Pointage validé par le responsable'];
   function wfStage(d){ const n=net(); if(!d.id||d.statut==='envoyee') return 1; const affs=n.affectations.filter(a=>a.demandeId===d.id), recs=n.ptv.filter(r=>r.demandeId===d.id), hasPt=n.pointages.some(p=>affs.some(a=>a.id===p.affId));
     if(d.statut==='terminee'||(hasPt&&recs.length&&recs.every(r=>r.stage==='valide'))) return 7; if(hasPt||recs.length) return 5; if(d.affValide) return 4; return 2; }
-  function wfHtml(d){ const cur=wfStage(d); return '<div class="wf" id="wf">'+WF.map((t,i)=>{ const k=i+1, cls=cur===7?(k===6?'fin':'done'):(k<cur?'done':k===cur?'cur':''); return '<span class="'+cls+'"><i>'+(cls==='done'||cls==='fin'?'✓':k)+'</i>'+esc(t)+'</span>'; }).join('')+'</div>'; }
+  /* statut : seule l'étape actuelle est affichée, l'étape suivante apparaît en gris */
+  function wfHtml(d){ const cur=wfStage(d); const st=(k,on,fin)=>'<span class="'+(fin?'fin':on?'cur':'')+'" style="'+(on||fin?'background:#FFC400;border-color:#FFC400;color:#111;font-weight:700':'opacity:.4;filter:grayscale(1)')+'"><i'+(on||fin?' style="color:#111"':'')+'>'+(fin?'✓':k)+'</i>'+esc(WF[k-1])+'</span>';
+    if(cur>=7) return '<div class="wf" id="wf">'+st(6,false,true)+'</div>';
+    return '<div class="wf" id="wf">'+st(cur,true,false)+(cur<6?st(cur+1,false,false):'')+'</div>'; }
   function demandeForm(d,mini){
     const n = net(), nw = !d; mini = nw; d = d || {statut:'recue', type:'Nettoyage', urgence:'Normale', nb:1, debut:today(), fin:today(), hDebut:'08:00', hFin:'16:00'};
     modal('<h3>'+(nw?'➕ Nouvelle demande client':'✏️ Demande n° '+esc(d.num))+'</h3>'+wfHtml(nw?{}:d)
@@ -19773,7 +19867,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  const DTXT=['nom','emetteur','phase','periode','zone','discipline','type','numero','indice','format'];
  let DSORT=LS('pj_dsort',null);
  try{ if(!LS('pj_dcols_v2',0)){ LSset('pj_dcols',null); LSset('pj_dcols_v2',1); } if(!LS('pj_dcols_v3',0)){ LSset('pj_dcols',null); LSset('pj_dcols_v3',1); } }catch(_){}
- const dcolsOn=()=>{ const c=(LS('pj_dcols',DDEF)||DDEF).filter(k=>DCOLS[k]); return c.length?c:DDEF; };
+ const dcolsOn=()=>{ const c=(LS('pj_dcols',DDEF)||DDEF).filter(k=>DCOLS[k]&&(!window.pgFieldOn||pgFieldOn('d',k))); return c.length?c:DDEF; };
  const DOCS=()=>{ const S=ST(); S.documents=S.documents||[]; return S.documents; };
  const nTaches=()=>DOCS().filter(d=>!d.planning).length;
  /* chaque projet a par défaut un ouvrage « Planning » : la somme de ses documents (étude) ou ouvrages (exé) */
@@ -20834,7 +20928,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v356';
+  const VER='v373';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };

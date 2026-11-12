@@ -235,6 +235,8 @@
     window.PILOTAGE_ACTIONS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_actions').insert({nom:row.nom}); if(error && error.code!=='23505') throw error; };
     window.PILOTAGE_LOTS_SAVE = async (row)=>{ const {error} = await sb.from('mbf_lots').upsert(row,{onConflict:'code',ignoreDuplicates:true}); if(error) throw error; };
     window.PILOTAGE_SET_TYPE = async (pid, type)=>{ const {error} = await sb.from('projets').update({type}).eq('id', pid); if(error) throw error; };
+    window.PILOTAGE_METIER = { get: async pid=>{ try{ const {data,error} = await sb.from('projets').select('metier').eq('id',pid).maybeSingle(); if(error) return null; return (data&&data.metier)||null; }catch(e){ return null; } }, set: async (pid,m)=>{ const {error} = await sb.from('projets').update({metier:m||null}).eq('id',pid); if(error) throw error; } };
+    try{ window.PILOTAGE_METIER.get(PJ.id).then(m=>{ PJ.metier=m; try{ localStorage.setItem('pg_metier_'+PJ.id, m||''); }catch(e){} }); }catch(e){}
     window.PILOTAGE_SET_TYPES_OK = async (pid, arr)=>{ const {error} = await sb.from('projets').update({types_autorises: (arr&&arr.length)?arr:null}).eq('id', pid); if(error) throw error; };
     window.PILOTAGE_MEMBER_FN = {
       get: async pid=>{ const {data,error} = await sb.from('projet_membres').select('user_id,fonction').eq('projet_id',pid); if(error) throw error; const o={}; (data||[]).forEach(r=>o[r.user_id]=r.fonction||''); return o; },
@@ -326,8 +328,8 @@
   async function offlineEntry(unreached){
     if(!unreached && await reach()) return null;
     const sn = lsGet(SNAP);
-    if(snapOk(sn) && bioOk(sn)){ if(await bioGate(sn)) return sn; }
-    await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Been11</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application ne se rouvre qu’avec l’empreinte ou le visage activés au préalable, et jusqu’à vendredi soir. Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
+    if(snapOk(sn)) return sn;   /* réouverture locale sans empreinte ni visage : il suffit d'une connexion avec réseau dans la semaine */
+    await new Promise(()=>{ const d = screen('<div class="box"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Been11</div><h2>📴 Pas de connexion</h2><p>Sans internet, l’application se rouvre en local si vous vous êtes connecté avec du réseau cette semaine (jusqu’à vendredi soir). Reconnectez-vous avec du réseau pour continuer.</p><button id="pgRt">Réessayer</button></div>'); d.querySelector('#pgRt').onclick = ()=>location.reload(); });
   }
   function startOffline(sn){
     me = sn.me; PJ = sn.PJ; window.PILOTAGE_PROJET = PJ; window.PILOTAGE_OFFLINE = true;
@@ -444,6 +446,8 @@
     const r = await fetch(cfg.url+'/functions/v1/admin-users', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+session.access_token}, body:JSON.stringify(body)});
     const j = await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||('Erreur '+r.status)); return j;
   }
+  window.PILOTAGE_ROLES = async body=>{ const {data:{session}} = await sb.auth.getSession(); const r = await fetch(cfg.url+'/functions/v1/roles', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+session.access_token}, body:JSON.stringify(body)}); const j = await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||('Erreur '+r.status)); return j; };
+  window.PILOTAGE_SENDMAIL = async body=>{ const {data:{session}} = await sb.auth.getSession(); const r = await fetch(cfg.url+'/functions/v1/mail', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+session.access_token}, body:JSON.stringify(body)}); const j = await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||('Erreur '+r.status)); return j; };
   const esc = t=>String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const genPw = ()=>{ const c='abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let o=''; const a=new Uint32Array(10); crypto.getRandomValues(a); a.forEach(n=>o+=c[n%c.length]); return o; };
   window.PILOTAGE_SB = ()=> (ready = ready || ensure());
