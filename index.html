@@ -16638,7 +16638,7 @@ const PG_FEATS=[
         +(()=>{ const all=Object.keys(PG_TYPES), okT=((p.types_autorises&&p.types_autorises.length)?p.types_autorises:all).filter(k=>p.global||!(p.types_membre&&p.types_membre.length)||p.types_membre.includes(k)), cur=pilotageType(); const lst=all.filter(k=>okT.includes(k)||k===cur); return adm?'<select id="pvTy" class="pv-sel" aria-label="Type d’espace de travail">'+lst.map(k=>'<option value="'+k+'"'+(k===cur?' selected':'')+'>'+esc(PG_ACR[k]+' — '+PG_TYPES[k])+'</option>').join('')+'</select>':'<small><span class="sb-tag">'+esc(tg)+'</span>'+esc(ty)+'</small>'; })()
         +(p.global?'<button type="button" id="pvTyOk" class="pv-lnk">Types autorisés…</button>':'')+'</div>':'')
       +(p&&!adm?'<button type="button" class="pv-row" data-a="proj"><span class="sb-ic">'+ICO_GEAR+'</span><span>Mon projet</span></button>':'')
-      +(adm?'<div class="sb-box" id="sbAct"><button type="button" data-m="settings">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-m="invite">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-m="members">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button></div>':'')
+      +(adm?'<div class="sb-box" id="sbAct"><button type="button" data-m="settings">'+ICO_GEAR+'<span>Paramètres du projet</span></button><button type="button" data-m="invite">'+ICO_USERS+'<span>Inviter un membre</span></button><button type="button" data-m="members">'+ICO_USER_GEAR+'<span>Gérer les membres</span></button>'+(window.PILOTAGE_CONFIG&&window.PILOTAGE_CONFIG.demo&&PJ().global?'<button type="button" data-m="demo"><span style="font-size:18px;line-height:1">🧪</span><span>Données de démonstration</span></button>':'')+'</div>':'')
       +'<div class="sb-pl" id="sbProj"><div class="sb-t">Liste des projets <em class="sb-sum">'+esc(sum)+'</em></div>'
       +(L.length>1?'<button type="button" class="sb-all" id="sbAll">Tout sélectionner</button>':'')
       +'<div class="sb-list" id="sbList">'+L.map(x=>'<label class="sb-it'+(p&&x.id===p.id?' cur':'')+'"><input type="checkbox" data-id="'+esc(x.id)+'" '+(sel.includes(x.id)?'checked':'')+'><span class="sb-pt"><b>'+esc(x.nom)+'</b><small><span class="sb-tag">'+esc(PG_ACR[pgTypeKey(x.type)])+'</span>'+esc(PG_TYPES[pgTypeKey(x.type)])+'</small></span></label>').join('')+'</div>'
@@ -16659,7 +16659,7 @@ const PG_FEATS=[
       const to=pv.querySelector('#pvTyOk'); if(to) to.onclick=e=>{ e.stopPropagation(); pgTypeWin(); }; }
     pv.querySelector('#pvBack').onclick=()=>setView(false); { const bk=pv.querySelector('#pvBack'); bk.textContent='✕ Fermer'; }
     pv.querySelector('#pvData').onclick=e=>{ e.stopPropagation(); openDataWin(); };
-    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); if(b.dataset.m==='features'){ openFeatMgr(); return; } pgOpen(b.dataset.m); });
+    pv.querySelectorAll('#sbAct button').forEach(b=>b.onclick=()=>{ setView(false); if(b.dataset.m==='features'){ openFeatMgr(); return; } if(b.dataset.m==='demo'){ window.pjDemoWin(); return; } pgOpen(b.dataset.m); });
     const pj_=pv.querySelector('[data-a=proj]'); if(pj_) pj_.onclick=()=>{ pgOpen('settings'); try{ closeTabMenu(); }catch(_){} };
     { const hb=pv.querySelector('#pvHost'); if(hb&&adm){ hb.onclick=()=>{ setView(false); pgOpen('host'); }; } else if(hb){ hb.style.cursor='default'; } }
     pv.querySelector('#pvOut').onclick=()=>{ if(window.pilotageLogout) window.pilotageLogout(); };
@@ -20934,7 +20934,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v376';
+  const VER='v377';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
@@ -21855,4 +21855,84 @@ window.createInterloc=function(returnTaskId){
 #paWin #archLv .lv-t .pa-ic{flex:none}
 #paWin #archLv .pa-app:not(.lv-t){display:flex !important; flex-direction:row !important; align-items:center; justify-content:flex-start; gap:14px; width:100%; padding:6px 8px}
 </style>
+
+<script id="pjDemoSeed">
+/* ===== Jeu de données de démonstration (version test) : ouvrages et documents par corps d'état, au sous-sol et au rez-de-chaussée.
+   Tout ce qui est créé porte demo:true et se retire en un clic. Activé seulement si config.js contient demo:true. ===== */
+(function(){
+  const N=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+  const OUV=[
+    [/electri|cfo|cfa/,['Tableau électrique divisionnaire','Chemin de câbles','Prises de courant','Points lumineux']],
+    [/cvc|ventil|clim|chauff/,['Gaine de soufflage','Bouches de reprise','Unité intérieure','Clapet coupe-feu']],
+    [/plomb/,['Arrivée d’eau','Évacuation EU / EV','Appareils sanitaires','Vannes d’isolement']],
+    [/sprink|spk/,['Têtes de sprinkler','Canalisation principale','Poste de contrôle']],
+    [/cloison|plaqu|doublage/,['Cloison de distribution','Doublage','Trappe de visite']],
+    [/acoust/,['Barrière acoustique en plénum','Calfeutrement des traversées']],
+    [/plafond/,['Faux plafond en dalles','Retombée','Trappe d’accès']],
+    [/carrel|sol/,['Revêtement de sol','Plinthes','Barre de seuil']],
+    [/peint/,['Peinture des murs','Peinture des plafonds']],
+    [/menuis/,['Bloc-porte','Placard','Habillage']],
+    [/gros|beton|structure/,['Voile béton','Dalle','Réservations']]
+  ];
+  const DOCT=['Plan d’étage','Plan de distribution','Plan de terminaux','Synoptique'];
+  const PIECES={ss:['Parking','Local technique','Archives'], rdc:['Hall d’accueil','Bureau 01','Sanitaires']};
+  const iso=d=>d.toISOString().slice(0,10), plus=n=>{ const d=new Date(); d.setDate(d.getDate()+n); return iso(d); };
+  function levels(){
+    state.niveaux=state.niveaux||[]; state.nivBat=state.nivBat||{}; try{ if(typeof archEns==='function') archEns(); }catch(e){}
+    const bat=(state.batiments&&state.batiments[0]&&state.batiments[0].id)||'B1';
+    const get=(re,def)=>{ let n=state.niveaux.find(x=>re.test(N(x))); if(!n){ n=def; state.niveaux.push(n); } if(!state.nivBat[n]) state.nivBat[n]=bat; return n; };
+    return {ss:get(/sous-sol|sous sol|^ss$|^r-1/, 'Sous-sol'), rdc:get(/^rdc$|^r\+0$|rez/, 'RDC')};
+  }
+  function lots(){
+    const L=(state.lotsProjet||[]).map(l=>({nom:l.nom, metierId:l.metierId||null}));
+    if(L.length) return L;
+    return (state.metiers||[]).slice(0,6).map(m=>({nom:m.nom, metierId:m.id}));
+  }
+  function count(){ return {o:(state.tasks||[]).filter(t=>t.demo).length, d:(state.documents||[]).filter(d=>d.demo).length}; }
+  function seed(){
+    if(count().o||count().d) return {deja:true};
+    const LV=levels(), LT=lots(); if(!LT.length) return {erreur:'Aucun lot ni métier dans ce projet : créez d’abord vos lots (Paramètres → Gestion des lots).'};
+    state.zonesChantier=state.zonesChantier||[]; state.zoneFamilles=state.zoneFamilles||[]; state.familleTypes=state.familleTypes||[]; state.tasks=state.tasks||[]; state.documents=state.documents||[];
+    const pcs={}; ['ss','rdc'].forEach(k=>{ pcs[k]=PIECES[k].map(nom=>{ let z=state.zonesChantier.find(x=>x.niveau===LV[k]&&N(x.nom)===N(nom)); if(!z){ z={id:uid('Z'), nom, niveau:LV[k], parentId:null, demo:true}; state.zonesChantier.push(z); } return z; }); });
+    let no=0, nd=0; const etats=[['afaire',0],['encours',40],['fait',100]];
+    LT.forEach((lot,li)=>{
+      const noms=(OUV.find(o=>o[0].test(N(lot.nom)))||[null,['Ouvrage test 1','Ouvrage test 2','Ouvrage test 3']])[1];
+      let ft=state.familleTypes.find(f=>f.lot&&N(f.lot)===N(lot.nom));
+      if(!ft){ ft={id:'ft-demo-'+N(lot.nom).replace(/[^a-z0-9]+/g,'-'), lot:lot.nom, nom:'Ouvrages '+lot.nom, icone:'🧪', items:[], familleBaseId:null, reglesConception:[], demo:true}; state.familleTypes.push(ft); }
+      ['ss','rdc'].forEach((k,ki)=>{
+        noms.forEach((q,qi)=>{ const z=pcs[k][(qi+li)%pcs[k].length], zf=ensureZoneFamille(ft,z.id,LV[k]); if(!zf.demo&&!zf.entreprise) zf.demoZf=true;
+          const e=etats[(qi+li+ki)%3], deb=plus(7+qi*3+li), fin=plus(14+qi*3+li);
+          state.tasks.unshift(taskBase(nextTaskId(), q+' — '+z.nom, LV[k], {zone:lot.nom, zoneChantierId:z.id, zoneChantierIds:[z.id], zoneFamilleId:zf.id, metierId:lot.metierId, etat:e[0], pct:e[1], quand:deb, dateFin:fin, demo:true})); no++; });
+        DOCT.slice(0,2+(li%2)).forEach((dt,di)=>{ const e=['aemettre','emis','vise'][(di+li+ki)%3];
+          state.documents.unshift({id:'Ddemo'+Date.now().toString(36)+(nd++), nom:dt+' · '+LV[k]+' · '+lot.nom, docType:dt, niveau:LV[k], emetteur:'', phase:'', periode:'', zone:'', discipline:lot.nom, type:'', numero:String(100+nd), indice:e==='aemettre'?'0':'A', format:'PDF', etat:e, date:plus(5+di*4+li), fichier:'', taille:0, etapeNom:'', demo:true}); });
+      });
+    });
+    try{ persist(); }catch(e){} try{ renderAll(); }catch(e){}
+    return {o:no, d:nd};
+  }
+  function clear(){
+    const c=count();
+    state.tasks=(state.tasks||[]).filter(t=>!t.demo); state.documents=(state.documents||[]).filter(d=>!d.demo);
+    const usedZf=new Set(state.tasks.map(t=>t.zoneFamilleId)), usedZ=new Set(state.tasks.flatMap(t=>[t.zoneChantierId].concat(t.zoneChantierIds||[])));
+    state.zoneFamilles=(state.zoneFamilles||[]).filter(z=>!(z.demoZf&&!usedZf.has(z.id)));
+    state.zonesChantier=(state.zonesChantier||[]).filter(z=>!(z.demo&&!usedZ.has(z.id)));
+    state.familleTypes=(state.familleTypes||[]).filter(f=>!(f.demo&&!state.zoneFamilles.some(z=>z.familleTypeId===f.id)));
+    try{ persist(); }catch(e){} try{ renderAll(); }catch(e){}
+    return c;
+  }
+  window.pjDemoSeed=seed; window.pjDemoClear=clear;
+  window.pjDemoWin=function(){
+    const old=document.getElementById('pjDemoWin'); if(old) old.remove();
+    const o=document.createElement('div'); o.id='pjDemoWin'; o.style.cssText='position:fixed;inset:0;z-index:2147483050;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    const draw=msg=>{ const c=count();
+      o.innerHTML='<div style="background:#0d1013;color:#f5d36a;border:1.5px solid rgba(255,196,0,.6);border-radius:20px;width:min(460px,100%);padding:18px;font:14px system-ui"><h3 style="margin:0 0 10px;text-align:center;font-size:17px">🧪 Données de démonstration</h3><p style="margin:0 0 12px;text-align:center">Dans ce projet : <b>'+c.o+'</b> ouvrage(s) et <b>'+c.d+'</b> document(s) de démonstration.</p>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><button type="button" data-a="add" style="min-height:64px;border-radius:14px;border:0;background:#FFC400;color:#111;font:700 13.5px system-ui;cursor:pointer">＋ Ajouter le jeu de données</button><button type="button" data-a="del" style="min-height:64px;border-radius:14px;border:1.5px solid rgba(255,196,0,.6);background:transparent;color:inherit;font:700 13.5px system-ui;cursor:pointer">Retirer les données de démonstration</button></div>'
+        +'<p style="min-height:20px;margin:10px 0 0;text-align:center;font-size:13px">'+(msg||'')+'</p><button type="button" data-a="x" style="display:block;margin:8px auto 0;padding:8px 18px;border-radius:12px;border:1px solid rgba(255,196,0,.5);background:transparent;color:inherit;cursor:pointer">Fermer</button></div>';
+      o.querySelector('[data-a=x]').onclick=()=>o.remove();
+      o.querySelector('[data-a=add]').onclick=()=>{ const r=seed(); draw(r.erreur?r.erreur:r.deja?'Le jeu de données est déjà en place.':'Ajouté : '+r.o+' ouvrages et '+r.d+' documents.'); };
+      o.querySelector('[data-a=del]').onclick=()=>{ const r=clear(); draw('Retiré : '+r.o+' ouvrages et '+r.d+' documents.'); }; };
+    o.addEventListener('click',e=>{ if(e.target===o) o.remove(); }); document.body.appendChild(o); draw('');
+  };
+})();
+</script>
 </body></html>
