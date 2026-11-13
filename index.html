@@ -17449,21 +17449,67 @@ const PG_FEATS=[
 
   /* ---------- Demandes d'absence ---------- */
   const AB_MOT=['Congés payés','Maladie','Formation','Événement familial','Sans solde','Autre'];
-  function absReqForm(ag){ modal('<button class="close-x" data-x>×</button><h3>🗓 Demande d’absence</h3>'
-      +'<div class="nt-r"><label>Du<input type="date" id="aDu" value="'+today()+'"></label><label>Au<input type="date" id="aAu" value="'+today()+'"></label></div>'
-      +'<label>Motif<select id="aMo">'+AB_MOT.map(m=>'<option>'+m+'</option>').join('')+'</select></label><label>Commentaire <small>(facultatif)</small><input id="aCo"></label>'
+  /* ---------- Dictée vocale (micro) pour le commentaire : reconnaissance vocale du navigateur (FR/EN/AR…), sans traduction automatique
+     (aucune clé IA externe n'est configurée ici : le texte dicté est inséré tel quel, dans la langue parlée) ---------- */
+  const AB_VOICE_LANGS=[['fr-FR','🇫🇷 Français'],['en-US','🇬🇧 English'],['ar-SA','🇸🇦 العربية']];
+  function voiceBtn(targetSel){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR) return '';
+    return '<div class="nt-r" style="align-items:center;gap:6px;margin-top:4px"><select id="vLang">'+AB_VOICE_LANGS.map(l=>'<option value="'+l[0]+'">'+l[1]+'</option>').join('')+'</select><button type="button" id="vMic" data-vt="'+targetSel+'">🎤 Dicter</button><span id="vSt" class="nt-s"></span></div>';
+  }
+  function voiceBind(o){
+    const mic=o.querySelector('#vMic'); if(!mic) return;
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition; let rec=null, on=false;
+    mic.onclick=()=>{
+      const st=o.querySelector('#vSt'), ta=o.querySelector(mic.dataset.vt), lang=o.querySelector('#vLang').value;
+      if(on){ rec&&rec.stop(); return; }
+      try{ rec=new SR(); }catch(e){ if(st) st.textContent='Dictée indisponible sur ce navigateur.'; return; }
+      rec.lang=lang; rec.interimResults=true; rec.continuous=true;
+      rec.onstart=()=>{ on=true; mic.textContent='⏺ Écoute… (cliquer pour arrêter)'; mic.classList.add('on'); if(st) st.textContent=''; };
+      rec.onerror=e=>{ if(st) st.textContent='Erreur de dictée : '+(e.error||'')+'.'; };
+      rec.onend=()=>{ on=false; mic.textContent='🎤 Dicter'; mic.classList.remove('on'); };
+      let base=ta.value?ta.value+' ':'';
+      rec.onresult=ev=>{ let txt=''; for(let i=ev.resultIndex;i<ev.results.length;i++) txt+=ev.results[i][0].transcript; ta.value=(base+txt).trim(); };
+      rec.start();
+    };
+  }
+  /* reconnaît grossièrement, dans un texte dicté en français, une ou deux dates et un motif — pour pré-remplir la demande si l'agent n'a dicté qu'un commentaire */
+  const AB_MOIS={janvier:1,février:2,fevrier:2,mars:3,avril:4,mai:5,juin:6,juillet:7,août:8,aout:8,septembre:9,octobre:10,novembre:11,décembre:12,decembre:12};
+  function absParseVoice(txt){
+    const t=(txt||'').toLowerCase(); const out={};
+    const dmy=/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/g; const dates=[]; let m;
+    while((m=dmy.exec(t))){ const y=m[3]?(m[3].length===2?'20'+m[3]:m[3]):String(new Date().getFullYear()), mo=m[2].padStart(2,'0'), d=m[1].padStart(2,'0'); dates.push(y+'-'+mo+'-'+d); }
+    if(!dates.length){ const dm=/(\d{1,2})\s+(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)/g;
+      while((m=dm.exec(t))){ const y=new Date().getFullYear(), mo=String(AB_MOIS[m[2]]).padStart(2,'0'), d=m[1].padStart(2,'0'); dates.push(y+'-'+mo+'-'+d); } }
+    if(/aujourd.?hui/.test(t)&&!dates.length) dates.push(today());
+    if(dates.length){ out.du=dates[0]; out.au=dates[1]||dates[0]; }
+    const MKEY=[['congés payés',['congé','congés','cp ','vacances']],['maladie',['malade','maladie','arrêt maladie']],['formation',['formation']],['événement familial',['mariage','deuil','naissance','événement familial','evenement familial']],['sans solde',['sans solde']],['autre',[]]];
+    for(const [mot,kws] of MKEY){ if(kws.some(k=>t.includes(k))){ out.motif=AB_MOT.find(x=>x.toLowerCase()===mot); break; } }
+    return out;
+  }
+  function absReqForm(ag){ modal('<button class="close-x" data-x>×</button><h3>🗓 Demande d’absence</h3><p class="nt-s">Remplissez les dates et le motif, <b>ou</b> dictez/écrivez un commentaire (au moins l’un des deux est nécessaire).</p>'
+      +'<div class="nt-r"><label>Du <small>(facultatif)</small><input type="date" id="aDu"></label><label>Au <small>(facultatif)</small><input type="date" id="aAu"></label></div>'
+      +'<label>Motif <small>(facultatif)</small><select id="aMo"><option value="">— non précisé —</option>'+AB_MOT.map(m=>'<option>'+m+'</option>').join('')+'</select></label>'
+      +'<label>Commentaire <small>(facultatif — vous pouvez dicter)</small><textarea id="aCo" rows="3"></textarea></label>'+voiceBtn('#aCo')
       +'<div class="modal-actions"><button class="pri" id="aOk">Envoyer la demande</button><button data-x>Annuler</button></div>',
-    o=>{ o.querySelector('#aOk').onclick=()=>{ const du=val(o,'aDu'), au=val(o,'aAu'); if(!du||!au||au<du){ alert('Vérifiez les dates.'); return; }
-      const n=net(), x={id:uid(),agentId:ag.id,du,au,motif:val(o,'aMo'),com:val(o,'aCo'),statut:'attente',le:new Date().toISOString()}; n.absReq.unshift(x);
-      notify('manager','Demande d’absence de '+ag.nom+' : '+x.motif+', du '+fr(du)+' au '+fr(au)+'.',{page:'net-rh'}); save(); o.remove(); render('net-moi'); }; }); }
+    o=>{ voiceBind(o);
+      o.querySelector('#aOk').onclick=()=>{ let du=val(o,'aDu'), au=val(o,'aAu'), mo=val(o,'aMo'); const co=val(o,'aCo').trim();
+        if(du&&au&&au<du){ alert('Vérifiez les dates.'); return; }
+        let guessed=false;
+        if(co&&(!du||!mo)){ const g=absParseVoice(co); if(!du&&g.du){ du=g.du; au=g.au; guessed=true; } if(!mo&&g.motif){ mo=g.motif; guessed=true; } }
+        if(!(du&&au&&mo)&&!co){ alert('Indiquez les dates et le motif, ou au moins un commentaire.'); return; }
+        const n=net(), manque=!(du&&au)||!mo, x={id:uid(),agentId:ag.id,du:du||'',au:au||'',motif:mo||'',com:co,statut:'attente',le:new Date().toISOString()}; n.absReq.unshift(x);
+        const lbl=(du&&au)?('du '+fr(du)+' au '+fr(au)):'(dates non précisées)';
+        notify('manager','Demande d’absence de '+ag.nom+' : '+(x.motif||'motif non précisé')+', '+lbl+(co?' · commentaire : « '+co+' »':'')+(manque?' ⚠ Informations incomplètes — merci de vérifier avec l’agent.':''),{page:'net-rh'});
+        save(); o.remove(); render('net-moi'); }; }); }
   function absDecide(x,ok){ const n=net(), g=by(n.agents,x.agentId); x.statut=ok?'acceptee':'refusee'; x.par=who()||'—'; x.decideLe=new Date().toISOString();
-    if(ok&&g){ (g.absences=g.absences||[]).push({du:x.du,au:x.au,motif:x.motif}); }
-    notify('agent:'+x.agentId,'Votre demande d’absence du '+fr(x.du)+' au '+fr(x.au)+' est '+(ok?'acceptée':'refusée')+'.',{page:'net-moi'}); save(); }
+    if(ok&&g&&x.du&&x.au){ (g.absences=g.absences||[]).push({du:x.du,au:x.au,motif:x.motif}); }
+    notify('agent:'+x.agentId,'Votre demande d’absence'+(x.du&&x.au?' du '+fr(x.du)+' au '+fr(x.au):'')+' est '+(ok?'acceptée':'refusée')+'.',{page:'net-moi'}); save(); }
   const AB_ST={attente:['En attente','s-traitement'],acceptee:['Acceptée','s-terminee'],refusee:['Refusée','s-annulee']};
   function moiAbs(ag){ const L=net().absReq.filter(x=>x.agentId===ag.id).slice(0,6);
-    return '<h3>🗓 Mes absences</h3><div class="mo-b"><button id="mAbs">➕ Demander une absence</button></div>'+(L.length?L.map(x=>'<p class="nt-s">'+fr(x.du)+' → '+fr(x.au)+' · '+esc(x.motif)+' <span class="nt-st '+AB_ST[x.statut][1]+'">'+AB_ST[x.statut][0]+'</span></p>').join(''):''); }
+    return '<h3>🗓 Mes absences</h3><div class="mo-b"><button id="mAbs">➕ Demander une absence</button></div>'+(L.length?L.map(x=>'<p class="nt-s">'+(x.du&&x.au?fr(x.du)+' → '+fr(x.au):'<i>dates non précisées</i>')+' · '+esc(x.motif||'—')+' <span class="nt-st '+AB_ST[x.statut][1]+'">'+AB_ST[x.statut][0]+'</span></p>').join(''):''); }
   function rhAbsBlock(){ const n=net(), L=n.absReq.filter(x=>x.statut==='attente'); if(!L.length) return '';
-    return '<div class="nt-card"><b>🗓 Demandes d’absence à traiter ('+L.length+')</b>'+L.map(x=>{ const g=by(n.agents,x.agentId)||{nom:'?'}; return '<div class="nt-r" style="align-items:center;justify-content:space-between;border-top:1px solid #e5e9eb;padding-top:6px;margin-top:6px"><span><b>'+esc(g.nom)+'</b> · '+esc(x.motif)+' · du '+fr(x.du)+' au '+fr(x.au)+(x.com?'<br><small>'+esc(x.com)+'</small>':'')+'</span><span class="nt-av"><button class="pri" data-abok="'+x.id+'">✔ Accepter</button><button class="del" data-abko="'+x.id+'">✕ Refuser</button></span></div>'; }).join('')+'</div>'; }
+    return '<div class="nt-card"><b>🗓 Demandes d’absence à traiter ('+L.length+')</b>'+L.map(x=>{ const g=by(n.agents,x.agentId)||{nom:'?'}; return '<div class="nt-r" style="align-items:center;justify-content:space-between;border-top:1px solid #e5e9eb;padding-top:6px;margin-top:6px"><span><b>'+esc(g.nom)+'</b> · '+esc(x.motif||'—')+' · '+(x.du&&x.au?'du '+fr(x.du)+' au '+fr(x.au):'<i>dates non précisées</i>')+(x.com?'<br><small>'+esc(x.com)+'</small>':'')+'</span><span class="nt-av"><button class="pri" data-abok="'+x.id+'">✔ Accepter</button><button class="del" data-abko="'+x.id+'">✕ Refuser</button></span></div>'; }).join('')+'</div>'; }
 
   /* ---------- Pointage ---------- */
   /* ---------- Pointage : par projet → par demande → plan + effectifs ---------- */
@@ -17781,6 +17827,9 @@ const PG_FEATS=[
     .esp-big:hover,.esp-big:active{background:#2D7CD6;color:#fff;border-color:#2D7CD6}
     .nt-esw{border:1px solid #cfd6da;background:#fff;border-radius:16px;padding:6px 12px;font-size:13px;font-weight:600;color:#B4432D}
     .nt-esw.on{background:#2e9e4f;border-color:#2e9e4f;color:#fff}
+    #vMic{border:1px solid #2D7CD6;background:#fff;color:#1f5ea8;border-radius:16px;padding:6px 12px;font-size:13px;font-weight:600}
+    #vMic.on{background:#B4432D;border-color:#B4432D;color:#fff;animation:nt-pulse 1.1s infinite}
+    @keyframes nt-pulse{0%{opacity:1}50%{opacity:.55}100%{opacity:1}}
     .netModal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 10px;overflow:auto} .nt-box{background:#fff;color:#16232B;border-radius:12px;padding:16px;width:min(620px,100%);display:flex;flex-direction:column;gap:10px} .nt-box h3{margin:0} .nt-box label{display:flex;flex-direction:column;gap:3px;font-size:13px;font-weight:600;flex:1;min-width:120px} .nt-box textarea{width:100%;box-sizing:border-box} .nt-r{display:flex;gap:8px;flex-wrap:wrap} .nt-b{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
     @media print{ body.net-mode .cartouche,body.net-mode .tab-menu,.nt-noprint,#userChip,#pgWho{display:none !important} }`;
     document.head.appendChild(st);
