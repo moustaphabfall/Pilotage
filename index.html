@@ -16292,7 +16292,8 @@ const PG_FEATS=[
     'Conducteur de travaux':{no:[]},
     'Chef de chantier':{no:['interloc','refac','parametres','cadre.ing']},
     'Chef d’équipe':{no:['interloc','refac','parametres','rex','planif','travaux.journal','cadre.ing','cadre.plan']},
-    'Poseur':{no:['interloc','refac','parametres','rex','planif','travaux.journal','travaux.pieces','travaux.cloisons','cadre.ing','cadre.plan','vue.lib']}
+    'Poseur':{no:['interloc','refac','parametres','rex','planif','travaux.journal','travaux.pieces','travaux.cloisons','cadre.ing','cadre.plan','vue.lib']},
+    'Manager':{no:['refac']}
   };
   window.PG_ROLE_PRESETS=PG_ROLE_PRESETS;
   document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.mx-pre [data-pre]'); if(!b) return; e.preventDefault();
@@ -16472,6 +16473,7 @@ const PG_FEATS=[
         +'<div class="row"><select id="hP"><option value="">Base de l’outil (par défaut)</option>'+Object.keys(PR).map(k=>'<option value="'+k+'"'+(h&&h.provider===k?' selected':'')+(PR[k].available()?'':' disabled')+'>'+esc(PR[k].label)+(PR[k].available()?'':' (non configuré)')+'</option>').join('')+'</select><button class="p" id="hGo">Choisir / changer l’hébergement</button></div>'
         +'<small>Le client (administrateur de l’espace) autorise l’hébergement avec son propre compte. En tant qu’administrateur de l’outil, vous pouvez le faire à sa place. Les données existantes sont copiées vers le nouvel hébergement, et les membres de l’espace y sont invités automatiquement.</small><div class="msg" id="hMsg"></div></div>'); }
     if(pgMode==='invite') body.push((p.global?'<button type="button" id="pgEssai" style="width:100%;min-height:48px;margin:0 0 12px;border-radius:12px;background:#0E0E0E;color:#FFC400;border:1px solid #FFC400;font-weight:700">🧪 Version d’essai (1 mois, sans espace)</button>':'')+'<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><label><b>Espace :</b> <select id="nPj">'+(p.projets||[{id:p.id,nom:p.nom}]).map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+(p.global?'<option value="__new__">➕ Nouvel espace…</option>':'')+'</select></label><input id="nPn" placeholder="Nom du nouvel espace" hidden><select id="nPt" hidden title="Type d’espace de travail">'+typeOpts('entreprise_generale')+'</select></div><small id="nPh" hidden>Le nouvel espace reprend toutes les fonctionnalités de l’outil, sans aucune donnée.</small><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><select id="nMo"><option value="invite">✉ Invitation par e-mail (la personne choisit son mot de passe, vous ne le voyez jamais)</option><option value="social">Google / Microsoft (sans mot de passe)</option></select><select id="nR" title="Droit d’accès"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur de l’espace</option></select></div>'
+      +'<div class="row" id="nNetRoleRow" hidden><label style="flex:1"><b>Rôle (Nettoyage) :</b> <select id="nNetRole"><option value="">— à définir —</option><option value="Manager">Manager</option><option value="Chef d’équipe">Agent de terrain — Chef d’équipe</option><option value="Poseur">Agent de terrain — Agent</option></select></label></div>'
       +'<details><summary>Fonctionnalités accordées (tout activé par défaut)</summary>'+matrix('n',{})+'</details>'
       +'<div class="row"><input type="number" min="0" step="any" id="nM" placeholder="Montant" style="width:110px"><input id="nRf" placeholder="Référence du paiement"><label><input type="checkbox" id="nV"> paiement reçu et validé</label></div>'
       +'<div class="row"><button class="p" id="nC" disabled>Créer l’accès (valable 1 mois)</button><small>Sans paiement validé, l’accès ne peut pas être créé.</small></div>'
@@ -16513,10 +16515,16 @@ const PG_FEATS=[
         say('Copie des données…'); await window.PILOTAGE_SET_HOST(nh,(n,t)=>say('Copie des données : '+n+'/'+t));
         if(nh){ try{ const S=await window.PILOTAGE_PROVIDERS[nh.provider].open(nh); for(const m of cache.members){ if(m.moi||!m.email) continue; try{ await S.invite(m.email,m.role==='lecteur'?'lecteur':'editeur'); }catch(e){} } }catch(e){} }
         say('Hébergement enregistré. Rechargement…'); setTimeout(()=>location.reload(),900); }catch(e){ say(e.message,true); } };
-    const pj=w.querySelector('#nPj'); if(pj) pj.onchange=()=>{ const nw=pj.value==='__new__'; w.querySelector('#nPn').hidden=!nw; w.querySelector('#nPt').hidden=!nw; w.querySelector('#nPh').hidden=!nw; };
+    const pj=w.querySelector('#nPj'); const nPt_=w.querySelector('#nPt');
+    const syncNetRole=()=>{ const row=w.querySelector('#nNetRoleRow'); if(!row||!pj) return; const nw=pj.value==='__new__';
+      const ty=nw?(nPt_&&nPt_.value):(((p.projets||[]).find(x=>x.id===pj.value)||{}).type||p.type); row.hidden=ty!=='nettoyage'; if(row.hidden){ const s=w.querySelector('#nNetRole'); if(s) s.value=''; } };
+    if(pj) pj.onchange=()=>{ const nw=pj.value==='__new__'; w.querySelector('#nPn').hidden=!nw; w.querySelector('#nPt').hidden=!nw; w.querySelector('#nPh').hidden=!nw; syncNetRole(); };
+    if(nPt_) nPt_.onchange=syncNetRole;
+    const nNetRole_=w.querySelector('#nNetRole'); if(nNetRole_) nNetRole_.onchange=()=>{ if(nNetRole_.value){ const nr=w.querySelector('#nR'); if(nr) nr.value='editeur'; } };
+    syncNetRole();
     const v=w.querySelector('#nV'), c=w.querySelector('#nC'); if(v) v.onchange=()=>{ c.disabled=!v.checked; };
     if(c) c.onclick=()=>{ const g=id=>w.querySelector(id).value.trim(); const email=g('#nE'), nom=g('#nN');
-      const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details'));
+      const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details')); const nrv=(w.querySelector('#nNetRole')||{}).value; if(nrv) fonc._role=nrv;
       let say2=''; run(async()=>{ let pid=w.querySelector('#nPj').value, pnom=null;
         if(pid==='__new__'){ pnom=g('#nPn'); const id=pnom.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,'').slice(0,16); if(!id) throw new Error('Nom du nouvel espace requis'); await window.PILOTAGE_ADM({action:'p_projet_create',id,nom:pnom}); const ty=g('#nPt')||'entreprise_generale'; if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(id,ty); pid=id; (PJ().projets=PJ().projets||[]).push({id,nom:pnom,type:ty}); }
         const mode=w.querySelector('#nMo').value; const _sel=(pid===w.querySelector('#nPj').value&&pid!=='__new__'&&selProjets().includes(pid)&&selProjets().length>1)?selProjets():[pid];
@@ -20948,7 +20956,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v381';
+  const VER='v382';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
