@@ -20,6 +20,16 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
 .msb{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--ink);background:#fff;font:700 15px inherit;cursor:pointer}
 .fb{max-width:560px!important;max-height:86vh;display:flex;flex-direction:column} .fb .ls{overflow:auto;border:1px solid var(--line);border-radius:10px;margin:8px 0;min-height:160px} .fb .ls button{display:flex;gap:8px;align-items:center;width:100%;text-align:left;padding:11px 12px;border:0;border-bottom:1px solid #eee;background:#fff;font:inherit;cursor:pointer} .fb .tabs{display:flex;gap:6px} .fb .tabs button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--ink);background:#fff;font:600 14px inherit;cursor:pointer} .fb .tabs button.on{background:var(--ink);color:#fff} .fb .cr{font-size:13px;color:#5b6770;margin-top:6px;word-break:break-word}
 .msg{max-width:520px;margin:60px auto;text-align:center;padding:0 18px} .msg .big{font-size:48px}
+.dot.sel{background:#2D7CD6;border-color:#fff}
+.mk{fill:rgba(45,124,214,.28);stroke:#2D7CD6;stroke-width:1.5;vector-effect:non-scaling-stroke} circle.mk{stroke-width:2}
+.mkd{fill:none;stroke:#2D7CD6;stroke-width:1.5;stroke-dasharray:6 4;vector-effect:non-scaling-stroke} circle.mkd{fill:#2D7CD6;stroke:none}
+.msnbox{margin:8px 0;padding:10px 12px;border:1px solid #cfe0f2;background:#eef5fc;border-radius:10px;font-size:13.5px}
+.msnbox .row2{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.msnbox button{border:1px solid #2D7CD6;background:#fff;color:#1f5ea8;border-radius:16px;padding:7px 12px;font:600 13.5px inherit;cursor:pointer}
+.msnbox button.on{background:#2D7CD6;color:#fff}
+.msnbox button[data-mdone]{border-color:#2e9e4f;color:#1f7a3a} .msnbox button[data-mcancel]{border-color:#B4432D;color:#B4432D}
+.malist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.maopt{border:1px solid #bbb;background:#fff;border-radius:16px;padding:9px 14px;font:inherit;cursor:pointer}
 </style></head><body>
 <div class="top"><b id="ttl">Votre demande</b><p id="sub"></p></div>
 <main id="app"><p class="hint">Chargement…</p></main>
@@ -34,6 +44,7 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
   const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   const TYPES=['Nettoyage','Logistique','Gardiennage','Homme trafic','Autre'], URG=['Normale','Haute','Urgente'];
   let D=null, rep=[], sign=1, lvl='', F={}, PJS=[];
+  let missionMode=false, missionAsked=false, mSel=null, mTool='pt', mPts=[];
   const hdr=h=>fetch(API+h,{headers:{apikey:cfg.anonKey||''}});
   const fin=(big,t,p)=>{ app.innerHTML='<div class="msg"><div class="big">'+big+'</div><h2>'+esc(t)+'</h2><p>'+esc(p||'')+'</p></div>'; const b=document.querySelector('.bar'); if(b) b.remove(); };
   if(!/^[A-Za-z0-9_-]{24,64}$/.test(T)) return fin('⚠️','Lien invalide','Ouvrez le lien tel que vous l’avez reçu par e-mail.');
@@ -56,15 +67,68 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
       +(cfg.msClientId&&window.msal?'<div style="margin-top:10px"><b style="font-size:13px">Plans</b><div class="pj" id="pjL"></div><button type="button" class="msb" id="msB">📎 Joindre un plan depuis mon espace Microsoft (OneDrive / SharePoint)</button></div>':'')+'</div>';
     else h+='<div class="card"><b>Plan validé</b><p class="hint">Touchez le plan pour <b>ajouter</b> une personne, appuyez longuement sur une pastille pour en <b>retirer</b> une. Puis clôturez la modification.</p></div>';
     h+='<h2>Personnes demandées</h2>'+(plans.length?'<div class="chips" id="lv">'+lv.map(l=>'<button type="button" data-l="'+esc(l)+'" class="'+(l===lvl?'on':'')+'">'+esc(l)+'</button>').join('')+'</div>'
-      +'<div class="mode"><button type="button" id="mP" class="on">＋ Ajouter</button><button type="button" id="mM">－ Retirer</button></div><div class="hint">Touchez le plan : une pastille = 1 personne. Touchez une pastille pour en ajouter ; appui long (ou mode « Retirer ») pour en enlever.</div><div id="st"></div>'
+      +'<div class="mode"><button type="button" id="mP" class="on">＋ Ajouter</button><button type="button" id="mM">－ Retirer</button></div><div class="hint">Touchez le plan : une pastille = 1 personne. Touchez une pastille pour en ajouter ; appui long (ou mode « Retirer ») pour en enlever.</div><div id="st"></div><div id="msnBox" class="msnbox" hidden></div>'
       :'<div class="card"><label>Nombre de personnes demandées<input type="number" id="fNb" min="1" value="1"></label><p class="hint">Précisez les lieux et consignes dans la description : votre contact placera les personnes sur le plan.</p></div>')
       +'<div class="card sum" id="sum"></div>';
     app.innerHTML=h;
     app.insertAdjacentHTML('afterend','<div class="bar"><div class="t" id="tot"></div><button class="go" id="go" disabled>'+(av?'Clôturer la modification':'Clôturer ma demande')+'</button></div>');
-    app.querySelectorAll('#lv button').forEach(b=>b.onclick=()=>{ lvl=b.dataset.l; app.querySelectorAll('#lv button').forEach(x=>x.classList.toggle('on',x===b)); draw(); });
+    app.querySelectorAll('#lv button').forEach(b=>b.onclick=()=>{ lvl=b.dataset.l; app.querySelectorAll('#lv button').forEach(x=>x.classList.toggle('on',x===b)); if(missionMode){ mSel=null; mPts=[]; paintMsn(); } draw(); });
     const mP=$('mP'), mM=$('mM'); if(mP){ mP.onclick=()=>{ sign=1; mP.classList.add('on'); mM.classList.remove('on'); }; mM.onclick=()=>{ sign=-1; mM.classList.add('on'); mP.classList.remove('on'); }; }
     const msB=$('msB'); if(msB) msB.onclick=msIntro;
-    app.querySelectorAll('input,select,textarea').forEach(e=>e.oninput=()=>{ if(noPlan()) draw(); check(); }); $('go').onclick=confirmClose; draw(); check();
+    app.querySelectorAll('input,select,textarea').forEach(e=>e.oninput=()=>{ if(noPlan()) draw(); check(); }); $('go').onclick=goClick; draw(); check();
+  }
+  function goClick(){ if(!noPlan()&&rep.length&&!missionAsked){ missionAsked=true; askMissionMode(confirmClose); } else confirmClose(); }
+  /* ----- Missions : le client marque sur le plan ce que chaque nettoyeur déjà positionné doit faire ----- */
+  function askMissionMode(next){
+    const o=document.createElement('div'); o.className='ov';
+    o.innerHTML='<div class="bx"><h3>Voulez-vous assigner des missions au nettoyeur ?</h3><p>Pour chaque nettoyeur déjà positionné sur le plan, vous pourrez indiquer un point ou une zone et ce qu’il doit y faire.</p><div class="row"><button type="button" id="no">Non</button><button type="button" class="p" id="yes">Oui</button></div></div>';
+    document.body.appendChild(o);
+    o.querySelector('#no').onclick=()=>{ o.remove(); next(); };
+    o.querySelector('#yes').onclick=()=>{ o.remove(); enterMissionMode(); };
+  }
+  function enterMissionMode(){
+    missionMode=true; mSel=null; mTool='pt'; mPts=[];
+    const mP=$('mP'), mM=$('mM'); if(mP) mP.hidden=true; if(mM) mM.hidden=true;
+    const go=$('go'); if(go){ go.textContent='✓ Terminer les missions'; go.onclick=()=>{
+      missionMode=false; mSel=null; mPts=[]; if(mP) mP.hidden=false; if(mM) mM.hidden=false;
+      go.textContent=(D.type==='avenant'?'Clôturer la modification':'Clôturer ma demande'); go.onclick=goClick; draw(); paintMsn(); confirmClose(); }; }
+    paintMsn(); draw();
+  }
+  function paintMsn(){
+    const box=$('msnBox'); if(!box) return;
+    if(!missionMode){ box.hidden=true; return; } box.hidden=false;
+    if(!mSel){ box.innerHTML='<b>🧭 Mode mission</b><br>Touchez un nettoyeur sur le plan pour lui assigner une mission.'; return; }
+    const nm=(mSel.zone?mSel.zone+' · ':'')+(mSel.niveau||'');
+    box.innerHTML='<b>'+esc(nm||'Agent')+'</b> — '+(mTool==='pt'?'touchez le plan pour poser le point de mission.':'touchez le plan pour tracer la zone ('+mPts.length+' point(s)).')
+      +'<div class="row2">'
+      +'<button type="button" data-mt="pt" class="'+(mTool==='pt'?'on':'')+'">📍 Point</button>'
+      +'<button type="button" data-mt="zone" class="'+(mTool==='zone'?'on':'')+'">✏️ Zone</button>'
+      +(mTool==='zone'&&mPts.length>2?'<button type="button" data-mdone>✓ Terminer la zone</button>':'')
+      +'<button type="button" data-mcancel>Annuler</button>'
+      +'</div>';
+    box.querySelector('[data-mt="pt"]').onclick=()=>{ mTool='pt'; mPts=[]; paintMsn(); draw(); };
+    box.querySelector('[data-mt="zone"]').onclick=()=>{ mTool='zone'; mPts=[]; paintMsn(); draw(); };
+    const bd=box.querySelector('[data-mdone]'); if(bd) bd.onclick=()=>{ const pts=mPts.slice(), sel=mSel; missionActionPicker(a=>{ sel.missions=sel.missions||[]; sel.missions.push({id:uid(),type:'zone',pts,action:a}); mSel=null; mPts=[]; mTool='pt'; draw(); paintMsn(); check(); }); };
+    box.querySelector('[data-mcancel]').onclick=()=>{ mSel=null; mPts=[]; mTool='pt'; draw(); paintMsn(); };
+  }
+  function missionTap(e,box){
+    const dt=e.target.closest('.dot');
+    if(dt){ const r=rep[+dt.dataset.i]; mSel=(mSel===r)?null:r; mPts=[]; mTool='pt'; paintMsn(); draw(); return; }
+    if(!mSel) return;
+    const b=box.getBoundingClientRect(), x=+((e.clientX-b.left)/b.width).toFixed(4), y=+((e.clientY-b.top)/b.height).toFixed(4); if(x<0||x>1||y<0||y>1) return;
+    if(mTool==='pt'){ const sel=mSel; missionActionPicker(a=>{ sel.missions=sel.missions||[]; sel.missions.push({id:uid(),type:'pt',x,y,action:a}); mSel=null; mPts=[]; draw(); paintMsn(); check(); }); return; }
+    mPts.push([x,y]); paintMsn(); draw();
+  }
+  function missionActionPicker(cb){
+    const lib=((D.snapshot&&D.snapshot.missionActions)&&D.snapshot.missionActions.length)?D.snapshot.missionActions:['Nettoyer','Évacuer les déchets','Assurer le flux logistique','Dépoussiérer','Nettoyer les vitres'];
+    const o=document.createElement('div'); o.className='ov';
+    o.innerHTML='<div class="bx"><h3>Quelle est votre demande dans cette zone ?</h3><div class="malist">'+lib.map(a=>'<button type="button" class="maopt" data-ma="'+esc(a)+'">'+esc(a)+'</button>').join('')+'</div>'
+      +'<div class="r" style="margin-top:10px"><input id="maNew" placeholder="Autre action…" style="flex:1"><button type="button" id="maAdd">Ajouter</button></div>'
+      +'<div class="row" style="margin-top:12px"><button type="button" id="maX">Annuler</button></div></div>';
+    document.body.appendChild(o);
+    o.querySelector('#maX').onclick=()=>o.remove();
+    o.querySelectorAll('[data-ma]').forEach(b=>b.onclick=()=>{ const a=b.dataset.ma; o.remove(); cb(a); });
+    o.querySelector('#maAdd').onclick=()=>{ const v=(o.querySelector('#maNew').value||'').trim(); if(!v) return; D.snapshot=D.snapshot||{}; D.snapshot.missionActions=D.snapshot.missionActions||[]; if(!D.snapshot.missionActions.includes(v)) D.snapshot.missionActions.push(v); o.remove(); cb(v); };
   }
   /* ----- Plans joints depuis l'espace Microsoft du client : seul le lien du document choisi est transmis ----- */
   let msApp=null, msAcct=null; const GRAPH='https://graph.microsoft.com/v1.0', MS_SCOPES=['Files.Read.All'];
@@ -100,12 +164,17 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
     const st=$('st'); if(st){ const s=D.snapshot||{}, pl=(s.plans||[]).filter(p=>p.niveau===lvl)[0];
       if(!pl){ st.innerHTML=''; } else {
         const zz=(s.zones||[]).filter(z=>z.planId===pl.id);
-        st.innerHTML='<div class="pl"><img src="'+esc(pl.src)+'" alt="'+esc(pl.nom)+'"><svg viewBox="0 0 1 1" preserveAspectRatio="none">'+zz.map(z=>'<polygon points="'+z.pts.map(q=>q[0]+','+q[1]).join(' ')+'"/>').join('')+'</svg>'
-          +rep.filter(r=>r.planId===pl.id).map(r=>'<span class="dot" data-i="'+rep.indexOf(r)+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%">'+r.n+'</span>').join('')+'</div>';
+        const mkSvg=rep.filter(r=>r.planId===pl.id).map(r=>(r.missions||[]).map(m=>m.type==='pt'
+            ?'<circle class="mk" cx="'+m.x+'" cy="'+m.y+'" r="0.013"/>'
+            :(m.pts&&m.pts.length>2?'<polygon class="mk" points="'+m.pts.map(p=>p[0]+','+p[1]).join(' ')+'"/>':'')).join('')).join('');
+        const liveSvg=(missionMode&&mSel&&mTool==='zone'&&mPts.length)?('<polyline class="mkd" points="'+mPts.map(p=>p[0]+','+p[1]).join(' ')+'"/>'+mPts.map(p=>'<circle class="mkd" cx="'+p[0]+'" cy="'+p[1]+'" r="0.009"/>').join('')):'';
+        st.innerHTML='<div class="pl"><img src="'+esc(pl.src)+'" alt="'+esc(pl.nom)+'"><svg viewBox="0 0 1 1" preserveAspectRatio="none">'+zz.map(z=>'<polygon points="'+z.pts.map(q=>q[0]+','+q[1]).join(' ')+'"/>').join('')+mkSvg+liveSvg+'</svg>'
+          +rep.filter(r=>r.planId===pl.id).map(r=>'<span class="dot'+(missionMode&&mSel===r?' sel':'')+'" data-i="'+rep.indexOf(r)+'" style="left:'+(r.x*100)+'%;top:'+(r.y*100)+'%">'+(missionMode?(mSel===r?'✓':((r.missions&&r.missions.length)||r.n)):r.n)+'</span>').join('')+'</div>';
         const box=st.firstChild; let tm=null, fired=false, down=null;
         const bump=(i,d)=>{ const r=rep[i]; if(!r) return; r.n+=d; if(r.n<=0) rep.splice(i,1); draw(); check(); };
-        box.addEventListener('pointerdown',e=>{ const dt=e.target.closest('.dot'); down=dt; fired=false; clearTimeout(tm); if(dt) tm=setTimeout(()=>{ fired=true; try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){} bump(+dt.dataset.i,-1); },550); });
-        box.addEventListener('pointerup',e=>{ clearTimeout(tm); if(fired) return; const dt=e.target.closest('.dot'); if(dt&&dt===down){ bump(+dt.dataset.i,sign); return; }
+        box.addEventListener('pointerdown',e=>{ if(missionMode) return; const dt=e.target.closest('.dot'); down=dt; fired=false; clearTimeout(tm); if(dt) tm=setTimeout(()=>{ fired=true; try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){} bump(+dt.dataset.i,-1); },550); });
+        box.addEventListener('pointerup',e=>{ if(missionMode){ missionTap(e,box); return; }
+          clearTimeout(tm); if(fired) return; const dt=e.target.closest('.dot'); if(dt&&dt===down){ bump(+dt.dataset.i,sign); return; }
           if(dt||sign<0) return; const b=box.getBoundingClientRect(), x=+((e.clientX-b.left)/b.width).toFixed(4), y=+((e.clientY-b.top)/b.height).toFixed(4); const z=zz.find(q=>inPoly(x,y,q.pts)); rep.push({id:uid(),planId:pl.id,niveau:pl.niveau,zone:z?z.nom:'',x,y,n:1}); draw(); check(); });
         box.addEventListener('pointerleave',()=>clearTimeout(tm)); box.addEventListener('contextmenu',e=>e.preventDefault());
       } }
@@ -120,7 +189,7 @@ label{display:flex;flex-direction:column;gap:3px;font-weight:600;font-size:13px;
     o.innerHTML='<div class="bx"><h3>Voulez-vous vraiment clôturer '+(av?'la modification de ':'')+'votre demande ?</h3><p>Elle sera envoyée à '+esc(D.responsable||'votre contact')+' ('+total()+' personne(s)). Vous ne pourrez plus la modifier.</p><div class="row"><button type="button" id="no">Non, revenir</button><button type="button" class="p" id="yes">Oui, clôturer</button></div></div>';
     document.body.appendChild(o); o.querySelector('#no').onclick=()=>o.remove();
     o.querySelector('#yes').onclick=async()=>{ const yb=o.querySelector('#yes'); yb.disabled=true; yb.textContent='Envoi…';
-      const R={nb:total(),repart:noPlan()?[]:rep.map(r=>({id:r.id,planId:r.planId,niveau:r.niveau,zone:r.zone,x:r.x,y:r.y,n:r.n}))};
+      const R={nb:total(),repart:noPlan()?[]:rep.map(r=>({id:r.id,planId:r.planId,niveau:r.niveau,zone:r.zone,x:r.x,y:r.y,n:r.n,missions:(r.missions&&r.missions.length)?r.missions:undefined}))};
       if(PJS.length) R.plansJoints=PJS.map(x=>({nom:x.nom,url:x.url,taille:x.taille}));
       if(!av) Object.assign(R,{societe:val('fSoc'),site:val('fSite'),type:val('fTy'),urgence:val('fUr'),debut:val('fDe'),fin:val('fFi')||val('fDe'),hDebut:val('fHd'),hFin:val('fHf'),desc:val('fDs')});
       try{ const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json',apikey:cfg.anonKey||''},body:JSON.stringify({t:T,reponse:R})}); const j=await r.json().catch(()=>({})); o.remove();
