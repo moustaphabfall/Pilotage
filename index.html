@@ -17443,10 +17443,19 @@ const PG_FEATS=[
   }
 
   /* ---------- Clients et leurs projets ---------- */
+  /* demandeur : personne de contact structurée (prénom, nom, téléphone, e-mail) rattachée à une société ; proposé juste après la création de la société */
+  function contactForm(c,ct){ const n=net(), nw=!ct; ct=ct||{};
+    modal('<h3>'+(nw?'➕ Nouveau demandeur':'✏️ Demandeur')+'</h3><p class="nt-s" style="margin:0 0 10px">Chez <b>'+esc(c.nom)+'</b></p>'
+      +'<label>Prénom<input id="dmPr" value="'+esc(ct.prenom||'')+'"></label><label>Nom<input id="dmNo" value="'+esc(ct.nom||'')+'"></label><label>Téléphone<input id="dmTe" type="tel" value="'+esc(ct.tel||'')+'"></label><label>E-mail<input id="dmEm" type="email" value="'+esc(ct.email||'')+'"></label>'
+      +'<div class="nt-b">'+(nw?'<button data-x>Plus tard</button>':'<button class="del" id="dmDel">Supprimer</button><button data-x>Annuler</button>')+'<button class="pri" id="dmOk">'+(nw?'Créer le demandeur':'Enregistrer')+'</button></div>',
+    o=>{ o.querySelector('#dmOk').onclick=()=>{ const pr=val(o,'dmPr'), no=val(o,'dmNo'); if(!pr&&!no){ alert('Indiquez au moins le prénom ou le nom.'); return; } const r={prenom:pr,nom:no,tel:val(o,'dmTe'),email:val(o,'dmEm')};
+        (c.contacts=c.contacts||[]); if(nw) c.contacts.push(Object.assign({id:uid()},r)); else Object.assign(ct,r); save(); o.remove(); render('net-clients'); };
+      const dl=o.querySelector('#dmDel'); if(dl) dl.onclick=()=>{ if(!confirm('Supprimer ce demandeur ?')) return; c.contacts=(c.contacts||[]).filter(x=>x.id!==ct.id); save(); o.remove(); render('net-clients'); }; });
+  }
   function clientForm(c){ const n=net(), nw=!c; c=c||{};
     modal('<h3>'+(nw?'➕ Nouveau client':'✏️ '+esc(c.nom))+'</h3><label>Nom de la société<input id="cNo" list="cNoLib" autocomplete="off" value="'+esc(c.nom||'')+'" placeholder="Tapez pour chercher ou créer une société"><datalist id="cNoLib">'+n.societes.map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist></label><label>Contact<input id="cCt" value="'+esc(c.contact||'')+'" placeholder="nom, téléphone, e-mail"></label>'
       +'<div class="nt-b">'+(nw?'':'<button class="del" id="cDel">Supprimer</button>')+'<button data-x>Annuler</button><button class="pri" id="cOk">Enregistrer</button></div>',
-    o=>{ o.querySelector('#cOk').onclick=()=>{ const nm=val(o,'cNo'); if(!nm){ alert('Le nom est requis.'); return; } socAdd(n,nm); if(nw) n.clients.push({id:uid(),nom:nm,contact:val(o,'cCt'),tarifs:{},projets:[]}); else { c.nom=nm; c.contact=val(o,'cCt'); } save(); o.remove(); render('net-clients'); };
+    o=>{ o.querySelector('#cOk').onclick=()=>{ const nm=val(o,'cNo'); if(!nm){ alert('Le nom est requis.'); return; } socAdd(n,nm); let cl; if(nw){ cl={id:uid(),nom:nm,contact:val(o,'cCt'),contacts:[],tarifs:{},projets:[]}; n.clients.push(cl); } else { c.nom=nm; c.contact=val(o,'cCt'); } save(); o.remove(); if(nw) contactForm(cl); else render('net-clients'); };
       const dl=o.querySelector('#cDel'); if(dl) dl.onclick=()=>{ if(n.demandes.some(d=>d.clientId===c.id)){ alert('Ce client a des demandes : supprimez-les d’abord.'); return; } if(!confirm('Supprimer ce client et ses projets ?')) return; n.clients=n.clients.filter(x=>x.id!==c.id); save(); o.remove(); render('net-clients'); }; });
   }
   function projetForm(c,pj){ const n=net(), nw=!pj; pj=pj||{statut:'encours'};
@@ -17460,13 +17469,16 @@ const PG_FEATS=[
   function pgClients(w){
     const n=net(), nbD=(cid,pid)=>n.demandes.filter(d=>d.clientId===cid&&(!pid||d.projetId===pid)).length;
     w.innerHTML='<div class="nt"><div class="nt-h"><h2>🏢 Clients</h2><div class="nt-av"><button class="pri" id="clNew">➕ Nouveau client</button></div></div>'
-      +(n.clients.length?n.clients.map(c=>{ const L=projsOf(c);
-        return '<div class="nt-card" data-c="'+c.id+'"><div class="nt-h" style="margin:0 0 6px"><div><b style="font-size:16px">'+esc(c.nom)+'</b>'+(c.contact?'<br><small>'+esc(c.contact)+'</small>':'')+'<br><small>'+nbD(c.id)+' demande(s) · '+L.filter(x=>x.statut!=='termine').length+' projet(s) en cours</small></div><div class="nt-av"><button data-ce="'+c.id+'">✏ Client</button><button class="pri" data-cp="'+c.id+'">➕ Projet</button></div></div>'
+      +(n.clients.length?n.clients.map(c=>{ const L=projsOf(c), K=c.contacts||[];
+        return '<div class="nt-card" data-c="'+c.id+'"><div class="nt-h" style="margin:0 0 6px"><div><b style="font-size:16px">'+esc(c.nom)+'</b>'+(c.contact?'<br><small>'+esc(c.contact)+'</small>':'')+'<br><small>'+nbD(c.id)+' demande(s) · '+L.filter(x=>x.statut!=='termine').length+' projet(s) en cours</small></div><div class="nt-av"><button data-ce="'+c.id+'">✏ Client</button><button data-cd="'+c.id+'">➕ Demandeur</button><button class="pri" data-cp="'+c.id+'">➕ Projet</button></div></div>'
+          +(K.length?'<div class="nt-chips">'+K.map(k=>'<button type="button" class="nt-chip" data-de="'+c.id+'|'+k.id+'">🙋 '+esc(((k.prenom||'')+' '+(k.nom||'')).trim()||k.email||'Demandeur')+(k.tel?' · '+esc(k.tel):'')+'</button>').join('')+'</div>':'')
           +(L.length?'<div class="nt-tw"><table class="nt-t"><thead><tr><th>Projet</th><th>Adresse / site</th><th>Statut</th><th>Demandes</th><th></th></tr></thead><tbody>'+L.map(x=>'<tr><td><b>'+esc(x.nom)+'</b></td><td>'+esc(x.adresse||'—')+'</td><td><span class="nt-st '+(x.statut==='termine'?'s-terminee':'s-encours')+'">'+(x.statut==='termine'?'Terminé':'En cours')+'</span></td><td>'+nbD(c.id,x.id)+'</td><td class="nt-act"><button data-pe="'+c.id+'|'+x.id+'">✏</button></td></tr>').join('')+'</tbody></table></div>':'<p class="nt-s" style="margin:0">Aucun projet : ajoutez le premier projet de ce client.</p>')+'</div>'; }).join('')
         :'<p class="nt-e">Aucun client pour l’instant. Cliquez sur « Nouveau client ».</p>')+'</div>';
     w.querySelector('#clNew').onclick=()=>clientForm();
     w.querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>clientForm(by(n.clients,b.dataset.ce)));
     w.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>projetForm(by(n.clients,b.dataset.cp)));
+    w.querySelectorAll('[data-cd]').forEach(b=>b.onclick=()=>contactForm(by(n.clients,b.dataset.cd)));
+    w.querySelectorAll('[data-de]').forEach(b=>{ const [cid,kid]=b.dataset.de.split('|'), c=by(n.clients,cid); b.onclick=()=>contactForm(c,(c.contacts||[]).find(x=>x.id===kid)); });
     w.querySelectorAll('[data-pe]').forEach(b=>{ const [cid,pid]=b.dataset.pe.split('|'), c=by(n.clients,cid); b.onclick=()=>projetForm(c,projsOf(c).find(x=>x.id===pid)); });
   }
   const RENDER = {'net-clients':pgClients,'net-rh':pgRH,'net-demandes':pgDemandes,'net-affect':pgAffect,'net-pointage':pgPointage,'net-moi':pgMoi,'net-rapports':pgRapports};
@@ -20936,7 +20948,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v379';
+  const VER='v380';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
