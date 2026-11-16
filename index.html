@@ -17230,6 +17230,16 @@ const PG_FEATS=[
 
   /* ---------- Affectations & agents ---------- */
   let affSel = null;
+  async function inviteNetAgent(r){
+    const P=window.PILOTAGE_PROJET; if(!P||!window.PILOTAGE_ADM) return;
+    const role=(r.cat==='enc')?'Manager':'Agent';
+    try{
+      const res=await window.PILOTAGE_ADM({action:'p_create',projet:P.id,nom:r.nom,email:r.email,invite:true,redirectTo:location.origin+location.pathname,role:'editeur',fonctions:{_role:role},paiement:{valide:true}});
+      if(res&&res.invitation) miniAlert('Personne ajoutée. Un e-mail d’invitation vient d’être envoyé à '+r.email+' (rôle : '+role+').');
+      else if(res&&res.existant) miniAlert('Personne ajoutée. Un compte existait déjà pour '+r.email+' : accès à ce workspace ajouté, aucun e-mail envoyé.');
+      else miniAlert('Personne ajoutée et accès créé pour '+r.email+'.');
+    }catch(e){ miniAlert('Personne ajoutée, mais l’invitation n’a pas pu être envoyée : '+((e&&e.message)||e)); }
+  }
   function agentForm(a){
     const n=net(), nw=!a; a=a||{mode:'chef',cat:'agent',quals:[]}; const qs=new Set(a.quals||[]); const mets=n.metiers.slice(); if(a.metier&&!mets.includes(a.metier)) mets.push(a.metier);
     modal('<h3>'+(nw?'➕ Nouvelle personne':'✏️ '+esc(a.nom))+'</h3>'
@@ -17239,11 +17249,13 @@ const PG_FEATS=[
       +'<b style="display:block;margin:8px 0 4px">Absences (congés, maladie, formation…)</b><div id="gAbs"></div><button type="button" id="gAbA">➕ Ajouter une absence</button>'
       +'<b style="display:block;margin:8px 0 4px">Qualifications</b><div class="rh-qs">'+(n.quals.length?n.quals.map(q=>'<label class="rh-q"><input type="checkbox" value="'+esc(q)+'"'+(qs.has(q)?' checked':'')+'> '+esc(q)+'</label>').join(''):'<small>Aucune qualification dans la liste (onglet Ressources humaines).</small>')+'</div>'
       +'<small>Le mode de pointage indique qui enregistre la présence : le chef d’équipe, le responsable opérationnel, ou la personne elle-même (compagnon).</small>'
+      +(nw?'<small>Si une adresse e-mail est renseignée, une invitation à ce workspace lui sera envoyée automatiquement (rôle Manager pour l’encadrement, Agent sinon). Sans e-mail, aucune invitation n’est envoyée.</small>':'')
       +'<div class="nt-b">'+(nw?'':'<button class="del" id="gDel">Supprimer</button>')+'<button data-x>Annuler</button><button class="pri" id="gOk">Enregistrer</button></div>',
     o=>{ const abs=(a.absences||[]).map(x=>Object.assign({},x)); const pAbs=()=>{ o.querySelector('#gAbs').innerHTML=abs.length?abs.map((x,i)=>'<div class="nt-r" style="align-items:end"><label>Du<input type="date" data-k="du" data-i="'+i+'" value="'+esc(x.du||'')+'"></label><label>Au<input type="date" data-k="au" data-i="'+i+'" value="'+esc(x.au||'')+'"></label><label>Motif<select data-k="motif" data-i="'+i+'">'+['Congé','Maladie','Formation','Autre'].map(m=>'<option'+(m===x.motif?' selected':'')+'>'+m+'</option>').join('')+'</select></label><button type="button" data-rm="'+i+'" title="Retirer">✕</button></div>').join(''):'<small>Aucune absence enregistrée.</small>';
         o.querySelectorAll('#gAbs [data-k]').forEach(e=>e.onchange=()=>{ abs[+e.dataset.i][e.dataset.k]=e.value; }); o.querySelectorAll('#gAbs [data-rm]').forEach(b=>b.onclick=()=>{ abs.splice(+b.dataset.rm,1); pAbs(); }); }; pAbs();
       o.querySelector('#gAbA').onclick=()=>{ abs.push({id:uid(),du:today(),au:today(),motif:'Congé'}); pAbs(); };
-      o.querySelector('#gOk').onclick=()=>{ const r={absences:abs.filter(x=>x.du&&x.au),nom:val(o,'gNo'),tel:val(o,'gTe'),email:val(o,'gEm'),metier:val(o,'gMe'),cat:val(o,'gCa'),mode:val(o,'gMo'),quals:[...o.querySelectorAll('.rh-q input:checked')].map(i=>i.value)}; if(!r.nom){ alert('Le nom est requis.'); return; } if(nw) n.agents.push(Object.assign({id:uid()},r)); else Object.assign(a,r); save(); o.remove(); render(curPg()); };
+      o.querySelector('#gOk').onclick=async()=>{ const r={absences:abs.filter(x=>x.du&&x.au),nom:val(o,'gNo'),tel:val(o,'gTe'),email:val(o,'gEm'),metier:val(o,'gMe'),cat:val(o,'gCa'),mode:val(o,'gMo'),quals:[...o.querySelectorAll('.rh-q input:checked')].map(i=>i.value)}; if(!r.nom){ alert('Le nom est requis.'); return; } if(nw) n.agents.push(Object.assign({id:uid()},r)); else Object.assign(a,r); save(); o.remove(); render(curPg());
+        if(nw){ if(r.email) inviteNetAgent(r); else miniAlert('Personne ajoutée, mais sans adresse e-mail : elle ne recevra pas d’invitation.'); } };
       const dl=o.querySelector('#gDel'); if(dl) dl.onclick=()=>{ if(n.affectations.some(x=>x.agentId===a.id)){ alert('Cette personne a des affectations : supprimez-les d’abord.'); return; } if(!confirm('Supprimer cette personne ?')) return; n.agents=n.agents.filter(x=>x.id!==a.id); save(); o.remove(); render(curPg()); }; });
   }
   const curPg=()=>{ const a=document.querySelector('.page.active'); return a&&a.id.startsWith('page-net-')?a.id.slice(5):'net-rh'; };
@@ -21028,7 +21040,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v390';
+  const VER='v391';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
