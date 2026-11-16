@@ -16292,8 +16292,23 @@ const PG_FEATS=[
     'Conducteur de travaux':{no:[]},
     'Chef de chantier':{no:['interloc','refac','parametres','cadre.ing']},
     'Chef d’équipe':{no:['interloc','refac','parametres','rex','planif','travaux.journal','cadre.ing','cadre.plan']},
-    'Poseur':{no:['interloc','refac','parametres','rex','planif','travaux.journal','travaux.pieces','travaux.cloisons','cadre.ing','cadre.plan','vue.lib']}
+    'Poseur':{no:['interloc','refac','parametres','rex','planif','travaux.journal','travaux.pieces','travaux.cloisons','cadre.ing','cadre.plan','vue.lib']},
+    'Administrateur':{no:[]},
+    'Manager':{no:['net-rh','parametres','refac']},
+    'Agent':{no:['net-demandes','net-clients','net-rh','net-affect','net-pointage','net-rapports','parametres','refac']},
+    'Client':{no:['net-demandes','net-clients','net-rh','net-affect','net-moi','net-rapports','parametres','refac']}
   };
+  /* arbre de rôles par type d’espace : quels préréglages proposer dans « Gérer les fonctionnalités » et à l’invitation */
+  const PG_ROLE_BY_TYPE={
+    entreprise_generale:['Directeur de travaux','Conducteur de travaux','Chef de chantier','Chef d’équipe','Poseur'],
+    ces:['Directeur de travaux','Conducteur de travaux','Chef de chantier','Chef d’équipe','Poseur'],
+    nettoyage:['Administrateur','Manager','Agent','Client']
+  };
+  window.PG_ROLE_BY_TYPE=PG_ROLE_BY_TYPE;
+  /* libellés d’affichage (la clé interne ne change pas, pour ne pas casser les rôles déjà enregistrés) */
+  const PG_ROLE_LABEL={'Poseur':'Compagnon'};
+  window.PG_ROLE_LABEL=PG_ROLE_LABEL;
+  const roleLabel=r=>PG_ROLE_LABEL[r]||r;
   window.PG_ROLE_PRESETS=PG_ROLE_PRESETS;
   document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.mx-pre [data-pre]'); if(!b) return; e.preventDefault();
     const mx=b.closest('.mx'); const P=PG_ROLE_PRESETS[b.dataset.pre]; if(!mx||!P) return;
@@ -16327,7 +16342,7 @@ const PG_FEATS=[
   ];
   (function(){ const c=document.createElement('style'); c.textContent='.mx.mxt{display:block}.mx.mxt .mx-pre{margin-bottom:10px}.mx.mxt .tn{margin:6px 0;border-left:2px solid rgba(255,196,0,.35);padding-left:10px}.mx.mxt .tn .tn{margin-left:8px}.mx.mxt .ts{cursor:pointer;font-weight:700;font-size:13.5px;padding:8px 2px;list-style:none;display:flex;align-items:center;gap:6px}.mx.mxt .tn.shut>:not(.ts){display:none}.mx.mxt .ts::before{content:"›";display:inline-block;transition:transform .15s;font-size:16px}.mx.mxt .tn:not(.shut)>.ts::before{transform:rotate(90deg)}.mx.mxt .lv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 8px}@media(max-width:560px){.mx.mxt .lv{grid-template-columns:repeat(2,minmax(0,1fr))}}.mx.mxt .ts label.sw{min-height:40px;flex:0 0 auto;padding:6px 14px;flex-direction:row}'; document.head.appendChild(c); })();
   document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('.mx.mxt .ts'); if(!t||e.target.closest('label.sw')) return; t.parentElement.classList.toggle('shut'); });
-  function matrix(prefix,fonctions){
+  function matrix(prefix,fonctions,tyOverride){
     fonctions=fonctions||{};
     const eff=k=>fonctions[k]===false?false:fonctions[k]===true?true:((PG_ROLE_PRESETS[fonctions._role]||{no:[]}).no.includes(k)?false:true);
     const LAB={}, SUBS={}; PG_FEATS.forEach(f=>{ LAB[f.k]=f.l; SUBS[f.k]=f.subs.map(x=>x.k); f.subs.forEach(x=>{ LAB[x.k]=x.l; }); });
@@ -16341,7 +16356,8 @@ const PG_FEATS=[
     let h=PG_TREE.map(g=>{ (g.top||[]).forEach(k=>seen[k]=1); return '<div class="tn"><div class="ts">'+esc(g.t)+'</div>'+((g.top||[]).length?'<div class="lv">'+g.top.map(k=>btn(k,false)).join('')+'</div>':'')+g.c.map(branch).join('')+'</div>'; }).join('');
     const rest=[]; PG_FEATS.forEach(f=>{ if(!seen[f.k]) rest.push(btn(f.k,false)); f.subs.forEach(x=>{ if(!seen[x.k]) rest.push(btn(x.k,true)); }); });
     if(rest.length) h+='<div class="tn"><div class="ts">Autres</div><div class="lv">'+rest.join('')+'</div></div>';
-    return '<div class="mx mxt"'+(fonctions._role?' data-role="'+esc(fonctions._role)+'"':'')+'><div class="mx-pre pgs-f"><b style="font-size:12.5px">Rôle :</b>'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-pre="'+esc(r)+'"'+(fonctions._role===r?' class="on"':'')+'>'+esc(r)+'</button>').join('')+'</div>'+h+'</div>';
+    const rk=(PG_ROLE_BY_TYPE[tyOverride||pilotageType()]||Object.keys(PG_ROLE_PRESETS));
+    return '<div class="mx mxt"'+(fonctions._role?' data-role="'+esc(fonctions._role)+'"':'')+'><div class="mx-pre pgs-f"><b style="font-size:12.5px">Rôle :</b>'+rk.map(r=>'<button type="button" data-pre="'+esc(r)+'"'+(fonctions._role===r?' class="on"':'')+'>'+esc(roleLabel(r))+'</button>').join('')+'</div>'+h+'</div>';
   }
   function readMatrix(root){ const o={}; const mx=root.querySelector('.mx'); const R=mx&&mx.dataset.role&&PG_ROLE_PRESETS[mx.dataset.role]; if(R) o._role=mx.dataset.role; root.querySelectorAll('[data-f]').forEach(i=>{ const k=i.dataset.f; if(!i.checked) o[k]=false; else if(R&&R.no.includes(k)) o[k]=true; }); return o; }
   /* ===== Gestion des fonctionnalités : réglages par défaut de chaque rôle (administrateur général) ===== */
@@ -16353,7 +16369,7 @@ const PG_FEATS=[
     ov.style.cssText='position:fixed;inset:0;z-index:2147483050;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto';
     const css='#pgFeatMgr .fm{background:#0d1013;color:#f5d36a;border:1.5px solid rgba(255,196,0,.6);border-radius:20px;width:min(760px,100%);padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.5)}#pgFeatMgr .fm h3{margin:0 0 12px;text-align:center;font-size:17px}#pgFeatMgr .fm-top{position:relative}#pgFeatMgr .fm-bk{position:absolute;left:0;top:-4px;background:none;border:0;color:inherit;font-size:26px;cursor:pointer}#pgFeatMgr .fm-x{position:absolute;right:0;top:-2px;background:none;border:1px solid rgba(255,196,0,.5);color:inherit;border-radius:10px;padding:4px 10px;cursor:pointer}#pgFeatMgr .fm-r{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}@media(max-width:560px){#pgFeatMgr .fm-r{grid-template-columns:repeat(2,minmax(0,1fr))}}#pgFeatMgr .fm-r button{min-height:70px;border-radius:14px;border:1.5px solid rgba(255,196,0,.55);background:transparent;color:inherit;font:600 13px system-ui;padding:8px;cursor:pointer}#pgFeatMgr .mx-pre{display:none}#pgFeatMgr .fm-save{display:block;margin:14px auto 0;padding:11px 22px;border-radius:14px;border:0;background:#FFC400;color:#111;font:700 14px system-ui;cursor:pointer}#pgFeatMgr .fm-msg{text-align:center;margin-top:8px;font-size:13px;min-height:18px}';
     const draw=role=>{
-      if(!role){ ov.innerHTML='<style>'+css+'</style><div class="fm"><div class="fm-top"><h3>🎛 Gestion des fonctionnalités</h3><button type="button" class="fm-x">✕ Fermer</button></div><p style="text-align:center;font-size:13px;margin:0 0 12px">Choisissez un rôle puis réglez ses fonctionnalités par défaut.</p><div class="fm-r">'+Object.keys(PG_ROLE_PRESETS).map(r=>'<button type="button" data-r="'+esc(r)+'">'+esc(r)+'</button>').join('')+'</div></div>';
+      if(!role){ const rk2=(PG_ROLE_BY_TYPE[pilotageType()]||Object.keys(PG_ROLE_PRESETS)); ov.innerHTML='<style>'+css+'</style><div class="fm"><div class="fm-top"><h3>🎛 Gestion des fonctionnalités</h3><button type="button" class="fm-x">✕ Fermer</button></div><p style="text-align:center;font-size:13px;margin:0 0 12px">Choisissez un rôle puis réglez ses fonctionnalités par défaut.</p><div class="fm-r">'+rk2.map(r=>'<button type="button" data-r="'+esc(r)+'">'+esc(roleLabel(r))+'</button>').join('')+'</div></div>';
         ov.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>draw(b.dataset.r)); }
       else{ ov.innerHTML='<style>'+css+'</style><div class="fm"><div class="fm-top"><button type="button" class="fm-bk" aria-label="Retour">‹</button><h3>'+esc(role)+'</h3><button type="button" class="fm-x">✕ Fermer</button></div>'+matrix('f',{_role:role})+'<button type="button" class="fm-save">Enregistrer</button><div class="fm-msg"></div></div>';
         ov.querySelector('.fm-bk').onclick=()=>draw(null);
@@ -16472,7 +16488,9 @@ const PG_FEATS=[
         +'<div class="row"><select id="hP"><option value="">Base de l’outil (par défaut)</option>'+Object.keys(PR).map(k=>'<option value="'+k+'"'+(h&&h.provider===k?' selected':'')+(PR[k].available()?'':' disabled')+'>'+esc(PR[k].label)+(PR[k].available()?'':' (non configuré)')+'</option>').join('')+'</select><button class="p" id="hGo">Choisir / changer l’hébergement</button></div>'
         +'<small>Le client (administrateur du projet) autorise l’hébergement avec son propre compte. En tant qu’administrateur de l’outil, vous pouvez le faire à sa place. Les données existantes sont copiées vers le nouvel hébergement, et les membres du projet y sont invités automatiquement.</small><div class="msg" id="hMsg"></div></div>'); }
     if(pgMode==='invite') body.push((p.global?'<button type="button" id="pgEssai" style="width:100%;min-height:48px;margin:0 0 12px;border-radius:12px;background:#0E0E0E;color:#FFC400;border:1px solid #FFC400;font-weight:700">🧪 Version d’essai (1 mois, sans workspace)</button>':'')+'<h3>➕ Créer un accès</h3><div class="card" id="pgNew"><div class="row"><label><b>Workspace :</b> <select id="nPj">'+(p.projets||[{id:p.id,nom:p.nom}]).map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+(p.global?'<option value="__new__">➕ Nouveau workspace…</option>':'')+'</select></label><input id="nPn" placeholder="Nom du nouveau workspace" hidden><select id="nPt" hidden title="Type d’espace de travail">'+typeOpts('entreprise_generale')+'</select></div><small id="nPh" hidden>Le nouveau workspace reprend toutes les fonctionnalités de l’outil, sans aucune donnée.</small><div class="row"><input id="nN" placeholder="Nom"><input id="nE" type="email" placeholder="Identifiant (e-mail)"><select id="nMo"><option value="invite">✉ Invitation par e-mail (la personne choisit son mot de passe, vous ne le voyez jamais)</option><option value="social">Google / Microsoft (sans mot de passe)</option></select><select id="nR" title="Droit d’accès"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du workspace</option></select></div>'
-      +'<details><summary>Fonctionnalités accordées (tout activé par défaut)</summary>'+matrix('n',{})+'</details>'
+      +'<div class="row" id="nNetRoleRow" hidden><label style="flex:1"><b>Rôle (Nettoyage) :</b> <select id="nNetRole"><option value="">— à définir —</option><option value="Administrateur">Administrateur</option><option value="Manager">Manager</option><option value="Agent">Agent</option><option value="Client">Client (entreprise utilisatrice)</option></select></label></div>'
+      +'<div class="row" id="nNetClientRow" hidden><label style="flex:1"><b>Entreprise utilisatrice :</b> <select id="nNetClient"><option value="">— choisir le client —</option>'+((state.net||{}).clients||[]).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.nom)+'</option>').join('')+'</select></label></div>'
+      +'<details><summary>Fonctionnalités accordées (tout activé par défaut)</summary><div id="nMx">'+matrix('n',{},window.pgTypeKey?window.pgTypeKey((((p.projets||[]).find(x=>x.id===p.id))||{}).type||p.type):undefined)+'</div></details>'
       +'<div class="row"><input type="number" min="0" step="any" id="nM" placeholder="Montant" style="width:110px"><input id="nRf" placeholder="Référence du paiement"><label><input type="checkbox" id="nV"> paiement reçu et validé</label></div>'
       +'<div class="row"><button class="p" id="nC" disabled>Créer l’accès (valable 1 mois)</button><small>Sans paiement validé, l’accès ne peut pas être créé.</small></div>'
       +(cred?'<div class="cred">'+esc(cred)+'</div><small>Sélectionnez, copiez et envoyez ce texte à la personne.</small>':'')+'<div class="msg" id="pgMsg"></div></div>');
@@ -16513,10 +16531,19 @@ const PG_FEATS=[
         say('Copie des données…'); await window.PILOTAGE_SET_HOST(nh,(n,t)=>say('Copie des données : '+n+'/'+t));
         if(nh){ try{ const S=await window.PILOTAGE_PROVIDERS[nh.provider].open(nh); for(const m of cache.members){ if(m.moi||!m.email) continue; try{ await S.invite(m.email,m.role==='lecteur'?'lecteur':'editeur'); }catch(e){} } }catch(e){} }
         say('Hébergement enregistré. Rechargement…'); setTimeout(()=>location.reload(),900); }catch(e){ say(e.message,true); } };
-    const pj=w.querySelector('#nPj'); if(pj) pj.onchange=()=>{ const nw=pj.value==='__new__'; w.querySelector('#nPn').hidden=!nw; w.querySelector('#nPt').hidden=!nw; w.querySelector('#nPh').hidden=!nw; };
+    const pj=w.querySelector('#nPj'); const nPt_=w.querySelector('#nPt');
+    const tgtTy=()=>{ const nw=pj&&pj.value==='__new__'; const raw=nw?(nPt_&&nPt_.value):(((p.projets||[]).find(x=>x.id===(pj?pj.value:p.id))||{}).type||p.type); return window.pgTypeKey?window.pgTypeKey(raw):raw; };
+    const syncNetRole=()=>{ const row=w.querySelector('#nNetRoleRow'); if(!row||!pj) return; const ty=tgtTy(); row.hidden=ty!=='nettoyage'; if(row.hidden){ const s=w.querySelector('#nNetRole'); if(s) s.value=''; const cr=w.querySelector('#nNetClientRow'); if(cr) cr.hidden=true; } };
+    const syncNetMatrix=()=>{ const mx=w.querySelector('#nMx'); if(!mx) return; mx.innerHTML=matrix('n',{},tgtTy()); };
+    if(pj) pj.onchange=()=>{ const nw=pj.value==='__new__'; w.querySelector('#nPn').hidden=!nw; w.querySelector('#nPt').hidden=!nw; w.querySelector('#nPh').hidden=!nw; syncNetRole(); syncNetMatrix(); };
+    if(nPt_) nPt_.onchange=()=>{ syncNetRole(); syncNetMatrix(); };
+    const nNetRole_=w.querySelector('#nNetRole'); const nNetClRow=w.querySelector('#nNetClientRow');
+    const syncNetClient=()=>{ if(nNetClRow) nNetClRow.hidden=!nNetRole_||nNetRole_.value!=='Client'; };
+    if(nNetRole_) nNetRole_.onchange=()=>{ if(nNetRole_.value){ const nr=w.querySelector('#nR'); if(nr) nr.value=(nNetRole_.value==='Administrateur'?'admin':'editeur'); } syncNetClient(); };
+    syncNetRole(); syncNetClient();
     const v=w.querySelector('#nV'), c=w.querySelector('#nC'); if(v) v.onchange=()=>{ c.disabled=!v.checked; };
     if(c) c.onclick=()=>{ const g=id=>w.querySelector(id).value.trim(); const email=g('#nE'), nom=g('#nN');
-      const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details'));
+      const mt=g('#nM'); const fonc=readMatrix(w.querySelector('#pgNew details')); const nrv=(w.querySelector('#nNetRole')||{}).value; if(nrv) fonc._role=nrv; if(nrv==='Client'){ const ncv=(w.querySelector('#nNetClient')||{}).value; if(ncv) fonc._clientId=ncv; }
       let say2=''; run(async()=>{ let pid=w.querySelector('#nPj').value, pnom=null;
         if(pid==='__new__'){ pnom=g('#nPn'); const id=pnom.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,'').slice(0,16); if(!id) throw new Error('Nom du nouveau projet requis'); await window.PILOTAGE_ADM({action:'p_projet_create',id,nom:pnom}); const ty=g('#nPt')||'entreprise_generale'; if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(id,ty); pid=id; (PJ().projets=PJ().projets||[]).push({id,nom:pnom,type:ty}); }
         const mode=w.querySelector('#nMo').value; const _sel=(pid===w.querySelector('#nPj').value&&pid!=='__new__'&&selProjets().includes(pid)&&selProjets().length>1)?selProjets():[pid];
@@ -21260,7 +21287,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v390';
+  const VER='v391';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
