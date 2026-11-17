@@ -7155,10 +7155,10 @@ function projParamEdit(){
   const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) window.__paApp='';
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
-  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">v330</small></h3>
+  openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">${esc(window.PILOTAGE_VER||'')}</small></h3>
     ${paBtns(PA_APPS,'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
-  if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="closeModal()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
+  if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="paBack()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
   try{ if(k==='interv'){ const h=document.getElementById('paIvHost'), pg=document.getElementById('page-interloc'); if(h&&pg){ const a=document.getElementById('ilruban-interlocuteurs'); if(a){ a.style.display='block'; h.appendChild(a); } const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0'; bar.innerHTML='<button type="button" class="ghost" onclick="quickAddEntreprise()">+ Entreprise</button><button type="button" class="ghost" onclick="openFonctionsMgr()">✎ Fonctions</button>'; h.appendChild(bar); const ee=document.getElementById('entListPage'); if(ee){ h.appendChild(ee); } try{ renderInterlocuteurs(); }catch(e){} try{ if(ee) ee.innerHTML=renderEntreprisesList(); }catch(e){} } } }catch(e){ console.error(e); }
   try{ paAdminBar(k); }catch(e){ console.error(e); }
   try{ nbRibBind(); }catch(e){} try{ archLvBind(); }catch(e){ console.error(e); } try{ paLotsBind(); }catch(e){ console.error(e); } try{ if(k==='obj') renderObjectifsPanel(); }catch(e){ console.error(e); }
@@ -13391,18 +13391,22 @@ async function cauDocDl(id){
 </script>
 <script>if('serviceWorker' in navigator){ var _hadSW=!!navigator.serviceWorker.controller;
   /* Mise à jour auto : une nouvelle version détectée pendant qu'une personne travaille n'interrompt plus
-     sa session ; elle est appliquée (rechargement automatique) la nuit, entre 2h et 3h (heure de l'appareil
-     de chaque utilisateur), sauf si _pgUpdateForceNow est mis à true pour un correctif urgent à déployer
-     immédiatement. */
+     sa session ; elle est appliquée (rechargement automatique) dès que l'onglet repasse en arrière-plan
+     (changement d'appli, veille, onglet caché) — invisible pour la personne — ou, au plus tard, la nuit
+     entre 2h et 3h (heure de l'appareil de chaque utilisateur) si l'onglet reste au premier plan sans
+     jamais être mis en arrière-plan. _pgUpdateForceNow peut être mis à true pour un correctif urgent à
+     appliquer immédiatement, sans attendre. */
   var _pgUpdateForceNow=false;
   var _pgUpdatePending=false;
   function _pgInQuietWindow(){ return new Date().getHours()===2; }
+  function _pgOkToApply(){ return _pgUpdateForceNow||_pgInQuietWindow()||document.visibilityState==='hidden'; }
   function _pgApplyUpdate(){ if(!window.__swReload){ window.__swReload=1; location.reload(); } }
   navigator.serviceWorker.addEventListener('controllerchange',function(){
     if(!_hadSW) return;
-    if(_pgUpdateForceNow||_pgInQuietWindow()) _pgApplyUpdate(); else _pgUpdatePending=true;
+    if(_pgOkToApply()) _pgApplyUpdate(); else _pgUpdatePending=true;
   });
-  setInterval(function(){ if(_pgUpdatePending&&(_pgUpdateForceNow||_pgInQuietWindow())) _pgApplyUpdate(); },60000);
+  setInterval(function(){ if(_pgUpdatePending&&_pgOkToApply()) _pgApplyUpdate(); },60000);
+  document.addEventListener('visibilitychange',function(){ if(_pgUpdatePending&&document.visibilityState==='hidden') _pgApplyUpdate(); });
   window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(r=>{try{r.update()}catch(e){} try{ setInterval(function(){ r.update().catch(function(){}); },300000); document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible'){ r.update().catch(function(){}); } }); }catch(e){} }).catch(()=>{})); }
 /* ===== Tutoriel interactif de première connexion : tout est grisé sauf l'élément à toucher ===== */
 (function(){
@@ -21325,7 +21329,8 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v400';
+  const VER='v401';
+  window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
