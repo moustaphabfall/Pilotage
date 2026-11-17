@@ -21329,7 +21329,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v401';
+  const VER='v402';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22015,6 +22015,23 @@ html[data-theme="blanc"] #pjGraph .pjg-p{background:#fff;color:#111;border-color
 html[data-theme="blanc"] #pjGraph .pjg-n .bg{fill:#fff;stroke:#F2C200}
 html[data-theme="blanc"] #pjGraph .pjg-n text{fill:#111}
 html[data-theme="blanc"] #pjGraph .pjg-iso span{border-color:#F2C200}
+#pjGraph .pjg-view{background:transparent;border:1px solid #F2C200;color:#F5D86B;border-radius:8px;padding:4px 10px;font:700 13px system-ui,sans-serif;cursor:pointer}
+html[data-theme="blanc"] #pjGraph .pjg-view{background:#fff;color:#111;border-color:#F2C200}
+#pjGraph .pjgt-wrap{border:1px solid #F2C200;border-radius:16px;background:#0b0b0b;color:#F5D86B;padding:10px 12px;overflow:auto}
+html[data-theme="blanc"] #pjGraph .pjgt-wrap{background:#fff;color:#111;border-color:#F2C200}
+#pjGraph .pjgt-scale{display:flex;justify-content:space-between;font:600 10.5px system-ui,sans-serif;opacity:.65;margin:0 0 6px;padding-left:220px}
+#pjGraph .pjgt-tree{position:relative;min-width:640px}
+#pjGraph .pjgt-row{display:flex;align-items:center;height:28px;border-bottom:1px solid rgba(245,216,107,.12)}
+html[data-theme="blanc"] #pjGraph .pjgt-row{border-bottom-color:rgba(0,0,0,.08)}
+#pjGraph .pjgt-lab{width:220px;flex:0 0 220px;display:flex;align-items:center;gap:4px;font:600 11.5px system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;padding-right:6px;box-sizing:border-box}
+#pjGraph .pjgt-lab[data-id]{cursor:pointer}
+#pjGraph .pjgt-tg{border:0;background:transparent;color:inherit;cursor:pointer;font-size:11px;width:14px;flex:0 0 14px;opacity:.7;padding:0}
+#pjGraph .pjgt-lane{position:relative;flex:1;height:100%}
+#pjGraph .pjgt-bar{position:absolute;top:7px;height:14px;border-radius:5px;cursor:pointer}
+#pjGraph .pjgt-bar.grp{top:11px;height:6px;border-radius:3px;background:none !important;border:1.5px solid currentColor;opacity:.6}
+#pjGraph .pjgt-mil{position:absolute;top:6px;width:14px;height:14px;transform:translateX(-7px) rotate(45deg);border:2px solid;background:transparent;cursor:pointer}
+#pjGraph .pjgt-lines{position:absolute;left:220px;right:0;top:0;pointer-events:none}
+#pjGraph .pjgt-e{fill:none;stroke:#F2C200;stroke-width:1.3;opacity:.8}
 </style>
 <script id="pjGraphJs">(function(){
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -22028,14 +22045,71 @@ html[data-theme="blanc"] #pjGraph .pjg-iso span{border-color:#F2C200}
     (state.tasks||[]).filter(t=>!t.deleted).concat(docs()).forEach(o=>{ ['etapesAvant','etapesApres'].forEach(k=>(o[k]||[]).forEach(e=>{ if(!e) return; const r=e.ref; if(!r||(r.k==='task'&&!(state.tasks||[]).some(x=>x.id===r.id))) mk(o,e); })); });
     if(ch){ try{ persist(); }catch(_){} } return ch; }
   let sig='';
+  const ROWH=28, LABW=220;
+  let viewMode=(function(){ try{ return localStorage.getItem('pg_pjgraph_view')||'graphe'; }catch(_){ return 'graphe'; } })();
+  let ganttCollapsed=new Set();
+  window.pjGraphSetView=function(v){ viewMode=v; try{ localStorage.setItem('pg_pjgraph_view',v); }catch(_){} build(true); };
+  window.pjGanttToggle=function(k){ if(ganttCollapsed.has(k)) ganttCollapsed.delete(k); else ganttCollapsed.add(k); build(true); };
+  const fdFull=v=>{ const t=String(v||'').slice(0,10).split('-'); return t.length===3&&t[0].length===4?t[2]+'/'+t[1]+'/'+t[0]:''; };
+  const KIND_ICON={projet:'🏗',bat:'🏢',niveau:'🧱',zone:'📍'};
+  /* Arbre Projet → Bâtiments → Niveaux → Pièces (zonesChantier, imbriquées) → Ouvrages (tâches, imbriquées par parentTaskId) */
+  function ganttBuildTree(T,tn){
+    try{ archEns(); }catch(_){}
+    const zonesAll=(state.zonesChantier||[]).slice();
+    const zoneKids={}; zonesAll.forEach(z=>{ if(z.parentId) (zoneKids[z.parentId]=zoneKids[z.parentId]||[]).push(z); });
+    const zonesTop={}; zonesAll.forEach(z=>{ if(!z.parentId) (zonesTop[z.niveau]=zonesTop[z.niveau]||[]).push(z); });
+    const taskKids={}; T.forEach(t=>{ if(t.parentTaskId) (taskKids[t.parentTaskId]=taskKids[t.parentTaskId]||[]).push(t); });
+    const tasksAt={}; T.forEach(t=>{ if(t.parentTaskId) return; const k=(t.niveau||'')+'|'+(t.zoneChantierId||''); (tasksAt[k]=tasksAt[k]||[]).push(t); });
+    const taskNode=t=>({key:'t:'+t.id,kind:'task',task:t,children:(taskKids[t.id]||[]).map(taskNode)});
+    const zoneNode=z=>{ const k=z.niveau+'|'+z.id; return {key:'gz:'+z.id,kind:'zone',label:zoneLabel(z),children:(zoneKids[z.id]||[]).map(zoneNode).concat((tasksAt[k]||[]).map(taskNode))}; };
+    const nivNode=n=>({key:'gn:'+n,kind:'niveau',label:(typeof nbLab==='function'?nbLab(n):n),children:(zonesTop[n]||[]).map(zoneNode).concat((tasksAt[n+'|']||[]).map(taskNode))});
+    const batNode=b=>({key:'gb:'+b.id,kind:'bat',label:b.nom||'Bâtiment',children:nbOrder().filter(n=>(state.nivBat||{})[n]===b.id).map(nivNode)});
+    const pn=(window.PILOTAGE_PROJET||{}).nom||(state.projet&&state.projet.nom)||'Projet';
+    const root={key:'gp:root',kind:'projet',label:pn,children:(state.batiments||[]).map(batNode)};
+    (function agg(node){
+      if(node.kind==='task'){ const info=tn(node.task); node.r1=info.r1||''; node.r2=info.r2||''; node.col=info.col; node.v=info.v; node.d1=info.d1; node.d2=info.d2; node.lab=info.c+(info.l?' — '+info.l:''); node.children.forEach(agg); node.count=1+node.children.reduce((s,c)=>s+c.count,0); return; }
+      node.children.forEach(agg);
+      let r1=null,r2=null,count=0; node.children.forEach(c=>{ count+=c.count||0; if(c.r1&&(!r1||c.r1<r1)) r1=c.r1; const end=c.r2||c.r1; if(end&&(!r2||end>r2)) r2=end; });
+      node.r1=r1||''; node.r2=r2||''; node.count=count;
+    })(root);
+    return root;
+  }
+  function ganttFlatten(node,depth,out){ const hasKids=!!(node.children&&node.children.length), collapsed=ganttCollapsed.has(node.key); out.push({node,depth,hasKids,collapsed}); if(hasKids&&!collapsed) node.children.forEach(c=>ganttFlatten(c,depth+1,out)); }
+  function ganttHtml(T,tn,EU){
+    const root=ganttBuildTree(T,tn);
+    if(!root.children.length) return '<small style="opacity:.7">Aucun bâtiment / niveau paramétré pour ce projet.</small>';
+    const rows=[]; ganttFlatten(root,0,rows);
+    const parseD=r=>new Date(r+'T00:00:00').getTime();
+    const gMinT=root.r1?parseD(root.r1):null, gMaxT=root.r1?parseD(root.r2||root.r1):null, gSpan=gMaxT!=null?(gMaxT-gMinT||1):1;
+    const pct=r=>gMinT==null?4:4+(parseD(r)-gMinT)/gSpan*92;
+    const idx={}; rows.forEach((e,i)=>{ if(e.node.kind==='task') idx[e.node.key]=i; });
+    let lines='';
+    (EU||[]).forEach(x=>{ if(x.a.kind!=='t'||x.b.kind!=='t') return; const ra=idx['t:'+x.a.id], rb=idx['t:'+x.b.id]; if(ra==null||rb==null) return; const an=rows[ra].node, bn=rows[rb].node; if(!an.r1||!bn.r1) return;
+      const ay=ra*ROWH+ROWH/2, by=rb*ROWH+ROWH/2, ax=pct(an.r2||an.r1), bx=pct(bn.r1);
+      lines+='<path class="pjgt-e" d="M'+ax.toFixed(2)+' '+ay+' C'+ax.toFixed(2)+' '+((ay+by)/2)+' '+bx.toFixed(2)+' '+((ay+by)/2)+' '+bx.toFixed(2)+' '+by+'" marker-end="url(#pjgtArrow)"/>'; });
+    const rowHtml=e=>{ const n=e.node, indent=10+e.depth*18;
+      const tgl=e.hasKids?'<button type="button" class="pjgt-tg" onclick="event.stopPropagation();pjGanttToggle(\''+n.key+'\')">'+(e.collapsed?'▸':'▾')+'</button>':'<span class="pjgt-tg"></span>';
+      let lab;
+      if(n.kind==='task'){ lab='<div class="pjgt-lab" style="padding-left:'+indent+'px" data-id="'+E(n.task.id)+'" data-k="t">'+tgl+'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+n.col+';flex:0 0 7px"></span><span>'+(n.v?'⚠ ':'')+E(cut(n.lab,32))+'</span></div>'; }
+      else { lab='<div class="pjgt-lab" style="padding-left:'+indent+'px"'+(e.hasKids?' onclick="pjGanttToggle(\''+n.key+'\')"':'')+'>'+tgl+'<span>'+(KIND_ICON[n.kind]||'')+'</span><b>'+E(n.label)+'</b>'+(n.count?'<small style="opacity:.6">('+n.count+')</small>':'')+'</div>'; }
+      let bar='';
+      if(n.r1){ const x1=pct(n.r1), x2=n.r2?pct(n.r2):x1;
+        if(n.kind==='task'){ bar=n.r2?'<div class="pjgt-bar" data-id="'+E(n.task.id)+'" data-k="t" style="left:'+x1.toFixed(2)+'%;width:'+Math.max(x2-x1,1.2).toFixed(2)+'%;background:'+n.col+'" title="'+E(n.lab+' ('+(n.d1||'—')+' → '+(n.d2||'—')+')')+'"></div>':'<div class="pjgt-mil" data-id="'+E(n.task.id)+'" data-k="t" style="left:'+x1.toFixed(2)+'%;border-color:'+n.col+'" title="'+E(n.lab+' ('+(n.d1||'—')+')')+'"></div>'; }
+        else { bar='<div class="pjgt-bar grp" style="left:'+x1.toFixed(2)+'%;width:'+Math.max(x2-x1,0.6).toFixed(2)+'%" title="'+E(n.label+' : '+fdFull(n.r1)+' → '+fdFull(n.r2||n.r1))+'"></div>'; } }
+      return '<div class="pjgt-row">'+lab+'<div class="pjgt-lane">'+bar+'</div></div>'; };
+    const h=rows.length*ROWH;
+    const scale=root.r1?('<div class="pjgt-scale"><span>'+fdFull(root.r1)+'</span><span>'+fdFull(root.r2||root.r1)+'</span></div>'):'<div class="pjgt-scale"><span style="opacity:.6">Aucune date renseignée sur les ouvrages</span></div>';
+    return '<div class="pjgt-wrap">'+scale+'<div class="pjgt-tree" style="height:'+h+'px"><svg class="pjgt-lines" width="100%" height="'+h+'" viewBox="0 0 100 '+h+'" preserveAspectRatio="none"><defs><marker id="pjgtArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#F2C200"/></marker></defs>'+lines+'</svg>'+rows.map(rowHtml).join('')+'</div></div>';
+  }
   function build(force){
     const pg=document.getElementById('page-planif'); if(!pg) return; let box=document.getElementById('pjGraph');
     try{ ensureMissing(); }catch(e){ console.error(e); }
     const T=(state.tasks||[]).filter(t=>!t.deleted); const N={}, EG=[];
     const colT=t=>{ if(t.aVerifier&&t.etat!=='fait') return OR; try{ if(t.etat!=='fait'&&window.actLate&&actLate(t)) return '#C0392B'; }catch(_){} return t.etat==='fait'?'#2E9E5B':t.etat==='encours'?'#E0A800':'#8A949B'; };
-    const tn=t=>N['t:'+t.id]||(N['t:'+t.id]={key:'t:'+t.id,id:t.id,kind:'t',niv:t.niveau||'',c:t.id,l:t.quoi||'',col:colT(t),d1:fd(t.quand),d2:fd(t.dateFin||t.butoir),v:!!t.aVerifier});
-    const dn=(d,e)=>{ const o=N['d:'+d.id]; const pt=!!(d.tacheOk||d.pointe||d.etat==='fait'||(d.etat&&d.etat!=='aemettre')); const n=o||(N['d:'+d.id]={key:'d:'+d.id,id:d.id,kind:'d',niv:d.niveau||'',c:'📄 '+(d.numero||d.docType||'Doc'),l:d.nom||'Document',col:pt?'#2E9E5B':'#8A949B',d1:'',d2:''}); if(e){ if(e.debut) n.d1=fd(e.debut); if(e.fin) n.d2=fd(e.fin); } return n; };
+    const tn=t=>N['t:'+t.id]||(N['t:'+t.id]={key:'t:'+t.id,id:t.id,kind:'t',niv:t.niveau||'',c:t.id,l:t.quoi||'',col:colT(t),d1:fd(t.quand),d2:fd(t.dateFin||t.butoir),r1:String(t.quand||'').slice(0,10),r2:String(t.dateFin||t.butoir||'').slice(0,10),v:!!t.aVerifier});
+    const dn=(d,e)=>{ const o=N['d:'+d.id]; const pt=!!(d.tacheOk||d.pointe||d.etat==='fait'||(d.etat&&d.etat!=='aemettre')); const n=o||(N['d:'+d.id]={key:'d:'+d.id,id:d.id,kind:'d',niv:d.niveau||'',c:'📄 '+(d.numero||d.docType||'Doc'),l:d.nom||'Document',col:pt?'#2E9E5B':'#8A949B',d1:'',d2:'',r1:'',r2:''}); if(e){ if(e.debut){ n.d1=fd(e.debut); n.r1=String(e.debut).slice(0,10); } if(e.fin){ n.d2=fd(e.fin); n.r2=String(e.fin).slice(0,10); } } return n; };
     const nodeOf=(k,id,e)=>{ if(k==='task'){ const t=T.find(x=>x.id===id); return t?tn(t):null; } const d=docById(id); return d?dn(d,e):null; };
+    T.forEach(t=>tn(t)); /* tous les ouvrages existent comme nœuds, même sans liaison : nécessaire pour le Gantt hiérarchique */
     T.forEach(t=>{ (t.dependances||[]).forEach(p=>{ const q=T.find(x=>x.id===p); if(q) EG.push({a:tn(q),b:tn(t),l:''}); }); });
     const own=(o,kind)=>kind==='task'?tn(o):dn(o);
     T.forEach(t=>{ ['etapesAvant','etapesApres'].forEach(k=>(t[k]||[]).forEach(e=>{ if(!e||!e.ref) return; const n=nodeOf(e.ref.k,e.ref.id,e); if(!n) return; const me=tn(t); if(k==='etapesAvant') EG.push({a:n,b:me,l:e.action||''}); else EG.push({a:me,b:n,l:e.action||''}); })); });
@@ -22045,6 +22119,11 @@ html[data-theme="blanc"] #pjGraph .pjg-iso span{border-color:#F2C200}
     if(!box){ box=document.createElement('section'); box.id='pjGraph'; const h=pg.querySelector('.section-head'); if(h) h.after(box); else pg.prepend(box); box.addEventListener('click',e=>{ const n=e.target.closest('[data-id]'); if(!n) return; try{ if(n.dataset.k==='d'&&window.pjOpenDoc) window.pjOpenDoc(n.dataset.id); else openTaskDetail(n.dataset.id); }catch(_){} }); }
     const inE={},outE={}; EU.forEach(x=>{ (inE[x.b.key]=inE[x.b.key]||[]).push(x); (outE[x.a.key]=outE[x.a.key]||[]).push(x); });
     const linked=n=>!!(inE[n.key]||outE[n.key]);
+    let bodyHtml, legend;
+    if(viewMode==='gantt'){
+      bodyHtml=ganttHtml(T,tn,EU);
+      legend='Projet → Bâtiments → Niveaux → Pièces → Ouvrages · barre = période planifiée · ◇ étape ponctuelle · contour = regroupement · ⇤⇥ dépendance avec un autre niveau · orange ⚠ : ouvrage à vérifier';
+    } else {
     const lv=(state.niveaux||[]).slice(); Object.values(N).forEach(n=>{ if(n.niv&&!lv.includes(n.niv)) lv.push(n.niv); }); T.forEach(t=>{ if(t.niveau&&!lv.includes(t.niveau)) lv.push(t.niveau); });
     const panels=lv.map((L,pi)=>{
       const allN=Object.values(N).filter(n=>n.niv===L), nodes=allN.filter(linked); const iso=T.filter(t=>t.niveau===L&&!t.parentTaskId&&!linked({key:'t:'+t.id}));
@@ -22065,7 +22144,11 @@ html[data-theme="blanc"] #pjGraph .pjg-iso span{border-color:#F2C200}
       const body=nodes.length?'<div class="pjg-s"><svg width="'+Math.max(ww,200)+'" height="'+Math.max(hh,60)+'" viewBox="0 0 '+Math.max(ww,200)+' '+Math.max(hh,60)+'"><defs><marker id="pjgA'+pi+'" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#F2C200"/></marker></defs>'+svg+ext+'</svg></div>':'<small style="opacity:.7">Aucune liaison sur ce niveau.</small>';
       const isoH=iso.length?'<div class="pjg-iso" title="Ouvrages sans liaison">'+iso.map(t=>'<span data-id="'+E(t.id)+'" data-k="t" title="'+E(t.quoi||'')+'"'+(t.aVerifier?' style="border-color:'+OR+';color:'+OR+'"':'')+'>'+E(t.id)+'</span>').join('')+'</div>':'';
       return '<div class="pjg-p"><div class="pjg-t"><b>'+E(L)+'</b><small>'+nodes.length+' liés · '+iso.length+' sans liaison</small></div>'+body+isoH+'</div>'; }).join('');
-    box.innerHTML='<div class="pjg-h"><h3>🕸 Graphe des étapes — par niveau</h3><small>'+EU.length+' liaisons · 📄 document · orange ⚠ : ouvrage à vérifier · pointillés : autre niveau</small></div><div class="pjg-grid">'+(panels||'<small>Aucun ouvrage dans la bibliothèque du projet.</small>')+'</div>'; }
+      bodyHtml='<div class="pjg-grid">'+(panels||'<small>Aucun ouvrage dans la bibliothèque du projet.</small>')+'</div>';
+      legend=EU.length+' liaisons · 📄 document · orange ⚠ : ouvrage à vérifier · pointillés : autre niveau';
+    }
+    const viewSel='<select class="pjg-view" onchange="pjGraphSetView(this.value)">'+[['graphe','🕸 Graphe'],['gantt','📅 Gantt']].map(v=>'<option value="'+v[0]+'"'+(v[0]===viewMode?' selected':'')+'>'+v[1]+'</option>').join('')+'</select>';
+    box.innerHTML='<div class="pjg-h">'+viewSel+'<small>'+legend+'</small></div>'+bodyHtml; }
   const o=window.renderPlanif; if(typeof o==='function'){ window.renderPlanif=function(){ const r=o.apply(this,arguments); try{ build(true); }catch(e){ console.error(e); } return r; }; }
   setInterval(()=>{ try{ const pg=document.getElementById('page-planif'); if(pg&&pg.classList.contains('active')) build(false); }catch(_){} },1500);
   /* liste des ouvrages : tag orange « à vérifier » */
