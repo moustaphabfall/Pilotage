@@ -2343,85 +2343,7 @@ function applyRexSeed(merged){
   }
   merged.rexRelu = merged.rexRelu || '';
 }
-/* ===================== MATÉRIELS LOUÉS ↔ OUVRAGES (onglet Refacturations) ===================== */
-function applyMaterielsSeed(merged){
-  merged.migrations = merged.migrations || {};
-  merged.materiels = merged.materiels || [];
-  if(merged.migrations['mat_20261022_picker']) return;
-  const find = q=>(merged.tasks||[]).find(t=>t.quoi===q);
-  const t1 = find('Réaliser les boîtiers de sol');
-  const t2 = find('Sidibé : finitions — local onduleur') || (merged.tasks||[]).find(t=>/finition/i.test(t.quoi||'') && /onduleur/i.test(t.quoi||''));
-  if(!t1 && !t2) return; /* les ouvrages arrivent au chargement suivant */
-  merged.migrations['mat_20261022_picker'] = true;
-  merged.materiels.push({id:'MAT-picker-1610', nom:'Picker (location)', loueur:'', debut:'2026-10-16', fin:'2026-10-22', jours:4, statut:'rendu', accuse:false,
-    notes:"Loué du vendredi 16/10 au jeudi 22/10 (4 jours facturés, à vérifier : 5 jours ouvrés). Retour le 22/10 ; accusé de réception demandé au loueur par mail.",
-    taskIds:[t1&&t1.id, t2&&t2.id].filter(Boolean)});
-}
-let matOuvert = false, matEdit = null;
-function matById(id){ return (state.materiels||[]).find(m=>m.id===id); }
-function matJours(m){ if(m.jours) return +m.jours; if(!m.debut||!m.fin) return 0; let n=0; const d=new Date(m.debut+'T12:00:00'), f=new Date(m.fin+'T12:00:00'); while(d<=f){ const w=d.getDay(); if(w&&w<6) n++; d.setDate(d.getDate()+1); } return n; }
-function matSave(){ persist(); renderMateriels(); }
-function renderMateriels(){
-  const wrap = document.getElementById('refacWrap'); if(!wrap) return;
-  let box = document.getElementById('matWrap');
-  if(!box){ box = document.createElement('div'); box.id='matWrap'; wrap.prepend(box); }
-  else if(box.parentNode!==wrap || wrap.firstChild!==box){ wrap.prepend(box); }
-  state.materiels = state.materiels || [];
-  const L = state.materiels;
-  const enLoc = L.filter(m=>m.statut!=='rendu').length, sansAcc = L.filter(m=>m.statut==='rendu'&&!m.accuse).length;
-  const card = m=>{
-    const tasks = (m.taskIds||[]).map(id=>taskById(id)).filter(Boolean);
-    return `<div class="mat-card ${m.statut==='rendu'?'rendu':''}">
-      <div class="mat-head"><div><strong>🚜 ${esc(m.nom||'Matériel')}</strong>${m.loueur?` — ${esc(m.loueur)}`:''}
-        <div class="mat-sub">${m.debut?'du '+tvFr(m.debut):''}${m.fin?' au '+tvFr(m.fin):''} · <b>${matJours(m)} jour${matJours(m)>1?'s':''}</b> de location</div></div>
-        <span class="mat-pill ${m.statut==='rendu'?'ok':''}">${m.statut==='rendu'?'Rendu':'En location'}</span></div>
-      <div class="mat-chk">
-        <label><input type="checkbox" ${m.statut==='rendu'?'checked':''} onchange="matSet('${m.id}','statut',this.checked?'rendu':'location')"> Matériel rendu</label>
-        <label class="${m.statut==='rendu'&&!m.accuse?'mat-warn':''}"><input type="checkbox" ${m.accuse?'checked':''} onchange="matSet('${m.id}','accuse',this.checked)"> Accusé de réception du retour reçu</label>
-      </div>
-      ${m.notes?`<p class="mat-notes">${esc(m.notes)}</p>`:''}
-      <div class="mat-tl"><span class="mat-lbl">Ouvrages associés (${tasks.length})</span>
-        ${tasks.length?tasks.map(t=>`<span class="mat-task"><a href="#" onclick="event.preventDefault(); openTaskDetail('${t.id}')">${esc(t.id)} · ${esc(t.quoi)}</a> <span class="mat-niv">${esc(t.niveau==='R+0'?'RDC':(t.niveau||''))}</span><button type="button" onclick="matUnlink('${m.id}','${t.id}')" aria-label="Retirer">✕</button></span>`).join(''):'<span class="empty-note">Aucun ouvrage associé.</span>'}
-      </div>
-      <div class="mat-add"><input type="search" id="matQ-${m.id}" placeholder="🔍 Associer un ouvrage : tapez un mot (ex. boîtier, onduleur)" autocomplete="off" oninput="matSearch('${m.id}')"><div class="mat-res" id="matR-${m.id}"></div></div>
-      <div class="mat-act"><button class="ghost" onclick="matForm('${m.id}')">✎ Modifier</button><button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="matDelete('${m.id}')">Supprimer</button></div>
-    </div>`;
-  };
-  box.innerHTML = `<details class="pl-rib mat-rib" ${matOuvert?'open':''} ontoggle="matOuvert=this.open"><summary><span>🚜 Matériels loués ↔ ouvrages <small>(${L.length}${enLoc?' · '+enLoc+' en location':''}${sansAcc?' · '+sansAcc+' sans accusé de retour':''})</small></span></summary>
-    <div class="pl-rib-body">
-      <div class="mat-bar"><button class="primary" onclick="matForm()">+ Nouveau matériel</button></div>
-      ${L.length?L.map(card).join(''):'<p class="empty-note">Aucun matériel loué. Ajoutez-en un pour l’associer aux ouvrages qui l’utilisent.</p>'}
-    </div></details>`;
-}
-function matSet(id,k,v){ const m=matById(id); if(!m) return; m[k]=v; matSave(); }
-function matUnlink(id,tid){ const m=matById(id); if(!m) return; m.taskIds=(m.taskIds||[]).filter(x=>x!==tid); matSave(); }
-function matLink(id,tid){ const m=matById(id); if(!m) return; m.taskIds=m.taskIds||[]; if(!m.taskIds.includes(tid)) m.taskIds.push(tid); matSave(); }
-function matSearch(id){
-  const q=(document.getElementById('matQ-'+id).value||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(), box=document.getElementById('matR-'+id); if(!box) return;
-  if(q.length<2){ box.innerHTML=''; return; }
-  const m=matById(id), terms=q.split(/\s+/);
-  const R=(state.tasks||[]).filter(t=>!(m.taskIds||[]).includes(t.id)).filter(t=>{ const s=((t.id||'')+' '+(t.quoi||'')+' '+(t.zone||'')+' '+(t.niveau||'')).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); return terms.every(w=>s.includes(w)); }).slice(0,8);
-  box.innerHTML = R.length? R.map(t=>`<button type="button" onclick="matLink('${id}','${t.id}')"><b>${esc(t.id)}</b> ${esc(t.quoi)} <small>${esc(t.niveau==='R+0'?'RDC':(t.niveau||''))}</small></button>`).join('') : '<span class="empty-note">Aucun ouvrage trouvé.</span>';
-}
-function matForm(id){
-  const m = id ? matById(id) : {nom:'', loueur:'', debut:todayISO(), fin:'', jours:'', statut:'location', notes:''};
-  openModal(`<h3>${id?'Modifier le matériel':'Nouveau matériel loué'}</h3>
-    <div class="field"><label>Matériel</label><input type="text" id="mat-nom" value="${esc(m.nom||'')}" placeholder="ex. Picker, nacelle, PIRL…"></div>
-    <div class="field"><label>Loueur</label><input type="text" id="mat-loueur" value="${esc(m.loueur||'')}" placeholder="Entreprise de location"></div>
-    <div class="row2"><div class="field"><label>Début</label><input type="date" id="mat-debut" value="${m.debut||''}"></div><div class="field"><label>Fin / retour</label><input type="date" id="mat-fin" value="${m.fin||''}"></div></div>
-    <div class="field"><label>Jours facturés (vide = calcul en jours ouvrés)</label><input type="number" min="0" id="mat-jours" value="${m.jours||''}"></div>
-    <div class="field"><label>Notes</label><textarea id="mat-notes">${esc(m.notes||'')}</textarea></div>
-    <div class="modal-actions"><button class="primary" onclick="matFormOk('${id||''}')">Enregistrer</button><button class="ghost" onclick="closeModal()">Annuler</button></div>`);
-}
-function matFormOk(id){
-  const v=k=>document.getElementById('mat-'+k).value;
-  const nom=v('nom').trim(); if(!nom){ miniAlert('Donnez un nom au matériel.'); return; }
-  let m = id ? matById(id) : null;
-  if(!m){ m={id:uid('MAT'), statut:'location', accuse:false, taskIds:[]}; state.materiels=state.materiels||[]; state.materiels.unshift(m); }
-  Object.assign(m,{nom, loueur:v('loueur').trim(), debut:v('debut'), fin:v('fin'), jours:v('jours')?+v('jours'):'', notes:v('notes').trim()});
-  closeModal(); matSave();
-}
-function matDelete(id){ miniConfirm('Supprimer ce matériel ? Les ouvrages ne sont pas supprimées.', ()=>{ state.materiels=(state.materiels||[]).filter(m=>m.id!==id); matSave(); }); }
+
 
 /* Repositionnements de pastilles demandés (une seule fois) : centre de la pièce nommée */
 const ORCH_REPOS = [];
@@ -2461,7 +2383,6 @@ function mergeState(s){
   applyOrchInbox(merged);
   applyOrchPhotos(merged);
   applyToursSeed(merged);
-  try{ applyMaterielsSeed(merged); }catch(e){ console.error(e); }
   try{ applyRexSeed(merged); }catch(e){ console.error(e); }
   try{ applyRexAstuces(merged); applyRexAstuces2(merged); }catch(e){ console.error(e); }
   try{ applyRepositions(merged); }catch(e){ console.error(e); }
@@ -13310,7 +13231,7 @@ async function cauDocDl(id){
   try{ const b=await (await fetch(c.doc.data)).blob(); await saveFile(c.doc.name||'acte-caution', b); }catch(e){ console.error(e); miniAlert('Impossible d’ouvrir le document.'); }
 }
 
-(function(){ if(typeof renderRefac==='function' && !window._rrWrapped){ window._rrWrapped=true; const r0=renderRefac; renderRefac=function(){ r0.apply(this,arguments); try{ renderMateriels(); }catch(e){ console.error(e); } try{ renderCautions(); }catch(e){ console.error(e); } }; } })();
+(function(){ if(typeof renderRefac==='function' && !window._rrWrapped){ window._rrWrapped=true; const r0=renderRefac; renderRefac=function(){ r0.apply(this,arguments); try{ renderCautions(); }catch(e){ console.error(e); } }; } })();
 (function(){
   const mb = document.getElementById('modalBody'); if(!mb || mb._mbFix) return; mb._mbFix = true;
   let busy = false;
@@ -21404,7 +21325,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v399';
+  const VER='v400';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
