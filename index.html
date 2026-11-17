@@ -11521,8 +11521,15 @@ function finById(id){ return finAll().find(d=>d.id===id); }
 function finType(d){ return FIN_TYPES.find(t=>t.k===d.type)||FIN_TYPES[0]; }
 function finNumero(type){ return finAll().filter(d=>d.type===type).length + 1; }
 function finLabel(d){ return finType(d).s+' '+(d.numero||finNumero(d.type)); }
-function finLots(){ return ents().map(e=>e.nom); }
-function finLotOptions(sel){ return '<option value="">— Choisir un lot —</option>'+finLots().map(n=>`<option value="${esc(n)}" ${n===sel?'selected':''}>${esc(n)}</option>`).join(''); }
+function finLots(){
+  try{
+    const L = window.lotsApi ? window.lotsApi.ensure() : [];
+    const order = ((window.lotsApi && window.lotsApi.FAM) || [['CEA'],['GO'],['CC'],['CET']]).map(f=>f[0]);
+    const out = [];
+    order.forEach(fam=>{ L.filter(l=>l.famille===fam).forEach(l=>{ if(!out.includes(l.nom)) out.push(l.nom); }); });
+    return out;
+  }catch(e){ return []; }
+}
 function finListFiltree(){
   const actifs = FIN_TYPES.filter(t=>finTypesActifs[t.k]).map(t=>t.k);
   let list = finAll().filter(d=>actifs.includes(d.type));
@@ -11641,7 +11648,7 @@ function finOpenEdit(id){
   const d = finById(id); if(!d) return;
   const t = finType(d);
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>${t.icon} ${esc(finLabel(d))}</h3>
-    <div class="field"><label>Lot</label><select id="fn-lot">${finLotOptions(d.lot)}</select></div>
+    <div class="field"><label>Lot</label><input type="text" id="fn-lot" data-lotpick value="${esc(d.lot)}" placeholder="Rechercher ou créer un lot…" autocomplete="off"></div>
     <div class="field"><label>Date</label><input type="date" id="fn-date" value="${d.date||''}"></div>
     <div class="field"><label>Société</label><select id="fn-soc" onchange="finFieldEntChange(this)">${entrepriseOptions(d.societe)}</select></div>
     <div class="field"><label>Pièce jointe</label>
@@ -11653,12 +11660,14 @@ function finOpenEdit(id){
       <button class="primary" onclick="finSaveEdit('${d.id}')">Enregistrer</button>
       <button class="ghost" onclick="closeModal()">Fermer</button>
     </div>`);
+  const lotInp = document.getElementById('fn-lot');
+  if(lotInp && window.lotsApi) window.lotsApi.picker(lotInp);
 }
 function finFieldEntChange(sel){ if(sel.value==='__autre__') handleEntrepriseChange(sel); }
 function finSaveEdit(id){
   const d = finById(id); if(!d) return;
   const g = i=>document.getElementById(i).value;
-  const lot = g('fn-lot'), soc = g('fn-soc');
+  const lot = g('fn-lot').trim(), soc = g('fn-soc');
   if(soc==='__autre__'){ miniAlert('Choisissez une société, ou validez d\'abord l\'ajout proposé.'); return; }
   d.lot = lot; d.societe = soc; d.date = g('fn-date')||'';
   const fileInput = document.getElementById('fn-pdf');
@@ -21395,7 +21404,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v397';
+  const VER='v398';
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
   const fd=s=>{ const t=String(s||'').slice(0,10).split('-'); return t.length===3?t[2]+'/'+t[1]+'/'+t[0]:''; };
