@@ -18452,7 +18452,7 @@ body.lv-etudes .fp-btn[data-k=taches]{display:none !important}
     const keys=()=>Object.keys(T());
     function draw(msg,ok){
       const p=list.find(x=>x.id===sel)||list[0]; if(!p){ close(); return; } sel=p.id;
-      const ks=keys(), allowed=(p.types_autorises&&p.types_autorises.length)?p.types_autorises:ks, isCur=p.id===cur.id;
+      const ks=keys(), isCur=p.id===cur.id;
       ov.innerHTML='<div>'
         +'<div class="gp-h"><b>Gestion des projets</b><button type="button" data-x>✕ Fermer</button></div>'
         +'<div class="gp-l">Projet</div>'
@@ -18461,9 +18461,8 @@ body.lv-etudes .fp-btn[data-k=taches]{display:none !important}
         +'<button type="button" class="gp-ic" data-a="dup" title="Dupliquer avec toutes les données">⧉ Dupliquer</button>'
         +'<button type="button" class="gp-ic gp-del" data-a="del" title="Supprimer définitivement avec toutes les données">🗑 Supprimer</button></div>'
         +'<div class="gp-box"><div class="gp-h"><span class="gp-l">Paramétrage · '+esc(p.nom)+'</span>'+(p.archive?'<span class="gp-st">Archivé</span>':'')+'</div>'
-        +'<div class="gp-l" style="margin-top:2px">Types d’espace autorisés</div>'
-        +ks.map(k=>'<label class="gp-ty"><input type="checkbox" data-ok="'+k+'" '+(allowed.includes(k)?'checked':'')+'><span><b>'+esc(A()[k]||k)+'</b> — '+esc(T()[k]||k)+'</span>'+((p.type===k)?'<span class="gp-st">actif</span>':'')+'</label>').join('')
-        +'<div class="gp-l" style="margin-top:4px">Type actif</div><select id="gpTy">'+ks.filter(k=>allowed.includes(k)).map(k=>'<option value="'+k+'"'+(p.type===k?' selected':'')+'>'+esc((A()[k]||k)+' — '+(T()[k]||k))+'</option>').join('')+'</select>'
+        +'<div class="gp-l" style="margin-top:2px">Type actif <small style="font-weight:400;opacity:.7">— regroupe tout l’espace du projet</small></div>'
+        +'<select id="gpTy">'+ks.map(k=>'<option value="'+k+'"'+(p.type===k?' selected':'')+'>'+esc((A()[k]||k)+' — '+(T()[k]||k))+'</option>').join('')+'</select>'
         +'<div class="gp-row" style="justify-content:flex-end"><button type="button" class="gp-main" data-a="save" style="padding:9px 14px;cursor:pointer">Enregistrer</button></div></div>'
         +'<div class="gp-row">'+(isCur?'':'<button type="button" class="gp-main" data-a="open" style="padding:10px 14px;cursor:pointer">Ouvrir ce projet</button>')
         +'<button type="button" data-a="new" style="padding:10px 14px;cursor:pointer">＋ Nouveau workspace</button>'+(isCur?'<button type="button" data-a="demo" title="Ajoute 70 ouvrages fictives sur 1 an (R+0, R+1, R+2)" style="padding:10px 14px;cursor:pointer">🧪 Charger le jeu de démo (1 an)</button>':'')+'</div>'
@@ -18471,7 +18470,6 @@ body.lv-etudes .fp-btn[data-k=taches]{display:none !important}
       const say=(t,g)=>{ const m=ov.querySelector('#gpMsg'); if(m){ m.textContent=t||''; m.className='gp-msg'+(g?' ok':''); } };
       ov.querySelector('[data-x]').onclick=close;
       ov.querySelector('#gpSel').onchange=e=>{ sel=e.target.value; draw(); };
-      ov.querySelectorAll('[data-ok]').forEach(c=>c.onchange=()=>{ const sy=ov.querySelector('#gpTy'); const a=[...ov.querySelectorAll('[data-ok]:checked')].map(i=>i.dataset.ok); sy.innerHTML=a.map(k=>'<option value="'+k+'"'+(p.type===k?' selected':'')+'>'+esc((A()[k]||k)+' — '+(T()[k]||k))+'</option>').join(''); });
       ov.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{ const a=b.dataset.a;
         try{
           if(a==='open'){ window.pilotageSwitchProjet(p.id); return; }
@@ -18480,9 +18478,8 @@ body.lv-etudes .fp-btn[data-k=taches]{display:none !important}
             rows.forEach(r=>{ if(taskById(r.id)) return; const t=taskBase(r.id,r.corps+' — '+r.quoi,r.niveau,{quand:r.quand,dateFin:r.dateFin,dureeEstimee:r.dureeEstimee,dependances:r.dependances.slice(),zone:r.corps,demo:true}); state.tasks.push(t); n++; });
             persist(); try{ renderAll(); }catch(e){} draw(n+' ouvrages ajoutés.',true); return; }
           if(a==='new'){ close(); const nb=document.getElementById('pgNewP'); if(nb) nb.click(); else if(window.pgOpen){ window.pgOpen('settings'); setTimeout(()=>{ const n=document.getElementById('pgNewP'); if(n) n.click(); },500); } return; }
-          if(a==='save'){ const arr=[...ov.querySelectorAll('[data-ok]:checked')].map(i=>i.dataset.ok); if(!arr.length){ say('Autorisez au moins un type.'); return; }
-            const ty=ov.querySelector('#gpTy').value; const val=arr.length===ks.length?null:arr;
-            await window.PILOTAGE_SET_TYPES_OK(p.id,val); await window.PILOTAGE_SET_TYPE(p.id,ty); p.types_autorises=val; p.type=ty; if(isCur){ cur.types_autorises=val; cur.type=ty; location.reload(); return; } draw('Enregistré.',true); return; }
+          if(a==='save'){ const ty=ov.querySelector('#gpTy').value;
+            await window.PILOTAGE_SET_TYPES_OK(p.id,null); await window.PILOTAGE_SET_TYPE(p.id,ty); p.types_autorises=null; p.type=ty; if(isCur){ cur.types_autorises=null; cur.type=ty; location.reload(); return; } draw('Enregistré.',true); return; }
           if(a==='arc'){ const on=!p.archive; await window.PILOTAGE_PROJ.archiver(p.id,on); p.archive=on; draw(on?'Projet clôturé (archivé).':'Projet rouvert.',true); return; }
           if(a==='dup'){ const base=p.id.replace(/[^A-Z0-9_-]/gi,'').toUpperCase(); let id=base+'-COPIE', n=2; while(list.some(x=>x.id===id)) id=base+'-COPIE'+(n++);
             say('Copie en cours…',true); const nom=p.nom+' (copie)'; await window.PILOTAGE_PROJ.dupliquer(p.id,id,nom); list.push({id,nom,type:p.type,types_autorises:p.types_autorises,archive:false}); sel=id; draw('Projet dupliqué avec toutes ses données.',true); return; }
@@ -21322,7 +21319,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v413';
+  const VER='v414';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
