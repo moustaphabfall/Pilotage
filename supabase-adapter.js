@@ -61,7 +61,7 @@
           try{
             const r = await fetch(cfg.url+'/functions/v1/acces', {method:'POST', headers:{'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer '+cfg.anonKey}, body:JSON.stringify({action:'demande', email:lastEmail, nom:String(f.get('nom')||'').trim(), type:String(f.get('type')||'').trim(), redirectTo:location.origin+location.pathname})});
             const j = await r.json().catch(()=>({})); if(!r.ok || j.error) throw new Error(j.error||'Envoi impossible');
-            const d2 = screen(`<div class="box">${TST}<h2>✅ Demande envoyée</h2><p>${j.existe?'Un compte existe déjà avec cette adresse : connectez-vous.':'Votre demande a été envoyée à l’administrateur.<br>Vous recevrez un lien de validation pour vous connecter à <b>Been11</b>.<br><br><b>Pensez à regarder vos courriers indésirables.</b>'}</p><button id="rqOk">Retour à la connexion</button></div>`);
+            const d2 = screen(`<div class="box">${TST}<h2>✅ Demande envoyée</h2><p>${j.existe?'Un compte existe déjà avec cette adresse : connectez-vous.':'Votre demande a été envoyée. Merci de vérifier votre boîte de réception (ou vos spams) : vous recevrez un lien d’inscription pour valider votre adresse et avoir accès à votre espace.'}</p><button id="rqOk">Retour à la connexion</button></div>`);
             d2.querySelector('#rqOk').onclick = ()=>{ mode = 'in'; draw(); };
           }catch(e){ reqUI(e.message||'Erreur', false); }
         };
@@ -88,7 +88,7 @@
         const bk = d.querySelector('#pgBk'); if(bk) bk.onclick = ()=>{ lastEmail = (d.querySelector('input[name=email]').value||'').trim(); mode = 'in'; draw(); };
         d.querySelector('form').onsubmit = async ev=>{
           ev.preventDefault(); const f = new FormData(ev.target), email = f.get('email');
-          if(mode==='fg'){ lastEmail = email; const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:location.origin+location.pathname}); draw(error?error.message:'Si cette adresse a un accès, un e-mail vient d’être envoyé : cliquez sur le lien pour choisir un nouveau mot de passe.', !error); return; }
+          if(mode==='fg'){ lastEmail = email; const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:location.origin+location.pathname}); draw(error?error.message:'Si cette adresse a un accès, votre demande a été envoyée : vérifiez votre boîte de réception (ou vos spams) et cliquez sur le lien pour choisir un nouveau mot de passe.', !error); return; }
           const pw = f.get('pw');
           try{
             const {error} = await sb.auth.signInWithPassword({email, password:pw}); if(error) throw error;
@@ -141,18 +141,24 @@
     });
   }
 
-  /* arrivée par le lien de l'e-mail : l'adresse est ainsi vérifiée ; la personne choisit son mot de passe */
+  /* arrivée par le lien de l'e-mail : l'adresse est ainsi vérifiée ; la personne choisit son mot de passe et complète son nom */
   async function passwordUI(){
     let md = {}, mail = ''; try{ const g = await sb.auth.getSession(); const u = g.data && g.data.session && g.data.session.user; md = (u && u.user_metadata) || {}; mail = (u && u.email) || ''; }catch(e){}
     const H = t=>String(t||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const who = md.invite_par ? '<p><b>'+H(md.invite_par)+'</b> vous a invité(e) à rejoindre <b>Been11</b>'+(md.projet?' sur le projet <b>'+H(md.projet)+'</b>':'')+'.</p>' : '<p>Vous avez été invité(e) à rejoindre <b>Been11</b>.</p>';
+    const profil = md.role_label || '';
+    const who = (md.invite_par ? '<b>'+H(md.invite_par)+'</b> vous invite à rejoindre le workspace'+(md.projet?' <b>'+H(md.projet)+'</b>':'') : 'Vous avez été invité(e) à rejoindre le workspace'+(md.projet?' <b>'+H(md.projet)+'</b>':''))+'. Veuillez compléter le formulaire ci-dessous pour avoir accès à votre espace'+(profil?' en tant que <b>'+H(profil)+'</b>':'')+'.';
+    const nomActuel = String(md.nom||'').trim();
     return new Promise(res=>{
       const draw = err=>{
-        const d = screen('<form><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Been11</div><h2>🔐 Créez votre compte</h2>'+who+(mail?'<small>Identifiant : '+H(mail)+'</small><br>':'')+'<small>Votre adresse e-mail est vérifiée. Choisissez maintenant votre mot de passe (8 caractères minimum) : personne d’autre ne le verra, pas même l’administrateur.</small>'
+        const d = screen('<form><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Been11</div><h2>🔐 Créez votre compte</h2><p>'+who+'</p>'+(mail?'<small>Identifiant : '+H(mail)+'</small><br>':'')
+          +'<input name="prenom" type="text" placeholder="Prénom" required autocomplete="given-name" maxlength="60" value="'+H(nomActuel.split(/\s+/)[0]||'')+'"><input name="nom" type="text" placeholder="Nom" required autocomplete="family-name" maxlength="60" value="'+H(nomActuel.split(/\s+/).slice(1).join(' '))+'">'
+          +'<small>Votre adresse e-mail est vérifiée. Choisissez maintenant votre mot de passe (8 caractères minimum) : personne d’autre ne le verra, pas même l’administrateur.</small>'
           +'<input name="p1" type="password" placeholder="Nouveau mot de passe" minlength="8" required autocomplete="new-password"><input name="p2" type="password" placeholder="Confirmer le mot de passe" minlength="8" required autocomplete="new-password"><div class="e">'+(err||'')+'</div><button type="submit">Enregistrer et entrer</button></form>');
         d.querySelector('form').onsubmit = async ev=>{ ev.preventDefault(); const f = new FormData(ev.target), a = f.get('p1'), b = f.get('p2');
           if(a!==b){ draw('Les deux mots de passe ne sont pas identiques.'); return; }
-          const {error} = await sb.auth.updateUser({password:a}); if(error){ draw(error.message); return; }
+          const fullName = (String(f.get('prenom')||'').trim()+' '+String(f.get('nom')||'').trim()).trim();
+          const {error} = await sb.auth.updateUser({password:a, data:{nom:fullName}}); if(error){ draw(error.message); return; }
+          try{ await sb.rpc('pg_set_my_name', {p_nom: fullName}); }catch(e){}   /* au mieux : si la base n'a pas encore la fonction, le compte reste utilisable, seul le nom restera celui saisi par l'administrateur */
           try{ history.replaceState(null,'',location.pathname); }catch(e){}
           await sb.auth.signOut();   /* la personne se connecte ensuite elle-même avec son nouveau mot de passe */
           res(); };
@@ -350,7 +356,7 @@
     let banner = null;
     const INV = new URLSearchParams(location.search).get('invit');
     if(INV){ banner = await invitUI(INV) || null; try{ history.replaceState(null,'',location.pathname); }catch(e){} try{ await sb.auth.signOut(); }catch(e){} session = null; }
-    if(session && RET && /invite|recovery/.test(RET[1])){ await passwordUI(); session = null; banner = 'Mot de passe enregistré. Connectez-vous avec votre e-mail et ce nouveau mot de passe.'; }
+    if(session && RET && /invite|recovery/.test(RET[1])){ await passwordUI(); session = null; banner = RET[1]==='recovery' ? 'Mot de passe enregistré. Connectez-vous avec votre e-mail et ce nouveau mot de passe.' : 'Compte créé. Connectez-vous maintenant avec votre e-mail et le mot de passe que vous venez de choisir.'; }
     if(session && DV){ try{ await sb.rpc('appareil_valider', {p_dev:DV}); await sb.rpc('appareil_valider', {p_dev:DEV}); }catch(e){} try{ history.replaceState(null,'',location.pathname); }catch(e){} }   /* lien de vérification cliqué : cet appareil (et celui qui attend) sont validés */
     if(!session){ try{ const r = await sb.auth.refreshSession(); if(r&&r.data&&r.data.session) session = r.data.session; }catch(e){} if(!session){ await new Promise(r=>setTimeout(r,500)); try{ ({data:{session}} = await sb.auth.getSession()); }catch(e){} } }   /* ne pas redemander le mot de passe si le jeton a seulement expiré */
     if(!session){ await loginUI(banner); ({data:{session}} = await sb.auth.getSession()); }
