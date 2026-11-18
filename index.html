@@ -427,6 +427,13 @@ tr.tr-row:hover{background:#F7F9F6; cursor:pointer;}
 .fin-tag.muted{color:var(--ink-soft); font-style:italic;}
 .fin-pj{box-sizing:border-box; margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; min-width:30px; min-height:30px; padding:0; line-height:1; border-radius:50%; border:1.5px solid var(--line); background:transparent; cursor:pointer; font-size:14px; color:var(--ink);}
 .fin-pj:hover{background:transparent; border-color:var(--ink);}
+.fin-chart-rib{margin-bottom:10px;}
+.fin-chart-legend{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:6px; font-size:12px; color:var(--ink-soft);}
+.fin-leg-it{display:inline-flex; align-items:center; gap:5px;}
+.fin-leg-it i{width:10px; height:10px; border-radius:50%; display:inline-block;}
+.fin-chart-svg{width:100%; height:auto; display:block;}
+.fin-cgrid{stroke:var(--line); stroke-width:1;}
+.fin-caxis{font-size:9.5px; fill:var(--ink-soft);}
 .fin-preview{background:transparent; border:1.5px solid var(--line); border-radius:8px; padding:10px; margin-top:6px;}
 .fin-preview-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:13px;}
 .fin-preview-frame{width:100%; height:70vh; border:0; border-radius:4px;}
@@ -11456,9 +11463,37 @@ function finRefresh(){ persist(); renderFinDocs(); }
 function finAddNew(type, input){
   const f = input.files && input.files[0]; if(!f) return;
   readFileAsDataUrl(f).then(src=>{
-    const d = {id:uid('FIN'), type, numero:finNumero(type), lot:'', date:'', societe:'', pdf:{name:f.name, src}};
+    const d = {id:uid('FIN'), type, numero:finNumero(type), lot:'', date:'', societe:'', montant:0, pdf:{name:f.name, src}};
     finAll().push(d); input.value=''; finPreviewId = d.id; finRefresh();
   });
+}
+/* ===== Graphique des montants (devis/situation/facture dans le temps, par mois) ===== */
+const FIN_COLORS = {devis:'#4C8DFF', situation:'#F2A900', facture:'#2EBD6B'};
+function finMonthKey(dateStr){ return dateStr ? dateStr.slice(0,7) : null; }
+function finChartData(){
+  const byType={}; FIN_TYPES.forEach(t=>byType[t.k]={});
+  finAll().forEach(d=>{ const mk=finMonthKey(d.date); if(!mk) return; const amt=Number(d.montant)||0; if(!amt) return; byType[d.type][mk]=(byType[d.type][mk]||0)+amt; });
+  const months=new Set(); Object.values(byType).forEach(o=>Object.keys(o).forEach(m=>months.add(m)));
+  return {months:Array.from(months).sort(), byType};
+}
+function finChartSvg(){
+  const {months,byType}=finChartData();
+  if(!months.length) return '<p class="empty-note">Pas encore de montants renseignés sur les devis, situations ou factures : ouvrez un document et indiquez son montant pour voir apparaître la courbe.</p>';
+  const W=640,H=210,padL=52,padR=14,padT=14,padB=28;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  let maxV=0; FIN_TYPES.forEach(t=>months.forEach(m=>{ maxV=Math.max(maxV,(byType[t.k]&&byType[t.k][m])||0); }));
+  const niceMax = maxV>0 ? Math.ceil(maxV/1000)*1000 : 1;
+  const x=i=> padL + (months.length>1? i/(months.length-1)*innerW : innerW/2);
+  const y=v=> padT + innerH - (v/niceMax)*innerH;
+  const gridLines=[0,0.25,0.5,0.75,1].map(f=>{ const yy=padT+innerH-f*innerH; return `<line x1="${padL}" x2="${W-padR}" y1="${yy}" y2="${yy}" class="fin-cgrid"/><text x="${padL-6}" y="${yy+4}" class="fin-caxis" text-anchor="end">${Math.round(f*niceMax).toLocaleString('fr-FR')}</text>`; }).join('');
+  const xLabels=months.map((m,i)=>{ const dt=new Date(m+'-01T12:00:00'); const lbl=dt.toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}); return `<text x="${x(i)}" y="${H-8}" class="fin-caxis" text-anchor="middle">${esc(lbl)}</text>`; }).join('');
+  const lines=FIN_TYPES.map(t=>{
+    const pts=months.map((m,i)=> x(i)+','+y((byType[t.k]&&byType[t.k][m])||0)).join(' ');
+    const dots=months.map((m,i)=>{ const v=(byType[t.k]&&byType[t.k][m])||0; return v?`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" fill="${FIN_COLORS[t.k]}"><title>${esc(t.s)} — ${esc(refacEuro(v))}</title></circle>`:''; }).join('');
+    return `<polyline points="${pts}" fill="none" stroke="${FIN_COLORS[t.k]}" stroke-width="2.2"/>${dots}`;
+  }).join('');
+  const legend=FIN_TYPES.map(t=>`<span class="fin-leg-it"><i style="background:${FIN_COLORS[t.k]}"></i>${esc(t.pl)}</span>`).join('');
+  return `<div class="fin-chart-legend">${legend}</div><svg viewBox="0 0 ${W} ${H}" class="fin-chart-svg" preserveAspectRatio="xMidYMid meet">${gridLines}${lines}${xLabels}</svg>`;
 }
 function finTriggerAdd(type){ const inp=document.getElementById('finAddInput'); if(!inp) return; inp.dataset.type=type; inp.click(); }
 function finToggleType(k){ finTypesActifs[k] = !finTypesActifs[k]; renderFinDocs(); }
@@ -11507,6 +11542,7 @@ function finRowHtml(d){
     <span class="fin-tag ${d.lot?'':'muted'}">${lotTag}</span>
     <span class="fin-tag ${d.date?'':'muted'}">${dateTag}</span>
     <span class="fin-tag ${d.societe?'':'muted'}">${socTag}</span>
+    <span class="fin-tag ${d.montant?'':'muted'}" style="${d.montant?'font-weight:600;':''}">${d.montant?esc(refacEuro(d.montant)):'Montant ?'}</span>
     <button type="button" class="fin-pj" title="Voir la pièce jointe" onclick="event.stopPropagation(); finPreviewId='${d.id}'; renderFinDocs();">📎</button>
   </div>`;
 }
@@ -11549,7 +11585,8 @@ function renderFinDocs(){
   const rows = list.length ? list.map(finRowHtml).join('') : '<p class="empty-note">Aucun document pour ce filtre. Cliquez sur « + » à côté d’un type pour déposer un PDF.</p>';
   const preview = finPreviewId ? finPreviewHtml(finPreviewId) : '';
   const total = finAll().length;
-  wrap.innerHTML = `<details class="pl-rib fin-rib" ${finOuvert?'open':''} ontoggle="finOuvert=this.open"><summary><span>📄 Devis, situations et factures <small>(${total})</small></span></summary>
+  wrap.innerHTML = `<details class="pl-rib fin-chart-rib" open><summary><span>📈 Montants dans le temps</span></summary><div class="pl-rib-body">${finChartSvg()}</div></details>
+    <details class="pl-rib fin-rib" ${finOuvert?'open':''} ontoggle="finOuvert=this.open"><summary><span>📄 Devis, situations et factures <small>(${total})</small></span></summary>
     <div class="pl-rib-body">
       <input type="file" id="finAddInput" accept="application/pdf" style="display:none;" onchange="finAddNew(this.dataset.type,this)">
       <div class="fin-bar">${typeBtns}</div>
@@ -11565,6 +11602,7 @@ function finOpenEdit(id){
     <div class="field"><label>Lot</label><input type="text" id="fn-lot" data-lotpick value="${esc(d.lot)}" placeholder="Rechercher ou créer un lot…" autocomplete="off"></div>
     <div class="field"><label>Date</label><input type="date" id="fn-date" value="${d.date||''}"></div>
     <div class="field"><label>Société</label><select id="fn-soc" onchange="finFieldEntChange(this)">${entrepriseOptions(d.societe)}</select></div>
+    <div class="field"><label>Montant (€)</label><input type="text" inputmode="decimal" id="fn-mt" value="${d.montant?esc(String(d.montant)):''}" placeholder="0,00"></div>
     <div class="field"><label>Pièce jointe</label>
       ${d.pdf?`<p class="empty-note">📎 ${esc(d.pdf.name)} — <a href="#" onclick="event.preventDefault(); finPreviewId='${d.id}'; closeModal(); renderFinDocs();">voir</a></p>`:'<p class="empty-note">Aucune pièce jointe.</p>'}
       <input type="file" id="fn-pdf" accept="application/pdf">
@@ -11583,7 +11621,7 @@ function finSaveEdit(id){
   const g = i=>document.getElementById(i).value;
   const lot = g('fn-lot').trim(), soc = g('fn-soc');
   if(soc==='__autre__'){ miniAlert('Choisissez une société, ou validez d\'abord l\'ajout proposé.'); return; }
-  d.lot = lot; d.societe = soc; d.date = g('fn-date')||'';
+  d.lot = lot; d.societe = soc; d.date = g('fn-date')||''; d.montant = Number((g('fn-mt')||'').replace(',','.'))||0;
   const fileInput = document.getElementById('fn-pdf');
   const finish = ()=>{ closeModal(); finRefresh(); };
   if(fileInput && fileInput.files && fileInput.files[0]){
@@ -16133,7 +16171,8 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
   const PG_FONCTIONS={
     nettoyage:['Chef d’équipe','Responsable opérationnel','Compagnon'],
     entreprise_generale:['Directeur','Responsable travaux principal','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon'],
-    ces:['Directeur','Chargé d’affaires','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon']
+    ces:['Directeur','Chargé d’affaires','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon'],
+    bureau_etudes:['Directeur','Chargé d’affaires','Stagiaire ou apprenti']
   };
   window.PG_FONCTIONS=PG_FONCTIONS;
   /* métiers d'un espace « Corps d'état secondaire » (cahier des charges §4) */
@@ -21319,7 +21358,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v414';
+  const VER='v415';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22788,6 +22827,425 @@ window.createInterloc=function(returnTaskId){
       o.querySelector('[data-a=del]').onclick=()=>{ const r=clear(); draw('Retiré : '+r.o+' ouvrages et '+r.d+' documents.'); }; };
     o.addEventListener('click',e=>{ if(e.target===o) o.remove(); }); document.body.appendChild(o); draw('');
   };
+})();
+</script>
+<style id="beCss">
+.be-mt{max-width:900px;margin:0 auto;padding:calc(56px + env(safe-area-inset-top,0px)) 16px 90px;}
+.be-mt-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.be-mt-top h2{margin:0;flex:1;font-size:20px;}
+.be-list{display:flex;flex-direction:column;}
+.be-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13.5px;}
+.be-row:last-child{border-bottom:0;}
+.be-row:hover{background:rgba(127,127,127,.06);}
+.be-row-m small{display:block;color:var(--ink-soft);font-size:11.5px;margin-top:2px;}
+.be-row-amt{font-weight:600;white-space:nowrap;}
+.be-st{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;white-space:nowrap;}
+.bst-av{background:#FDECC8;color:#8A5A00;}
+.bst-va{background:#D7F0DE;color:#1F7A3D;}
+.bst-re{background:#F8D7D3;color:#9B2C1F;}
+.bst-ar{background:#E3E1DA;color:#5b5a54;}
+.be-acts{display:inline-flex;gap:3px;margin-left:6px;}
+.be-acts button{width:22px;height:22px;min-height:auto;border:1px solid var(--line);border-radius:6px;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0;}
+.be-acts button:hover{border-color:var(--ink);}
+.be-body{padding:6px 2px 2px;}
+.be-filt{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 10px;}
+.be-filt select{width:auto;}
+.be-addbtn{margin-top:6px;width:auto;}
+.be-ixbtn{margin-left:auto;width:auto;}
+.be-empty{padding:14px;text-align:center;color:var(--ink-soft);border:1px dashed var(--line);border-radius:10px;}
+.be-calc{font-size:13px;color:var(--ink-soft);margin:6px 0;}
+.be-sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 8px;}
+.be-pj-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px;}
+.be-pj-btns{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
+.be-pj-btns button{width:auto;}
+.be-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:12px 0;}
+.be-tile{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;padding:0;cursor:pointer;color:inherit;font-size:12px;font-weight:600;min-height:auto;}
+.be-tile i{width:100%;aspect-ratio:1;display:grid;place-items:center;font-style:normal;font-size:28px;background:var(--panel,#fff);border-radius:16px;border:1px solid var(--line);}
+.be-tile:hover i{border-color:var(--ink);}
+.be-ind-list{display:flex;flex-direction:column;gap:6px;margin:10px 0;max-height:240px;overflow:auto;}
+.be-ind-opt{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;font-size:13px;}
+.be-ind-opt small{display:block;color:var(--ink-soft);}
+.be-ind-del{margin-left:auto;width:22px;height:22px;min-height:auto;border:1px solid var(--line);border-radius:6px;background:transparent;cursor:pointer;}
+</style>
+<script id="beJs">
+(function(){
+  function L_missions(){ return state.missions=state.missions||[]; }
+  function L_indices(){ return state.indicesKm=state.indicesKm||[]; }
+  function L_frais(){ return state.notesFrais=state.notesFrais||[]; }
+  function L_km(){ return state.notesKm=state.notesKm||[]; }
+  function L_ent(){ return state.fraisEntreprise=state.fraisEntreprise||[]; }
+  function beAdmin(){ return !!(window.paIsAdmin&&window.paIsAdmin()); }
+  function beMeId(){ return (window.PILOTAGE_USER&&window.PILOTAGE_USER.id)||'local'; }
+  function beMeNom(){ return (window.PILOTAGE_USER&&window.PILOTAGE_USER.nom)||'Moi'; }
+  function beSave(){ try{ persist(); }catch(e){} }
+  function beToday(){ return new Date().toISOString().slice(0,10); }
+  const BE_ST={a_valider:'À valider',validee:'Validée',refusee:'Refusée',a_reprendre:'À reprendre'};
+  const BE_STCLS={a_valider:'bst-av',validee:'bst-va',refusee:'bst-re',a_reprendre:'bst-ar'};
+  function beStatusBadge(s){ return '<span class="be-st '+(BE_STCLS[s]||'')+'">'+(BE_ST[s]||s)+'</span>'; }
+  function beMissionOptionsHtml(sel){ return '<option value="">— Aucune mission —</option>'+L_missions().map(m=>'<option value="'+esc(m.id)+'"'+(sel===m.id?' selected':'')+'>'+esc(m.nom)+'</option>').join(''); }
+  function beMissionNom(id){ const m=L_missions().find(x=>x.id===id); return m?m.nom:''; }
+  function beStatusActions(item,fn){
+    if(!beAdmin()||item.statut==='validee') return '';
+    return '<span class="be-acts">'
+      +'<button type="button" onclick="event.stopPropagation();'+fn+'(\''+item.id+'\',\'validee\')" title="Valider">✓</button>'
+      +'<button type="button" onclick="event.stopPropagation();'+fn+'(\''+item.id+'\',\'refusee\')" title="Refuser">✗</button>'
+      +'<button type="button" onclick="event.stopPropagation();'+fn+'(\''+item.id+'\',\'a_reprendre\')" title="À reprendre">↺</button>'
+    +'</span>';
+  }
+
+  /* pièce jointe (device/caméra) : holder = {pj:...} passé par référence, revalidé après ouverture du modal */
+  function bePjHtml(cur){
+    return '<div class="field"><label>Pièce jointe</label>'
+      +'<div class="be-pj-row"><span id="bePjSt">'+(cur&&cur.name?esc(cur.name):'Aucune')+'</span></div>'
+      +'<div class="be-pj-btns"><button type="button" class="ghost" id="bePjBtn1">📁 Depuis l’appareil</button><button type="button" class="ghost" id="bePjBtn2">📷 Prendre une photo</button>'+(cur&&cur.name?'<button type="button" class="ghost" id="bePjDel">✕ Retirer</button>':'')+'</div>'
+      +'<input type="file" id="bePjF1" accept="image/*,.pdf,application/pdf" style="display:none;"><input type="file" id="bePjF2" accept="image/*" capture="environment" style="display:none;"></div>';
+  }
+  function bePjWire(holder){
+    const st=document.getElementById('bePjSt');
+    const upd=()=>{ if(st) st.textContent = holder.pj&&holder.pj.name ? holder.pj.name : 'Aucune'; };
+    const b1=document.getElementById('bePjBtn1'), b2=document.getElementById('bePjBtn2'), d=document.getElementById('bePjDel');
+    if(b1) b1.onclick=()=>document.getElementById('bePjF1').click();
+    if(b2) b2.onclick=()=>document.getElementById('bePjF2').click();
+    ['bePjF1','bePjF2'].forEach(id=>{ const inp=document.getElementById(id); if(!inp) return; inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f) return; readFileAsDataUrl(f).then(src=>{ holder.pj={name:f.name,src}; upd(); }); }; });
+    if(d) d.onclick=()=>{ holder.pj=null; upd(); };
+  }
+
+  /* ================= MISSIONS ================= */
+  window.beMissionsRender=function(){
+    const w=document.getElementById('beMissionsWrap'); if(!w) return;
+    const L=L_missions();
+    w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>📋 Missions</h2>'
+      +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beMAdd">＋ Mission</button>':'')
+      +'</div>'
+      +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.nom)+'</b>'+(m.description?'<small>'+esc(m.description)+'</small>':'')+'</span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.'+(beAdmin()?' Ajoutez les 11 missions avec le bouton ci-dessus.':'')+'</p>')
+      +'</div>';
+    const b=document.getElementById('beMAdd'); if(b) b.onclick=()=>beMissionEdit(null);
+    if(beAdmin()) w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beMissionEdit(L.find(m=>m.id===r.dataset.id)));
+  };
+  function beMissionEdit(m){
+    const nw=!m; m=m||{};
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+(nw?'Nouvelle mission':'Mission')+'</h3>'
+      +'<div class="field"><label>Nom</label><input type="text" id="be-m-a" value="'+esc(m.nom||'')+'"></div>'
+      +'<div class="field"><label>Description</label><textarea id="be-m-b" rows="3">'+esc(m.description||'')+'</textarea></div>'
+      +'<div class="modal-actions">'
+      +(nw?'':'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beMissionDel(\''+m.id+'\')">Supprimer</button>')
+      +'<button class="primary" onclick="beMissionSave('+(nw?'null':'\''+m.id+'\'')+')">Enregistrer</button>'
+      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>');
+  }
+  window.beMissionSave=function(id){
+    const nom=document.getElementById('be-m-a').value.trim(), desc=document.getElementById('be-m-b').value.trim();
+    if(!nom){ miniAlert('Le nom de la mission est requis.'); return; }
+    if(!id){ L_missions().push({id:uid('MI'),nom,description:desc}); }
+    else{ const m=L_missions().find(x=>x.id===id); if(m){ m.nom=nom; m.description=desc; } }
+    beSave(); closeModal(); beMissionsRender();
+  };
+  window.beMissionDel=function(id){
+    miniConfirm('Supprimer cette mission ?', ()=>{ state.missions=L_missions().filter(x=>x.id!==id); beSave(); closeModal(); beMissionsRender(); });
+  };
+
+  /* ================= INDICES KILOMÉTRIQUES (admin) ================= */
+  window.bekIndicesManage=function(){
+    const L=L_indices();
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>⚙ Indices kilométriques</h3>'
+      +(L.length?'<div class="be-ind-list">'+L.map(ix=>'<div class="be-row"><span><b>'+esc(ix.nom)+'</b><small>'+esc(String(ix.tauxKm))+' €/km</small></span><button type="button" class="be-ind-del" data-del="'+esc(ix.id)+'">✕</button></div>').join('')+'</div>':'<p class="be-empty">Aucun indice. La liste sera déposée (fournie par Ibrahima) ; en attendant, ajoutez-en un ci-dessous si besoin.</p>')
+      +'<div class="field"><label>Nom de l’indice</label><input type="text" id="be-ix-a" placeholder="ex. 5 CV"></div>'
+      +'<div class="field"><label>Taux (€/km)</label><input type="text" inputmode="decimal" id="be-ix-b" placeholder="0,636"></div>'
+      +'<div class="modal-actions"><button class="primary" onclick="bekIndiceAdd()">+ Ajouter l’indice</button><button class="ghost" onclick="closeModal()">Fermer</button></div>');
+    document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ miniConfirm('Supprimer cet indice ?', ()=>{ state.indicesKm=L_indices().filter(z=>z.id!==b.dataset.del); beSave(); bekIndicesManage(); }); });
+  };
+  window.bekIndiceAdd=function(){
+    const nm=document.getElementById('be-ix-a').value.trim(), tx=Number(document.getElementById('be-ix-b').value.replace(',','.'))||0;
+    if(!nm||!tx){ miniAlert('Le nom et le taux (€/km) sont requis.'); return; }
+    L_indices().push({id:uid('IX'),nom:nm,tauxKm:tx}); beSave(); bekIndicesManage();
+  };
+
+  /* ================= NOTE DE FRAIS ================= */
+  let befMembre='', befMission='';
+  function befCalc(ttc,pct){ const t=Number(ttc)||0,p=Number(pct)||0; const ht=p?t/(1+p/100):t; return {ht, tva:t-ht}; }
+  function befMembres(){ const ids={}; L_frais().forEach(x=>{ if(x.auteurId) ids[x.auteurId]=x.auteur||x.auteurId; }); return Object.entries(ids); }
+  function befListe(){
+    let L=L_frais().slice();
+    if(!beAdmin()) L=L.filter(x=>x.auteurId===beMeId());
+    else if(befMembre) L=L.filter(x=>x.auteurId===befMembre);
+    return L.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  }
+  function befRowHtml(x){
+    return '<div class="be-row" onclick="befOpen(\''+x.id+'\')"><span class="be-row-m"><b>'+esc(x.auteur||'—')+'</b><small>'+esc(x.date||'')+(x.missionId?' · '+esc(beMissionNom(x.missionId)):'')+(x.libelle?' · '+esc(x.libelle):'')+'</small></span><span class="be-row-amt">'+esc(refacEuro(x.ttc))+' TTC</span>'+beStatusBadge(x.statut)+beStatusActions(x,'befAct')+'</div>';
+  }
+  window.befAct=function(id,statut){ const x=L_frais().find(y=>y.id===id); if(!x) return; x.statut=statut; beSave(); befRender(); };
+  window.befRender=function(){
+    const n=document.getElementById('befList'); if(!n) return;
+    const L=befListe();
+    n.innerHTML = L.length? L.map(befRowHtml).join('') : '<p class="be-empty">Aucune note de frais.</p>';
+    const cnt=document.getElementById('befCount');
+    if(cnt){ const av=L_frais().filter(x=>x.statut==='a_valider').length; cnt.textContent='('+(beAdmin()?L_frais().length:befListe().length)+(beAdmin()&&av?' · '+av+' à valider':'')+')'; }
+  };
+  function befFiltreHtml(){
+    if(!beAdmin()) return '';
+    const mem=befMembres();
+    return '<div class="be-filt"><select onchange="befMembre=this.value;befRender()"><option value="">Tous les membres</option>'+mem.map(([id,nm])=>'<option value="'+esc(id)+'"'+(befMembre===id?' selected':'')+'>'+esc(nm)+'</option>').join('')+'</select></div>';
+  }
+  window.befNew=function(){
+    const holder={pj:null};
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🧾 Nouvelle note de frais</h3>'
+      +'<div class="field"><label>Montant TTC (€)</label><input type="text" inputmode="decimal" id="be-f-a" placeholder="0,00"></div>'
+      +'<div class="field"><label>TVA (%)</label><input type="text" inputmode="decimal" id="be-f-b" value="20"></div>'
+      +'<p class="be-calc">HT : <b id="be-f-ht">0,00 €</b> · TVA : <b id="be-f-tv">0,00 €</b></p>'
+      +'<div class="field"><label>Libellé</label><input type="text" id="be-f-c" placeholder="ex. Déjeuner client, péage…"></div>'
+      +(L_missions().length?'<div class="field"><label>Mission</label><select id="be-f-mi">'+beMissionOptionsHtml('')+'</select></div>':'')
+      +bePjHtml(null)
+      +'<div class="modal-actions"><button class="primary" onclick="befSaveNew()">Enregistrer</button><button class="ghost" onclick="closeModal()">Annuler</button></div>');
+    bePjWire(holder); window.__beHolder=holder;
+    const upd=()=>{ const r=befCalc(document.getElementById('be-f-a').value.replace(',','.'), document.getElementById('be-f-b').value.replace(',','.')); document.getElementById('be-f-ht').textContent=refacEuro(r.ht); document.getElementById('be-f-tv').textContent=refacEuro(r.tva); };
+    document.getElementById('be-f-a').oninput=upd; document.getElementById('be-f-b').oninput=upd; upd();
+  };
+  window.befSaveNew=function(){
+    const ttc=Number(document.getElementById('be-f-a').value.replace(',','.'))||0;
+    if(!ttc){ miniAlert('Indiquez le montant TTC.'); return; }
+    const pct=Number(document.getElementById('be-f-b').value.replace(',','.'))||0, r=befCalc(ttc,pct);
+    const mi=document.getElementById('be-f-mi');
+    const rec={id:uid('NF'),auteurId:beMeId(),auteur:beMeNom(),date:beToday(),ttc,tvaPct:pct,ht:r.ht,tva:r.tva,libelle:document.getElementById('be-f-c').value.trim(),missionId:mi?mi.value:'',statut:'a_valider',pj:(window.__beHolder||{}).pj||null};
+    const finish=()=>{ L_frais().unshift(rec); beSave(); closeModal(); befRender(); };
+    if(beAdmin()) miniAsk('Voulez-vous valider définitivement cette note de frais ?','Oui','Non', ()=>{ rec.statut='validee'; finish(); }, finish);
+    else finish();
+  };
+  window.befOpen=function(id){
+    const x=L_frais().find(y=>y.id===id); if(!x) return;
+    const canEdit = x.auteurId===beMeId() && x.statut!=='validee';
+    const editable = canEdit || beAdmin();
+    const holder={pj:x.pj||null}; window.__beHolder=holder;
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🧾 Note de frais'+(x.statut==='a_reprendre'?' — à reprendre':'')+'</h3>'
+      +'<div class="field"><label>Montant TTC (€)</label><input type="text" inputmode="decimal" id="be-f-a" value="'+esc(String(x.ttc))+'" '+(editable?'':'disabled')+'></div>'
+      +'<div class="field"><label>TVA (%)</label><input type="text" inputmode="decimal" id="be-f-b" value="'+esc(String(x.tvaPct))+'" '+(editable?'':'disabled')+'></div>'
+      +'<p class="be-calc">HT : <b id="be-f-ht">'+esc(refacEuro(x.ht))+'</b> · TVA : <b id="be-f-tv">'+esc(refacEuro(x.tva))+'</b></p>'
+      +'<div class="field"><label>Libellé</label><input type="text" id="be-f-c" value="'+esc(x.libelle||'')+'" '+(editable?'':'disabled')+'></div>'
+      +(L_missions().length?'<div class="field"><label>Mission</label><select id="be-f-mi" '+(editable?'':'disabled')+'>'+beMissionOptionsHtml(x.missionId)+'</select></div>':'')
+      +(editable?bePjHtml(x.pj):'<div class="field"><label>Pièce jointe</label><p>'+(x.pj&&x.pj.name?'📎 '+esc(x.pj.name):'Aucune')+'</p></div>')
+      +'<p class="be-calc">Statut : '+beStatusBadge(x.statut)+'</p>'
+      +'<div class="modal-actions">'
+      +(beAdmin()?'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="befDel(\''+x.id+'\')">Supprimer</button>':'')
+      +(editable?'<button class="primary" onclick="befSaveEdit(\''+x.id+'\')">Enregistrer</button>':'')
+      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>');
+    if(editable){
+      bePjWire(holder);
+      const upd=()=>{ const r=befCalc(document.getElementById('be-f-a').value.replace(',','.'), document.getElementById('be-f-b').value.replace(',','.')); document.getElementById('be-f-ht').textContent=refacEuro(r.ht); document.getElementById('be-f-tv').textContent=refacEuro(r.tva); };
+      document.getElementById('be-f-a').oninput=upd; document.getElementById('be-f-b').oninput=upd;
+    }
+  };
+  window.befSaveEdit=function(id){
+    const x=L_frais().find(y=>y.id===id); if(!x) return;
+    const ttc=Number(document.getElementById('be-f-a').value.replace(',','.'))||0, pct=Number(document.getElementById('be-f-b').value.replace(',','.'))||0, r=befCalc(ttc,pct);
+    x.ttc=ttc; x.tvaPct=pct; x.ht=r.ht; x.tva=r.tva; x.libelle=document.getElementById('be-f-c').value.trim();
+    const mi=document.getElementById('be-f-mi'); if(mi) x.missionId=mi.value;
+    x.pj=(window.__beHolder||{}).pj||null;
+    const finish=()=>{ beSave(); closeModal(); befRender(); };
+    if(!beAdmin()){ x.statut='a_valider'; finish(); }
+    else miniAsk('Voulez-vous valider définitivement cette note de frais ?','Oui','Non', ()=>{ x.statut='validee'; finish(); }, finish);
+  };
+  window.befDel=function(id){
+    miniConfirm('Supprimer cette note de frais ?', ()=>{ state.notesFrais=L_frais().filter(y=>y.id!==id); beSave(); closeModal(); befRender(); });
+  };
+
+  /* ================= NOTE DE KILOMÈTRES ================= */
+  let bekMembre='', bekMission='';
+  function bekMembres(){ const ids={}; L_km().forEach(x=>{ if(x.auteurId) ids[x.auteurId]=x.auteur||x.auteurId; }); return Object.entries(ids); }
+  function bekListe(){
+    let L=L_km().slice();
+    if(!beAdmin()) L=L.filter(x=>x.auteurId===beMeId());
+    else{ if(bekMembre) L=L.filter(x=>x.auteurId===bekMembre); if(bekMission) L=L.filter(x=>x.missionId===bekMission); }
+    return L.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  }
+  function bekRowHtml(x){
+    return '<div class="be-row" onclick="bekOpen(\''+x.id+'\')"><span class="be-row-m"><b>'+esc(x.auteur||'—')+'</b><small>'+esc(x.date||'')+(x.missionId?' · '+esc(beMissionNom(x.missionId)):'')+' · '+esc(x.indiceNom||'')+'</small></span><span class="be-row-amt">'+esc(String(x.distanceKm))+' km · '+esc(refacEuro(x.montant))+'</span>'+beStatusBadge(x.statut)+beStatusActions(x,'bekAct')+'</div>';
+  }
+  window.bekAct=function(id,statut){ const x=L_km().find(y=>y.id===id); if(!x) return; x.statut=statut; beSave(); bekRender(); };
+  window.bekRender=function(){
+    const n=document.getElementById('bekList'); if(!n) return;
+    const L=bekListe();
+    n.innerHTML = L.length? L.map(bekRowHtml).join('') : '<p class="be-empty">Aucune note de kilomètres.</p>';
+    const cnt=document.getElementById('bekCount');
+    if(cnt){ const av=L_km().filter(x=>x.statut==='a_valider').length; cnt.textContent='('+(beAdmin()?L_km().length:bekListe().length)+(beAdmin()&&av?' · '+av+' à valider':'')+')'; }
+  };
+  function bekFiltreHtml(){
+    if(!beAdmin()) return '';
+    const mem=bekMembres();
+    return '<div class="be-filt"><select onchange="bekMembre=this.value;bekRender()"><option value="">Tous les membres</option>'+mem.map(([id,nm])=>'<option value="'+esc(id)+'"'+(bekMembre===id?' selected':'')+'>'+esc(nm)+'</option>').join('')
+      +'</select><select onchange="bekMission=this.value;bekRender()"><option value="">Toutes les missions</option>'+L_missions().map(m=>'<option value="'+esc(m.id)+'"'+(bekMission===m.id?' selected':'')+'>'+esc(m.nom)+'</option>').join('')+'</select></div>';
+  }
+  window.bekNew=function(){
+    if(!L_indices().length){
+      if(beAdmin()) miniConfirm('Aucun indice kilométrique n’est encore configuré. Les ajouter maintenant ?', ()=>bekIndicesManage());
+      else miniAlert('Aucun indice kilométrique n’est disponible pour l’instant. Demandez à votre directeur d’en ajouter.');
+      return;
+    }
+    const holder={pj:null};
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🚗 Nouvelle note de kilomètres</h3>'
+      +'<div class="field"><label>Distance parcourue (km)</label><input type="text" inputmode="decimal" id="be-k-a" placeholder="0"></div>'
+      +(L_missions().length?'<div class="field"><label>Mission</label><select id="be-k-mi">'+beMissionOptionsHtml('')+'</select></div>':'')
+      +'<div class="field"><label>Indice</label><select id="be-k-ix">'+L_indices().map(ix=>'<option value="'+esc(ix.id)+'">'+esc(ix.nom)+' ('+esc(String(ix.tauxKm))+' €/km)</option>').join('')+'</select></div>'
+      +'<p class="be-calc">Montant : <b id="be-k-mt">0,00 €</b></p>'
+      +bePjHtml(null)
+      +'<div class="modal-actions"><button class="primary" onclick="bekSaveNew()">Enregistrer</button><button class="ghost" onclick="closeModal()">Annuler</button></div>');
+    bePjWire(holder); window.__beHolder=holder;
+    const upd=()=>{ const km=Number(document.getElementById('be-k-a').value.replace(',','.'))||0, ix=L_indices().find(z=>z.id===document.getElementById('be-k-ix').value); document.getElementById('be-k-mt').textContent=refacEuro(km*(ix?Number(ix.tauxKm):0)); };
+    document.getElementById('be-k-a').oninput=upd; document.getElementById('be-k-ix').onchange=upd; upd();
+  };
+  window.bekSaveNew=function(){
+    const km=Number(document.getElementById('be-k-a').value.replace(',','.'))||0;
+    if(!km){ miniAlert('Indiquez la distance parcourue.'); return; }
+    const ix=L_indices().find(z=>z.id===document.getElementById('be-k-ix').value); if(!ix){ miniAlert('Choisissez un indice.'); return; }
+    const mi=document.getElementById('be-k-mi');
+    const rec={id:uid('NK'),auteurId:beMeId(),auteur:beMeNom(),date:beToday(),distanceKm:km,missionId:mi?mi.value:'',indiceId:ix.id,indiceNom:ix.nom,tauxKm:ix.tauxKm,montant:km*Number(ix.tauxKm),statut:'a_valider',pj:(window.__beHolder||{}).pj||null};
+    const finish=()=>{ L_km().unshift(rec); beSave(); closeModal(); bekRender(); };
+    if(beAdmin()) miniAsk('Voulez-vous valider définitivement cette note de kilomètres ?','Oui','Non', ()=>{ rec.statut='validee'; finish(); }, finish);
+    else finish();
+  };
+  window.bekOpen=function(id){
+    const x=L_km().find(y=>y.id===id); if(!x) return;
+    const canEdit = x.auteurId===beMeId() && x.statut!=='validee';
+    const editable = canEdit || beAdmin();
+    const holder={pj:x.pj||null}; window.__beHolder=holder;
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🚗 Note de kilomètres'+(x.statut==='a_reprendre'?' — à reprendre':'')+'</h3>'
+      +'<div class="field"><label>Distance (km)</label><input type="text" inputmode="decimal" id="be-k-a" value="'+esc(String(x.distanceKm))+'" '+(editable?'':'disabled')+'></div>'
+      +(L_missions().length?'<div class="field"><label>Mission</label><select id="be-k-mi" '+(editable?'':'disabled')+'>'+beMissionOptionsHtml(x.missionId)+'</select></div>':'')
+      +'<div class="field"><label>Indice</label><select id="be-k-ix" '+(editable?'':'disabled')+'>'+L_indices().map(ix=>'<option value="'+esc(ix.id)+'"'+(ix.id===x.indiceId?' selected':'')+'>'+esc(ix.nom)+' ('+esc(String(ix.tauxKm))+' €/km)</option>').join('')+'</select></div>'
+      +'<p class="be-calc">Montant : <b id="be-k-mt">'+esc(refacEuro(x.montant))+'</b></p>'
+      +(editable?bePjHtml(x.pj):'<div class="field"><label>Pièce jointe</label><p>'+(x.pj&&x.pj.name?'📎 '+esc(x.pj.name):'Aucune')+'</p></div>')
+      +'<p class="be-calc">Statut : '+beStatusBadge(x.statut)+'</p>'
+      +'<div class="modal-actions">'
+      +(beAdmin()?'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="bekDel(\''+x.id+'\')">Supprimer</button>':'')
+      +(editable?'<button class="primary" onclick="bekSaveEdit(\''+x.id+'\')">Enregistrer</button>':'')
+      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>');
+    if(editable){
+      bePjWire(holder);
+      const upd=()=>{ const km=Number(document.getElementById('be-k-a').value.replace(',','.'))||0, ix=L_indices().find(z=>z.id===document.getElementById('be-k-ix').value); document.getElementById('be-k-mt').textContent=refacEuro(km*(ix?Number(ix.tauxKm):0)); };
+      document.getElementById('be-k-a').oninput=upd; document.getElementById('be-k-ix').onchange=upd;
+    }
+  };
+  window.bekSaveEdit=function(id){
+    const x=L_km().find(y=>y.id===id); if(!x) return;
+    const km=Number(document.getElementById('be-k-a').value.replace(',','.'))||0, ix=L_indices().find(z=>z.id===document.getElementById('be-k-ix').value);
+    x.distanceKm=km; if(ix){ x.indiceId=ix.id; x.indiceNom=ix.nom; x.tauxKm=ix.tauxKm; } x.montant=km*(ix?Number(ix.tauxKm):0);
+    const mi=document.getElementById('be-k-mi'); if(mi) x.missionId=mi.value;
+    x.pj=(window.__beHolder||{}).pj||null;
+    const finish=()=>{ beSave(); closeModal(); bekRender(); };
+    if(!beAdmin()){ x.statut='a_valider'; finish(); }
+    else miniAsk('Voulez-vous valider définitivement cette note de kilomètres ?','Oui','Non', ()=>{ x.statut='validee'; finish(); }, finish);
+  };
+  window.bekDel=function(id){
+    miniConfirm('Supprimer cette note de kilomètres ?', ()=>{ state.notesKm=L_km().filter(y=>y.id!==id); beSave(); closeModal(); bekRender(); });
+  };
+
+  /* ================= FRAIS ENTREPRISE ================= */
+  let beeMembre='';
+  const BEE_CATS={location:['Location','🏠'],internet:['Internet','🌐'],mobile:['Mobile','📱'],electricite:['Électricité','💡']};
+  function beeMembres(){ const ids={}; L_ent().forEach(x=>{ if(x.auteurId) ids[x.auteurId]=x.auteur||x.auteurId; }); return Object.entries(ids); }
+  function beeListe(){
+    let L=L_ent().slice();
+    if(!beAdmin()) L=L.filter(x=>x.auteurId===beMeId());
+    else if(beeMembre) L=L.filter(x=>x.auteurId===beeMembre);
+    return L.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  }
+  function beeRowHtml(x){
+    const c=BEE_CATS[x.categorie]||['—',''];
+    return '<div class="be-row" onclick="beeOpen(\''+x.id+'\')"><span class="be-row-m">'+c[1]+' <b>'+esc(c[0])+'</b><small>'+esc(x.auteur||'')+' · '+esc(x.date||'')+'</small></span><span class="be-row-amt">'+esc(refacEuro(x.montant))+'</span></div>';
+  }
+  window.beeRender=function(){
+    const n=document.getElementById('beeList'); if(!n) return;
+    const L=beeListe();
+    n.innerHTML = L.length? L.map(beeRowHtml).join('') : '<p class="be-empty">Aucun frais d’entreprise.</p>';
+    const cnt=document.getElementById('beeCount'); if(cnt) cnt.textContent='('+(beAdmin()?L_ent().length:beeListe().length)+')';
+  };
+  function beeFiltreHtml(){
+    if(!beAdmin()) return '';
+    const mem=beeMembres();
+    return '<div class="be-filt"><select onchange="beeMembre=this.value;beeRender()"><option value="">Tous les membres</option>'+mem.map(([id,nm])=>'<option value="'+esc(id)+'"'+(beeMembre===id?' selected':'')+'>'+esc(nm)+'</option>').join('')+'</select></div>';
+  }
+  window.beeNew=function(){
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🏢 Nouveau frais d’entreprise</h3><p class="be-sub">Choisissez la catégorie</p>'
+      +'<div class="be-tiles">'+Object.entries(BEE_CATS).map(([k,v])=>'<button type="button" class="be-tile" data-c="'+k+'"><i>'+v[1]+'</i><span>'+v[0]+'</span></button>').join('')+'</div>'
+      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Annuler</button></div>');
+    document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>beeStep2(b.dataset.c));
+  };
+  function beeStep2(cat){
+    const c=BEE_CATS[cat]||['—',''];
+    const holder={pj:null};
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+c[1]+' '+esc(c[0])+'</h3>'
+      +'<div class="field"><label>Montant (€)</label><input type="text" inputmode="decimal" id="be-e-a" placeholder="0,00"></div>'
+      +bePjHtml(null)
+      +'<div class="modal-actions"><button class="ghost" onclick="beeNew()">‹ Retour</button><button class="primary" onclick="beeSaveNew(\''+cat+'\')">Enregistrer</button><button class="ghost" onclick="closeModal()">Annuler</button></div>');
+    bePjWire(holder); window.__beHolder=holder;
+  }
+  window.beeSaveNew=function(cat){
+    const mt=Number(document.getElementById('be-e-a').value.replace(',','.'))||0;
+    if(!mt){ miniAlert('Indiquez le montant.'); return; }
+    L_ent().unshift({id:uid('FE'),auteurId:beMeId(),auteur:beMeNom(),date:beToday(),categorie:cat,montant:mt,pj:(window.__beHolder||{}).pj||null});
+    beSave(); closeModal(); beeRender();
+  };
+  window.beeOpen=function(id){
+    const x=L_ent().find(y=>y.id===id); if(!x) return;
+    const editable = beAdmin() || x.auteurId===beMeId();
+    const c=BEE_CATS[x.categorie]||['—',''];
+    const holder={pj:x.pj||null}; window.__beHolder=holder;
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+c[1]+' '+esc(c[0])+'</h3>'
+      +'<div class="field"><label>Montant (€)</label><input type="text" inputmode="decimal" id="be-e-a" value="'+esc(String(x.montant))+'" '+(editable?'':'disabled')+'></div>'
+      +(editable?bePjHtml(x.pj):'<div class="field"><label>Pièce jointe</label><p>'+(x.pj&&x.pj.name?'📎 '+esc(x.pj.name):'Aucune')+'</p></div>')
+      +'<div class="modal-actions">'
+      +(beAdmin()?'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beeDel(\''+x.id+'\')">Supprimer</button>':'')
+      +(editable?'<button class="primary" onclick="beeSaveEdit(\''+x.id+'\')">Enregistrer</button>':'')
+      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>');
+    if(editable) bePjWire(holder);
+  };
+  window.beeSaveEdit=function(id){
+    const x=L_ent().find(y=>y.id===id); if(!x) return;
+    x.montant=Number(document.getElementById('be-e-a').value.replace(',','.'))||0;
+    x.pj=(window.__beHolder||{}).pj||null;
+    beSave(); closeModal(); beeRender();
+  };
+  window.beeDel=function(id){
+    miniConfirm('Supprimer ce frais d’entreprise ?', ()=>{ state.fraisEntreprise=L_ent().filter(y=>y.id!==id); beSave(); closeModal(); beeRender(); });
+  };
+
+  /* ================= MONTAGE DANS LA PAGE FINANCE + ONGLET MISSIONS ================= */
+  function beRibbon(ribId,icon,title,countId,filtHtml,listId,addLbl,addFn){
+    return '<details class="pl-rib" id="'+ribId+'"><summary><span>'+icon+' '+title+' <small id="'+countId+'"></small></span></summary>'
+      +'<div class="be-body">'+filtHtml+'<div class="be-list" id="'+listId+'"></div><button type="button" class="ghost be-addbtn" onclick="'+addFn+'()">+ '+addLbl+'</button></div></details>';
+  }
+  window.beMountFinance=function(){
+    if(window.pilotageType && pilotageType()!=='bureau_etudes') return;
+    const wrap=document.getElementById('refacWrap'); if(!wrap) return;
+    if(!document.getElementById('beFinHost')){
+      const host=document.createElement('div'); host.id='beFinHost';
+      host.innerHTML = beRibbon('befRib','🧾','Note de frais','befCount',befFiltreHtml(),'befList','Créer une note de frais','befNew')
+        + beRibbon('bekRib','🚗','Note de kilomètres','bekCount',bekFiltreHtml()+(beAdmin()?'<button type="button" class="ghost be-ixbtn" onclick="bekIndicesManage()">⚙ Indices</button>':''),'bekList','Créer une note de kilomètres','bekNew')
+        + beRibbon('beeRib','🏢','Frais entreprise','beeCount',beeFiltreHtml(),'beeList','Ajouter un frais d’entreprise','beeNew');
+      wrap.appendChild(host);
+    }
+    befRender(); bekRender(); beeRender();
+  };
+  (function(){ if(typeof renderRefac==='function' && !window._beRefacWrapped){ window._beRefacWrapped=true; const r1=renderRefac; renderRefac=function(){ r1.apply(this,arguments); try{ beMountFinance(); }catch(e){} }; } })();
+  (function(){ if(typeof renderCautions==='function' && !window._beCautionsWrapped){ window._beCautionsWrapped=true; const c1=renderCautions; renderCautions=function(){ if(window.pilotageType && pilotageType()==='bureau_etudes'){ const b=document.getElementById('cauWrap'); if(b) b.remove(); return; } return c1.apply(this,arguments); }; } })();
+
+  let beDone=false;
+  function beSetup(){
+    if(beDone) return; beDone=true;
+    const dash=document.querySelector('.tab[data-page="dashboard"]'), menu=document.getElementById('tabMenu');
+    if(menu && dash && !document.querySelector('.tab[data-page="missions"]')){
+      const b=document.createElement('button'); b.className='tab'; b.dataset.page='missions'; b.textContent='📋 Missions'; b.setAttribute('onclick',"tabHome('missions')");
+      dash.insertAdjacentElement('afterend', b);
+    }
+    const pdash=document.getElementById('page-dashboard');
+    if(pdash && !document.getElementById('page-missions')){
+      const pg=document.createElement('div'); pg.className='page'; pg.id='page-missions'; pg.innerHTML='<div id="beMissionsWrap"></div>';
+      pdash.insertAdjacentElement('afterend', pg);
+    }
+    const sp0=window.showPage; if(typeof sp0==='function' && !sp0.__beWrapped){ const g=function(p){ const r=sp0.apply(this,arguments); if(p==='missions') beMissionsRender(); if(p==='refac') beMountFinance(); return r; }; g.__beWrapped=true; window.showPage=g; }
+  }
+  let beTries=0;
+  (function wait(){
+    try{ const p=window.PILOTAGE_PROJET; if(p && window.pilotageType && pilotageType()==='bureau_etudes'){ beSetup(); return; } }catch(e){}
+    if(++beTries<400) setTimeout(wait,500);
+  })();
 })();
 </script>
 </body></html>
