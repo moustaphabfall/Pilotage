@@ -7106,7 +7106,8 @@ window.__paApp=window.__paApp||'';
 window.paIsAdmin=function(){ const P=window.PILOTAGE_PROJET; return !P||P.mrole===undefined||P.mrole==='admin'; };
 window.paIvRestore=function(){ const h=document.getElementById('paIvHost'), pg=document.getElementById('page-interloc'); if(!h||!pg) return; [...h.children].forEach(c=>pg.appendChild(c)); };
 { const cm0=window.closeModal; if(cm0&&!cm0.__pa){ const cm=function(){ try{ paIvRestore(); }catch(e){} window.__paApp=''; window.__paEdit=false; const w=document.getElementById('paWin'); if(w) w.remove(); return cm0.apply(this,arguments); }; cm.__pa=1; window.closeModal=cm; } }
-const PA_APPS=[['interv','👥','Intervenants'],['phases','🚦','Phases'],['archi','🏛','Architecture'],['lots','🧱','Gestion des lots'],['obj','🎯','Objectifs planning']];
+const PA_APPS_ALL=[['interv','👥','Intervenants'],['phases','🚦','Phases'],['archi','🏛','Architecture'],['lots','🧱','Gestion des lots'],['obj','🎯','Objectifs planning']];
+function paAppsVisible(){ try{ if(window.pilotageType && pilotageType()!=='entreprise_generale') return PA_APPS_ALL.filter(x=>x[0]!=='lots'); }catch(e){} return PA_APPS_ALL; }
 const PA_LOTS=[['CEA','🎨','Lots CEA','Corps d’état architecturaux'],['GO','🏗️','Lots gros œuvre','Gros œuvre'],['CC','🏠','Lots clos couvert','Clos et couvert'],['CET','⚙️','Lots CET','Corps d’état techniques']];
 function paBtns(items,onclickFn){ return '<div class="pa-grid">'+items.map(x=>!x?'<span></span>':'<button type="button" class="pa-app" onclick="'+onclickFn+'(\''+x[0]+'\')"><span class="pa-ic">'+x[1]+'</span><span class="pa-lb">'+esc(x[2])+'</span></button>').join('')+'</div>'; }
 window.paOpen=function(k){ window.__paApp=k||''; projParamEdit(); };
@@ -7165,7 +7166,7 @@ function projParamEdit(){
   const P = projEns(), exe = P.phase==='exe', o = nbOrder(), k=window.__paApp||'';
   window.__lotsOnly=null; try{ paIvRestore(); }catch(e){} const oldW=document.getElementById('paWin'); if(oldW) oldW.remove();
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3 style="text-align:center;margin-bottom:14px">🏗 Paramètres projet <small style="font-size:11px;opacity:.55;font-weight:400">${esc(window.PILOTAGE_VER||'')}</small></h3>
-    ${paBtns(PA_APPS,'paOpen')}`);
+    ${paBtns(paAppsVisible(),'paOpen')}`);
   const w=k?paWinHtml(k,P,exe,o):null;
   if(w){ const d=document.createElement('div'); d.id='paWin'; d.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><span class="pa-l"><button type="button" class="pa-bk" aria-label="Retour" title="Retour" onclick="paBack()">←</button></span><b>'+w[0]+'</b><span class="pa-r">'+(w[2]||'')+'<button type="button" class="pa-x" aria-label="Fermer" title="Fermer" onclick="paBack()">×</button></span></div><div class="pa-b">'+w[1]+'</div></div>'; d.addEventListener('pointerdown',e=>{ if(e.target===d){ e.preventDefault(); paBack(); } }); document.body.appendChild(d); }
   try{ if(k==='interv'){ const h=document.getElementById('paIvHost'), pg=document.getElementById('page-interloc'); if(h&&pg){ const a=document.getElementById('ilruban-interlocuteurs'); if(a){ a.style.display='block'; h.appendChild(a); } const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0'; bar.innerHTML='<button type="button" class="ghost" onclick="quickAddEntreprise()">+ Entreprise</button><button type="button" class="ghost" onclick="openFonctionsMgr()">✎ Fonctions</button>'; h.appendChild(bar); const ee=document.getElementById('entListPage'); if(ee){ h.appendChild(ee); } try{ renderInterlocuteurs(); }catch(e){} try{ if(ee) ee.innerHTML=renderEntreprisesList(); }catch(e){} } } }catch(e){ console.error(e); }
@@ -11460,10 +11461,12 @@ function finLots(){
     return out;
   }catch(e){ return []; }
 }
+function finIsBE(){ try{ return !!(window.pilotageType && pilotageType()==='bureau_etudes'); }catch(e){ return false; } }
 function finListFiltree(){
   const actifs = FIN_TYPES.filter(t=>finTypesActifs[t.k]).map(t=>t.k);
   let list = finAll().filter(d=>actifs.includes(d.type));
-  if(finFiltreChamp==='lot' && finFiltreVals.length) list = list.filter(d=>finFiltreVals.includes(d.lot));
+  const isBE = finIsBE();
+  if(finFiltreChamp==='lot' && finFiltreVals.length) list = list.filter(d=>finFiltreVals.includes(isBE ? d.missionId : d.lot));
   else if(finFiltreChamp==='societe' && finFiltreVals.length) list = list.filter(d=>finFiltreVals.includes(d.societe));
   else if(finFiltreChamp==='date' && (finFiltreDu||finFiltreAu)) list = list.filter(d=>{ const dt=d.date||''; return dt && (!finFiltreDu||dt>=finFiltreDu) && (!finFiltreAu||dt<=finFiltreAu); });
   return list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.id||'').localeCompare(a.id||''));
@@ -11472,7 +11475,7 @@ function finRefresh(){ persist(); renderFinDocs(); }
 function finAddNew(type, input){
   const f = input.files && input.files[0]; if(!f) return;
   readFileAsDataUrl(f).then(src=>{
-    const d = {id:uid('FIN'), type, numero:finNumero(type), lot:'', date:'', societe:'', montant:0, pdf:{name:f.name, src}};
+    const d = {id:uid('FIN'), type, numero:finNumero(type), lot:'', missionId:'', date:'', societe:'', montant:0, pdf:{name:f.name, src}};
     finAll().push(d); input.value=''; finPreviewId = d.id; finRefresh();
   });
 }
@@ -11562,12 +11565,14 @@ function finPickDate(dateStr){
 }
 function finRowHtml(d){
   const t = finType(d);
-  const lotTag = d.lot ? esc(d.lot) : 'Sans lot';
+  const isBE = finIsBE();
+  const lotTag = isBE ? (d.missionId ? (esc(window.beMissionNom?window.beMissionNom(d.missionId):'')||'Mission supprimée') : 'Sans mission') : (d.lot ? esc(d.lot) : 'Sans lot');
+  const hasLotOrMission = isBE ? !!d.missionId : !!d.lot;
   const dateTag = d.date ? fmtDate(d.date) : 'Pas de date';
   const socTag = d.societe ? esc(d.societe) : '—';
   return `<div class="fin-row" onclick="finOpenEdit('${d.id}')">
     <span class="fin-row-label">${t.icon} ${esc(finLabel(d))}</span>
-    <span class="fin-tag ${d.lot?'':'muted'}">${lotTag}</span>
+    <span class="fin-tag ${hasLotOrMission?'':'muted'}">${lotTag}</span>
     <span class="fin-tag ${d.date?'':'muted'}">${dateTag}</span>
     <span class="fin-tag ${d.societe?'':'muted'}">${socTag}</span>
     <span class="fin-tag ${d.montant?'':'muted'}" style="${d.montant?'font-weight:600;':''}">${d.montant?esc(refacEuro(d.montant)):'Montant ?'}</span>
@@ -11599,13 +11604,17 @@ function renderFinDocs(){
     const n = finAll().filter(x=>x.type===t.k).length;
     return `<span class="fin-ty-group"><button type="button" class="fin-tybtn ${finTypesActifs[t.k]?'on':''}" onclick="finToggleType('${t.k}')">${t.icon} ${t.pl} (${n})</button><button type="button" class="fin-tyadd" title="Nouveau ${t.s.toLowerCase()}" onclick="finTriggerAdd('${t.k}')">+</button></span>`;
   }).join('');
-  const champOptions = [['','Aucun filtre'],['lot','Lot'],['date','Date'],['societe','Société']];
+  const isBEflt = finIsBE();
+  const champOptions = [['','Aucun filtre'],['lot', isBEflt?'Mission':'Lot'],['date','Date'],['societe','Société']];
   const filtreSel = `<select onchange="finSetFiltreChamp(this.value)" style="width:auto;">${champOptions.map(([v,l])=>`<option value="${v}" ${v===finFiltreChamp?'selected':''}>${l}</option>`).join('')}</select>`;
   let subFiltre = '';
   if(finFiltreChamp==='lot' || finFiltreChamp==='societe'){
-    const vals = finFiltreChamp==='lot' ? finLots() : socList();
-    const nom = finFiltreChamp==='lot' ? 'lot' : 'société';
-    subFiltre = vals.length ? `<select multiple size="${Math.min(vals.length,6)}" class="fin-multiselect" onchange="finSetVals(this)">${vals.map(v=>`<option value="${esc(v)}" ${finFiltreVals.includes(v)?'selected':''}>${esc(v)}</option>`).join('')}</select><p class="empty-note" style="margin:4px 0 0;">Ctrl/Cmd + clic pour en choisir plusieurs.</p>` : `<p class="empty-note">Aucun ${nom} renseigné pour l'instant.${finFiltreChamp==='lot'?' Ajoutez-en un dans le repérage.':' Ajoutez-en une depuis une fiche.'}</p>`;
+    const vals = finFiltreChamp==='lot' ? (isBEflt ? (window.beMissionsAll?window.beMissionsAll().map(m=>m.id):[]) : finLots()) : socList();
+    const labelFor = v => (finFiltreChamp==='lot' && isBEflt) ? ((window.beMissionNom?window.beMissionNom(v):'')||'(Sans nom)') : v;
+    const emptyMsg = finFiltreChamp==='lot'
+      ? (isBEflt ? 'Aucune mission créée pour l’instant. Créez-en une dans l’onglet Missions.' : 'Aucun lot renseigné pour l\'instant. Ajoutez-en un dans le repérage.')
+      : 'Aucune société renseignée pour l\'instant. Ajoutez-en une depuis une fiche.';
+    subFiltre = vals.length ? `<select multiple size="${Math.min(vals.length,6)}" class="fin-multiselect" onchange="finSetVals(this)">${vals.map(v=>`<option value="${esc(v)}" ${finFiltreVals.includes(v)?'selected':''}>${esc(labelFor(v))}</option>`).join('')}</select><p class="empty-note" style="margin:4px 0 0;">Ctrl/Cmd + clic pour en choisir plusieurs.</p>` : `<p class="empty-note">${emptyMsg}</p>`;
   } else if(finFiltreChamp==='date'){
     subFiltre = finCalHtml();
   }
@@ -11627,8 +11636,12 @@ function renderFinDocs(){
 function finOpenEdit(id){
   const d = finById(id); if(!d) return;
   const t = finType(d);
+  const isBE = finIsBE();
+  const lotFieldHtml = isBE
+    ? `<div class="field"><label>Mission</label><select id="fn-lot">${window.beMissionOptionsHtml ? window.beMissionOptionsHtml(d.missionId||'') : '<option value="">— Aucune mission —</option>'}</select></div>`
+    : `<div class="field"><label>Lot</label><input type="text" id="fn-lot" data-lotpick value="${esc(d.lot)}" placeholder="Rechercher ou créer un lot…" autocomplete="off"></div>`;
   openModal(`<button class="close-x" onclick="closeModal()">×</button><h3>${t.icon} ${esc(finLabel(d))}</h3>
-    <div class="field"><label>Lot</label><input type="text" id="fn-lot" data-lotpick value="${esc(d.lot)}" placeholder="Rechercher ou créer un lot…" autocomplete="off"></div>
+    ${lotFieldHtml}
     <div class="field"><label>Date</label><input type="date" id="fn-date" value="${d.date||''}"></div>
     <div class="field"><label>Société</label><select id="fn-soc" onchange="finFieldEntChange(this)">${entrepriseOptions(d.societe)}</select></div>
     <div class="field"><label>Montant (€)</label><input type="text" inputmode="decimal" id="fn-mt" value="${d.montant?esc(String(d.montant)):''}" placeholder="0,00"></div>
@@ -11641,16 +11654,17 @@ function finOpenEdit(id){
       <button class="primary" onclick="finSaveEdit('${d.id}')">Enregistrer</button>
       <button class="ghost" onclick="closeModal()">Fermer</button>
     </div>`);
-  const lotInp = document.getElementById('fn-lot');
-  if(lotInp && window.lotsApi) window.lotsApi.picker(lotInp);
+  if(!isBE){ const lotInp = document.getElementById('fn-lot'); if(lotInp && window.lotsApi) window.lotsApi.picker(lotInp); }
 }
 function finFieldEntChange(sel){ if(sel.value==='__autre__') handleEntrepriseChange(sel); }
 function finSaveEdit(id){
   const d = finById(id); if(!d) return;
   const g = i=>document.getElementById(i).value;
-  const lot = g('fn-lot').trim(), soc = g('fn-soc');
+  const isBE = finIsBE();
+  const lotOrMission = g('fn-lot'), soc = g('fn-soc');
   if(soc==='__autre__'){ miniAlert('Choisissez une société, ou validez d\'abord l\'ajout proposé.'); return; }
-  d.lot = lot; d.societe = soc; d.date = g('fn-date')||''; d.montant = Number((g('fn-mt')||'').replace(',','.'))||0;
+  if(isBE){ d.missionId = lotOrMission||''; d.lot=''; } else { d.lot = (lotOrMission||'').trim(); d.missionId=''; }
+  d.societe = soc; d.date = g('fn-date')||''; d.montant = Number((g('fn-mt')||'').replace(',','.'))||0;
   const fileInput = document.getElementById('fn-pdf');
   const finish = ()=>{ closeModal(); finRefresh(); };
   if(fileInput && fileInput.files && fileInput.files[0]){
@@ -16202,7 +16216,7 @@ document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.clo
     nettoyage:['Chef d’équipe','Responsable opérationnel','Compagnon'],
     entreprise_generale:['Directeur','Responsable travaux principal','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon'],
     ces:['Directeur','Chargé d’affaires','Conducteur de travaux','Chef de chantier','Chef d’équipe','Compagnon'],
-    bureau_etudes:['Directeur','Chargé d’affaires','Stagiaire ou apprenti']
+    bureau_etudes:['Directeur','Chargé d’affaires','Stagiaire ou apprenti','Élève stagiaire']
   };
   window.PG_FONCTIONS=PG_FONCTIONS;
   /* métiers d'un espace « Corps d'état secondaire » (cahier des charges §4) */
@@ -21388,7 +21402,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v419';
+  const VER='v420';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22902,6 +22916,7 @@ window.createInterloc=function(returnTaskId){
 <script id="beJs">
 (function(){
   function L_missions(){ return state.missions=state.missions||[]; }
+  function L_typesMission(){ return state.typesMission=state.typesMission||[]; }
   function L_indices(){ return state.indicesKm=state.indicesKm||[]; }
   function L_frais(){ return state.notesFrais=state.notesFrais||[]; }
   function L_km(){ return state.notesKm=state.notesKm||[]; }
@@ -22914,8 +22929,12 @@ window.createInterloc=function(returnTaskId){
   const BE_ST={a_valider:'À valider',validee:'Validée',refusee:'Refusée',a_reprendre:'À reprendre'};
   const BE_STCLS={a_valider:'bst-av',validee:'bst-va',refusee:'bst-re',a_reprendre:'bst-ar'};
   function beStatusBadge(s){ return '<span class="be-st '+(BE_STCLS[s]||'')+'">'+(BE_ST[s]||s)+'</span>'; }
-  function beMissionOptionsHtml(sel){ return '<option value="">— Aucune mission —</option>'+L_missions().map(m=>'<option value="'+esc(m.id)+'"'+(sel===m.id?' selected':'')+'>'+esc(m.nom)+'</option>').join(''); }
-  function beMissionNom(id){ const m=L_missions().find(x=>x.id===id); return m?m.nom:''; }
+  function beMissionOptionsHtml(sel){ return '<option value="">— Aucune mission —</option>'+L_missions().map(m=>'<option value="'+esc(m.id)+'"'+(sel===m.id?' selected':'')+'>'+esc(m.client||'(Sans nom)')+'</option>').join(''); }
+  function beMissionNom(id){ const m=L_missions().find(x=>x.id===id); return m?(m.client||''):''; }
+  function beTypeMissionNom(id){ const t=L_typesMission().find(x=>x.id===id); return t?t.nom:''; }
+  window.beMissionOptionsHtml=beMissionOptionsHtml;
+  window.beMissionNom=beMissionNom;
+  window.beMissionsAll=function(){ return L_missions(); };
   function beStatusActions(item,fn){
     if(!beAdmin()||item.statut==='validee') return '';
     return '<span class="be-acts">'
@@ -22949,26 +22968,32 @@ window.createInterloc=function(returnTaskId){
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>📋 Missions</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beMAdd">＋ Mission</button>':'')
       +'</div>'
-      +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.nom)+'</b>'+(m.description?'<small>'+esc(m.description)+'</small>':'')+'</span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.'+(beAdmin()?' Ajoutez les 11 missions avec le bouton ci-dessus.':'')+'</p>')
+      +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.client||'(Sans nom)')+'</b><small>'+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(m.dateDebut?' · '+esc(fmtDate(m.dateDebut)):'')+(m.dateFin?' → '+esc(fmtDate(m.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.</p>')
       +'</div>';
     const b=document.getElementById('beMAdd'); if(b) b.onclick=()=>beMissionEdit(null);
     if(beAdmin()) w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beMissionEdit(L.find(m=>m.id===r.dataset.id)));
   };
   function beMissionEdit(m){
     const nw=!m; m=m||{};
+    const typeOpts='<option value="">— Choisir —</option>'+L_typesMission().map(t=>'<option value="'+esc(t.id)+'"'+(m.typeMissionId===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('');
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+(nw?'Nouvelle mission':'Mission')+'</h3>'
-      +'<div class="field"><label>Nom</label><input type="text" id="be-m-a" value="'+esc(m.nom||'')+'"></div>'
-      +'<div class="field"><label>Description</label><textarea id="be-m-b" rows="3">'+esc(m.description||'')+'</textarea></div>'
+      +'<div class="field"><label>Client</label><input type="text" id="be-m-a" value="'+esc(m.client||'')+'"></div>'
+      +'<div class="field"><label>Type de mission</label><select id="be-m-t">'+typeOpts+'</select></div>'
+      +'<div class="field"><label>Date de début</label><input type="date" id="be-m-c" value="'+esc(m.dateDebut||'')+'"></div>'
+      +'<div class="field"><label>Date de fin</label><input type="date" id="be-m-d" value="'+esc(m.dateFin||'')+'"></div>'
       +'<div class="modal-actions">'
       +(nw?'':'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beMissionDel(\''+m.id+'\')">Supprimer</button>')
       +'<button class="primary" onclick="beMissionSave('+(nw?'null':'\''+m.id+'\'')+')">Enregistrer</button>'
       +'<button class="ghost" onclick="closeModal()">Fermer</button></div>');
   }
   window.beMissionSave=function(id){
-    const nom=document.getElementById('be-m-a').value.trim(), desc=document.getElementById('be-m-b').value.trim();
-    if(!nom){ miniAlert('Le nom de la mission est requis.'); return; }
-    if(!id){ L_missions().push({id:uid('MI'),nom,description:desc}); }
-    else{ const m=L_missions().find(x=>x.id===id); if(m){ m.nom=nom; m.description=desc; } }
+    const client=document.getElementById('be-m-a').value.trim();
+    const typeMissionId=document.getElementById('be-m-t').value||'';
+    const dateDebut=document.getElementById('be-m-c').value||'';
+    const dateFin=document.getElementById('be-m-d').value||'';
+    if(!client){ miniAlert('Le nom du client est requis.'); return; }
+    if(!id){ L_missions().push({id:uid('MI'),client,typeMissionId,dateDebut,dateFin}); }
+    else{ const m=L_missions().find(x=>x.id===id); if(m){ m.client=client; m.typeMissionId=typeMissionId; m.dateDebut=dateDebut; m.dateFin=dateFin; } }
     beSave(); closeModal(); beMissionsRender();
   };
   window.beMissionDel=function(id){
@@ -23301,7 +23326,7 @@ window.createInterloc=function(returnTaskId){
   /* Données reçues d'Ibrahima par mail le 18/11/2026 (missions de la société, barème kilométrique) : déposées une seule fois si les listes sont encore vides */
   function beSeedData(){
     if(!beAdmin()) return;
-    if(!L_missions().length){
+    if(!L_typesMission().length){
       [
         ['Élaboration des plans d’exécution – structures en béton armé','Calcul et analyse structurelle approfondie des projets, pour dimensionner les éléments contribuant à la stabilité de l’ouvrage.'],
         ['Élaboration des plans d’exécution – structures métalliques','Calcul et analyse structurelle approfondie des projets, pour dimensionner les éléments contribuant à la stabilité de l’ouvrage.'],
@@ -23313,7 +23338,7 @@ window.createInterloc=function(returnTaskId){
         ['Diagnostics accessibilité handicapée et sécurité incendie','Pour les projets de rénovation : diagnostics visant à mettre le bâtiment en conformité selon les normes requises.'],
         ['Assistance à la maîtrise d’ouvrage (AMO)','Accompagner le maître d’ouvrage afin de le conseiller lors de son projet.'],
         ['Rédaction des notices de sécurité incendie et accessibilité','Rédaction des notices de sécurité incendie et d’accessibilité des personnes handicapées.']
-      ].forEach(([nom,description])=>L_missions().push({id:uid('MI'),nom,description}));
+      ].forEach(([nom,description])=>L_typesMission().push({id:uid('TM'),nom,description}));
     }
     if(!L_indices().length){
       L_indices().push({id:uid('IX'),nom:'Barème standard',tauxKm:0.696});
