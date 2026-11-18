@@ -21448,7 +21448,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v435';
+  const VER='v436';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22978,6 +22978,16 @@ window.createInterloc=function(returnTaskId){
 .be-niv-chips .chip button:hover{background:rgba(127,127,127,.15);}
 .be-dimform{margin-top:4px;padding-top:4px;}
 .be-dimform-h{font-size:12.5px;font-weight:700;color:var(--ink-soft);margin:4px 0 8px;}
+.be-wiz-prog{display:flex;gap:6px;justify-content:center;margin:2px 0 14px;}
+.be-wiz-prog .be-wiz-dot{width:22px;height:4px;border-radius:999px;background:var(--line);}
+.be-wiz-prog .be-wiz-dot.on{background:#F2A900;}
+.be-wiz-h{text-align:center;font-weight:700;font-size:13.5px;margin:0 0 12px;}
+.be-wiz-resume{display:flex;flex-direction:column;gap:10px;margin-bottom:6px;}
+.be-wiz-grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;position:relative;}
+.be-wiz-grp b{font-size:12.5px;}
+.be-wiz-grp .ghost{position:absolute;right:8px;top:6px;padding:2px 8px;}
+.be-wiz-rrow{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;}
+.be-wiz-rrow span{color:var(--ink-soft);}
 .be-sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 8px;}
 .be-pj-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px;}
 .be-pj-btns{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
@@ -23087,10 +23097,44 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beMAdd">＋ Mission</button>':'')
       +'</div>'
       +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.client||'(Sans nom)')+'</b><small>'+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(m.dateDebut?' · '+esc(fmtDate(m.dateDebut)):'')+(m.dateFin?' → '+esc(fmtDate(m.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.</p>')
-      +'</div>';
+      +'</div>'
+      +beGabaritsSectionHtml();
     const b=document.getElementById('beMAdd'); if(b) b.onclick=()=>beMissionEdit(null);
     if(beAdmin()) w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beMissionEdit(L.find(m=>m.id===r.dataset.id)));
+    const gAdd=w.querySelector('[data-gab-add]'); if(gAdd) gAdd.onclick=()=>beGabaritAdd();
+    w.querySelectorAll('[data-gab-def]').forEach(b2=>b2.onclick=()=>beGabaritDefaut(b2.dataset.gabDef));
+    w.querySelectorAll('[data-gab-vu]').forEach(b2=>b2.onclick=()=>beGabaritApercu(b2.dataset.gabVu));
+    w.querySelectorAll('[data-gab-ren]').forEach(b2=>b2.onclick=()=>beGabaritRename(b2.dataset.gabRen));
+    w.querySelectorAll('[data-gab-del]').forEach(b2=>b2.onclick=()=>beGabaritDel(b2.dataset.gabDel));
   };
+  /* ===== Bibliothèque des gabarits de plan (modèle de mise en page utilisé à la génération du plan de ferraillage) ===== */
+  function L_gabarits(){ return state.gabaritsPlan=state.gabaritsPlan||[]; }
+  function beGabaritsSectionHtml(){
+    const L=L_gabarits();
+    return '<div class="be-sub"><h4>🗂 Gabarits de plan</h4>'
+      +(L.length?'<div class="be-list">'+L.map(g=>'<div class="be-row" style="cursor:default"><span class="be-row-m"><b>'+esc(g.nom)+'</b>'+(g.parDefaut?'<span class="be-st bst-va">Par défaut</span>':'')+'</span><span class="be-acts">'
+        +(g.parDefaut?'':'<button type="button" data-gab-def="'+esc(g.id)+'" title="Définir par défaut">★</button>')
+        +'<button type="button" data-gab-vu="'+esc(g.id)+'" title="Aperçu">👁</button>'
+        +(beAdmin()?'<button type="button" data-gab-ren="'+esc(g.id)+'" title="Renommer">✎</button><button type="button" data-gab-del="'+esc(g.id)+'" title="Supprimer">✕</button>':'')
+        +'</span></div>').join('')+'</div>':'<p class="be-empty">Aucun gabarit pour l’instant : un plan standard sera utilisé par défaut.</p>')
+      +(beAdmin()?'<button type="button" class="ghost be-addbtn" data-gab-add>＋ Ajouter un gabarit</button>':'')
+      +'</div>';
+  }
+  window.beGabaritAdd=function(){
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,.pdf,application/pdf';
+    inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f) return;
+      readFileAsDataUrl(f).then(src=>{ miniPrompt('Nom du gabarit',f.name.replace(/\.[^.]+$/,''),nom=>{ if(!nom) return;
+        const L=L_gabarits(); L.push({id:uid('GAB'),nom:nom.trim(),fileName:f.name,src,parDefaut:!L.length}); beSave(); beMissionsRender(); }); });
+    };
+    inp.click();
+  };
+  window.beGabaritDefaut=function(id){ L_gabarits().forEach(g=>g.parDefaut=(g.id===id)); beSave(); beMissionsRender(); };
+  window.beGabaritRename=function(id){ const g=L_gabarits().find(x=>x.id===id); if(!g) return; miniPrompt('Renommer le gabarit',g.nom,nom=>{ if(!nom) return; g.nom=nom.trim(); beSave(); beMissionsRender(); }); };
+  window.beGabaritDel=function(id){
+    const L=L_gabarits(); const g=L.find(x=>x.id===id); if(!g) return;
+    miniConfirm('Supprimer ce gabarit ?',()=>{ state.gabaritsPlan=L.filter(x=>x.id!==id); if(g.parDefaut&&state.gabaritsPlan.length) state.gabaritsPlan[0].parDefaut=true; beSave(); beMissionsRender(); });
+  };
+  window.beGabaritApercu=function(id){ const g=L_gabarits().find(x=>x.id===id); if(!g) return; window.beOpenPjViewer({name:g.fileName||g.nom,src:g.src}); };
   function beMissionEdit(m){
     const nw=!m; m=m||{};
     const typeOpts='<option value="">— Choisir —</option>'+L_typesMission().map(t=>'<option value="'+esc(t.id)+'"'+(m.typeMissionId===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('');
@@ -23145,12 +23189,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const inp=(id,label,val,ph)=>'<div class="field"><label>'+label+'</label><input type="number" step="any" id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'"></div>';
     const sel=(id,label,opts,val)=>'<div class="field"><label>'+label+'</label><select id="'+id+'"><option value="">— Choisir —</option>'+opts.map(o2=>'<option value="'+esc(o2)+'"'+(val===o2?' selected':'')+'>'+esc(o2)+'</option>').join('')+'</select></div>';
     if(!typeId) return '';
-    if(tnom.includes('dalle')) return '<div class="be-dimform"><p class="be-dimform-h">Dalle — données de dimensionnement (BAEL 91 révisé 99)</p>'
-      +inp('bo-lx','Petite portée lx (m)',f.lx,'ex. 4.20')+inp('bo-ly','Grande portée ly (m)',f.ly,'ex. 5.80')+inp('bo-h','Épaisseur h (cm)',f.h,'ex. 20')
-      +sel('bo-appuis','Appuis',['Sur 2 appuis','Sur 3 appuis','Sur 4 appuis','Continuité (dalle continue)'],f.appuis)
-      +inp('bo-g','Charge permanente G (kN/m²)',f.g,'ex. 5.5')+inp('bo-q','Charge d’exploitation Q (kN/m²)',f.q,'ex. 2.5')
-      +sel('bo-fiss','Fissuration',['Peu préjudiciable','Préjudiciable','Très préjudiciable'],f.fiss)
-      +inp('bo-fc28','Béton fc28 (MPa)',f.fc28==null?25:f.fc28,'25')+inp('bo-fe','Acier fe (MPa)',f.fe==null?500:f.fe,'500')+'</div>';
+    if(tnom.includes('dalle')) return '<p class="be-empty" style="margin-top:4px">Le détail (géométrie, charges, matériaux) se remplit en plusieurs étapes courtes, juste après l’enregistrement.</p>';
     if(tnom.includes('poutre')) return '<div class="be-dimform"><p class="be-dimform-h">Poutre — données de dimensionnement</p>'
       +inp('bo-l','Portée l (m)',f.l,'ex. 6.00')+inp('bo-b','Largeur b (cm)',f.b,'ex. 25')+inp('bo-ht','Hauteur h (cm)',f.ht,'ex. 50')
       +sel('bo-appuis','Appuis',['Simplement appuyée','Continue','Encastrée'],f.appuis)
@@ -23175,6 +23214,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       +'<div class="field"><label>Niveau</label><select id="be-o-niv">'+nivOpts+'</select></div>'
       +'<div class="field"><label>Type d’ouvrage</label><select id="be-o-t">'+beTypeOuvrageOptsHtml(o.typeId)+'</select></div>'
       +'<div id="be-o-form">'+beOuvrageFormHtml(o.typeId,o.form)+'</div>'
+      +(!nw&&(beTypeOuvrageNom(o.typeId)||'').toLowerCase().includes('dalle')?'<div class="row"><button type="button" class="ghost" onclick="beOuvrageWizOpen(\''+missionId+'\',\''+o.id+'\',\''+(o.form&&o.form._done?'resume':'geo')+'\')">📐 '+(o.form&&o.form._done?'Voir / modifier le dimensionnement':'Continuer le dimensionnement')+'</button></div>':'')
       +'<div class="modal-actions">'
       +(nw?'':'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beOuvrageDel(\''+missionId+'\',\''+(o.id||'')+'\')">Supprimer</button>')
       +'<button class="primary" onclick="beOuvrageSave(\''+missionId+'\','+(nw?'null':'\''+o.id+'\'')+')">Enregistrer</button>'
@@ -23195,12 +23235,67 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const niveauId=document.getElementById('be-o-niv').value||'';
     const typeId=document.getElementById('be-o-t').value||'';
     const g=id2=>{ const e=document.getElementById(id2); return e?e.value.trim():undefined; };
-    const form={}; ['bo-lx','bo-ly','bo-h','bo-appuis','bo-g','bo-q','bo-fiss','bo-fc28','bo-fe','bo-l','bo-b','bo-ht','bo-dims'].forEach(k=>{ const v=g(k); if(v!==undefined) form[k.slice(3)]=v; });
-    form._done=Object.keys(form).some(k=>k!=='_done'&&form[k]);
+    const tnom=(beTypeOuvrageNom(typeId)||'').toLowerCase();
+    const isDalle=tnom.includes('dalle');
+    const existing=id?beOuvragesOf(m).find(x=>x.id===id):null;
+    const form=isDalle?(existing&&existing.form||{}):{};
+    if(!isDalle){ ['bo-lx','bo-ly','bo-h','bo-appuis','bo-g','bo-q','bo-fiss','bo-fc28','bo-fe','bo-l','bo-b','bo-ht','bo-dims'].forEach(k=>{ const v=g(k); if(v!==undefined) form[k.slice(3)]=v; });
+      form._done=Object.keys(form).some(k=>k!=='_done'&&form[k]); }
     const ouvrages=beOuvragesOf(m);
-    if(!id){ ouvrages.push({id:uid('OV'),nom,batimentId,niveauId,typeId,form}); }
+    let savedId=id;
+    if(!id){ savedId=uid('OV'); ouvrages.push({id:savedId,nom,batimentId,niveauId,typeId,form}); }
     else{ const o=ouvrages.find(x=>x.id===id); if(o){ o.nom=nom; o.batimentId=batimentId; o.niveauId=niveauId; o.typeId=typeId; o.form=form; } }
-    beSave(); beMissionEdit(m);
+    beSave();
+    if(isDalle) beOuvrageWizOpen(missionId,savedId,'geo'); else beMissionEdit(m);
+  };
+  /* ===== Parcours en étapes courtes pour le dimensionnement d'une dalle (géométrie → charges → matériaux → résumé) ===== */
+  const BE_DALLE_STEPS=['geo','charges','mat','resume'];
+  const BE_DALLE_FIELDS={geo:['lx','ly','h','appuis'],charges:['g','q'],mat:['fiss','fc28','fe']};
+  function beDalleStepLabel(s){ return {geo:'Étape 1 · Géométrie',charges:'Étape 2 · Charges',mat:'Étape 3 · Matériaux & fissuration'}[s]||s; }
+  function beDalleProgressHtml(step){
+    const i=BE_DALLE_STEPS.indexOf(step);
+    return '<div class="be-wiz-prog">'+BE_DALLE_STEPS.map((s,k)=>'<span class="be-wiz-dot'+(k<=i?' on':'')+'"></span>').join('')+'</div>';
+  }
+  function beDalleStepFieldsHtml(step,f){
+    const inp=(id,label,val,ph)=>'<div class="field"><label>'+label+'</label><input type="number" step="any" id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'"></div>';
+    const sel=(id,label,opts,val)=>'<div class="field"><label>'+label+'</label><select id="'+id+'"><option value="">— Choisir —</option>'+opts.map(o2=>'<option value="'+esc(o2)+'"'+(val===o2?' selected':'')+'>'+esc(o2)+'</option>').join('')+'</select></div>';
+    if(step==='geo') return inp('bo-lx','Petite portée lx (m)',f.lx,'ex. 4.20')+inp('bo-ly','Grande portée ly (m)',f.ly,'ex. 5.80')+inp('bo-h','Épaisseur h (cm)',f.h,'ex. 20')+sel('bo-appuis','Appuis',['Sur 2 appuis','Sur 3 appuis','Sur 4 appuis','Continuité (dalle continue)'],f.appuis);
+    if(step==='charges') return inp('bo-g','Charge permanente G (kN/m²)',f.g,'ex. 5.5')+inp('bo-q','Charge d’exploitation Q (kN/m²)',f.q,'ex. 2.5');
+    if(step==='mat') return sel('bo-fiss','Fissuration',['Peu préjudiciable','Préjudiciable','Très préjudiciable'],f.fiss)+inp('bo-fc28','Béton fc28 (MPa)',f.fc28==null?25:f.fc28,'25')+inp('bo-fe','Acier fe (MPa)',f.fe==null?500:f.fe,'500');
+    return '';
+  }
+  window.beOuvrageWizOpen=function(missionId,ouvrageId,step){
+    const m=L_missions().find(x=>x.id===missionId); if(!m) return;
+    const o=beOuvragesOf(m).find(x=>x.id===ouvrageId); if(!o) return;
+    const f=o.form=o.form||{};
+    step=step||'geo';
+    const back='<button class="close-x" onclick="beMissionEdit(beMissionsAll().find(x=>x.id===\''+missionId+'\'))">×</button>';
+    if(step==='resume'){
+      const row=(lab,val)=>'<div class="be-wiz-rrow"><span>'+esc(lab)+'</span><b>'+esc(val==null||val===''?'—':String(val))+'</b></div>';
+      openModal(back+'<h3>'+esc(o.nom)+'</h3>'+beDalleProgressHtml('resume')+'<p class="be-wiz-h">Résumé</p>'
+        +'<div class="be-wiz-resume">'
+        +'<div class="be-wiz-grp"><b>Géométrie</b><button type="button" class="ghost" data-wiz-edit="geo">✎</button>'+row('lx (m)',f.lx)+row('ly (m)',f.ly)+row('h (cm)',f.h)+row('Appuis',f.appuis)+'</div>'
+        +'<div class="be-wiz-grp"><b>Charges</b><button type="button" class="ghost" data-wiz-edit="charges">✎</button>'+row('G (kN/m²)',f.g)+row('Q (kN/m²)',f.q)+'</div>'
+        +'<div class="be-wiz-grp"><b>Matériaux</b><button type="button" class="ghost" data-wiz-edit="mat">✎</button>'+row('Fissuration',f.fiss)+row('Béton fc28',f.fc28)+row('Acier fe',f.fe)+'</div>'
+        +'</div>'
+        +'<div class="modal-actions"><button type="button" class="primary" id="be-wiz-calc">🧮 Lancer le calcul</button></div>');
+      document.querySelectorAll('[data-wiz-edit]').forEach(b=>b.onclick=()=>beOuvrageWizOpen(missionId,ouvrageId,b.dataset.wizEdit));
+      const cb=document.getElementById('be-wiz-calc'); if(cb) cb.onclick=()=>beOuvrageLancerCalcul(missionId,ouvrageId);
+      return;
+    }
+    const fields=BE_DALLE_FIELDS[step], idx=BE_DALLE_STEPS.indexOf(step);
+    openModal(back+'<h3>'+esc(o.nom)+'</h3>'+beDalleProgressHtml(step)+'<p class="be-wiz-h">'+beDalleStepLabel(step)+'</p>'
+      +'<div id="be-wiz-f">'+beDalleStepFieldsHtml(step,f)+'</div>'
+      +'<div class="modal-actions">'
+      +(idx>0?'<button type="button" class="ghost" id="be-wiz-prev">‹ Précédent</button>':'')
+      +'<button type="button" class="primary" id="be-wiz-next">'+(idx<BE_DALLE_STEPS.length-2?'Suivant ›':'Voir le résumé ›')+'</button>'
+      +'</div>');
+    const save=()=>{ fields.forEach(k=>{ const e=document.getElementById('bo-'+k); if(e) f[k]=e.value; }); f._done=true; beSave(); };
+    const prevB=document.getElementById('be-wiz-prev'); if(prevB) prevB.onclick=()=>{ save(); beOuvrageWizOpen(missionId,ouvrageId,BE_DALLE_STEPS[idx-1]); };
+    document.getElementById('be-wiz-next').onclick=()=>{ save(); beOuvrageWizOpen(missionId,ouvrageId,BE_DALLE_STEPS[idx+1]); };
+  };
+  window.beOuvrageLancerCalcul=function(missionId,ouvrageId){
+    miniAlert('Le calcul (note de calcul + plan de ferraillage, via Claude) n’est pas encore branché : il faut d’abord la clé API. Vos données sont enregistrées et prêtes.');
   };
   window.beOuvrageDel=function(missionId,id){
     miniConfirm('Supprimer cet élément à dimensionner ?',()=>{ const m=L_missions().find(x=>x.id===missionId); if(!m) return; m.ouvrages=beOuvragesOf(m).filter(x=>x.id!==id); beSave(); beMissionEdit(m); });
