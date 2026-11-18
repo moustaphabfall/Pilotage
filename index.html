@@ -427,11 +427,11 @@ tr.tr-row:hover{background:#F7F9F6; cursor:pointer;}
 .fin-tag.muted{color:var(--ink-soft); font-style:italic;}
 .fin-pj{box-sizing:border-box; margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; min-width:30px; min-height:30px; padding:0; line-height:1; border-radius:50%; border:1.5px solid var(--line); background:transparent; cursor:pointer; font-size:14px; color:var(--ink);}
 .fin-pj:hover{background:transparent; border-color:var(--ink);}
-.fin-chart-rib{margin-bottom:10px;}
-.fin-chart-legend{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:6px; font-size:12px; color:var(--ink-soft);}
+.fin-chart{background:transparent; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);}
+.fin-chart-legend{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:4px; font-size:11.5px; color:var(--ink-soft);}
 .fin-leg-it{display:inline-flex; align-items:center; gap:5px;}
-.fin-leg-it i{width:10px; height:10px; border-radius:50%; display:inline-block;}
-.fin-chart-svg{width:100%; height:auto; display:block;}
+.fin-leg-it i{width:8px; height:8px; border-radius:50%; display:inline-block; background-clip:padding-box;}
+.fin-chart-svg{width:100%; height:auto; display:block; background:transparent;}
 .fin-cgrid{stroke:var(--line); stroke-width:1;}
 .fin-caxis{font-size:9.5px; fill:var(--ink-soft);}
 .fin-preview{background:transparent; border:1.5px solid var(--line); border-radius:8px; padding:10px; margin-top:6px;}
@@ -11478,22 +11478,23 @@ function finChartData(){
 }
 function finChartSvg(){
   const {months,byType}=finChartData();
-  if(!months.length) return '<p class="empty-note">Pas encore de montants renseignés sur les devis, situations ou factures : ouvrez un document et indiquez son montant pour voir apparaître la courbe.</p>';
-  const W=640,H=210,padL=52,padR=14,padT=14,padB=28;
+  if(!months.length) return '';
+  const W=640,H=160,padL=40,padR=8,padT=10,padB=20;
   const innerW=W-padL-padR, innerH=H-padT-padB;
   let maxV=0; FIN_TYPES.forEach(t=>months.forEach(m=>{ maxV=Math.max(maxV,(byType[t.k]&&byType[t.k][m])||0); }));
   const niceMax = maxV>0 ? Math.ceil(maxV/1000)*1000 : 1;
   const x=i=> padL + (months.length>1? i/(months.length-1)*innerW : innerW/2);
   const y=v=> padT + innerH - (v/niceMax)*innerH;
-  const gridLines=[0,0.25,0.5,0.75,1].map(f=>{ const yy=padT+innerH-f*innerH; return `<line x1="${padL}" x2="${W-padR}" y1="${yy}" y2="${yy}" class="fin-cgrid"/><text x="${padL-6}" y="${yy+4}" class="fin-caxis" text-anchor="end">${Math.round(f*niceMax).toLocaleString('fr-FR')}</text>`; }).join('');
-  const xLabels=months.map((m,i)=>{ const dt=new Date(m+'-01T12:00:00'); const lbl=dt.toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}); return `<text x="${x(i)}" y="${H-8}" class="fin-caxis" text-anchor="middle">${esc(lbl)}</text>`; }).join('');
+  const baseline = `<line x1="${padL}" x2="${W-padR}" y1="${(padT+innerH).toFixed(1)}" y2="${(padT+innerH).toFixed(1)}" class="fin-cgrid"/>`;
+  const axisTop = `<text x="${padL-6}" y="${padT+5}" class="fin-caxis" text-anchor="end">${Math.round(niceMax).toLocaleString('fr-FR')}</text>`;
+  const axisBase = `<text x="${padL-6}" y="${(padT+innerH+4).toFixed(1)}" class="fin-caxis" text-anchor="end">0</text>`;
+  const xLabels=months.map((m,i)=>{ const dt=new Date(m+'-01T12:00:00'); const lbl=dt.toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}); return `<text x="${x(i).toFixed(1)}" y="${H-5}" class="fin-caxis" text-anchor="middle">${esc(lbl)}</text>`; }).join('');
   const lines=FIN_TYPES.map(t=>{
-    const pts=months.map((m,i)=> x(i)+','+y((byType[t.k]&&byType[t.k][m])||0)).join(' ');
-    const dots=months.map((m,i)=>{ const v=(byType[t.k]&&byType[t.k][m])||0; return v?`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" fill="${FIN_COLORS[t.k]}"><title>${esc(t.s)} — ${esc(refacEuro(v))}</title></circle>`:''; }).join('');
-    return `<polyline points="${pts}" fill="none" stroke="${FIN_COLORS[t.k]}" stroke-width="2.2"/>${dots}`;
+    const pts=months.map((m,i)=> x(i).toFixed(1)+','+y((byType[t.k]&&byType[t.k][m])||0).toFixed(1)).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${FIN_COLORS[t.k]}" stroke-width="1.75"/>`;
   }).join('');
   const legend=FIN_TYPES.map(t=>`<span class="fin-leg-it"><i style="background:${FIN_COLORS[t.k]}"></i>${esc(t.pl)}</span>`).join('');
-  return `<div class="fin-chart-legend">${legend}</div><svg viewBox="0 0 ${W} ${H}" class="fin-chart-svg" preserveAspectRatio="xMidYMid meet">${gridLines}${lines}${xLabels}</svg>`;
+  return `<div class="fin-chart"><div class="fin-chart-legend">${legend}</div><svg viewBox="0 0 ${W} ${H}" class="fin-chart-svg" preserveAspectRatio="xMidYMid meet">${baseline}${lines}${axisTop}${axisBase}${xLabels}</svg></div>`;
 }
 function finTriggerAdd(type){ const inp=document.getElementById('finAddInput'); if(!inp) return; inp.dataset.type=type; inp.click(); }
 function finToggleType(k){ finTypesActifs[k] = !finTypesActifs[k]; renderFinDocs(); }
@@ -11585,9 +11586,9 @@ function renderFinDocs(){
   const rows = list.length ? list.map(finRowHtml).join('') : '<p class="empty-note">Aucun document pour ce filtre. Cliquez sur « + » à côté d’un type pour déposer un PDF.</p>';
   const preview = finPreviewId ? finPreviewHtml(finPreviewId) : '';
   const total = finAll().length;
-  wrap.innerHTML = `<details class="pl-rib fin-chart-rib" open><summary><span>📈 Montants dans le temps</span></summary><div class="pl-rib-body">${finChartSvg()}</div></details>
-    <details class="pl-rib fin-rib" ${finOuvert?'open':''} ontoggle="finOuvert=this.open"><summary><span>📄 Devis, situations et factures <small>(${total})</small></span></summary>
+  wrap.innerHTML = `<details class="pl-rib fin-rib" ${finOuvert?'open':''} ontoggle="finOuvert=this.open"><summary><span>📄 Devis, situations et factures <small>(${total})</small></span></summary>
     <div class="pl-rib-body">
+      ${finChartSvg()}
       <input type="file" id="finAddInput" accept="application/pdf" style="display:none;" onchange="finAddNew(this.dataset.type,this)">
       <div class="fin-bar">${typeBtns}</div>
       ${filtreRow}
@@ -21358,7 +21359,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v416';
+  const VER='v417';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
