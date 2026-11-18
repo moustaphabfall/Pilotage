@@ -427,6 +427,14 @@ tr.tr-row:hover{background:#F7F9F6; cursor:pointer;}
 .fin-tag.muted{color:var(--ink-soft); font-style:italic;}
 .fin-pj{box-sizing:border-box; margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; min-width:30px; min-height:30px; padding:0; line-height:1; border-radius:50%; border:1.5px solid var(--line); background:transparent; cursor:pointer; font-size:14px; color:var(--ink);}
 .fin-pj:hover{background:transparent; border-color:var(--ink);}
+.fin-cards{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;}
+.fin-card{flex:1 1 150px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:transparent;}
+.fin-card-title{display:flex; align-items:center; gap:4px; border:0; background:none; padding:0; font:600 12.5px inherit; color:var(--ink); cursor:pointer;}
+.fin-card-title i{font-style:normal; font-size:10px; opacity:.6;}
+.fin-card-amt{font-size:19px; font-weight:700; margin-top:4px;}
+.fin-card-date{font-size:11px; color:var(--ink-soft); margin-top:2px;}
+.fin-card-pick{margin-top:6px; font-size:12px; padding:3px 6px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--ink);}
+.fin-card-today{display:block; margin-top:4px; padding:2px 8px; font-size:11px;}
 .fin-chart{background:transparent; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);}
 .fin-chart-legend{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:4px; font-size:11.5px; color:var(--ink-soft);}
 .fin-leg-it{display:inline-flex; align-items:center; gap:5px;}
@@ -11468,6 +11476,24 @@ function finAddNew(type, input){
     finAll().push(d); input.value=''; finPreviewId = d.id; finRefresh();
   });
 }
+/* ===== Cadres des montants actuels (total à une date, par type, cliquable pour filtrer) ===== */
+let finCardDate = {devis:'', situation:'', facture:''};
+let finCardOpen = {devis:false, situation:false, facture:false};
+function finCardTotal(type, asOf){ return finAll().filter(d=>d.type===type && d.date && d.date<=asOf).reduce((a,d)=>a+(Number(d.montant)||0),0); }
+function finCardsHtml(){
+  const today = new Date().toISOString().slice(0,10);
+  return '<div class="fin-cards">'+FIN_TYPES.map(t=>{
+    const asOf = finCardDate[t.k] || today;
+    const total = finCardTotal(t.k, asOf);
+    return '<div class="fin-card">'
+      +'<button type="button" class="fin-card-title" onclick="finCardToggle(\''+t.k+'\')">'+t.icon+' '+esc(t.pl)+' <i>▾</i></button>'
+      +'<div class="fin-card-amt">'+esc(refacEuro(total))+'</div>'
+      +'<div class="fin-card-date">Au '+esc(fmtDate(asOf))+'</div>'
+      +(finCardOpen[t.k]?('<input type="date" class="fin-card-pick" value="'+esc(asOf)+'" onchange="finCardDate[\''+t.k+'\']=this.value;renderFinDocs();">'+(finCardDate[t.k]?'<button type="button" class="ghost fin-card-today" onclick="finCardDate[\''+t.k+'\']=\'\';renderFinDocs();">✕ Aujourd’hui</button>':'')):'')
+      +'</div>';
+  }).join('')+'</div>';
+}
+window.finCardToggle=function(k){ finCardOpen[k]=!finCardOpen[k]; renderFinDocs(); };
 /* ===== Graphique des montants (devis/situation/facture dans le temps, par mois) ===== */
 const FIN_COLORS = {devis:'#4C8DFF', situation:'#F2A900', facture:'#2EBD6B'};
 function finMonthKey(dateStr){ return dateStr ? dateStr.slice(0,7) : null; }
@@ -11589,6 +11615,7 @@ function renderFinDocs(){
   const total = finAll().length;
   wrap.innerHTML = `<details class="pl-rib fin-rib" ${finOuvert?'open':''} ontoggle="finOuvert=this.open"><summary><span>📄 Devis, situations et factures <small>(${total})</small></span></summary>
     <div class="pl-rib-body">
+      ${finCardsHtml()}
       ${finChartSvg()}
       <input type="file" id="finAddInput" accept="application/pdf" style="display:none;" onchange="finAddNew(this.dataset.type,this)">
       <div class="fin-bar">${typeBtns}</div>
@@ -21361,7 +21388,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v418';
+  const VER='v419';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
