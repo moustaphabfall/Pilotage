@@ -250,6 +250,7 @@ tr.tr-row:hover{background:#F7F9F6; cursor:pointer;}
 .modal-actions{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
 .modal-actions button{width:100%;}
 .close-x{float:right; background:none; border:none; font-size:18px; padding:0 4px; min-height:auto;}
+.back-x{float:left; background:none; border:none; font-size:22px; line-height:1; padding:0 6px; min-height:auto;}
 
 .hist{font-size:12px; color:var(--ink-soft); border-top:1px solid var(--line); margin-top:14px; padding-top:10px;}
 .hist div{margin-bottom:3px;}
@@ -6341,17 +6342,25 @@ function activePageKey(){
   for(const id in map){ const el=document.getElementById(id); if(el && el.classList.contains('active')) return map[id]; }
   return 'travaux';
 }
-function openModal(html){
+/* backTo (optionnel) : fonction qui réaffiche la fenêtre immédiatement précédente. Quand elle est fournie,
+   une flèche ‹ apparaît (distincte du × qui, lui, ferme toujours tout et revient à la page d'origine), et
+   un appui en dehors de la fenêtre revient à cette fenêtre précédente au lieu de tout fermer — conformément
+   au skill d'architecture : « un clic en dehors revient à la fenêtre précédente, jamais directement à la
+   page de départ ». Ne pas passer backTo = fenêtre de premier niveau (le × suffit alors à revenir à l'origine). */
+function openModal(html, backTo){
   const page = activePageKey();
   const badge = `<div class="modal-date-etat">📅 Date d'état (${{dashboard:'Tableau de bord',interloc:'Interlocuteurs',travaux:'Suivi travaux',planif:'Planification',refac:'Finance'}[page]}) : ${fmtDate(getDateEtat(page))}</div>`;
-  document.getElementById('modalBody').innerHTML = badge + html;
+  window._modalBackTo = (typeof backTo==='function') ? backTo : null;
+  const backBtn = window._modalBackTo ? '<button type="button" class="back-x" onclick="modalBack()" aria-label="Retour" title="Retour">‹</button>' : '';
+  document.getElementById('modalBody').innerHTML = badge + backBtn + html;
   document.getElementById('overlay').classList.add('open'); window._modalT = Date.now();
 }
-function closeModal(){ document.getElementById('overlay').classList.remove('open'); document.getElementById('modalBody').innerHTML=''; }
+function modalBack(){ const f=window._modalBackTo; window._modalBackTo=null; if(f) f(); else closeModal(); }
+function closeModal(){ window._modalBackTo=null; document.getElementById('overlay').classList.remove('open'); document.getElementById('modalBody').innerHTML=''; }
 /* La fenêtre ne se ferme que sur un vrai appui hors de la fenêtre (appui ET relâché sur le fond), jamais par un clic parasite juste après l'ouverture */
 let _ovDown = false;
 document.getElementById('overlay').addEventListener('pointerdown', e=>{ _ovDown = (e.target.id==='overlay') && (Date.now()-(window._modalT||0) > 700); });
-document.getElementById('overlay').addEventListener('click', e=>{ if(e.target.id==='overlay' && _ovDown) closeModal(); _ovDown = false; });
+document.getElementById('overlay').addEventListener('click', e=>{ if(e.target.id==='overlay' && _ovDown){ if(window._modalBackTo) modalBack(); else closeModal(); } _ovDown = false; });
 
 /* ===================== MINI-PROMPT / MINI-CONFIRM / MINI-ALERT =====================
    Remplace window.prompt/confirm/alert, bloqués dans le bac à sable de l'aperçu Artifact. */
@@ -21417,7 +21426,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v427';
+  const VER='v428';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23530,9 +23539,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const avail=beEleveMembers().filter(m=>!already.includes(m.id));
     if(!avail.length){ miniAlert('Aucun élève stagiaire disponible. Invitez un membre depuis « Gérer les membres », puis réglez sa fonction sur « Élève stagiaire ».'); return; }
     const opts=avail.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.nom)+'</option>').join('');
-    openModal('<button class="close-x" onclick="beSessionOpenRender(\''+esc(sessionId)+'\')">×</button><h3>+ Ajouter des élèves</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>+ Ajouter des élèves</h3>'
       +'<div class="field"><label>Élèves stagiaires</label><select id="be-ses-elesel" multiple size="'+Math.min(8,avail.length)+'">'+opts+'</select></div>'
-      +'<div class="modal-actions"><button class="primary" id="be-ses-eleadd">Ajouter</button><button class="ghost" onclick="beSessionOpenRender(\''+esc(sessionId)+'\')">Annuler</button></div>');
+      +'<div class="modal-actions"><button class="primary" id="be-ses-eleadd">Ajouter</button><button class="ghost" onclick="beSessionOpenRender(\''+esc(sessionId)+'\')">Annuler</button></div>', ()=>beSessionOpenRender(sessionId));
     document.getElementById('be-ses-eleadd').onclick=()=>beSessionElevesAdd(sessionId);
   }
   window.beSessionElevesAdd=function(sessionId){
@@ -23552,11 +23561,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* ---- Supports de cours ---- */
   function beSupportNew(sessionId){
     const holder={pj:null}; window.__beHolder=holder;
-    openModal('<button class="close-x" onclick="beSessionOpenRender(\''+esc(sessionId)+'\')">×</button><h3>📚 Nouveau support de cours</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📚 Nouveau support de cours</h3>'
       +'<div class="field"><label>Thème</label><input type="text" id="be-sup-a"></div>'
       +'<div class="field"><label>Date de dépôt</label><input type="date" id="be-sup-b" value="'+esc(beToday())+'"></div>'
       +bePjHtml(null)
-      +'<div class="modal-actions"><button class="primary" id="be-sup-save">Enregistrer</button><button class="ghost" onclick="beSessionOpenRender(\''+esc(sessionId)+'\')">Annuler</button></div>');
+      +'<div class="modal-actions"><button class="primary" id="be-sup-save">Enregistrer</button><button class="ghost" onclick="beSessionOpenRender(\''+esc(sessionId)+'\')">Annuler</button></div>', ()=>beSessionOpenRender(sessionId));
     bePjWire(holder);
     document.getElementById('be-sup-save').onclick=()=>{
       const theme=document.getElementById('be-sup-a').value.trim();
@@ -23583,11 +23592,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
         +'<div class="field"><label>Réponse attendue (facultatif)</label><textarea rows="2" data-fq="reponseAttendue">'+esc(q.reponseAttendue)+'</textarea></div>'
         +(d.questions.length>1?'<button type="button" class="be-ind-del" data-fqdel="'+esc(q.id)+'">✕ Retirer la question</button>':'')
       +'</div>').join('');
-    openModal('<button class="close-x" onclick="beFoCancelBack()">×</button><h3>Nouveau formulaire</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>Nouveau formulaire</h3>'
       +'<div class="field"><label>Nom du formulaire</label><input type="text" id="be-fo-nom" value="'+esc(d.nom)+'"></div>'
       +'<div id="be-fo-qs">'+qsHtml+'</div>'
       +'<button type="button" class="ghost be-addbtn" id="be-fo-addq">+ Question</button>'
-      +'<div class="modal-actions"><button class="primary" id="be-fo-save">Enregistrer le formulaire</button><button class="ghost" onclick="beFoCancelBack()">Annuler</button></div>');
+      +'<div class="modal-actions"><button class="primary" id="be-fo-save">Enregistrer le formulaire</button><button class="ghost" onclick="beFoCancelBack()">Annuler</button></div>', beFoCancelBack);
     document.getElementById('be-fo-addq').onclick=()=>{ beFoSync(); beFoDraft.questions.push({id:uid('Q'),texte:'',reponseAttendue:''}); beFormulaireRender(); };
     document.querySelectorAll('[data-fqdel]').forEach(b=>b.onclick=()=>{ beFoSync(); beFoDraft.questions=beFoDraft.questions.filter(q=>q.id!==b.dataset.fqdel); beFormulaireRender(); });
     document.getElementById('be-fo-save').onclick=()=>beFoSave();
@@ -23631,7 +23640,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const fos=L_formulaires();
     const selected=(ev&&ev.formulaireIds)||[];
     const opts=fos.map(f=>'<option value="'+esc(f.id)+'"'+(selected.includes(f.id)?' selected':'')+'>'+esc(f.nom)+' ('+f.questions.length+' question'+(f.questions.length>1?'s':'')+')</option>').join('');
-    openModal('<button class="close-x" onclick="beSessionOpenRender(\''+esc(d.sessionId)+'\')">×</button><h3>'+(ev?'Modifier l’évaluation':'Nouvelle évaluation')+'</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+(ev?'Modifier l’évaluation':'Nouvelle évaluation')+'</h3>'
       +'<div class="field"><label>Nom</label><input type="text" id="be-ev-a" value="'+esc(ev&&ev.nom||'')+'"></div>'
       +'<div class="field"><label>Formulaires</label>'+(fos.length?'<select id="be-ev-b" multiple size="'+Math.min(6,fos.length)+'">'+opts+'</select>':'<p class="be-empty">Aucun formulaire. Créez-en un ci-dessous.</p>')
       +'<button type="button" class="ghost" id="be-ev-newfo" style="margin-top:6px;">+ Nouveau formulaire</button></div>'
@@ -23640,7 +23649,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       +'<div class="modal-actions">'
       +(ev?'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beEvalDel(\''+ev.id+'\')">Supprimer</button>':'')
       +'<button class="primary" id="be-ev-save">Enregistrer</button>'
-      +'<button class="ghost" onclick="beSessionOpenRender(\''+esc(d.sessionId)+'\')">Fermer</button></div>');
+      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beSessionOpenRender(d.sessionId));
     document.getElementById('be-ev-newfo').onclick=()=>{ beFoBackTo=null; beFormulaireNew(); };
     document.getElementById('be-ev-save').onclick=()=>beEvalSave();
   }
@@ -23679,14 +23688,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       if(sb){ statutTxt = sb.statutCorrection==='corrigee' ? ('Corrigé — note : '+esc(String(sb.noteGlobale))+(sb.publiee?' (publiée)':' (à publier)')) : 'Soumis — à corriger'; }
       return '<div class="be-row"><span class="be-row-m"><b>'+esc(beNomFromId(eid))+'</b><small>'+statutTxt+'</small></span>'+(sb&&sb.statutCorrection!=='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Corriger</button>':'')+(sb&&sb.statutCorrection==='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Revoir</button>':'')+'</div>';
     }).join('') || '<p class="be-empty">Aucun élève inscrit dans cette session.</p>';
-    openModal('<button class="close-x" onclick="beSessionOpenRender(\''+esc(ev.sessionId)+'\')">×</button><h3>📝 '+esc(ev.nom)+'</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📝 '+esc(ev.nom)+'</h3>'
       +'<p style="margin:0 0 6px;font-size:12.5px;color:var(--ink-soft);">'+esc(fos.map(f=>f.nom).join(', '))+' · '+nbQ+' question(s)</p>'
       +'<p style="margin:0 0 12px;font-size:12.5px;color:var(--ink-soft);">'+(ev.dateDebut?esc(fmtDate2(ev.dateDebut)):'')+(ev.dateFin?' → '+esc(fmtDate2(ev.dateFin)):'')+' · <span class="be-ev-st">'+(EV_ST[ev.statut]||ev.statut)+'</span></p>'
       +(ev.statut==='brouillon'?'<button type="button" class="ghost" id="be-ev-editbtn" style="margin-right:6px;">✎ Modifier</button><button type="button" class="primary" id="be-ev-sendbtn">📨 Envoyer aux élèves</button>':'')
       +'<h4 style="margin-top:14px;">Soumissions</h4><div class="be-list">'+rows+'</div>'
       +'<div class="modal-actions">'
       +(ev.statut!=='cloturee' && eleves.length && eleves.every(eid=>{ const sb=(ev.soumissions||[]).find(x=>x.eleveId===eid); return !sb||sb.statutCorrection==='corrigee'; }) && (ev.soumissions||[]).length ? '<button class="primary" id="be-ev-cloturer">🔒 Clôturer la correction</button>' : '')
-      +'<button class="ghost" onclick="beSessionOpenRender(\''+esc(ev.sessionId)+'\')">Retour</button></div>');
+      +'<button class="ghost" onclick="closeModal()">Retour</button></div>', ()=>beSessionOpenRender(ev.sessionId));
     const eb=document.getElementById('be-ev-editbtn'); if(eb) eb.onclick=()=>beEvalNew(ev.sessionId, ev.id);
     const sb=document.getElementById('be-ev-sendbtn'); if(sb) sb.onclick=()=>beEvalEnvoyer(ev.id);
     document.querySelectorAll('[data-corr]').forEach(b=>b.onclick=()=>beCorrOpen(ev.id, b.dataset.corr));
@@ -23706,9 +23715,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   window.beCorrOpen=function(evalId, eleveId){
     const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
     if(!ev.bareme){
-      openModal('<button class="close-x" onclick="beEvalOpen(\''+esc(evalId)+'\')">×</button><h3>Choisir le barème de correction</h3>'
+      openModal('<button class="close-x" onclick="closeModal()">×</button><h3>Choisir le barème de correction</h3>'
         +'<p class="empty-note">Ce barème s’appliquera à toute la correction de cette évaluation.</p>'
-        +'<div class="pa-grid"><button type="button" class="pa-app" data-b="20"><span class="pa-ic">20</span><span class="pa-lb">Note sur 20</span></button><button type="button" class="pa-app" data-b="10"><span class="pa-ic">10</span><span class="pa-lb">Note sur 10</span></button><button type="button" class="pa-app" data-b="lettres"><span class="pa-ic">A+</span><span class="pa-lb">Lettres (A+ à C)</span></button></div>');
+        +'<div class="pa-grid"><button type="button" class="pa-app" data-b="20"><span class="pa-ic">20</span><span class="pa-lb">Note sur 20</span></button><button type="button" class="pa-app" data-b="10"><span class="pa-ic">10</span><span class="pa-lb">Note sur 10</span></button><button type="button" class="pa-app" data-b="lettres"><span class="pa-ic">A+</span><span class="pa-lb">Lettres (A+ à C)</span></button></div>', ()=>beEvalOpen(evalId));
       document.querySelectorAll('[data-b]').forEach(btn=>btn.onclick=()=>{ ev.bareme=btn.dataset.b; beSave(); beCorrOpenRender(evalId, eleveId); });
       return;
     }
@@ -23730,12 +23739,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
         +'<div class="field"><label>Commentaire</label><textarea rows="2" data-cf="commentaire">'+esc(cor.commentaire||'')+'</textarea></div>'
       +'</div>';
     }).join('');
-    openModal('<button class="close-x" onclick="beEvalOpen(\''+esc(evalId)+'\')">×</button><h3>Correction — '+esc(sb.eleveNom||beNomFromId(eleveId))+'</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>Correction — '+esc(sb.eleveNom||beNomFromId(eleveId))+'</h3>'
       +'<p class="empty-note" style="margin:0 0 10px;">Barème : '+esc(beBaremeLabel(ev.bareme))+'</p>'
       +'<div id="be-corr-qs">'+(qHtml||'<p class="be-empty">Aucune question.</p>')+'</div>'
       +'<h4 style="margin-top:14px;">Pièce jointe de correction (pour cette évaluation)</h4>'
       +bePjHtml(ev.pjCorrection)
-      +'<div class="modal-actions"><button class="primary" id="be-corr-valider">Valider la correction</button><button class="ghost" onclick="beEvalOpen(\''+esc(evalId)+'\')">Fermer</button></div>');
+      +'<div class="modal-actions"><button class="primary" id="be-corr-valider">Valider la correction</button><button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beEvalOpen(evalId));
     const holder={pj:ev.pjCorrection||null}; window.__beHolder=holder; bePjWire(holder);
     document.getElementById('be-corr-valider').onclick=()=>beCorrValider(evalId, eleveId);
   }
@@ -23805,11 +23814,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
         else { statutTxt='À remplir avant le '+esc(fmtDate2(e.dateFin)); action='<button type="button" class="primary" data-remplir="'+esc(e.id)+'">Répondre</button>'; }
         return '<div class="be-row"><span class="be-row-m"><b>'+esc(e.nom)+'</b><small>'+statutTxt+'</small></span>'+action+'</div>';
       }).join('')+'</div>' : '<p class="be-empty">Aucune évaluation.</p>';
-    openModal('<button class="close-x" onclick="beFormationRenderEleve()">×</button><h3>🎓 '+esc(s.nom)+'</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🎓 '+esc(s.nom)+'</h3>'
       +(s.description?'<p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px;">'+esc(s.description)+'</p>':'')
       +'<h4>📚 Supports de cours</h4>'+supHtml
       +'<h4 style="margin-top:16px;">📝 Évaluations</h4>'+evHtml
-      +'<div class="modal-actions"><button class="ghost" onclick="beFormationRenderEleve()">Retour</button></div>');
+      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Retour</button></div>', ()=>beFormationRenderEleve());
     document.querySelectorAll('[data-dlsup]').forEach(b=>b.onclick=()=>{ const d=L_supports().find(x=>x.id===b.dataset.dlsup); if(d&&d.pj&&d.pj.src){ const a=document.createElement('a'); a.href=d.pj.src; a.download=d.pj.name||'support'; a.click(); } });
     document.querySelectorAll('[data-voir]').forEach(b=>b.onclick=()=>beEvalVoirCorrection(b.dataset.voir));
     document.querySelectorAll('[data-remplir]').forEach(b=>b.onclick=()=>beEvalRemplir(b.dataset.remplir));
@@ -23822,10 +23831,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const fos=(ev.formulaireIds||[]).map(fid=>L_formulaires().find(f=>f.id===fid)).filter(Boolean);
     const questions=[]; fos.forEach(f=>f.questions.forEach(q=>questions.push(q)));
     const qHtml=questions.map((q,i)=>'<div class="field" data-qid="'+esc(q.id)+'"><label>Q'+(i+1)+'. '+esc(q.texte)+'</label><textarea rows="3" data-rep>'+esc(sb&&sb.reponses&&sb.reponses[q.id]||'')+'</textarea></div>').join('');
-    openModal('<button class="close-x" onclick="beSessionOpenEleve(\''+esc(ev.sessionId)+'\')">×</button><h3>'+esc(ev.nom)+'</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+esc(ev.nom)+'</h3>'
       +'<p class="empty-note" style="margin:0 0 10px;">À rendre avant le '+esc(fmtDate2(ev.dateFin))+'.</p>'
       +qHtml
-      +'<div class="modal-actions"><button class="primary" id="be-ev-submit">Soumettre</button><button class="ghost" onclick="beSessionOpenEleve(\''+esc(ev.sessionId)+'\')">Annuler</button></div>');
+      +'<div class="modal-actions"><button class="primary" id="be-ev-submit">Soumettre</button><button class="ghost" onclick="closeModal()">Annuler</button></div>', ()=>beSessionOpenEleve(ev.sessionId));
     document.getElementById('be-ev-submit').onclick=()=>beEvalSoumettre(evalId);
   };
   window.beEvalSoumettre=function(evalId){
@@ -23852,11 +23861,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
         +'<p class="empty-note" style="margin:6px 0;">Points : '+esc(String(cor.obtenu!=null?cor.obtenu:'?'))+' / '+esc(String(cor.max!=null?cor.max:'?'))+(cor.commentaire?' — '+esc(cor.commentaire):'')+'</p>'
       +'</div>';
     }).join('');
-    openModal('<button class="close-x" onclick="beSessionOpenEleve(\''+esc(ev.sessionId)+'\')">×</button><h3>Correction — '+esc(ev.nom)+'</h3>'
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>Correction — '+esc(ev.nom)+'</h3>'
       +'<p class="empty-note" style="margin:0 0 10px;">Note globale : <b>'+esc(String(sb.noteGlobale))+'</b></p>'
       +qHtml
       +(ev.pjCorrection&&ev.pjCorrection.name?'<p class="empty-note">📎 '+esc(ev.pjCorrection.name)+'</p>':'')
-      +'<div class="modal-actions"><button class="ghost" onclick="beSessionOpenEleve(\''+esc(ev.sessionId)+'\')">Retour</button></div>');
+      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Retour</button></div>', ()=>beSessionOpenEleve(ev.sessionId));
   };
 
   /* Ces fonctions sont appelées depuis des onclick="..." inline dans le HTML généré : un
