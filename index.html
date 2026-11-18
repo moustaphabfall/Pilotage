@@ -16261,7 +16261,10 @@ const PG_FEATS=[
     {k:'refac',l:'💶 Finance',subs:[]},
     {k:'rex',l:'🧠 Retours d’expérience',subs:[]},
     {k:'parametres',l:'⚙ Autres paramètres',subs:[],sel:'.tab[onclick*="projParamEdit"]'},
-    {k:'vue',l:'👁 Vue',subs:[{k:'vue.lib',l:'Bibliothèque du projet',sel:'#pjLibBtn'},{k:'vue.plan',l:'Plan',sel:'#pjPlanBtn'}],sel:'#pjViewBtn'}
+    {k:'vue',l:'👁 Vue',subs:[{k:'vue.lib',l:'Bibliothèque du projet',sel:'#pjLibBtn'},{k:'vue.plan',l:'Plan',sel:'#pjPlanBtn'}],sel:'#pjViewBtn'},
+    /* spécifiques au type Bureau d’études (onglets créés par beSetup()) */
+    {k:'missions',l:'📋 Missions',subs:[]},
+    {k:'formation',l:'🎓 Formation',subs:[]}
   ];
   window.PG_FEATS=PG_FEATS;
   const PJ=()=>window.PILOTAGE_PROJET||null;
@@ -16298,7 +16301,7 @@ const PG_FEATS=[
   .pgs-f{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 10px} .pgs-f button{border-radius:999px !important;padding:5px 12px !important;background:#f1f1ee !important;border:1px solid #e0ded8 !important} .pgs-f button.on{background:#F2A900 !important;border-color:#F2A900 !important;font-weight:700}
   .pgp{max-width:980px;margin:0 auto;font-size:14px}
   .pgp h2{margin:0 0 4px}.pgp h3{margin:18px 0 8px}
-  .pgp .card{background:#fff;border:1px solid #e3e3e3;border-left:5px solid #F2A900;border-radius:10px;padding:12px;margin:10px 0}
+  .pgp .card{background:#fff;border:1px solid #e3e3e3;border-radius:10px;padding:12px;margin:10px 0}
   .pgp .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
   .pgp input,.pgp select{padding:7px;border:1px solid #ccc;border-radius:6px;font-size:14px}
   .pgp button{padding:7px 12px;border:0;border-radius:6px;background:#eee;color:#222;font-size:13px;cursor:pointer}
@@ -16388,9 +16391,9 @@ const PG_FEATS=[
     'Agent':{no:['net-demandes','net-clients','net-rh','net-affect','net-pointage','net-rapports','parametres','refac']},
     'Client':{no:['net-demandes','net-clients','net-rh','net-affect','net-moi','net-rapports','parametres','refac']},
     'Directeur':{no:[]},
-    'Chargé d’affaires':{no:['parametres']},
-    'Stagiaire ou apprenti':{no:['interloc','refac','parametres']},
-    'Élève stagiaire':{no:['interloc','refac','parametres','rex','cadre.ing']}
+    'Chargé d’affaires':{no:[]},
+    'Stagiaire ou apprenti':{no:[]},
+    'Élève stagiaire':{no:['dashboard','missions','refac','parametres']}
   };
   /* arbre de rôles par type d’espace : quels préréglages proposer dans « Gérer les fonctionnalités » et à l’invitation */
   const PG_ROLE_BY_TYPE={
@@ -16436,6 +16439,11 @@ const PG_FEATS=[
       {t:'C · Devis',it:['refac']},
       {t:'Suivi',it:[['cadre.suivi','*']]}]}
   ];
+  /* arbre spécifique au type Bureau d’études : missions + formation (onglets créés par beSetup()), finance (refac
+     réutilisé par beMountFinance), tableau de bord et paramètres ; pas de pages Construction (travaux/planif/rex…). */
+  const PG_TREE_BE=[
+    {t:'🏢 Bureau d’études',top:['dashboard','missions','formation','refac','parametres'],c:[]}
+  ];
   (function(){ const c=document.createElement('style'); c.textContent='.mx.mxt{display:block}.mx.mxt .mx-pre{margin-bottom:10px}.mx.mxt .tn{margin:6px 0;border-left:2px solid rgba(255,196,0,.35);padding-left:10px}.mx.mxt .tn .tn{margin-left:8px}.mx.mxt .ts{cursor:pointer;font-weight:700;font-size:13.5px;padding:8px 2px;list-style:none;display:flex;align-items:center;gap:6px}.mx.mxt .tn.shut>:not(.ts){display:none}.mx.mxt .ts::before{content:"›";display:inline-block;transition:transform .15s;font-size:16px}.mx.mxt .tn:not(.shut)>.ts::before{transform:rotate(90deg)}.mx.mxt .lv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 8px}@media(max-width:560px){.mx.mxt .lv{grid-template-columns:repeat(2,minmax(0,1fr))}}.mx.mxt .ts label.sw{min-height:40px;flex:0 0 auto;padding:6px 14px;flex-direction:row}'; document.head.appendChild(c); })();
   document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('.mx.mxt .ts'); if(!t||e.target.closest('label.sw')) return; t.parentElement.classList.toggle('shut'); });
   function matrix(prefix,fonctions,tyOverride,noRoleRow){
@@ -16449,7 +16457,8 @@ const PG_FEATS=[
       return {node:'<div class="tn shut"><div class="ts">'+btn(k,false)+'</div><div class="lv">'+kids.map(x=>btn(x,true)).join('')+'</div></div>'}; };
     const branch=b=>{ const its=b.it.map(item); const leaves=its.filter(x=>x.leaf).map(x=>x.leaf).join('');
       return '<div class="tn"><div class="ts">'+esc(b.t)+'</div>'+(leaves?'<div class="lv">'+leaves+'</div>':'')+its.filter(x=>x.node).map(x=>x.node).join('')+'</div>'; };
-    let h=PG_TREE.map(g=>{ (g.top||[]).forEach(k=>seen[k]=1); return '<div class="tn"><div class="ts">'+esc(g.t)+'</div>'+((g.top||[]).length?'<div class="lv">'+g.top.map(k=>btn(k,false)).join('')+'</div>':'')+g.c.map(branch).join('')+'</div>'; }).join('');
+    const tree=(tyOverride||pilotageType())==='bureau_etudes'?PG_TREE_BE:PG_TREE;
+    let h=tree.map(g=>{ (g.top||[]).forEach(k=>seen[k]=1); return '<div class="tn"><div class="ts">'+esc(g.t)+'</div>'+((g.top||[]).length?'<div class="lv">'+g.top.map(k=>btn(k,false)).join('')+'</div>':'')+g.c.map(branch).join('')+'</div>'; }).join('');
     const rest=[]; PG_FEATS.forEach(f=>{ if(!seen[f.k]) rest.push(btn(f.k,false)); f.subs.forEach(x=>{ if(!seen[x.k]) rest.push(btn(x.k,true)); }); });
     if(rest.length) h+='<div class="tn"><div class="ts">Autres</div><div class="lv">'+rest.join('')+'</div></div>';
     const rk=(PG_ROLE_BY_TYPE[tyOverride||pilotageType()]||Object.keys(PG_ROLE_PRESETS));
@@ -16597,8 +16606,7 @@ const PG_FEATS=[
       +'<div class="row" id="nNetClientRow" hidden><label style="flex:1"><b>Entreprise utilisatrice :</b> <select id="nNetClient"><option value="">— choisir le client —</option>'+((state.net||{}).clients||[]).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.nom)+'</option>').join('')+'</select></label></div>'
       +'<div class="row"><label style="flex:1"><b>Droits d’accès :</b> <select id="nR" title="Droit d’accès"><option value="editeur">Éditeur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur du workspace</option></select></label></div>'
       +'<details><summary>Fonctionnalités accordées</summary><div id="nMx">'+window.nMxHtml(invTy,null)+'</div></details>'
-      +'<div class="row"><label><input type="checkbox" id="nV"> paiement reçu et validé</label></div>'
-      +'<div class="row"><button class="p" id="nC" disabled>Créer l’accès (valable 1 mois)</button><small>Sans paiement validé, l’accès ne peut pas être créé.</small></div>'
+      +'<div class="row"><button class="p" id="nC">Créer l’accès (valable 1 mois)</button></div>'
       +(cred?'<div class="cred">'+esc(cred)+'</div><small>Sélectionnez, copiez et envoyez ce texte à la personne.</small>':'')+'<div class="msg" id="pgMsg"></div></div>');
     }catch(e){ body.length=0; body.push('<div class="card ko">Erreur d’affichage : '+esc(e&&e.message||String(e))+' <button type="button" id="pgDrawRetry">Réessayer</button></div>'); }
     w.innerHTML=hd+body.join('');
@@ -16649,9 +16657,8 @@ const PG_FEATS=[
     if(nPt_) nPt_.onchange=()=>{ syncRoleOpts(); syncNetClient(); syncNetMatrix(); };
     if(roleSel_) roleSel_.onchange=()=>{ if(roleSel_.value&&tgtTy()==='nettoyage'){ const nr=w.querySelector('#nR'); if(nr) nr.value=(roleSel_.value==='Administrateur'?'admin':'editeur'); } syncNetClient(); syncNetMatrix(); };
     syncNetClient(); window.bindNMx(w.querySelector('#nMx')||w);
-    const v=w.querySelector('#nV'), c=w.querySelector('#nC');
-    if(v&&c){ const syncV=()=>{ c.disabled=!v.checked; }; v.onchange=syncV; v.oninput=syncV; syncV(); }
-    if(c) c.onclick=()=>{ if(v&&!v.checked){ msg('Cochez d’abord « paiement reçu et validé ».',true); return; } const g=id=>w.querySelector(id).value.trim(); const email=g('#nE');
+    const c=w.querySelector('#nC');
+    if(c) c.onclick=()=>{ const g=id=>w.querySelector(id).value.trim(); const email=g('#nE');
       const ty0=tgtTy(); const rv=(roleSel_||{}).value||''; const fonc=readMatrix(w.querySelector('#pgNew details')); if(rv) fonc._role=rv; if(ty0==='nettoyage'&&rv==='Client'){ const ncv=(w.querySelector('#nNetClient')||{}).value; if(ncv) fonc._clientId=ncv; }
       const nEspNo=(ty0==='nettoyage'&&(rv==='Manager'||rv==='Agent'))?window.readNMx(w.querySelector('#nMx')):null;
       let say2=''; run(async()=>{ let pid=w.querySelector('#nPj').value, pnom=null;
@@ -21436,7 +21443,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v431';
+  const VER='v432';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
