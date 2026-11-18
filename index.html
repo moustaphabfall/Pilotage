@@ -6314,6 +6314,7 @@ function showPage(p){
   document.getElementById('page-'+p).classList.add('active');
   document.querySelector('.tab[data-page="'+p+'"]').classList.add('active');
   document.body.classList.toggle('pg-wide', p==='plans');
+  document.body.classList.toggle('pg-fin', p==='refac');
   if(p==='travaux'){ renderTravaux(); if(window.rtRender) window.rtRender(); }
   if(p==='planif') renderPlanif();
   if(p==='refac'){ renderRefac(); renderFinDocs(); }
@@ -12600,6 +12601,7 @@ document.addEventListener('keydown',e=>{
 .rt-pin.fait.sel .rt-tlbl{background:#1d5133;}
 
 .gs-wrap{position:relative; flex:1 1 260px; max-width:440px; align-self:center;}
+body.pg-fin .gs-wrap{display:none;}
 .gs-wrap input{width:100%; padding:8px 12px; font-size:14px; border-radius:20px; border:1px solid var(--line); background:#fff;}
 .gs-res{display:none; position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:120; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 10px 26px rgba(22,35,43,.18); max-height:60vh; overflow:auto; padding:4px;}
 .gs-res.open{display:block;}
@@ -21359,7 +21361,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v417';
+  const VER='v418';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -21548,6 +21550,8 @@ html body.plan-fs-on .rt-root.rt-fs .rt-planrow>.fp-btn[data-k=taches]::after{co
 </script>
 <style id="matCss">
 body.mat-mode .tab[data-page="dashboard"],body.mat-mode .tab[data-page="interloc"],body.mat-mode .tab[data-page="travaux"],body.mat-mode .tab[data-page="planif"],body.mat-mode .tab[data-page="plans"],body.mat-mode .tab[data-page="refac"],body.mat-mode .tab[data-page="rex"],body.mat-mode .tab[onclick*="projParamEdit"]{display:none !important}
+/* BE (bureau d'études) : seul l'onglet Travaux est retiré pour l'instant, les autres onglets standards restent */
+body.be-mode .tab[data-page="travaux"]{display:none !important}
 body.mat-mode #pjViewBtn,body.mat-mode #pjFiltBtn,body.mat-mode #pjPlanBtn,body.mat-mode #pjBackBtn,body.mat-mode .gs-wrap,body.mat-mode #chOpenBtn,body.mat-mode .date-etat,body.mat-mode #tvWrap,body.mat-mode #otBar,body.mat-mode #dgBar{display:none !important}
 .mt{max-width:900px;margin:0 auto;padding:calc(56px + env(safe-area-inset-top,0px)) 14px 90px;color:#16232B;font-size:15px}
 .mt h2{margin:0 0 4px;font-size:22px} .mt small{color:#5b6a72}
@@ -23230,6 +23234,8 @@ window.createInterloc=function(returnTaskId){
   let beDone=false;
   function beSetup(){
     if(beDone) return; beDone=true;
+    document.body.classList.add('be-mode');
+    if(document.getElementById('page-travaux') && document.getElementById('page-travaux').classList.contains('active')) showPage('dashboard');
     const dash=document.querySelector('.tab[data-page="dashboard"]'), menu=document.getElementById('tabMenu');
     if(menu && dash && !document.querySelector('.tab[data-page="missions"]')){
       const b=document.createElement('button'); b.className='tab'; b.dataset.page='missions'; b.textContent='📋 Missions'; b.setAttribute('onclick',"tabHome('missions')");
@@ -23242,6 +23248,28 @@ window.createInterloc=function(returnTaskId){
     }
     const sp0=window.showPage; if(typeof sp0==='function' && !sp0.__beWrapped){ const g=function(p){ const r=sp0.apply(this,arguments); if(p==='missions') beMissionsRender(); if(p==='refac') beMountFinance(); return r; }; g.__beWrapped=true; window.showPage=g; }
     beSeedData();
+    beSeedFinDocsDemo();
+  }
+  /* Données fictives de test (devis/situation/facture, mois en cours + mois précédent, 3 par type et par mois) pour essayer la courbe « Montants dans le temps » : déposées une seule fois, seulement si aucun document Finance n'existe encore */
+  function beSeedFinDocsDemo(){
+    if(!beAdmin() || !window.finAll) return;
+    if(finAll().length) return;
+    const now=new Date(), today=now.getDate();
+    const mk=(offsetMonths,day)=>{ const d=new Date(now.getFullYear(), now.getMonth()-offsetMonths, day); return d.toISOString().slice(0,10); };
+    const plan=[
+      {offset:1, type:'devis', montants:[12000,18500,9800], days:[5,14,23]},
+      {offset:1, type:'situation', montants:[8000,13500,7200], days:[6,15,24]},
+      {offset:1, type:'facture', montants:[7600,12800,6900], days:[7,16,25]},
+      {offset:0, type:'devis', montants:[9500,15200,6800], days:[2,8,Math.max(3,Math.min(14,today-1))]},
+      {offset:0, type:'situation', montants:[6200,10800,5400], days:[3,9,Math.max(4,Math.min(15,today-1))]},
+      {offset:0, type:'facture', montants:[5800,9600,4900], days:[4,10,Math.max(5,Math.min(16,today-1))]}
+    ];
+    plan.forEach(p=>{
+      p.montants.forEach((mt,i)=>{
+        finAll().push({id:uid('FIN'), type:p.type, numero:finNumero(p.type), lot:'', date:mk(p.offset,p.days[i]), societe:'', montant:mt, pdf:null});
+      });
+    });
+    beSave();
   }
   /* Données reçues d'Ibrahima par mail le 18/11/2026 (missions de la société, barème kilométrique) : déposées une seule fois si les listes sont encore vides */
   function beSeedData(){
