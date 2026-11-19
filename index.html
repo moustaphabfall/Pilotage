@@ -21471,7 +21471,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v443';
+  const VER='v444';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22969,8 +22969,10 @@ window.createInterloc=function(returnTaskId){
 .be-acts button{width:22px;height:22px;min-height:auto;border:none;border-radius:6px;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0;}
 .be-acts button:hover{background:rgba(127,127,127,.12);}
 .be-ses-tools{display:inline-flex;gap:6px;margin-left:auto;}
-.be-ses-ic{width:32px;height:32px;min-height:auto;display:inline-grid;place-items:center;border:1px solid var(--line);border-radius:10px;background:transparent;cursor:pointer;font-size:15px;padding:0;}
+.be-ses-ic{position:relative;width:32px;height:32px;min-height:auto;display:inline-grid;place-items:center;border:1px solid var(--line);border-radius:10px;background:transparent;cursor:pointer;font-size:15px;padding:0;}
 .be-ses-ic:hover{border-color:var(--ink);}
+.be-ic-n{position:absolute;top:-6px;right:-6px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:#5b5a54;color:#fff;font-size:9.5px;font-weight:700;line-height:15px;text-align:center;}
+.be-ic-n-on{background:#F2A900;color:#000;}
 /* visionneuse flottante de pièce jointe (formulaire d'évaluation) : déplaçable, redimensionnable, réductible */
 .be-pjv{position:fixed;z-index:100001;left:20px;top:80px;width:340px;height:420px;min-width:220px;min-height:48px;display:flex;flex-direction:column;background:var(--paper,#fff);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 36px rgba(22,35,43,.3);overflow:hidden;}
 .be-pjv-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:var(--panel,#f4f2ec);cursor:grab;touch-action:none;border-bottom:1px solid var(--line);}
@@ -23721,31 +23723,32 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(s.dateDebut||s.dateFin) return {txt:'Ouverte', cls:'bst-va'};
     return null;
   }
-  /* Badges d'une ligne de session dans la liste (Formation) : élèves (admin), supports, évaluations + état. */
-  function beSessionRowBadges(s, forAdmin){
+  /* État de la session, affiché juste après la date (admin et élève) : '' si aucune date renseignée. */
+  function beSessionEtatHtml(s){ const etat=beSessionEtat(s); return etat?' · <span class="be-st '+etat.cls+'">'+etat.txt+'</span>':''; }
+  /* Petit badge de compte, superposé sur un bouton-icône (Élèves / Supports / Évaluations). */
+  function beIcBadge(n, on){ return n?'<span class="be-ic-n'+(on?' be-ic-n-on':'')+'">'+n+'</span>':''; }
+  /* Comptes d'une session : élèves, supports, évaluations (total + en cours d'envoi). */
+  function beSesCounts(s){
     const sup=L_supports().filter(x=>x.sessionId===s.id).length;
     const evs=L_evaluations().filter(x=>x.sessionId===s.id);
-    let evBadge='';
-    if(forAdmin){
-      const enCours=evs.filter(e=>e.statut==='envoyee').length;
-      if(evs.length) evBadge='<span class="be-rb" title="Évaluations">📝 '+evs.length+(enCours?' · '+enCours+' en cours':'')+'</span>';
-    } else {
-      const now=beNowLocal(), meId=beMeId();
-      const aFaire=evs.filter(e=>{
-        if(e.statut==='brouillon') return false;
-        const sb=(e.soumissions||[]).find(x=>x.eleveId===meId);
-        if(sb) return false;
-        if(now<(e.dateDebut||'')) return false;
-        if(e.dateFin && now>e.dateFin) return false;
-        return true;
-      }).length;
-      if(evs.length) evBadge='<span class="be-rb'+(aFaire?' be-rb-on':'')+'" title="Évaluations">📝 '+(aFaire?aFaire+' à faire':evs.length)+'</span>';
-    }
-    const etat=beSessionEtat(s);
-    return (forAdmin?'<span class="be-rb" title="Élèves">🧑‍🎓 '+(s.eleveIds||[]).length+'</span>':'')
-      +(sup?'<span class="be-rb" title="Supports de cours">📚 '+sup+'</span>':'')
-      +evBadge
-      +(etat?'<span class="be-st '+etat.cls+'">'+etat.txt+'</span>':'');
+    const enCours=evs.filter(e=>e.statut==='envoyee').length;
+    return {ele:(s.eleveIds||[]).length, sup, ev:evs.length, enCours};
+  }
+  /* Badges (supports, évaluations) pour la ligne de session de l'élève, qui n'a pas de boutons-icônes. */
+  function beSessionRowBadgesEleve(s){
+    const sup=L_supports().filter(x=>x.sessionId===s.id).length;
+    const evs=L_evaluations().filter(x=>x.sessionId===s.id);
+    const now=beNowLocal(), meId=beMeId();
+    const aFaire=evs.filter(e=>{
+      if(e.statut==='brouillon') return false;
+      const sb=(e.soumissions||[]).find(x=>x.eleveId===meId);
+      if(sb) return false;
+      if(now<(e.dateDebut||'')) return false;
+      if(e.dateFin && now>e.dateFin) return false;
+      return true;
+    }).length;
+    return (sup?'<span class="be-rb" title="Supports de cours">📚 '+sup+'</span>':'')
+      +(evs.length?'<span class="be-rb'+(aFaire?' be-rb-on':'')+'" title="Évaluations">📝 '+(aFaire?aFaire+' à faire':evs.length)+'</span>':'');
   }
 
   let beMembersCache=null;
@@ -23779,14 +23782,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Formation</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beSesAdd">＋ Session</button>':'')
       +'</div>'
-      +(L.length?'<div class="be-list">'+L.map(s=>'<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+'</small><div class="be-row-badges">'+beSessionRowBadges(s,true)+'</div></span>'
+      +(L.length?'<div class="be-list">'+L.map(s=>{ const c=beSesCounts(s); return '<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+beSessionEtatHtml(s)+'</small></span>'
         +(beAdmin()?'<span class="be-ses-tools">'
           +'<button type="button" class="be-ses-ic" data-cal="'+esc(s.id)+'" title="Dates de la session">📅</button>'
-          +'<button type="button" class="be-ses-ic" data-ele="'+esc(s.id)+'" title="Élèves">🧑‍🎓</button>'
-          +'<button type="button" class="be-ses-ic" data-sup="'+esc(s.id)+'" title="Supports de cours">📚</button>'
-          +'<button type="button" class="be-ses-ic" data-evm="'+esc(s.id)+'" title="Évaluations">📝</button>'
+          +'<button type="button" class="be-ses-ic" data-ele="'+esc(s.id)+'" title="Élèves">🧑‍🎓'+beIcBadge(c.ele)+'</button>'
+          +'<button type="button" class="be-ses-ic" data-sup="'+esc(s.id)+'" title="Supports de cours">📚'+beIcBadge(c.sup)+'</button>'
+          +'<button type="button" class="be-ses-ic" data-evm="'+esc(s.id)+'" title="Évaluations">📝'+beIcBadge(c.ev,c.enCours)+'</button>'
         +'</span>':'')
-        +'</div>').join('')+'</div>':'<p class="be-empty">Aucune session pour l’instant.</p>')
+        +'</div>'; }).join('')+'</div>':'<p class="be-empty">Aucune session pour l’instant.</p>')
       +'</div>';
     const b=document.getElementById('beSesAdd'); if(b) b.onclick=()=>beSessionEdit(null);
     w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beSessionOpen(r.dataset.id));
@@ -23850,14 +23853,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   const EV_ST={brouillon:'Brouillon',envoyee:'Envoyée',cloturee:'Clôturée'};
   function beSessionOpenRender(id){
     const s=L_sessions().find(x=>x.id===id); if(!s) return;
+    const c=beSesCounts(s);
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🎓 '+esc(s.nom)+'</h3>'
       +(s.description?'<p style="margin:0 0 10px;color:var(--ink-soft);font-size:13px;">'+esc(s.description)+'</p>':'')
-      +((s.dateDebut||s.dateFin)?'<p style="margin:0 0 12px;font-size:12.5px;color:var(--ink-soft);">'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+'</p>':'')
+      +((s.dateDebut||s.dateFin)?'<p style="margin:0 0 12px;font-size:12.5px;color:var(--ink-soft);">'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+beSessionEtatHtml(s)+'</p>':'')
       +(beAdmin()?'<span class="be-ses-tools" style="margin:0 0 14px;">'
         +'<button type="button" class="be-ses-ic" id="be-ses-ov-cal" title="Dates de la session">📅</button>'
-        +'<button type="button" class="be-ses-ic" id="be-ses-ov-ele" title="Élèves">🧑‍🎓</button>'
-        +'<button type="button" class="be-ses-ic" id="be-ses-ov-sup" title="Supports de cours">📚</button>'
-        +'<button type="button" class="be-ses-ic" id="be-ses-ov-evm" title="Évaluations">📝</button>'
+        +'<button type="button" class="be-ses-ic" id="be-ses-ov-ele" title="Élèves">🧑‍🎓'+beIcBadge(c.ele)+'</button>'
+        +'<button type="button" class="be-ses-ic" id="be-ses-ov-sup" title="Supports de cours">📚'+beIcBadge(c.sup)+'</button>'
+        +'<button type="button" class="be-ses-ic" id="be-ses-ov-evm" title="Évaluations">📝'+beIcBadge(c.ev,c.enCours)+'</button>'
       +'</span>':'')
       +(beAdmin()?'<div class="modal-actions"><button class="ghost" id="be-ses-editbtn">✎ Modifier</button><button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beSessionDel(\''+esc(id)+'\')">Supprimer</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':''), beFormationRenderAdmin);
     if(beAdmin()){
@@ -24200,7 +24204,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const meId=beMeId();
     const L=L_sessions().filter(s=>(s.eleveIds||[]).includes(meId));
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Mes sessions</h2></div>'
-      +(L.length?'<div class="be-list">'+L.map(s=>'<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate(s.dateFin)):'')+'</small><div class="be-row-badges">'+beSessionRowBadges(s,false)+'</div></span></div>').join('')+'</div>':'<p class="be-empty">Vous n’êtes inscrit à aucune session pour l’instant.</p>')
+      +(L.length?'<div class="be-list">'+L.map(s=>'<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+beSessionEtatHtml(s)+'</small><div class="be-row-badges">'+beSessionRowBadgesEleve(s)+'</div></span></div>').join('')+'</div>':'<p class="be-empty">Vous n’êtes inscrit à aucune session pour l’instant.</p>')
       +'</div>';
     w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beSessionOpenEleve(r.dataset.id));
   }
