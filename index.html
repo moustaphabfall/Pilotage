@@ -21472,7 +21472,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v454';
+  const VER='v455';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23212,7 +23212,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>📋 Missions</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beMAdd">＋ Mission</button>':'')
       +'</div>'
-      +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.client||'(Sans nom)')+'</b><small>'+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(m.dateDebut?' · '+esc(fmtDate(m.dateDebut)):'')+(m.dateFin?' → '+esc(fmtDate(m.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.</p>')
+      +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.client||'(Sans nom)')+'</b><small>'+(m.projet?esc(m.projet)+' · ':'')+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(m.dateDebut?' · '+esc(fmtDate(m.dateDebut)):'')+(m.dateFin?' → '+esc(fmtDate(m.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.</p>')
       +'</div>'
       +beGabaritsSectionHtml();
     const b=document.getElementById('beMAdd'); if(b) b.onclick=()=>beMissionEdit(null);
@@ -23251,19 +23251,35 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     miniConfirm('Supprimer ce gabarit ?',()=>{ state.gabaritsPlan=L.filter(x=>x.id!==id); if(g.parDefaut&&state.gabaritsPlan.length) state.gabaritsPlan[0].parDefaut=true; beSave(); beMissionsRender(); });
   };
   window.beGabaritApercu=function(id){ const g=L_gabarits().find(x=>x.id===id); if(!g) return; window.beOpenPjViewer({name:g.fileName||g.nom,src:g.src}); };
-  function beMissionEdit(m){
+  function beMissionEdit(m,edit){
     const nw=!m; m=m||{};
-    const typeOpts='<option value="">— Choisir —</option>'+L_typesMission().map(t=>'<option value="'+esc(t.id)+'"'+(m.typeMissionId===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('');
+    const showForm=nw||!!edit;
+    let body;
+    if(showForm){
+      const typeOpts='<option value="">— Choisir —</option>'+L_typesMission().map(t=>'<option value="'+esc(t.id)+'"'+(m.typeMissionId===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('');
+      body='<div class="field"><label>Mission (client)</label><input type="text" id="be-m-a" value="'+esc(m.client||'')+'"></div>'
+        +'<div class="field"><label>Projet</label><input type="text" id="be-m-p" value="'+esc(m.projet||'')+'" placeholder="Nom du projet"></div>'
+        +'<div class="field"><label>Type de mission</label><select id="be-m-t">'+typeOpts+'</select></div>'
+        +'<div class="field"><label>Date de début</label><input type="date" id="be-m-c" value="'+esc(m.dateDebut||'')+'"></div>'
+        +'<div class="field"><label>Date de fin</label><input type="date" id="be-m-d" value="'+esc(m.dateFin||'')+'"></div>'
+        +'<div class="field" style="display:flex;align-items:center;gap:8px;margin-top:-4px;"><input type="checkbox" id="be-m-ia" style="width:auto;" '+(m.chatbotIA?'checked':'')+'><label for="be-m-ia" style="margin:0;">🤖 Activer le chatbot IA (assistant de dimensionnement) sur cette mission</label></div>'
+        +'<div class="modal-actions">'
+        +(nw?'':'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beMissionDel(\''+m.id+'\')">Supprimer</button>')
+        +'<button class="primary" onclick="beMissionSave('+(nw?'null':'\''+m.id+'\'')+')">Enregistrer</button>'
+        +(nw?'<button class="ghost" onclick="closeModal()">Annuler</button>':'<button class="ghost" onclick="beMissionEdit(L_missions().find(x=>x.id===\''+esc(m.id)+'\'))">Annuler</button>')
+        +'</div>';
+    }else{
+      body='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">'
+        +'<div style="min-width:0;"><h1 style="font-size:22px;margin:0 0 2px;line-height:1.25;word-break:break-word;color:var(--ink);">'+esc(m.client||'—')+'</h1>'
+        +'<p style="margin:0;font-size:14.5px;color:var(--ink-soft);">'+(m.projet?esc(m.projet):'Projet non renseigné')+'</p></div>'
+        +'<button type="button" class="ghost" aria-label="Modifier la mission" style="flex:0 0 auto;" onclick="beMissionEdit(L_missions().find(x=>x.id===\''+esc(m.id)+'\'),true)">✎</button>'
+        +'</div>'
+        +'<div class="be-sub" style="padding-top:8px;"><p style="margin:2px 0;font-size:14px;"><b>Type :</b> '+(esc(beTypeMissionNom(m.typeMissionId))||'—')+'</p>'
+        +'<p style="margin:2px 0;font-size:14px;"><b>Période :</b> '+(m.dateDebut?esc(fmtDate(m.dateDebut)):'?')+' → '+(m.dateFin?esc(fmtDate(m.dateFin)):'?')+'</p></div>'
+        +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>';
+    }
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+(nw?'Nouvelle mission':'Mission')+'</h3>'
-      +'<div class="field"><label>Client</label><input type="text" id="be-m-a" value="'+esc(m.client||'')+'"></div>'
-      +'<div class="field"><label>Type de mission</label><select id="be-m-t">'+typeOpts+'</select></div>'
-      +'<div class="field"><label>Date de début</label><input type="date" id="be-m-c" value="'+esc(m.dateDebut||'')+'"></div>'
-      +'<div class="field"><label>Date de fin</label><input type="date" id="be-m-d" value="'+esc(m.dateFin||'')+'"></div>'
-      +'<div class="field" style="display:flex;align-items:center;gap:8px;margin-top:-4px;"><input type="checkbox" id="be-m-ia" style="width:auto;" '+(m.chatbotIA?'checked':'')+'><label for="be-m-ia" style="margin:0;">🤖 Activer le chatbot IA (assistant de dimensionnement) sur cette mission</label></div>'
-      +'<div class="modal-actions">'
-      +(nw?'':'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beMissionDel(\''+m.id+'\')">Supprimer</button>')
-      +'<button class="primary" onclick="beMissionSave('+(nw?'null':'\''+m.id+'\'')+')">Enregistrer</button>'
-      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>'
+      +body
       +(!nw&&beIsDimMission(m)?beMissionDimSectionsHtml(m):''));
     if(!nw&&beIsDimMission(m)) beMissionDimSectionsWire(m);
   }
@@ -23460,14 +23476,17 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   };
   window.beMissionSave=function(id){
     const client=document.getElementById('be-m-a').value.trim();
+    const projetEl=document.getElementById('be-m-p'); const projet=projetEl?projetEl.value.trim():'';
     const typeMissionId=document.getElementById('be-m-t').value||'';
     const dateDebut=document.getElementById('be-m-c').value||'';
     const dateFin=document.getElementById('be-m-d').value||'';
     const chatbotIA=!!document.getElementById('be-m-ia').checked;
     if(!client){ miniAlert('Le nom du client est requis.'); return; }
-    if(!id){ L_missions().push({id:uid('MI'),client,typeMissionId,dateDebut,dateFin,chatbotIA}); }
-    else{ const m=L_missions().find(x=>x.id===id); if(m){ m.client=client; m.typeMissionId=typeMissionId; m.dateDebut=dateDebut; m.dateFin=dateFin; m.chatbotIA=chatbotIA; } }
-    beSave(); closeModal(); beMissionsRender();
+    let mm;
+    if(!id){ mm={id:uid('MI'),client,projet,typeMissionId,dateDebut,dateFin,chatbotIA}; L_missions().push(mm); }
+    else{ mm=L_missions().find(x=>x.id===id); if(mm){ mm.client=client; mm.projet=projet; mm.typeMissionId=typeMissionId; mm.dateDebut=dateDebut; mm.dateFin=dateFin; mm.chatbotIA=chatbotIA; } }
+    beSave(); beMissionsRender();
+    if(mm) beMissionEdit(mm); else closeModal();
   };
   window.beMissionDel=function(id){
     miniConfirm('Supprimer cette mission ?', ()=>{ state.missions=L_missions().filter(x=>x.id!==id); beSave(); closeModal(); beMissionsRender(); });
