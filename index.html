@@ -21472,7 +21472,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v453';
+  const VER='v454';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23259,6 +23259,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       +'<div class="field"><label>Type de mission</label><select id="be-m-t">'+typeOpts+'</select></div>'
       +'<div class="field"><label>Date de début</label><input type="date" id="be-m-c" value="'+esc(m.dateDebut||'')+'"></div>'
       +'<div class="field"><label>Date de fin</label><input type="date" id="be-m-d" value="'+esc(m.dateFin||'')+'"></div>'
+      +'<div class="field" style="display:flex;align-items:center;gap:8px;margin-top:-4px;"><input type="checkbox" id="be-m-ia" style="width:auto;" '+(m.chatbotIA?'checked':'')+'><label for="be-m-ia" style="margin:0;">🤖 Activer le chatbot IA (assistant de dimensionnement) sur cette mission</label></div>'
       +'<div class="modal-actions">'
       +(nw?'':'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beMissionDel(\''+m.id+'\')">Supprimer</button>')
       +'<button class="primary" onclick="beMissionSave('+(nw?'null':'\''+m.id+'\'')+')">Enregistrer</button>'
@@ -23279,7 +23280,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beTypeOuvrageNom(id){ const t=L_typesOuvrage().find(x=>x.id===id); return t?t.nom:''; }
   function beTypeOuvrageOptsHtml(sel){ return '<option value="">— Choisir —</option>'+L_typesOuvrage().map(t=>'<option value="'+esc(t.id)+'"'+(sel===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('')+'<option value="__new__">＋ Ajouter un type…</option>'; }
   function beMissionDimSectionsHtml(m){
-    return '<div class="be-sub"><h4>🏢 Bâtiments & niveaux</h4>'
+    return (m.chatbotIA?'<div class="be-sub"><button type="button" class="primary" style="width:100%;" onclick="beMissionChatOpen(\''+esc(m.id)+'\')">🤖 Ouvrir le chatbot IA de la mission</button></div>':'')
+      +'<div class="be-sub"><h4>🏢 Bâtiments & niveaux</h4>'
       +beBatiments(m).map(b=>'<div class="be-bat" data-bat="'+esc(b.id)+'"><b>'+esc(b.nom)+'</b>'
         +'<button type="button" class="ghost" data-bat-niv="'+esc(b.id)+'">＋ Niveau</button>'
         +'<button type="button" class="ghost" data-bat-del="'+esc(b.id)+'">✕</button>'
@@ -23299,6 +23301,46 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const ovAdd=w.querySelector('[data-ov-add]'); if(ovAdd) ovAdd.onclick=()=>beOuvrageEdit(m.id,null);
     w.querySelectorAll('.be-row[data-ov]').forEach(r=>r.onclick=()=>beOuvrageEdit(m.id,r.dataset.ov));
   }
+  /* ===== Chatbot IA de mission (assistant de dimensionnement, appelle l'edge function mission-chatbot) ===== */
+  const beChatState={};
+  function beMissionContextText(m){
+    const lignes=['Client : '+(m.client||''),'Type de mission : '+(beTypeMissionNom(m.typeMissionId)||'')];
+    if(m.dateDebut||m.dateFin) lignes.push('Période : '+(m.dateDebut||'?')+' → '+(m.dateFin||'?'));
+    beBatiments(m).forEach(b=>lignes.push('Bâtiment : '+b.nom+' (niveaux : '+beNiveaux(b).map(n=>n.nom).join(', ')+')'));
+    beOuvragesOf(m).forEach(o=>lignes.push('— Ouvrage "'+o.nom+'" ('+(beTypeOuvrageNom(o.typeId)||'type non défini')+'), bâtiment='+(beBatNom(m,o.batimentId)||'-')+', niveau='+(beNivNom(m,o.batimentId,o.niveauId)||'-')+' : '+JSON.stringify(o.form||{})));
+    return lignes.join('\n');
+  }
+  function beMissionChatRenderLog(missionId){
+    const st=beChatState[missionId], log=document.getElementById('be-chat-log'); if(!log||!st) return;
+    log.innerHTML=st.history.length?st.history.map(h=>'<div style="align-self:'+(h.role==='user'?'flex-end':'flex-start')+';max-width:85%;padding:8px 10px;border-radius:8px;background:'+(h.role==='user'?'var(--blueprint)':'var(--panel)')+';color:'+(h.role==='user'?'#fff':'var(--ink)')+';border:1px solid var(--line);white-space:pre-wrap;">'+esc(h.content)+'</div>').join(''):'<p class="be-empty">Posez votre première question sur le dimensionnement de cette mission…</p>';
+    log.scrollTop=log.scrollHeight;
+  }
+  window.beMissionChatOpen=function(missionId){
+    const m=L_missions().find(x=>x.id===missionId); if(!m) return;
+    beChatState[missionId]=beChatState[missionId]||{history:[]};
+    openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🤖 Chatbot IA — '+esc(m.client||'Mission')+'</h3>'
+      +'<div id="be-chat-log" style="max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;"></div>'
+      +'<div class="field"><textarea id="be-chat-in" rows="2" placeholder="Ex. : Dimensionne la poutre du niveau R+1…"></textarea></div>'
+      +'<div class="modal-actions"><button type="button" class="primary" id="be-chat-send">Envoyer</button><button type="button" class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beMissionEdit(m));
+    beMissionChatRenderLog(missionId);
+    const send=()=>beMissionChatSend(missionId);
+    document.getElementById('be-chat-send').onclick=send;
+    document.getElementById('be-chat-in').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); } });
+  };
+  window.beMissionChatSend=async function(missionId){
+    const m=L_missions().find(x=>x.id===missionId); if(!m) return;
+    const inp=document.getElementById('be-chat-in'); const message=(inp.value||'').trim(); if(!message) return;
+    const st=beChatState[missionId]; const histAvant=st.history.slice();
+    st.history.push({role:'user',content:message}); inp.value=''; beMissionChatRenderLog(missionId);
+    const log=document.getElementById('be-chat-log'); const wait=document.createElement('p'); wait.className='be-empty'; wait.id='be-chat-wait'; wait.textContent='…'; log.appendChild(wait); log.scrollTop=log.scrollHeight;
+    try{
+      const r=await window.PILOTAGE_CHATBOT({message, missionContext:beMissionContextText(m), history:histAvant});
+      st.history.push({role:'assistant',content:r.reply||'(réponse vide)'});
+    }catch(e){
+      st.history.push({role:'assistant',content:'⚠ '+(e.message||String(e))});
+    }
+    beMissionChatRenderLog(missionId);
+  };
   function beOuvrageFormHtml(typeId,f){
     f=f||{};
     const tnom=(beTypeOuvrageNom(typeId)||'').toLowerCase();
@@ -23421,9 +23463,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const typeMissionId=document.getElementById('be-m-t').value||'';
     const dateDebut=document.getElementById('be-m-c').value||'';
     const dateFin=document.getElementById('be-m-d').value||'';
+    const chatbotIA=!!document.getElementById('be-m-ia').checked;
     if(!client){ miniAlert('Le nom du client est requis.'); return; }
-    if(!id){ L_missions().push({id:uid('MI'),client,typeMissionId,dateDebut,dateFin}); }
-    else{ const m=L_missions().find(x=>x.id===id); if(m){ m.client=client; m.typeMissionId=typeMissionId; m.dateDebut=dateDebut; m.dateFin=dateFin; } }
+    if(!id){ L_missions().push({id:uid('MI'),client,typeMissionId,dateDebut,dateFin,chatbotIA}); }
+    else{ const m=L_missions().find(x=>x.id===id); if(m){ m.client=client; m.typeMissionId=typeMissionId; m.dateDebut=dateDebut; m.dateFin=dateFin; m.chatbotIA=chatbotIA; } }
     beSave(); closeModal(); beMissionsRender();
   };
   window.beMissionDel=function(id){
