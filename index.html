@@ -21471,7 +21471,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v446';
+  const VER='v447';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23744,28 +23744,46 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beSessionEtatHtml(s){ const etat=beSessionEtat(s); return etat?' · <span class="be-st '+etat.cls+'">'+etat.txt+'</span>':''; }
   /* Petit badge de compte, superposé sur un bouton-icône (Élèves / Supports / Évaluations). */
   function beIcBadge(n, on){ return n?'<span class="be-ic-n'+(on?' be-ic-n-on':'')+'">'+n+'</span>':''; }
-  /* Comptes d'une session : élèves, supports, évaluations (total + en cours d'envoi). */
+  /* Comptes d'une session : élèves, supports, évaluations par état (à envoyer / en cours / à corriger). */
   function beSesCounts(s){
     const sup=L_supports().filter(x=>x.sessionId===s.id).length;
     const evs=L_evaluations().filter(x=>x.sessionId===s.id);
-    const enCours=evs.filter(e=>e.statut==='envoyee').length;
-    return {ele:(s.eleveIds||[]).length, sup, ev:evs.length, enCours};
+    const aEnvoyer=evs.filter(e=>e.statut==='brouillon').length;
+    const enCoursN=evs.filter(e=>e.statut==='envoyee').length;
+    const aCorriger=evs.reduce((a,e)=>a+(e.soumissions||[]).filter(x=>x.soumisLe && x.statutCorrection!=='corrigee').length,0);
+    return {ele:(s.eleveIds||[]).length, sup, ev:evs.length, enCours:(aEnvoyer>0||aCorriger>0), aEnvoyer, enCoursN, aCorriger};
   }
-  /* Badges (supports, évaluations) pour la ligne de session de l'élève, qui n'a pas de boutons-icônes. */
+  /* Badges (supports, évaluations par état) pour la ligne de session admin, sous le nom de la session. */
+  function beSessionRowBadgesAdmin(s){
+    const sup=L_supports().filter(x=>x.sessionId===s.id).length;
+    const c=beSesCounts(s);
+    const parts=[];
+    if(sup) parts.push('<span class="be-rb" title="Supports de cours">📚 '+sup+'</span>');
+    if(c.aEnvoyer) parts.push('<span class="be-rb be-rb-on" title="Évaluations en brouillon, pas encore envoyées">✎ '+c.aEnvoyer+' à envoyer</span>');
+    if(c.enCoursN) parts.push('<span class="be-rb" title="Évaluations envoyées, en cours">📨 '+c.enCoursN+' en cours</span>');
+    if(c.aCorriger) parts.push('<span class="be-rb be-rb-on" title="Réponses soumises à corriger">📥 '+c.aCorriger+' à corriger</span>');
+    return parts.join('');
+  }
+  /* Badges (supports, évaluations par état) pour la ligne de session de l'élève, qui n'a pas de boutons-icônes. */
   function beSessionRowBadgesEleve(s){
     const sup=L_supports().filter(x=>x.sessionId===s.id).length;
     const evs=L_evaluations().filter(x=>x.sessionId===s.id);
     const now=beNowLocal(), meId=beMeId();
-    const aFaire=evs.filter(e=>{
-      if(e.statut==='brouillon') return false;
+    let aFaire=0, enCorrection=0;
+    evs.forEach(e=>{
+      if(e.statut==='brouillon') return;
       const sb=(e.soumissions||[]).find(x=>x.eleveId===meId);
-      if(sb) return false;
-      if(now<(e.dateDebut||'')) return false;
-      if(e.dateFin && now>e.dateFin) return false;
-      return true;
-    }).length;
-    return (sup?'<span class="be-rb" title="Supports de cours">📚 '+sup+'</span>':'')
-      +(evs.length?'<span class="be-rb'+(aFaire?' be-rb-on':'')+'" title="Évaluations">📝 '+(aFaire?aFaire+' à faire':evs.length)+'</span>':'');
+      if(sb && sb.soumisLe){ if(!sb.publiee) enCorrection++; return; }
+      if(now<(e.dateDebut||'')) return;
+      if(e.dateFin && now>e.dateFin) return;
+      aFaire++;
+    });
+    const parts=[];
+    if(sup) parts.push('<span class="be-rb" title="Supports de cours">📚 '+sup+'</span>');
+    if(aFaire) parts.push('<span class="be-rb be-rb-on" title="Évaluations à faire">📝 '+aFaire+' à faire</span>');
+    if(enCorrection) parts.push('<span class="be-rb" title="Soumises, en attente de correction">⏳ '+enCorrection+' en cours</span>');
+    if(!aFaire && !enCorrection && evs.length) parts.push('<span class="be-rb" title="Évaluations">📝 '+evs.length+'</span>');
+    return parts.join('');
   }
 
   let beMembersCache=null;
@@ -23799,7 +23817,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Formation</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beSesAdd">＋ Session</button>':'')
       +'</div>'
-      +(L.length?'<div class="be-list">'+L.map(s=>{ const c=beSesCounts(s); return '<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+beSessionEtatHtml(s)+'</small></span>'
+      +(L.length?'<div class="be-list">'+L.map(s=>{ const c=beSesCounts(s); return '<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+beSessionEtatHtml(s)+'</small><div class="be-row-badges">'+beSessionRowBadgesAdmin(s)+'</div></span>'
         +(beAdmin()?'<span class="be-ses-tools">'
           +'<button type="button" class="be-ses-ic" data-cal="'+esc(s.id)+'" title="Dates de la session">📅</button>'
           +'<button type="button" class="be-ses-ic" data-ele="'+esc(s.id)+'" title="Élèves">🧑‍🎓'+beIcBadge(c.ele)+'</button>'
@@ -23874,6 +23892,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🎓 '+esc(s.nom)+'</h3>'
       +(s.description?'<p style="margin:0 0 10px;color:var(--ink-soft);font-size:13px;">'+esc(s.description)+'</p>':'')
       +((s.dateDebut||s.dateFin)?'<p style="margin:0 0 12px;font-size:12.5px;color:var(--ink-soft);">'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+beSessionEtatHtml(s)+'</p>':'')
+      +(beAdmin()?'<div class="be-row-badges" style="margin:0 0 10px;">'+beSessionRowBadgesAdmin(s)+'</div>':'')
       +(beAdmin()?'<span class="be-ses-tools" style="margin:0 0 14px;">'
         +'<button type="button" class="be-ses-ic" id="be-ses-ov-cal" title="Dates de la session">📅</button>'
         +'<button type="button" class="be-ses-ic" id="be-ses-ov-ele" title="Élèves">🧑‍🎓'+beIcBadge(c.ele)+'</button>'
@@ -24084,7 +24103,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const s=L_sessions().find(x=>x.id===sessionId); if(!s) return;
     const evs=L_evaluations().filter(x=>x.sessionId===sessionId);
     const evHtml = evs.length ? '<div class="be-list">'+evs.map(e=>{
-        const nbSoum=(e.soumissions||[]).length, nbCorr=(e.soumissions||[]).filter(x=>x.statutCorrection==='corrigee').length;
+        const nbSoum=(e.soumissions||[]).filter(x=>x.soumisLe).length, nbCorr=(e.soumissions||[]).filter(x=>x.statutCorrection==='corrigee').length;
         return '<div class="be-row" data-ev="'+esc(e.id)+'"><span class="be-row-m"><b>'+esc(e.nom)+'</b><small>'+nbSoum+' réponse(s)'+(e.statut!=='brouillon'?', '+nbCorr+' corrigée(s)':'')+(e.moyenneClasse!=null?' · Moyenne classe : '+esc(String(e.moyenneClasse)):'')+'</small></span><span class="be-ev-st">'+(EV_ST[e.statut]||e.statut)+'</span></div>';
       }).join('')+'</div>' : '<p class="be-empty">Aucune évaluation.</p>';
     const canSend = beAdmin() && evs.some(e=>(e.soumissions||[]).some(x=>x.statutCorrection==='corrigee' && !x.publiee));
@@ -24112,8 +24131,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const rows = eleves.map(eid=>{
       const sb=(ev.soumissions||[]).find(x=>x.eleveId===eid);
       let statutTxt='Pas encore soumis';
-      if(sb){ statutTxt = sb.statutCorrection==='corrigee' ? ('Corrigé — note : '+esc(String(sb.noteGlobale))+(sb.publiee?' (publiée)':' (à publier)')) : 'Soumis — à corriger'; }
-      return '<div class="be-row"><span class="be-row-m"><b>'+esc(beNomFromId(eid))+'</b><small>'+statutTxt+'</small></span>'+(sb&&sb.statutCorrection!=='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Corriger</button>':'')+(sb&&sb.statutCorrection==='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Revoir</button>':'')+'</div>';
+      if(sb && sb.soumisLe){ statutTxt = sb.statutCorrection==='corrigee' ? ('Corrigé — note : '+esc(String(sb.noteGlobale))+(sb.publiee?' (publiée)':' (à publier)')) : 'Soumis — à corriger'; }
+      else if(sb){ statutTxt='Brouillon en cours (pas encore soumis)'; }
+      return '<div class="be-row"><span class="be-row-m"><b>'+esc(beNomFromId(eid))+'</b><small>'+statutTxt+'</small></span>'+(sb&&sb.soumisLe&&sb.statutCorrection!=='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Corriger</button>':'')+(sb&&sb.statutCorrection==='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Revoir</button>':'')+'</div>';
     }).join('') || '<p class="be-empty">Aucun élève inscrit dans cette session.</p>';
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📝 '+esc(ev.nom)+'</h3>'
       +'<p style="margin:0 0 6px;font-size:12.5px;color:var(--ink-soft);">'+esc(fos.map(f=>f.nom).join(', '))+' · '+nbQ+' question(s)</p>'
@@ -24234,12 +24254,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const evs=L_evaluations().filter(x=>x.sessionId===id);
     const evHtml = evs.length ? '<div class="be-list">'+evs.map(e=>{
         const sb=(e.soumissions||[]).find(x=>x.eleveId===beMeId());
+        const ouverte = now>=(e.dateDebut||'') && (!e.dateFin || now<=e.dateFin);
         let statutTxt, action='';
         if(e.statut==='brouillon'){ statutTxt='Pas encore envoyée'; }
         else if(sb && sb.publiee){ statutTxt='Correction disponible — note : '+esc(String(sb.noteGlobale)); action='<button type="button" class="ghost" data-voir="'+esc(e.id)+'">Voir</button>'; }
-        else if(sb){ statutTxt='Soumis — en attente de correction'; }
+        else if(sb && sb.soumisLe){ statutTxt='Soumis — en attente de correction'; }
         else if(now < (e.dateDebut||'')){ statutTxt='Ouvre le '+esc(fmtDate2(e.dateDebut)); }
-        else if(e.dateFin && now > e.dateFin){ statutTxt='Clôturée, non soumise'; }
+        else if(e.dateFin && now > e.dateFin){ statutTxt=sb?'Clôturée, brouillon non soumis':'Clôturée, non soumise'; }
+        else if(sb && ouverte){ statutTxt='Brouillon enregistré — vous pouvez continuer.'; action='<button type="button" class="ghost" data-remplir="'+esc(e.id)+'">↩ Reprendre</button>'; }
         else { statutTxt='À remplir avant le '+esc(fmtDate2(e.dateFin)); action='<button type="button" class="primary" data-remplir="'+esc(e.id)+'">Répondre</button>'; }
         return '<div class="be-row"><span class="be-row-m"><b>'+esc(e.nom)+'</b><small>'+statutTxt+'</small></span>'+action+'</div>';
       }).join('')+'</div>' : '<p class="be-empty">Aucune évaluation.</p>';
@@ -24263,9 +24285,22 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+esc(ev.nom)+'</h3>'
       +'<p class="empty-note" style="margin:0 0 10px;">À rendre avant le '+esc(fmtDate2(ev.dateFin))+'.</p>'
       +qHtml
-      +'<div class="modal-actions"><button class="primary" id="be-ev-submit">Soumettre</button><button class="ghost" onclick="closeModal()">Annuler</button></div>', ()=>beSessionOpenEleve(ev.sessionId));
+      +'<div class="modal-actions"><button class="ghost" id="be-ev-save">💾 Enregistrer et continuer plus tard</button><button class="primary" id="be-ev-submit">Soumettre</button><button class="ghost" onclick="closeModal()">Annuler</button></div>', ()=>beSessionOpenEleve(ev.sessionId));
     document.querySelectorAll('[data-vopj]').forEach(b=>b.onclick=()=>{ const q=questions.find(x=>x.id===b.dataset.vopj); if(q) beOpenPjViewer(q.pj); });
     document.getElementById('be-ev-submit').onclick=()=>beEvalSoumettre(evalId);
+    document.getElementById('be-ev-save').onclick=()=>beEvalSauvegarder(evalId);
+  };
+  /* Enregistre les réponses en brouillon sans les soumettre : l'élève peut sortir et reprendre
+     plus tard, tant que la fenêtre de réponse (dateDebut/dateFin) de l'évaluation est ouverte. */
+  window.beEvalSauvegarder=function(evalId){
+    const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
+    const reponses={};
+    document.querySelectorAll('[data-qid]').forEach(div=>{ const t=div.querySelector('[data-rep]'); if(t) reponses[div.dataset.qid]=t.value; });
+    ev.soumissions=ev.soumissions||[];
+    let sb=ev.soumissions.find(x=>x.eleveId===beMeId());
+    if(!sb){ sb={eleveId:beMeId(), eleveNom:beMeNom(), reponses:{}, soumisLe:'', correction:{}, noteGlobale:null, statutCorrection:'a_corriger', publiee:false, publieeLe:''}; ev.soumissions.push(sb); }
+    sb.reponses=reponses;
+    beSave(); closeModal(); miniAlert('Vos réponses sont enregistrées. Vous pourrez les reprendre tant que la session n’est pas terminée.'); beSessionOpenEleve(ev.sessionId);
   };
   window.beEvalSoumettre=function(evalId){
     const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
