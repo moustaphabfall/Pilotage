@@ -21471,7 +21471,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v442';
+  const VER='v443';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22957,6 +22957,10 @@ window.createInterloc=function(returnTaskId){
 .be-row-m small{display:block;color:var(--ink-soft);font-size:11.5px;margin-top:2px;}
 .be-row-amt{font-weight:600;white-space:nowrap;}
 .be-st{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;white-space:nowrap;}
+.be-rb{display:inline-flex;align-items:center;font-size:11px;color:var(--ink-soft);background:rgba(127,127,127,.09);border-radius:999px;padding:2px 8px;margin-left:6px;white-space:nowrap;}
+.be-rb-on{color:#8A5A00;background:#FDECC8;}
+.be-row-badges{margin-top:4px;}
+.be-row-badges .be-rb,.be-row-badges .be-st{margin-left:0;margin-right:6px;margin-top:4px;}
 .bst-av{background:#FDECC8;color:#8A5A00;}
 .bst-va{background:#D7F0DE;color:#1F7A3D;}
 .bst-re{background:#F8D7D3;color:#9B2C1F;}
@@ -23709,6 +23713,40 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   window.beIsEleve=beIsEleve;
   function beNowLocal(){ const d=new Date(), p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
   function fmtDate2(dtLocal){ if(!dtLocal) return ''; const [d,h]=String(dtLocal).split('T'); return (d?fmtDate(d):'')+(h?' à '+h:''); }
+  /* État de la session (Ouverte / À venir / Clôturée), selon l'heure et les dates début/fin. */
+  function beSessionEtat(s){
+    const now=beNowLocal();
+    if(s.dateDebut && now<s.dateDebut) return {txt:'À venir', cls:'bst-av'};
+    if(s.dateFin && now>s.dateFin) return {txt:'Clôturée', cls:'bst-ar'};
+    if(s.dateDebut||s.dateFin) return {txt:'Ouverte', cls:'bst-va'};
+    return null;
+  }
+  /* Badges d'une ligne de session dans la liste (Formation) : élèves (admin), supports, évaluations + état. */
+  function beSessionRowBadges(s, forAdmin){
+    const sup=L_supports().filter(x=>x.sessionId===s.id).length;
+    const evs=L_evaluations().filter(x=>x.sessionId===s.id);
+    let evBadge='';
+    if(forAdmin){
+      const enCours=evs.filter(e=>e.statut==='envoyee').length;
+      if(evs.length) evBadge='<span class="be-rb" title="Évaluations">📝 '+evs.length+(enCours?' · '+enCours+' en cours':'')+'</span>';
+    } else {
+      const now=beNowLocal(), meId=beMeId();
+      const aFaire=evs.filter(e=>{
+        if(e.statut==='brouillon') return false;
+        const sb=(e.soumissions||[]).find(x=>x.eleveId===meId);
+        if(sb) return false;
+        if(now<(e.dateDebut||'')) return false;
+        if(e.dateFin && now>e.dateFin) return false;
+        return true;
+      }).length;
+      if(evs.length) evBadge='<span class="be-rb'+(aFaire?' be-rb-on':'')+'" title="Évaluations">📝 '+(aFaire?aFaire+' à faire':evs.length)+'</span>';
+    }
+    const etat=beSessionEtat(s);
+    return (forAdmin?'<span class="be-rb" title="Élèves">🧑‍🎓 '+(s.eleveIds||[]).length+'</span>':'')
+      +(sup?'<span class="be-rb" title="Supports de cours">📚 '+sup+'</span>':'')
+      +evBadge
+      +(etat?'<span class="be-st '+etat.cls+'">'+etat.txt+'</span>':'');
+  }
 
   let beMembersCache=null;
   async function beLoadMembers(force){
@@ -23741,7 +23779,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Formation</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beSesAdd">＋ Session</button>':'')
       +'</div>'
-      +(L.length?'<div class="be-list">'+L.map(s=>'<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+' · '+(s.eleveIds||[]).length+' élève(s)</small></span>'
+      +(L.length?'<div class="be-list">'+L.map(s=>'<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+'</small><div class="be-row-badges">'+beSessionRowBadges(s,true)+'</div></span>'
         +(beAdmin()?'<span class="be-ses-tools">'
           +'<button type="button" class="be-ses-ic" data-cal="'+esc(s.id)+'" title="Dates de la session">📅</button>'
           +'<button type="button" class="be-ses-ic" data-ele="'+esc(s.id)+'" title="Élèves">🧑‍🎓</button>'
@@ -23821,7 +23859,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
         +'<button type="button" class="be-ses-ic" id="be-ses-ov-sup" title="Supports de cours">📚</button>'
         +'<button type="button" class="be-ses-ic" id="be-ses-ov-evm" title="Évaluations">📝</button>'
       +'</span>':'')
-      +(beAdmin()?'<div class="modal-actions"><button class="ghost" id="be-ses-editbtn">✎ Modifier</button><button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beSessionDel(\''+esc(id)+'\')">Supprimer</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':''));
+      +(beAdmin()?'<div class="modal-actions"><button class="ghost" id="be-ses-editbtn">✎ Modifier</button><button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beSessionDel(\''+esc(id)+'\')">Supprimer</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':''), beFormationRenderAdmin);
     if(beAdmin()){
       const eb=document.getElementById('be-ses-editbtn'); if(eb) eb.onclick=()=>beSessionEdit(s, id);
       const cb=document.getElementById('be-ses-ov-cal'); if(cb) cb.onclick=()=>beSessionCalOpen(id);
@@ -23836,7 +23874,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📅 Dates — '+esc(s.nom)+'</h3>'
       +'<div class="field"><label>Début de la session</label><input type="datetime-local" id="be-ses-cal-a" value="'+esc(s.dateDebut||'')+'"></div>'
       +'<div class="field"><label>Fin de la session</label><input type="datetime-local" id="be-ses-cal-b" value="'+esc(s.dateFin||'')+'"></div>'
-      +'<div class="modal-actions"><button class="primary" id="be-ses-cal-save">Enregistrer</button><button class="ghost" onclick="closeModal()">Fermer</button></div>');
+      +'<div class="modal-actions"><button class="primary" id="be-ses-cal-save">Enregistrer</button><button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beSessionOpenRender(id));
     document.getElementById('be-ses-cal-save').onclick=()=>{
       s.dateDebut=document.getElementById('be-ses-cal-a').value||'';
       s.dateFin=document.getElementById('be-ses-cal-b').value||'';
@@ -23854,7 +23892,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>🧑‍🎓 Élèves — '+esc(s.nom)+'</h3>'
       +'<div class="be-chips">'+chips+'</div>'
       +(avail.length?'<div class="field"><label>Ajouter des élèves</label><select id="be-ses-elesel" multiple size="'+Math.min(8,avail.length)+'">'+opts+'</select></div><div class="row"><button type="button" class="primary" id="be-ses-eleadd">Ajouter</button></div>':'<p class="be-empty">Aucun élève stagiaire disponible. Invitez un membre depuis « Gérer les membres », puis réglez sa fonction sur « Élève stagiaire ».</p>')
-      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>');
+      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beSessionOpenRender(sessionId));
     document.querySelectorAll('[data-eledel]').forEach(a=>a.onclick=(ev)=>{ ev.preventDefault(); beSessionEleveDel(sessionId, a.dataset.eledel); });
     const ab=document.getElementById('be-ses-eleadd'); if(ab) ab.onclick=()=>beSessionElevesAdd(sessionId);
   }
@@ -23880,7 +23918,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📚 Supports de cours — '+esc(s.nom)+'</h3>'
       +supHtml
       +(beAdmin()?'<button type="button" class="ghost be-addbtn" id="be-ses-addsup">+ Support de cours</button>':'')
-      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>');
+      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beSessionOpenRender(sessionId));
     if(beAdmin()){
       const asup=document.getElementById('be-ses-addsup'); if(asup) asup.onclick=()=>beSupportNew(sessionId);
       document.querySelectorAll('[data-supdel]').forEach(b=>b.onclick=()=>beSupportDel(b.dataset.supdel, sessionId));
@@ -23990,15 +24028,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const opts=fos.map(f=>'<option value="'+esc(f.id)+'"'+(selected.includes(f.id)?' selected':'')+'>'+esc(f.nom)+' ('+f.questions.length+' question'+(f.questions.length>1?'s':'')+')</option>').join('');
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+(ev?'Modifier l’évaluation':'Nouvelle évaluation')+'</h3>'
       +'<div class="field"><label>Nom</label><input type="text" id="be-ev-a" value="'+esc(ev&&ev.nom||'')+'"></div>'
-      +'<div class="field"><label>Formulaires</label>'+(fos.length?'<select id="be-ev-b" multiple size="'+Math.min(6,fos.length)+'">'+opts+'</select>':'<p class="be-empty">Aucun formulaire. Créez-en un ci-dessous.</p>')
-      +'<button type="button" class="ghost" id="be-ev-newfo" style="margin-top:6px;">+ Nouveau formulaire</button></div>'
+      +'<div class="field"><label>Formulaires</label>'+(fos.length?'<select id="be-ev-b" multiple size="'+Math.min(6,fos.length)+'">'+opts+'</select>':'<p class="be-empty">Aucun formulaire. Créez-en un depuis « Gérer les formulaires ».</p>')+'</div>'
       +'<div class="field"><label>Début des réponses</label><input type="datetime-local" id="be-ev-c" value="'+esc(ev&&ev.dateDebut||'')+'"></div>'
       +'<div class="field"><label>Fin des réponses</label><input type="datetime-local" id="be-ev-d" value="'+esc(ev&&ev.dateFin||'')+'"></div>'
       +'<div class="modal-actions">'
       +(ev?'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beEvalDel(\''+ev.id+'\')">Supprimer</button>':'')
       +'<button class="primary" id="be-ev-save">Enregistrer</button>'
       +'<button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beSessionEvalsManage(d.sessionId));
-    document.getElementById('be-ev-newfo').onclick=()=>{ beFoBackTo=null; beFormulaireNew(); };
     document.getElementById('be-ev-save').onclick=()=>beEvalSave();
   }
   window.beEvalSave=function(){
@@ -24034,7 +24070,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📝 Évaluations — '+esc(s.nom)+'</h3>'
       +evHtml
       +(beAdmin()?'<div class="row"><button type="button" class="ghost be-addbtn" id="be-ses-addev">+ Évaluation</button> <button type="button" class="ghost be-addbtn" id="be-ses-fomg">📑 Gérer les formulaires</button></div>':'')
-      +(beAdmin()?'<div class="modal-actions"><button class="primary" id="be-ses-send"'+(canSend?'':' disabled')+'>📤 Envoyer les évaluations</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>'));
+      +(beAdmin()?'<div class="modal-actions"><button class="primary" id="be-ses-send"'+(canSend?'':' disabled')+'>📤 Envoyer les évaluations</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>'), ()=>beSessionOpenRender(sessionId));
     if(beAdmin()){
       const aev=document.getElementById('be-ses-addev'); if(aev) aev.onclick=()=>beEvalNew(sessionId);
       const fomg=document.getElementById('be-ses-fomg'); if(fomg) fomg.onclick=()=>beFormulairesManage(()=>beSessionEvalsManage(sessionId));
@@ -24164,7 +24200,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const meId=beMeId();
     const L=L_sessions().filter(s=>(s.eleveIds||[]).includes(meId));
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Mes sessions</h2></div>'
-      +(L.length?'<div class="be-list">'+L.map(s=>'<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate(s.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Vous n’êtes inscrit à aucune session pour l’instant.</p>')
+      +(L.length?'<div class="be-list">'+L.map(s=>'<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate(s.dateFin)):'')+'</small><div class="be-row-badges">'+beSessionRowBadges(s,false)+'</div></span></div>').join('')+'</div>':'<p class="be-empty">Vous n’êtes inscrit à aucune session pour l’instant.</p>')
       +'</div>';
     w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beSessionOpenEleve(r.dataset.id));
   }
