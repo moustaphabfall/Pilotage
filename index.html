@@ -21471,7 +21471,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v445';
+  const VER='v446';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22987,6 +22987,13 @@ window.createInterloc=function(returnTaskId){
 .be-pjv-rs::after{content:'';position:absolute;right:3px;bottom:3px;width:8px;height:8px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);opacity:.5;}
 .be-pjv.be-pjv-mini{height:auto!important;}
 .be-pjv.be-pjv-mini .be-pjv-b,.be-pjv.be-pjv-mini .be-pjv-rs{display:none;}
+@media (max-width:480px){
+  /* Sur téléphone, la petite fenêtre flottante (pensée pour la souris) rendait le document
+     illisible et le glisser-déplacer gênait le défilement : plein écran, sans poignées. */
+  .be-pjv{left:0!important;top:0!important;width:100%!important;height:100dvh!important;border-radius:0;}
+  .be-pjv-rs{display:none;}
+  .be-pjv-h{cursor:default;touch-action:auto;}
+}
 .be-q-pj{margin:4px 0 10px;}
 .be-body{padding:6px 2px 2px;}
 .be-filt{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 10px;}
@@ -23093,33 +23100,37 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   /* visionneuse flottante (photo/PDF) : fenêtre déplaçable et redimensionnable, pour lire la pièce jointe d’une
      question tout en répondant dans la fenêtre de l’évaluation restée ouverte derrière. */
-  let bePjvState={x:16,y:70,w:340,h:420};
+  let bePjvState={x:16,y:70,w:340,h:420}, bePjvPrevOverflow=null;
   window.beOpenPjViewer=function(pj){
     if(!pj||!pj.src) return;
     const old=document.getElementById('bePjViewer'); if(old) old.remove();
-    const isPdf=/\.pdf($|\?)/i.test(pj.name||'')||/^data:application\/pdf/i.test(pj.src||'');
+    if(bePjvPrevOverflow!=null){ document.body.style.overflow=bePjvPrevOverflow; bePjvPrevOverflow=null; }
     const isImg=/\.(png|jpe?g|gif|webp|svg|bmp)($|\?)/i.test(pj.name||'')||/^data:image\//i.test(pj.src||'');
-    if(!isPdf&&!isImg){
-      /* Type non prévisualisable (docx, xlsx, zip…) : ouvrir dans un nouvel onglet plutôt que montrer une image cassée. */
+    if(!isImg){
+      /* PDF et autres types : ouvrir dans un nouvel onglet plutôt que dans un <iframe>. Safari
+         mobile (y compris en PWA) n'affiche pas de façon fiable un data:application/pdf dans un
+         iframe (page blanche constatée) ; une navigation directe fonctionne. */
       const a=document.createElement('a'); a.href=pj.src; a.target='_blank'; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove();
       return;
     }
     const win=document.createElement('div'); win.id='bePjViewer'; win.className='be-pjv';
     win.innerHTML='<div class="be-pjv-h" id="bePjvDrag"><b>📎 '+esc(pj.name||'Document')+'</b><span class="be-pjv-acts"><button type="button" id="bePjvMin" title="Réduire / agrandir">–</button><button type="button" id="bePjvX" title="Fermer">×</button></span></div>'
-      +'<div class="be-pjv-b">'+(isPdf?'<iframe src="'+esc(pj.src)+'"></iframe>':'<img src="'+esc(pj.src)+'" alt="'+esc(pj.name||'')+'">')+'</div>'
+      +'<div class="be-pjv-b"><img src="'+esc(pj.src)+'" alt="'+esc(pj.name||'')+'"></div>'
       +'<div class="be-pjv-rs" id="bePjvRs"></div>';
     document.body.appendChild(win);
+    bePjvPrevOverflow=document.body.style.overflow; document.body.style.overflow='hidden';
+    const closeWin=()=>{ win.remove(); if(bePjvPrevOverflow!=null){ document.body.style.overflow=bePjvPrevOverflow; bePjvPrevOverflow=null; } };
     const vp=bePjvState;
     win.style.left=Math.min(vp.x,Math.max(0,window.innerWidth-vp.w))+'px'; win.style.top=vp.y+'px'; win.style.width=vp.w+'px'; win.style.height=vp.h+'px';
-    document.getElementById('bePjvX').onclick=()=>win.remove();
+    document.getElementById('bePjvX').onclick=closeWin;
     const minBtn=document.getElementById('bePjvMin');
     minBtn.onclick=()=>{ const mini=win.classList.toggle('be-pjv-mini'); minBtn.textContent=mini?'□':'–'; };
     const hd=document.getElementById('bePjvDrag'); let dr=null;
-    hd.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; dr={x:e.clientX,y:e.clientY,l:win.offsetLeft,t:win.offsetTop}; hd.setPointerCapture(e.pointerId); });
+    hd.addEventListener('pointerdown',e=>{ if(window.innerWidth<=480||e.target.closest('button')) return; dr={x:e.clientX,y:e.clientY,l:win.offsetLeft,t:win.offsetTop}; hd.setPointerCapture(e.pointerId); });
     hd.addEventListener('pointermove',e=>{ if(!dr) return; const nl=Math.max(0,dr.l+(e.clientX-dr.x)), nt=Math.max(0,dr.t+(e.clientY-dr.y)); win.style.left=nl+'px'; win.style.top=nt+'px'; vp.x=nl; vp.y=nt; });
     hd.addEventListener('pointerup',e=>{ dr=null; try{ hd.releasePointerCapture(e.pointerId); }catch(_){} });
     const rs=document.getElementById('bePjvRs'); let rz=null;
-    rs.addEventListener('pointerdown',e=>{ rz={x:e.clientX,y:e.clientY,w:win.offsetWidth,h:win.offsetHeight}; rs.setPointerCapture(e.pointerId); e.stopPropagation(); });
+    rs.addEventListener('pointerdown',e=>{ if(window.innerWidth<=480) return; rz={x:e.clientX,y:e.clientY,w:win.offsetWidth,h:win.offsetHeight}; rs.setPointerCapture(e.pointerId); e.stopPropagation(); });
     rs.addEventListener('pointermove',e=>{ if(!rz) return; const nw=Math.max(220,rz.w+(e.clientX-rz.x)), nh=Math.max(120,rz.h+(e.clientY-rz.y)); win.style.width=nw+'px'; win.style.height=nh+'px'; vp.w=nw; vp.h=nh; });
     rs.addEventListener('pointerup',e=>{ rz=null; try{ rs.releasePointerCapture(e.pointerId); }catch(_){} });
   };
@@ -24080,7 +24091,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📝 Évaluations — '+esc(s.nom)+'</h3>'
       +evHtml
       +(beAdmin()?'<div class="row"><button type="button" class="ghost be-addbtn" id="be-ses-addev">+ Évaluation</button> <button type="button" class="ghost be-addbtn" id="be-ses-fomg">📑 Gérer les formulaires</button></div>':'')
-      +(beAdmin()?'<div class="modal-actions"><button class="primary" id="be-ses-send"'+(canSend?'':' disabled')+'>📤 Envoyer les évaluations</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>'), ()=>beSessionOpenRender(sessionId));
+      +(beAdmin()?'<p class="empty-note" style="margin:8px 0 0;">Pour envoyer une évaluation aux élèves et qu’ils puissent y répondre, ouvrez-la ci-dessus puis cliquez sur « 📨 Envoyer aux élèves ».</p>':'')
+      +(beAdmin()?'<div class="modal-actions"><button class="primary" id="be-ses-send"'+(canSend?'':' disabled')+'>📤 Publier les corrections</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>'), ()=>beSessionOpenRender(sessionId));
     if(beAdmin()){
       const aev=document.getElementById('be-ses-addev'); if(aev) aev.onclick=()=>beEvalNew(sessionId);
       const fomg=document.getElementById('be-ses-fomg'); if(fomg) fomg.onclick=()=>beFormulairesManage(()=>beSessionEvalsManage(sessionId));
