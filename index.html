@@ -21472,7 +21472,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v455';
+  const VER='v456';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23079,6 +23079,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
 (function(){
   function L_missions(){ return state.missions=state.missions||[]; }
   function L_typesMission(){ return state.typesMission=state.typesMission||[]; }
+  /* Bibliothèque des projets (partagée) parmi lesquels une mission peut choisir son Projet ; "＋ Ajouter" l'enrichit, comme les autres listes de l'appli */
+  function L_projetsMission(){ return state.projetsMission=state.projetsMission||[]; }
+  function beProjetOptsHtml(sel){ return '<option value="">— Aucun —</option>'+L_projetsMission().map(p=>'<option value="'+esc(p.nom)+'"'+(sel===p.nom?' selected':'')+'>'+esc(p.nom)+'</option>').join('')+'<option value="__new__">＋ Créer un projet…</option>'; }
   function L_indices(){ return state.indicesKm=state.indicesKm||[]; }
   function L_frais(){ return state.notesFrais=state.notesFrais||[]; }
   function L_km(){ return state.notesKm=state.notesKm||[]; }
@@ -23258,7 +23261,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(showForm){
       const typeOpts='<option value="">— Choisir —</option>'+L_typesMission().map(t=>'<option value="'+esc(t.id)+'"'+(m.typeMissionId===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('');
       body='<div class="field"><label>Mission (client)</label><input type="text" id="be-m-a" value="'+esc(m.client||'')+'"></div>'
-        +'<div class="field"><label>Projet</label><input type="text" id="be-m-p" value="'+esc(m.projet||'')+'" placeholder="Nom du projet"></div>'
+        +'<div class="field"><label>Projet</label><select id="be-m-p">'+beProjetOptsHtml(m.projet||'')+'</select></div>'
         +'<div class="field"><label>Type de mission</label><select id="be-m-t">'+typeOpts+'</select></div>'
         +'<div class="field"><label>Date de début</label><input type="date" id="be-m-c" value="'+esc(m.dateDebut||'')+'"></div>'
         +'<div class="field"><label>Date de fin</label><input type="date" id="be-m-d" value="'+esc(m.dateFin||'')+'"></div>'
@@ -23281,8 +23284,21 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>'+(nw?'Nouvelle mission':'Mission')+'</h3>'
       +body
       +(!nw&&beIsDimMission(m)?beMissionDimSectionsHtml(m):''));
+    if(showForm){
+      const pSel=document.getElementById('be-m-p');
+      if(pSel) pSel.onchange=()=>{
+        if(pSel.value!=='__new__') return;
+        miniPrompt('Nom du nouveau projet','',nom=>{
+          if(!nom){ pSel.value=m.projet||''; return; }
+          nom=nom.trim();
+          if(!L_projetsMission().some(p=>p.nom===nom)){ L_projetsMission().push({id:uid('PJM'),nom}); beSave(); }
+          pSel.innerHTML=beProjetOptsHtml(nom);
+        });
+      };
+    }
     if(!nw&&beIsDimMission(m)) beMissionDimSectionsWire(m);
   }
+  window.beMissionEdit=beMissionEdit; /* exposée en global : requis par les onclick="beMissionEdit(...)" en chaîne (close-x, crayon, Annuler) */
   /* missions pour lesquelles on crée des formulaires de dimensionnement (note de calcul + plan de ferraillage) */
   const BE_DIM_MISSIONS=['Élaboration des plans d’exécution – structures en béton armé','Élaboration des plans d’exécution – structures métalliques','Élaboration des plans de pré-dimensionnement'];
   function beIsDimMission(m){ return BE_DIM_MISSIONS.includes(beTypeMissionNom(m.typeMissionId)); }
