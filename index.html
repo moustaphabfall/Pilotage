@@ -21471,7 +21471,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v447';
+  const VER='v448';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23045,6 +23045,14 @@ window.createInterloc=function(returnTaskId){
 .be-corr-q{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;}
 .be-corr-q .be-corr-pts{display:flex;gap:10px;align-items:center;margin-top:6px;}
 .be-corr-q .be-corr-pts input{width:70px;}
+.be-corr-rep{margin:8px 0;padding:10px 12px;border:1px solid #E8AA3A;border-radius:12px;}
+.be-corr-att{border-style:dashed;opacity:.85;}
+.be-corr-lb{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#E8AA3A;margin-bottom:4px;}
+.be-corr-txt{font-size:14px;line-height:1.45;white-space:normal;}
+.be-ev-grp{display:flex;align-items:center;gap:8px;margin:14px 0 6px;font-size:13px;}
+.be-ev-grp-n{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--accent,#E8AA3A);color:#111;font-size:11px;text-align:center;line-height:18px;}
+.be-ev-st-envoyee{border-color:#E8AA3A;color:#E8AA3A;}
+.be-ev-st-cloturee{opacity:.7;}
 .be-ev-st{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--ink-soft);}
 body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page="missions"],body.be-eleve-mode .tab[data-page="travaux"],body.be-eleve-mode .tab[data-page="planif"],body.be-eleve-mode .tab[data-page="plans"],body.be-eleve-mode .tab[data-page="refac"],body.be-eleve-mode .tab[data-page="rex"],body.be-eleve-mode .tab[onclick*="projParamEdit"]{display:none !important}
 </style>
@@ -23731,6 +23739,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beIsEleve(){ return !!(window.PILOTAGE_PROJET && window.PILOTAGE_PROJET.fonction==='Élève stagiaire'); }
   window.beIsEleve=beIsEleve;
   function beNowLocal(){ const d=new Date(), p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
+  function beIsoToLocal(iso){ const d=new Date(iso); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
   function fmtDate2(dtLocal){ if(!dtLocal) return ''; const [d,h]=String(dtLocal).split('T'); return (d?fmtDate(d):'')+(h?' à '+h:''); }
   /* État de la session (Ouverte / À venir / Clôturée), selon l'heure et les dates début/fin. */
   function beSessionEtat(s){
@@ -24102,13 +24111,28 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beSessionEvalsManage(sessionId){
     const s=L_sessions().find(x=>x.id===sessionId); if(!s) return;
     const evs=L_evaluations().filter(x=>x.sessionId===sessionId);
-    const evHtml = evs.length ? '<div class="be-list">'+evs.map(e=>{
-        const nbSoum=(e.soumissions||[]).filter(x=>x.soumisLe).length, nbCorr=(e.soumissions||[]).filter(x=>x.statutCorrection==='corrigee').length;
-        return '<div class="be-row" data-ev="'+esc(e.id)+'"><span class="be-row-m"><b>'+esc(e.nom)+'</b><small>'+nbSoum+' réponse(s)'+(e.statut!=='brouillon'?', '+nbCorr+' corrigée(s)':'')+(e.moyenneClasse!=null?' · Moyenne classe : '+esc(String(e.moyenneClasse)):'')+'</small></span><span class="be-ev-st">'+(EV_ST[e.statut]||e.statut)+'</span></div>';
-      }).join('')+'</div>' : '<p class="be-empty">Aucune évaluation.</p>';
+    const evRow=e=>{
+      const nbSoum=(e.soumissions||[]).filter(x=>x.soumisLe).length, nbCorr=(e.soumissions||[]).filter(x=>x.statutCorrection==='corrigee').length;
+      return '<div class="be-row" data-ev="'+esc(e.id)+'"><span class="be-row-m"><b>'+esc(e.nom)+'</b><small>'+(e.dateDebut?esc(fmtDate2(e.dateDebut)):'')+(e.dateFin?' → '+esc(fmtDate2(e.dateFin)):'')+(e.statut!=='brouillon'?' · '+nbSoum+' réponse(s), '+nbCorr+' corrigée(s)':'')+(e.moyenneClasse!=null?' · Moyenne classe : '+esc(String(e.moyenneClasse)):'')+'</small></span><span class="be-ev-st be-ev-st-'+esc(e.statut)+'">'+(EV_ST[e.statut]||e.statut)+'</span></div>';
+    };
+    /* Évaluations rangées par statut : Brouillons, Envoyées, Clôturées */
+    const groupes=[['brouillon','📝 Brouillons'],['envoyee','📨 Envoyées'],['cloturee','🔒 Clôturées']];
+    const evHtml = evs.length ? groupes.map(([st,lb])=>{
+        const g=evs.filter(e=>(e.statut||'brouillon')===st); if(!g.length) return '';
+        return '<h4 class="be-ev-grp">'+lb+' <span class="be-ev-grp-n">'+g.length+'</span></h4><div class="be-list">'+g.map(evRow).join('')+'</div>';
+      }).join('') : '<p class="be-empty">Aucune évaluation.</p>';
+    /* Réponses des élèves : une ligne par copie, cliquable pour l'ouvrir et la corriger */
+    const reps=[];
+    evs.forEach(e=>(e.soumissions||[]).forEach(sb=>{ if(sb.soumisLe) reps.push({e,sb}); }));
+    const rang=x=>x.sb.statutCorrection!=='corrigee'?0:(!x.sb.publiee?1:2);
+    reps.sort((a,b)=>rang(a)-rang(b)||String(b.sb.soumisLe||'').localeCompare(String(a.sb.soumisLe||'')));
+    const repEtat=sb=>sb.statutCorrection!=='corrigee'?'<span class="be-st bst-av">À corriger</span>':'<span class="be-st bst-va">'+esc(String(sb.noteGlobale))+(sb.publiee?' · publiée':' · à publier')+'</span>';
+    const repHtml = beAdmin() ? '<h4 class="be-ev-grp">📥 Réponses des élèves <span class="be-ev-grp-n">'+reps.length+'</span></h4>'
+      +(reps.length?'<div class="be-list">'+reps.map(x=>'<div class="be-row" data-rep-ev="'+esc(x.e.id)+'" data-rep-el="'+esc(x.sb.eleveId)+'"><span class="be-row-m"><b>'+esc(x.sb.eleveNom||beNomFromId(x.sb.eleveId))+'</b><small>'+esc(x.e.nom)+(x.sb.soumisLe?' · rendue le '+esc(fmtDate2(beIsoToLocal(x.sb.soumisLe))):'')+'</small></span>'+repEtat(x.sb)+'</div>').join('')+'</div>':'<p class="be-empty">Aucune réponse reçue pour l’instant.</p>') : '';
     const canSend = beAdmin() && evs.some(e=>(e.soumissions||[]).some(x=>x.statutCorrection==='corrigee' && !x.publiee));
     openModal('<button class="close-x" onclick="closeModal()">×</button><h3>📝 Évaluations — '+esc(s.nom)+'</h3>'
       +evHtml
+      +repHtml
       +(beAdmin()?'<div class="row"><button type="button" class="ghost be-addbtn" id="be-ses-addev">+ Évaluation</button> <button type="button" class="ghost be-addbtn" id="be-ses-fomg">📑 Gérer les formulaires</button></div>':'')
       +(beAdmin()?'<p class="empty-note" style="margin:8px 0 0;">Pour envoyer une évaluation aux élèves et qu’ils puissent y répondre, ouvrez-la ci-dessus puis cliquez sur « 📨 Envoyer aux élèves ».</p>':'')
       +(beAdmin()?'<div class="modal-actions"><button class="primary" id="be-ses-send"'+(canSend?'':' disabled')+'>📤 Publier les corrections</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>'), ()=>beSessionOpenRender(sessionId));
@@ -24116,6 +24140,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       const aev=document.getElementById('be-ses-addev'); if(aev) aev.onclick=()=>beEvalNew(sessionId);
       const fomg=document.getElementById('be-ses-fomg'); if(fomg) fomg.onclick=()=>beFormulairesManage(()=>beSessionEvalsManage(sessionId));
       document.querySelectorAll('[data-ev]').forEach(r=>r.onclick=()=>beEvalOpen(r.dataset.ev));
+      document.querySelectorAll('[data-rep-ev]').forEach(r=>r.onclick=()=>beCorrOpen(r.dataset.repEv, r.dataset.repEl));
       const sendb=document.getElementById('be-ses-send'); if(sendb) sendb.onclick=()=>beSessionEnvoyer(sessionId);
     }
   }
@@ -24182,7 +24207,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       return '<div class="be-corr-q" data-qid="'+esc(q.id)+'">'
         +'<b>Q'+(i+1)+'. '+esc(q.texte)+'</b>'
         +(q.pj&&q.pj.name?' <button type="button" class="ghost" data-vopj="'+esc(q.id)+'">📎 '+esc(q.pj.name)+'</button>':'')
-        +'<p class="empty-note" style="margin:6px 0;">Réponse de l’élève : '+(rep?esc(rep):'<em>Aucune réponse</em>')+'</p>'
+        +'<div class="be-corr-rep"><span class="be-corr-lb">Réponse de l’élève</span><div class="be-corr-txt">'+(rep?esc(rep).replace(/\n/g,'<br>'):'<em>Aucune réponse</em>')+'</div></div>'
+        +(q.reponseAttendue?'<div class="be-corr-rep be-corr-att"><span class="be-corr-lb">Réponse attendue</span><div class="be-corr-txt">'+esc(q.reponseAttendue).replace(/\n/g,'<br>')+'</div></div>':'')
         +'<div class="be-corr-pts"><label>Points obtenus <input type="text" inputmode="decimal" data-cf="obtenu" value="'+esc(cor.obtenu!=null?String(cor.obtenu):'')+'"></label><label>Max <input type="text" inputmode="decimal" data-cf="max" value="'+esc(cor.max!=null?String(cor.max):'')+'"></label></div>'
         +'<div class="field"><label>Commentaire</label><textarea rows="2" data-cf="commentaire">'+esc(cor.commentaire||'')+'</textarea></div>'
       +'</div>';
