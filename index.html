@@ -21471,7 +21471,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v444';
+  const VER='v445';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23098,6 +23098,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(!pj||!pj.src) return;
     const old=document.getElementById('bePjViewer'); if(old) old.remove();
     const isPdf=/\.pdf($|\?)/i.test(pj.name||'')||/^data:application\/pdf/i.test(pj.src||'');
+    const isImg=/\.(png|jpe?g|gif|webp|svg|bmp)($|\?)/i.test(pj.name||'')||/^data:image\//i.test(pj.src||'');
+    if(!isPdf&&!isImg){
+      /* Type non prévisualisable (docx, xlsx, zip…) : ouvrir dans un nouvel onglet plutôt que montrer une image cassée. */
+      const a=document.createElement('a'); a.href=pj.src; a.target='_blank'; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove();
+      return;
+    }
     const win=document.createElement('div'); win.id='bePjViewer'; win.className='be-pjv';
     win.innerHTML='<div class="be-pjv-h" id="bePjvDrag"><b>📎 '+esc(pj.name||'Document')+'</b><span class="be-pjv-acts"><button type="button" id="bePjvMin" title="Réduire / agrandir">–</button><button type="button" id="bePjvX" title="Fermer">×</button></span></div>'
       +'<div class="be-pjv-b">'+(isPdf?'<iframe src="'+esc(pj.src)+'"></iframe>':'<img src="'+esc(pj.src)+'" alt="'+esc(pj.name||'')+'">')+'</div>'
@@ -24211,7 +24217,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beSessionOpenEleve(id){
     const s=L_sessions().find(x=>x.id===id); if(!s || !(s.eleveIds||[]).includes(beMeId())) return;
     const sup=L_supports().filter(x=>x.sessionId===id);
-    const supHtml = sup.length ? '<div class="be-list">'+sup.map(d=>'<div class="be-row"><span class="be-row-m"><b>'+esc(d.theme)+'</b><small>'+(d.dateDepot?'Dépôt : '+esc(fmtDate(d.dateDepot)):'')+'</small></span>'+(d.pj&&d.pj.name?'<button type="button" class="ghost" data-dlsup="'+esc(d.id)+'">📎 Voir</button>':'')+'</div>').join('')+'</div>' : '<p class="be-empty">Aucun support de cours.</p>';
+    const supHtml = sup.length ? '<div class="be-list">'+sup.map(d=>'<div class="be-row"><span class="be-row-m"><b>'+esc(d.theme)+'</b><small>'+(d.dateDepot?'Dépôt : '+esc(fmtDate(d.dateDepot)):'')+'</small></span>'+(d.pj&&d.pj.name?'<button type="button" class="ghost" data-vsup="'+esc(d.id)+'">📎 Voir</button>':'')+'</div>').join('')+'</div>' : '<p class="be-empty">Aucun support de cours.</p>';
     const now=beNowLocal();
     const evs=L_evaluations().filter(x=>x.sessionId===id);
     const evHtml = evs.length ? '<div class="be-list">'+evs.map(e=>{
@@ -24230,7 +24236,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       +'<h4>📚 Supports de cours</h4>'+supHtml
       +'<h4 style="margin-top:16px;">📝 Évaluations</h4>'+evHtml
       +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Retour</button></div>', ()=>beFormationRenderEleve());
-    document.querySelectorAll('[data-dlsup]').forEach(b=>b.onclick=()=>{ const d=L_supports().find(x=>x.id===b.dataset.dlsup); if(d&&d.pj&&d.pj.src){ const a=document.createElement('a'); a.href=d.pj.src; a.download=d.pj.name||'support'; a.click(); } });
+    document.querySelectorAll('[data-vsup]').forEach(b=>b.onclick=()=>{ const d=L_supports().find(x=>x.id===b.dataset.vsup); if(d&&d.pj) beOpenPjViewer(d.pj); });
     document.querySelectorAll('[data-voir]').forEach(b=>b.onclick=()=>beEvalVoirCorrection(b.dataset.voir));
     document.querySelectorAll('[data-remplir]').forEach(b=>b.onclick=()=>beEvalRemplir(b.dataset.remplir));
   }
