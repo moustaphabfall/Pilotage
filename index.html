@@ -21471,7 +21471,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v450';
+  const VER='v451';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -22983,6 +22983,9 @@ window.createInterloc=function(returnTaskId){
 .be-pjv-b{flex:1;overflow:auto;background:#2B2F33;display:flex;}
 .be-pjv-b img{max-width:100%;max-height:100%;margin:auto;object-fit:contain;}
 .be-pjv-b iframe{width:100%;height:100%;border:0;background:#fff;}
+.be-pjv-b.be-pjv-pdf{display:block;}
+.be-pjv-loading{color:#D9D5C8;text-align:center;margin:24px auto;font-size:13px;padding:0 14px;}
+.be-pjv-loading a{color:#FFC400;}
 .be-pjv-rs{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;touch-action:none;}
 .be-pjv-rs::after{content:'';position:absolute;right:3px;bottom:3px;width:8px;height:8px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);opacity:.5;}
 .be-pjv.be-pjv-mini{height:auto!important;}
@@ -23124,21 +23127,54 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* visionneuse flottante (photo/PDF) : fenêtre déplaçable et redimensionnable, pour lire la pièce jointe d’une
      question tout en répondant dans la fenêtre de l’évaluation restée ouverte derrière. */
   let bePjvState={x:16,y:70,w:340,h:420}, bePjvPrevOverflow=null;
+  /* Rend chaque page d'un PDF (data: URI) en canevas, empilés et défilables, dans le corps du
+     visualisateur flottant. Dessiner nous-mêmes les pages via pdf.js (déjà embarqué localement,
+     lib/pdf.min.js) évite l'affichage blanc d'un <iframe src="data:application/pdf;...">,
+     peu fiable sur Safari mobile, y compris en PWA installée. */
+  async function beRenderPdfInViewer(dataUri, win){
+    const body=win.querySelector('#bePjvBody'); if(!body) return;
+    try{
+      const lib=await loadPdfJs();
+      const comma=dataUri.indexOf(','); const b64=dataUri.slice(comma+1);
+      const bin=atob(b64); const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      const pdf=await lib.getDocument({data:bytes}).promise;
+      if(!document.body.contains(win)) return; /* fenêtre fermée pendant le chargement */
+      body.innerHTML='';
+      const nbPages=Math.min(pdf.numPages, 60);
+      const dpr=Math.min(2, window.devicePixelRatio||1);
+      for(let n=1;n<=nbPages;n++){
+        if(!document.body.contains(win)) return;
+        const pg=await pdf.getPage(n);
+        const bw=Math.max(200, body.clientWidth-20);
+        const v1=pg.getViewport({scale:1});
+        const sc=(bw/v1.width)*dpr;
+        const vp=pg.getViewport({scale:sc});
+        const c=document.createElement('canvas'); c.width=Math.round(vp.width); c.height=Math.round(vp.height);
+        c.style.cssText='display:block;margin:10px auto;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);width:'+Math.round(vp.width/dpr)+'px;height:'+Math.round(vp.height/dpr)+'px;';
+        body.appendChild(c);
+        await pg.render({canvasContext:c.getContext('2d'), viewport:vp}).promise;
+      }
+      if(pdf.numPages>nbPages){ const note=document.createElement('p'); note.className='be-pjv-loading'; note.textContent='('+(pdf.numPages-nbPages)+' page(s) supplémentaire(s) non affichée(s))'; body.appendChild(note); }
+    }catch(err){
+      body.innerHTML='<p class="be-pjv-loading">Document illisible. <a href="'+esc(dataUri)+'" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a></p>';
+    }
+  }
   window.beOpenPjViewer=function(pj){
     if(!pj||!pj.src) return;
     const old=document.getElementById('bePjViewer'); if(old) old.remove();
     if(bePjvPrevOverflow!=null){ document.body.style.overflow=bePjvPrevOverflow; bePjvPrevOverflow=null; }
     const isImg=/\.(png|jpe?g|gif|webp|svg|bmp)($|\?)/i.test(pj.name||'')||/^data:image\//i.test(pj.src||'');
-    if(!isImg){
-      /* PDF et autres types : ouvrir dans un nouvel onglet plutôt que dans un <iframe>. Safari
-         mobile (y compris en PWA) n'affiche pas de façon fiable un data:application/pdf dans un
-         iframe (page blanche constatée) ; une navigation directe fonctionne. */
+    const isPdf=/\.pdf($|\?)/i.test(pj.name||'')||/^data:application\/pdf/i.test(pj.src||'');
+    if(!isImg && !isPdf){
+      /* Types sans lecteur intégré (ni image, ni PDF) : ouvrir dans un nouvel onglet, faute de
+         visualisateur embarqué pour ce format. */
       const a=document.createElement('a'); a.href=pj.src; a.target='_blank'; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove();
       return;
     }
     const win=document.createElement('div'); win.id='bePjViewer'; win.className='be-pjv';
     win.innerHTML='<div class="be-pjv-h" id="bePjvDrag"><b>📎 '+esc(pj.name||'Document')+'</b><span class="be-pjv-acts"><button type="button" id="bePjvMin" title="Réduire / agrandir">–</button><button type="button" id="bePjvX" title="Fermer">×</button></span></div>'
-      +'<div class="be-pjv-b"><img src="'+esc(pj.src)+'" alt="'+esc(pj.name||'')+'"></div>'
+      +'<div class="be-pjv-b'+(isPdf?' be-pjv-pdf':'')+'" id="bePjvBody">'+(isImg?'<img src="'+esc(pj.src)+'" alt="'+esc(pj.name||'')+'">':'<p class="be-pjv-loading">Chargement du document…</p>')+'</div>'
       +'<div class="be-pjv-rs" id="bePjvRs"></div>';
     document.body.appendChild(win);
     bePjvPrevOverflow=document.body.style.overflow; document.body.style.overflow='hidden';
@@ -23156,6 +23192,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     rs.addEventListener('pointerdown',e=>{ if(window.innerWidth<=480) return; rz={x:e.clientX,y:e.clientY,w:win.offsetWidth,h:win.offsetHeight}; rs.setPointerCapture(e.pointerId); e.stopPropagation(); });
     rs.addEventListener('pointermove',e=>{ if(!rz) return; const nw=Math.max(220,rz.w+(e.clientX-rz.x)), nh=Math.max(120,rz.h+(e.clientY-rz.y)); win.style.width=nw+'px'; win.style.height=nh+'px'; vp.w=nw; vp.h=nh; });
     rs.addEventListener('pointerup',e=>{ rz=null; try{ rs.releasePointerCapture(e.pointerId); }catch(_){} });
+    if(isPdf) beRenderPdfInViewer(pj.src, win);
   };
 
   /* ================= MISSIONS ================= */
