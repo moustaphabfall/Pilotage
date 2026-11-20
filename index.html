@@ -21801,7 +21801,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v476';
+  const VER='v477';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23687,30 +23687,34 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   window.beTypeStructureIco=beTypeStructureIco;
   window.beTypeStructureLabel=beTypeStructureLabel;
   /* ===================== Dimensionnement — « Poutre continue » (grille de modules + moteur) =====================
-     Grille des modules du type « Poutres & éléments horizontaux », alignée sur le skill dimensionnement-01-poutres
-     (15 boutons groupés A/B/C/D, doublons et variantes du dossier Excel regroupés en un seul bouton ; les 2
-     classeurs « dalle » restent hors type 01, à trancher par Moustapha). Les 16 autres types de structure
-     n'ont pas encore de modules et gardent la fiche classique.
+     Grille des 24 modules du type « Poutres & éléments horizontaux » — un bouton par feuille de calcul du
+     dossier Excel fourni, sans regroupement ni exclusion (chaque classeur sera développé un par un, y
+     compris les 2 classeurs « dalle » : on garde les 24). Les 16 autres types de structure n'ont pas
+     encore de modules et gardent la fiche classique.
      « Poutre continue » est le seul module développé pour l'instant : parcours en 6 étapes (Géométrie → Matériau
      → Appuis → Chargement → Calcul → Résultats ; Ferraillage et Note de calcul restent « à venir »), moteur
      éléments finis (méthode des rigidités, poutre d'Euler-Bernoulli) validé contre le classeur fourni par
      Moustapha : 3 travées 12/10/12 m, 1 t/m sur toute la poutre, EI = 2100 t·m² → réactions 4,95/12,05/12,05/
      4,95 t, moment sur appui −12,63 t·m, flèche max ≈ 74,6 mm (moteur : 4,95/12,05/12,05/4,95 t, −12,62 t·m,
-     75,3 mm — écart < 1 % dû à la discrétisation). */
+     75,3 mm — écart < 1 % dû à la discrétisation). Les 23 autres modules restent grisés jusqu'à leur tour. */
   const BEAM_TYPE_NOM='Poutres & éléments horizontaux';
   function beamModules(){
    return [
-    {g:'A · Efforts (RDM)', items:[
-     ['beam3','Poutre continue'],['➡️','Efforts poutre continue'],['📊','Enveloppe des efforts'],
-     ['🚛','Charge roulante'],['🌊','Poutre sur sol élastique'],['📐','Inertie variable'],
-     ['✂️','Efforts tranchants travée'],['🔗','Rotules plastiques'],['🔄','Majoration Guyon']
-    ]},
-    {g:'B · Vérifications', items:[ ['📉','Flèche'],['🏗️','Flambement'] ]},
-    {g:'C · Ouvertures et réservations', items:[ ['⭕','Trous dans les poutres'],['◻️','Ouverture rectangulaire'] ]},
-    {g:'D · Poutres voiles', items:[ ['🧱','Ferraillage poutre voile'],['🧱','Dimensionnement poutre voile'] ]}
+    ['beam3','Poutre continue'],['➡️','Effort dans une poutre continue'],
+    ['📊','Effort enveloppe — poutre continue (1)'],['📊','Effort enveloppe — poutre continue (2)'],
+    ['🚛','Effort sous charge roulante'],['🌊','Poutre sur sol élastique'],
+    ['📐','Poutre continue à inertie variable'],['⭕','Trous dans les poutres'],
+    ['🧱','Ferraillage poutre voile (1)'],['🧱','Ferraillage poutre voile (2)'],
+    ['📉',"Flèche RDM d'une travée"],['🔄','Majoration flexion — méthode Guyon'],
+    ['🏗️','Longueur de flambement (poutre/poteau)'],['◻️','Ouverture rectangulaire dans poutre'],
+    ['✂️','Efforts tranchants — travée continue'],['🔗','Rotules plastiques — poutres continues'],
+    ['📊','Efforts enveloppe — calcul (1)'],['📊','Efforts enveloppe — calcul (2)'],
+    ['📐','Moments — inertie variable (calcul)'],['📦','Réservation de poutre'],
+    ['▦','Dalle pleine — 1 et 2 sens de portée'],['🧱','Dimensionnement poutre voile (1)'],
+    ['🧱','Dimensionnement poutre voile (2)'],['🌉','Épaisseur dalle de pont à poutres']
    ];
   }
-  function beamModulesFlat(){ const out=[]; beamModules().forEach(g=>g.items.forEach(m=>out.push(m))); return out; }
+  function beamModulesFlat(){ return beamModules(); }
   /* Icône dédiée (poutre horizontale sur 3 appuis) demandée par Moustapha pour « Poutre continue » — les
      autres tuiles restent en emoji, cohérent avec la charte de l'appli. */
   function beamIconHtml(ic){
@@ -23749,16 +23753,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    wrap.innerHTML = st.view==='grid' ? beamGridHtml() : pcWizardHtml(id,t,st.step);
   }
   function beamGridHtml(){
-   let idx=0;
-   const grpHtml=beamModules().map(gr=>{
-    const tiles=gr.items.map(m=>{ const myIdx=idx++; const ready=(m[1]==='Poutre continue');
-     return '<button type="button" class="pjAT'+(ready?' pjAT-ready':'')+'" data-beam-mod="'+myIdx+'" title="'+esc(m[1])+(ready?'':' — à développer')+'"><span class="pjAT-i">'+beamIconHtml(m[0])+'</span><span class="pjAT-n">'+esc(m[1])+'</span></button>';
-    }).join('');
-    return '<p class="pjBeam-grp">'+esc(gr.g)+'</p><div class="pjAT-g pjBeam-g">'+tiles+'</div>';
+   const tiles=beamModules().map((m,i)=>{ const ready=(m[1]==='Poutre continue');
+    return '<button type="button" class="pjAT'+(ready?' pjAT-ready':'')+'" data-beam-mod="'+i+'" title="'+esc(m[1])+(ready?'':' — à développer')+'"><span class="pjAT-i">'+beamIconHtml(m[0])+'</span><span class="pjAT-n">'+esc(m[1])+'</span></button>';
    }).join('');
    return '<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📐 Poutres &amp; éléments horizontaux</h4></div>'
-    +'<p class="pjBeam-h">Choisir un module</p>'+grpHtml
-    +'<p class="pjBeam-f">15 modules — développés un par un. Les 16 autres types de structure gardent la fiche classique en attendant leurs modules.</p>';
+    +'<p class="pjBeam-h">Choisir un module</p><div class="pjAT-g pjBeam-g">'+tiles+'</div>'
+    +'<p class="pjBeam-f">24 modules — développés un par un. Les autres restent grisés en attendant leur tour ; les 16 autres types de structure gardent la fiche classique en attendant leurs modules.</p>';
   }
   function beamClick(e,id){
    const st=beamState(id);
