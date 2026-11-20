@@ -19555,6 +19555,14 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pjAT.on{background:color-mix(in srgb,#FFC400 24%,transparent)!important;box-shadow:0 0 0 2px #FFC400}
 .pjAT-i{font-size:26px;line-height:1}.pjAT-n{font:600 11.5px system-ui,sans-serif;letter-spacing:.02em}
 .pjAT-v{font:700 13px system-ui,sans-serif;color:#FFC400;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pjBeamHidden{display:none!important}
+.pjBeamMods{margin:10px 0}
+.pjBeam-h{font:700 15px system-ui,sans-serif;margin:4px 0 12px}
+.pjBeam-g{grid-template-columns:repeat(auto-fit,minmax(118px,1fr))!important}
+.pjBeam-g .pjAT{min-height:92px;padding:16px 10px 12px}
+.pjBeam-g .pjAT-i{font-size:28px}
+.pjBeam-g .pjAT-n{font:600 12px system-ui,sans-serif;text-align:center;line-height:1.3}
+.pjBeam-f{font-size:12px;opacity:.65;margin:14px 0 0}
 .pjZ-in img{width:100%;display:block}
 .pjAF{position:relative;border:2px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:10px;padding:24px 10px 10px;margin:0;cursor:default;opacity:.55;min-width:0}
 .pjAF.has{opacity:1;border-color:#FFC400;cursor:pointer}
@@ -21755,7 +21763,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v474';
+  const VER='v475';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23640,6 +23648,43 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   window.beTypeStructureNom=beTypeStructureNom;
   window.beTypeStructureIco=beTypeStructureIco;
   window.beTypeStructureLabel=beTypeStructureLabel;
+  /* Modules de dimensionnement « Poutres & éléments horizontaux » : pour l'instant, le seul des 17 types
+     de structure à avoir ses modules détaillés (un module par feuille de calcul du classeur fourni). Les
+     16 autres types garderont la fiche d'ouvrage classique jusqu'à ce que leurs modules soient préparés. */
+  const BEAM_TYPE_NOM='Poutres & éléments horizontaux';
+  function beamModules(){
+   return [
+    ['📏','Poutre continue'],['➡️','Effort dans une poutre continue'],
+    ['📊','Effort enveloppe — poutre continue (1)'],['📊','Effort enveloppe — poutre continue (2)'],
+    ['🚛','Effort sous charge roulante'],['🌊','Poutre sur sol élastique'],
+    ['📐','Poutre continue à inertie variable'],['⭕','Trous dans les poutres'],
+    ['🧱','Ferraillage poutre voile (1)'],['🧱','Ferraillage poutre voile (2)'],
+    ['📉',"Flèche RDM d'une travée"],['🔄','Majoration flexion — méthode Guyon'],
+    ['🏗️','Longueur de flambement (poutre/poteau)'],['◻️','Ouverture rectangulaire dans poutre'],
+    ['✂️','Efforts tranchants — travée continue'],['🔗','Rotules plastiques — poutres continues'],
+    ['📊','Efforts enveloppe — calcul (1)'],['📊','Efforts enveloppe — calcul (2)'],
+    ['📐','Moments — inertie variable (calcul)'],['📦','Réservation de poutre'],
+    ['▦','Dalle pleine — 1 et 2 sens de portée'],['🧱','Dimensionnement poutre voile (1)'],
+    ['🧱','Dimensionnement poutre voile (2)'],['🌉','Épaisseur dalle de pont à poutres']
+   ];
+  }
+  /* Remplace entièrement le contenu de la fiche d'ouvrage (bandeau E0/E1 + cadres Construction) par la
+     grille des modules dès que le type d'ouvrage choisi est « Poutres & éléments horizontaux » — aucun
+     autre type n'a encore de modules, donc eux gardent la fiche classique telle quelle. */
+  function beamFiche(id){
+   const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t) return;
+   if(beTypeStructureNom(t.typeStructureId)!==BEAM_TYPE_NOM){ const old=mb.querySelector('.pjBeamMods'); if(old){ old.remove(); mb.querySelectorAll('.pjBeamHidden').forEach(x=>x.classList.remove('pjBeamHidden')); } return; }
+   if(mb.querySelector('.pjBeamMods')) return;
+   [...mb.children].forEach(c=>{ if(c.classList.contains('close-x')||c.tagName==='H3') return; c.classList.add('pjBeamHidden'); });
+   const kd=mb.querySelector('.tf-kind'); if(kd) kd.textContent='Modules de dimensionnement';
+   const wrap=document.createElement('div'); wrap.className='pjBeamMods';
+   wrap.innerHTML='<p class="pjBeam-h">📐 Poutres &amp; éléments horizontaux — choisir un module</p>'
+    +'<div class="pjAT-g pjBeam-g">'+beamModules().map((m,i)=>'<button type="button" class="pjAT" data-beam-mod="'+i+'" title="'+esc(m[1])+'"><span class="pjAT-i">'+m[0]+'</span><span class="pjAT-n">'+esc(m[1])+'</span></button>').join('')+'</div>'
+    +'<p class="pjBeam-f">24 modules — développés un par un. Les autres types de structure garderont la fiche classique en attendant leurs modules.</p>';
+   const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
+   wrap.addEventListener('click',e=>{ const b=e.target.closest('[data-beam-mod]'); if(!b) return; try{ clipToast('Module « '+beamModules()[+b.dataset.beamMod][1]+' » — à développer.'); }catch(_){ } });
+  }
+  const _od_beam=window.openTaskDetail; if(typeof _od_beam==='function'){ window.openTaskDetail=function(id){ const r=_od_beam.apply(this,arguments); setTimeout(()=>{ try{ beamFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
   function beMissionDimSectionsHtml(m){
     return (m.chatbotIA?'<div class="be-sub"><button type="button" class="primary" style="width:100%;" onclick="beMissionChatOpen(\''+esc(m.id)+'\')">🤖 Ouvrir le chatbot IA de la mission</button></div>':'')
       +'<div class="be-sub"><h4>🏢 Bâtiments & niveaux</h4>'
