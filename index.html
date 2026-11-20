@@ -21817,7 +21817,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v478';
+  const VER='v479';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23945,7 +23945,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }).join('<span class="pcDotSep"></span>');
    return '<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="grid" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDots">'+dots+'</div>'
-    +'<div class="pcDraw">'+pcBeamSvg(dp)+'</div>'
+    +'<div class="pcDraw">'+pcBeamSvg(dp,step)+'</div>'
     +'<div class="pcPanel">'+pcStepHtml(step,dp,t)+'</div>'
     +'<div class="pcNav">'+(step>1?'<button type="button" class="ghost" data-pc-step="'+(step-1)+'">‹ Précédent</button>':'<span></span>')
     +(step<6?'<button type="button" class="primary" data-pc-step="'+(step+1)+'">Suivant ›</button>':'<span></span>')+'</div>';
@@ -23961,7 +23961,18 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const len=isPonct?0:((ch.longueur_m!=null&&ch.longueur_m!=='')?+ch.longueur_m:Math.max(defaultLen,0));
    return {Xa, Xb:Xa+Math.max(len,0), isPonct};
   }
-  function pcBeamSvg(dp){
+  function pcDeflSamples(dp){
+   const res=dp.resultats; if(!res||!res.Defl) return null;
+   const vue=dp.vueCombo||'ELS'; const fG=vue==='ELU'?1.35:1, fQ=vue==='ELU'?1.5:1;
+   const pos=pcGlobalPositions(res.spans);
+   const bySpan=res.spans.map((L,e)=>res.samplesPerSpan[e].map((xi,i)=>{ const o=res.Defl[e][i];
+    const dmin=o.min-o.g, dmax=o.max-o.g; const vmin=fG*o.g+fQ*dmin, vmax=fG*o.g+fQ*dmax;
+    const v=Math.abs(vmax)>=Math.abs(vmin)?vmax:vmin;
+    return {x:pos[e]+xi, v}; }));
+   let maxAbs=1e-9; bySpan.forEach(arr=>arr.forEach(p=>{ if(Math.abs(p.v)>maxAbs) maxAbs=Math.abs(p.v); }));
+   return {bySpan,maxAbs,spans:res.spans};
+  }
+  function pcBeamSvg(dp,step){
    const spans=dp.travees.map(t=>+t.portee_m||0); const total=spans.reduce((a,b)=>a+b,0)||1;
    const bcm=+dp.b_cm||20, hcm=+dp.h_cm||50;
    const W=640,padL=46,padR=118; const beamW=W-padL-padR; const sx=beamW/total;
@@ -23970,8 +23981,20 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const apOpen=dp._uiApOpen;
    const dimY=botY+56, totY=dimY+40, apPanelY=totY+22;
    const H = apOpen!=null ? apPanelY+58 : totY+30;
+   const defl=(step===6)?pcDeflSamples(dp):null;
+   const sameGeom=defl && defl.maxAbs>1e-6 && defl.spans.length===spans.length && defl.spans.every((L,i)=>Math.abs(L-spans[i])<1e-6);
    let x=padL; const rectHtml=[];
-   spans.forEach((L,i)=>{ const w=L*sx; rectHtml.push('<rect x="'+x+'" y="'+topY+'" width="'+w+'" height="'+rectH+'" fill="var(--panel)" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>'); x+=w; });
+   if(sameGeom){
+    const AMP=24/defl.maxAbs;
+    spans.forEach((L,i)=>{ const arr=defl.bySpan[i]; const x0=x;
+     const topPts=arr.map(p=>(x0+(p.x-pcGlobalPositions(spans)[i])*sx)+','+(topY+AMP*p.v));
+     const botPts=arr.slice().reverse().map(p=>(x0+(p.x-pcGlobalPositions(spans)[i])*sx)+','+(botY+AMP*p.v));
+     rectHtml.push('<polygon points="'+topPts.concat(botPts).join(' ')+'" fill="var(--panel)" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>');
+     x+=L*sx; });
+    rectHtml.push('<text x="'+(padL+beamW/2)+'" y="'+(topY-30)+'" text-anchor="middle" font-size="9.5" fill="#D9574A">Déformée × '+(AMP).toFixed(0)+' (échelle exagérée pour visibilité)</text>');
+   } else {
+    spans.forEach((L,i)=>{ const w=L*sx; rectHtml.push('<rect x="'+x+'" y="'+topY+'" width="'+w+'" height="'+rectH+'" fill="var(--panel)" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>'); x+=w; });
+   }
    x=padL; const supHtml=[], apBtnHtml=[];
    const pos=pcGlobalPositions(spans);
    dp.appuis.forEach((ap,i)=>{ const fixed=(i===0||i===dp.appuis.length-1)&&ap.blocage_rotation; const console_=ap.raideur_kN_m===0;
@@ -24158,7 +24181,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
   }
-  function pcBeamSvgUpdate(id){ const mb=document.getElementById('modalBody'); const d=mb&&mb.querySelector('.pcDraw'); const t=taskById(id); if(!d||!t) return; d.innerHTML=pcBeamSvg(pcData(t)); }
+  function pcBeamSvgUpdate(id){ const mb=document.getElementById('modalBody'); const d=mb&&mb.querySelector('.pcDraw'); const t=taskById(id); if(!d||!t) return; d.innerHTML=pcBeamSvg(pcData(t),beamState(id).step); }
   function pcAddSpan(dp,side){
    const portee=6;
    if(side==='left'){ dp.travees.unshift({portee_m:portee}); dp.appuis.unshift({raideur_kN_m:null,blocage_rotation:false});
