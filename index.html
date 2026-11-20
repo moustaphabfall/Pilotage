@@ -19610,6 +19610,9 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcFldIn:focus{outline:none;border-bottom-color:#FFC400}
 .pcChgDel{align-self:flex-end;margin-left:auto}
 .pcNav{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
+.pcFormSep{border:0;border-top:1px dashed var(--line,rgba(255,255,255,.14));margin:16px 0}
+.pcFormNav{justify-content:center;margin-top:10px}
+.pcFormHint{text-align:center;margin-top:8px}
 .pcChart{display:block;margin:6px 0}
 .pcCombo{float:right;display:inline-flex;gap:4px}
 .pcCombo button{font-size:11px;padding:3px 8px}
@@ -21896,7 +21899,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v495';
+  const VER='v496';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23825,7 +23828,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
    return esc(ic);
   }
-  function beamState(id){ window._dimView=window._dimView||{}; if(!window._dimView[id]) window._dimView[id]={view:'grid',step:1}; return window._dimView[id]; }
+  function beamState(id){ window._dimView=window._dimView||{}; if(!window._dimView[id]) window._dimView[id]={view:'form',step:1}; return window._dimView[id]; }
   /* Remplace entièrement le contenu de la fiche d'ouvrage (bandeau E0/E1 + cadres Construction) par la page
      Modules / parcours de dimensionnement dès que le type choisi est « Poutres & éléments horizontaux ». */
   function beamFiche(id){
@@ -23845,7 +23848,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beamRender(id){
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjBeamRoot'); const t=taskById(id); if(!wrap||!t) return;
    const st=beamState(id);
-   wrap.innerHTML = st.view==='grid' ? beamGridHtml() : st.view==='note' ? pcNoteViewHtml(t) : pcWizardHtml(id,t,st.step);
+   wrap.innerHTML = st.view==='grid' ? beamGridHtml() : st.view==='note' ? pcNoteViewHtml(t) : st.view==='wizard' ? pcWizardHtml(id,t,st.step) : pcFormHtml(id,t);
   }
   function pcNoteViewHtml(t){
    const dp=pcData(t); const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]);
@@ -23873,6 +23876,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
    const printN=e.target.closest('[data-pc-act="printNote"]'); if(printN){ try{ window.print(); }catch(_){ } return; }
+   const okBtn=e.target.closest('[data-pc-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
    const mod=e.target.closest('[data-beam-mod]'); if(mod){ const m=beamModulesFlat()[+mod.dataset.beamMod]; if(!m) return;
     if(m[1]==='Poutre continue (RDM)'){ st.view='wizard'; st.step=pcData(taskById(id))._maxStep||1; beamRender(id); }
     else{ try{ clipToast('Module « '+m[1]+' » — à développer.'); }catch(_){ } }
@@ -24128,6 +24132,21 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<div class="pcNav">'+(step>1?'<button type="button" class="ghost" data-pc-step="'+(step-1)+'">‹ Précédent</button>':'<span></span>')
     +(step<6?'<button type="button" class="primary" data-pc-step="'+(step+1)+'">Suivant ›</button>':'<span></span>')+'</div>';
   }
+  /* Écran unique (remplace la grille de modules + le parcours en 6 étapes) : un seul schéma pseudo-3D
+     de l'ouvrage avec ses caractéristiques saisies, un seul tableau regroupant géométrie + matériau +
+     appuis + chargement (aucune donnée de calcul), et un bouton « Valider » qui enregistre seulement —
+     ne déclenche jamais de calcul. Le calcul reste exclusivement déclenché par « 🤖 Dimensionner » sur
+     la ligne de l'ouvrage, dans le tableau des ouvrages. */
+  function pcFormHtml(id,t){
+   const dp=pcData(t);
+   const body=[1,2,3,4].map(n=>pcStepHtml(n,dp,t)).join('<hr class="pcFormSep">');
+   return '<div class="pcModHead"><span class="pcModIco">➖</span><span class="pcModName">Poutre continue (RDM)</span></div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcDraw">'+pcBeamSvg(dp,4)+'</div>'
+    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
+    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pc-act="validerForm">✓ Valider</button></div>'
+    +'<p class="pcNote pcFormHint">Renseigner uniquement les données nécessaires au calcul (géométrie, matériau, appuis, chargement). « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+  }
   const PC_CHG_COL=['#4C8FD6','#E8A33D','#8E6FD6','#3DAE8B','#D9574A','#C9A227','#6B9BD1','#B06FD6'];
   function pcChgExtent(spans,pos,ch){
    const total=pos[pos.length-1]||1;
@@ -24186,7 +24205,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      x+=L*sx; });
     rectHtml.push('<text x="'+(padL+beamW/2)+'" y="'+(topY-30)+'" text-anchor="middle" font-size="9.5" fill="#D9574A">Déformée × '+(AMP).toFixed(0)+' (échelle exagérée pour visibilité)</text>');
    } else {
-    spans.forEach((L,i)=>{ const w=L*sx; rectHtml.push('<rect x="'+x+'" y="'+topY+'" width="'+w+'" height="'+rectH+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>'); x+=w; });
+    // pseudo-3D léger : face arrière décalée (haut-droite) + arêtes de liaison, pour suggérer un volume
+    // extrudé sans ajouter de bibliothèque ni changer la logique d'édition (les champs restent en façade).
+    const DX=9, DY=-9;
+    spans.forEach((L,i)=>{ const w=L*sx;
+     rectHtml.push('<rect x="'+(x+DX)+'" y="'+(topY+DY)+'" width="'+w+'" height="'+rectH+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.35" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.1"/>'
+      +'<line x1="'+x+'" y1="'+topY+'" x2="'+(x+DX)+'" y2="'+(topY+DY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+      +'<line x1="'+(x+w)+'" y1="'+topY+'" x2="'+(x+w+DX)+'" y2="'+(topY+DY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+      +'<line x1="'+(x+w)+'" y1="'+(topY+rectH)+'" x2="'+(x+w+DX)+'" y2="'+(topY+rectH+DY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+      +'<rect x="'+x+'" y="'+topY+'" width="'+w+'" height="'+rectH+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>');
+     x+=w; });
    }
    x=padL; const supHtml=[], apBtnHtml=[];
    dp.appuis.forEach((ap,i)=>{ const fixed=(i===0||i===dp.appuis.length-1)&&ap.blocage_rotation; const console_=ap.raideur_kN_m===0;
@@ -24262,7 +24290,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const secX=xEnd+170, secCY=baseY;
    const scaleSec=Math.min(42/Math.max(bcm,1), 46/Math.max(hcm,1));
    const sw=bcm*scaleSec, sh=hcm*scaleSec;
+   const SDX=7, SDY=-7;
    const secHtml='<text x="'+secX+'" y="'+(secCY-sh/2-34)+'" text-anchor="middle" font-size="9" fill="var(--ink-soft,#777)">Section</text>'
+    +'<rect x="'+(secX-sw/2+SDX)+'" y="'+(secCY-sh/2+SDY)+'" width="'+sw+'" height="'+sh+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.35" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.1"/>'
+    +'<line x1="'+(secX-sw/2)+'" y1="'+(secCY-sh/2)+'" x2="'+(secX-sw/2+SDX)+'" y2="'+(secCY-sh/2+SDY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+    +'<line x1="'+(secX+sw/2)+'" y1="'+(secCY-sh/2)+'" x2="'+(secX+sw/2+SDX)+'" y2="'+(secCY-sh/2+SDY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+    +'<line x1="'+(secX+sw/2)+'" y1="'+(secCY+sh/2)+'" x2="'+(secX+sw/2+SDX)+'" y2="'+(secCY+sh/2+SDY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
     +'<rect x="'+(secX-sw/2)+'" y="'+(secCY-sh/2)+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.6"/>'
     +'<foreignObject x="'+(secX-60)+'" y="'+(secCY-sh/2-32)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">B=<input type="number" min="5" step="1" class="pcDimIn" style="width:'+pcChW(bcm,2)+'" data-pc-i="b_cm" value="'+bcm+'" title="Largeur b (cm)"><i class="pcUnit">cm</i></div></foreignObject>'
     +'<foreignObject x="'+(secX+sw/2+4)+'" y="'+(secCY-16)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">H=<input type="number" min="5" step="1" class="pcDimIn" style="width:'+pcChW(hcm,2)+'" data-pc-i="h_cm" value="'+hcm+'" title="Hauteur h (cm)"><i class="pcUnit">cm</i></div></foreignObject>';
