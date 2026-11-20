@@ -21919,7 +21919,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v500';
+  const VER='v501';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -24691,6 +24691,367 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return {okN,skipTypeN,errN,incomplets};
   }
   window.pjDimensionnerSelection=pjDimensionnerSelection;
+
+  /* ===================== Dimensionnement — « Poteaux & structures verticales » =====================
+     Premier module du type 02 (bibliothèque des 15 types d'ouvrage, cf. mémoire 20/11/2026). Reprend
+     l'architecture du module Poutre continue (fiche à écran unique, schéma pseudo-3D figé, bulk
+     « 🤖 Dimensionner ») : flambement (EC2 §5.8), moment du second ordre (méthode de la courbure
+     nominale, §5.8.8), interaction N-M par résolution directe (bloc de contraintes rectangulaire
+     EC2 §3.1.7, armatures symétriques sur 2 faces — poteau fléchi selon un seul axe, pas de flexion
+     biaxiale), et cadres/recouvrements repris du classeur 096 (dossier 02, feuille « Attentes »).
+     Méthode validée numériquement (monotonie N(x), M(As), cas limites) avant mise en production. */
+  const POTEAU_TYPE_NOM='Poteaux & structures verticales';
+  const PT_BARDIAMS=[12,14,16,20,25,32]; // mm, diamètres commerciaux courants
+  function ptBarArea(phi){ return Math.PI/4*phi*phi; } // mm²
+  function ptChooseBar(AsFace_mm2){
+   // choisit, pour les aciers d'UNE face, un diamètre et un nombre de barres (2 à 6) qui couvrent
+   // AsFace ; à défaut d'un choix dans la plage usuelle, retient le plus proche.
+   let best=null;
+   for(const phi of PT_BARDIAMS){
+    const a=ptBarArea(phi); let n=Math.max(2,Math.ceil(AsFace_mm2/a));
+    const cand={phi,n,As:n*a};
+    if(n>=2&&n<=6){ if(!best||cand.As<best.As) best=cand; }
+   }
+   if(!best){ const phi=PT_BARDIAMS[PT_BARDIAMS.length-1]; const n=Math.min(8,Math.max(2,Math.ceil(AsFace_mm2/ptBarArea(phi)))); best={phi,n,As:n*ptBarArea(phi)}; }
+   return best;
+  }
+  function ptDefaultData(t){
+   return { nom:t.nom||'', forme:'rect', b_cm:30, h_cm:30, D_cm:30,
+    L_m:3, appuiBas:'encastre', appuiHaut:'encastre',
+    classeGlobale:'C25/30', classeAcier:'B500', enrobage_cm:3,
+    N_kN:500, M_tete_kNm:0, M_pied_kNm:0, resultats:null };
+  }
+  function ptData(t){ if(!t.dimPT) t.dimPT=ptDefaultData(t); return t.dimPT; }
+  function ptGeom(dp){
+   const rect=dp.forme!=='circ';
+   const b=rect?(+dp.b_cm||30):(+dp.D_cm||30), h=rect?(+dp.h_cm||30):(+dp.D_cm||30);
+   const Ac=rect? b*h : Math.PI*h*h/4; // cm²
+   const hmin=Math.min(b,h);
+   const i=rect? hmin/Math.sqrt(12) : h/4; // cm, rayon de giration (axe faible)
+   const enr=+dp.enrobage_cm||3;
+   const d1=enr+1.2, d2=hmin-d1; // cm, centre des lits (≈ enrobage + 1,2 cm pour cadre+demi-diamètre)
+   return {rect,b,h,Ac,hmin,i,enr,d1,d2};
+  }
+  function ptL0_cm(dp){
+   const L=(+dp.L_m||3)*100;
+   const key=(dp.appuiBas==='encastre'?'E':'A')+(dp.appuiHaut==='encastre'?'E':'A');
+   const k={EE:0.5,EA:0.7,AE:0.7,AA:1.0}[key]??1.0;
+   return L*k;
+  }
+  function ptForcesFor(x,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es){
+   const ecu=0.0035, As1=As/2, As2=As/2, xcap=Math.max(1e-6,x);
+   const lx=Math.min(0.8*xcap,h_mm), Fc=lx*b_mm*fcd, yc=0.5*lx;
+   const eps1=ecu*(xcap-d1_mm)/xcap, eps2=ecu*(xcap-d2_mm)/xcap;
+   const sig1=Math.max(-fyd,Math.min(fyd,Es*eps1)), sig2=Math.max(-fyd,Math.min(fyd,Es*eps2));
+   const F1=As1*sig1, F2=As2*sig2;
+   const N=Fc+F1+F2;
+   const M=Fc*(h_mm/2-yc)+F1*(h_mm/2-d1_mm)+F2*(h_mm/2-d2_mm);
+   return {N,M};
+  }
+  function ptSolveXforN(As,Ntarget,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es){
+   let lo=1, hi=3*h_mm;
+   const Nlo=ptForcesFor(lo,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).N, Nhi=ptForcesFor(hi,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).N;
+   if(Ntarget<=Nlo) return lo; if(Ntarget>=Nhi) return hi;
+   for(let k=0;k<60;k++){ const mid=(lo+hi)/2; if(ptForcesFor(mid,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).N<Ntarget) lo=mid; else hi=mid; }
+   return (lo+hi)/2;
+  }
+  function ptInteractionAs(NEd_N,MEd_Nmm,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es){
+   const MforAs=As=>{ const x=ptSolveXforN(As,NEd_N,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es); return ptForcesFor(x,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).M; };
+   let loAs=0, hiAs=b_mm*h_mm*0.08;
+   const Mlo=MforAs(loAs); if(MEd_Nmm<=Mlo) return {As:0,ok:true,Mdispo:Mlo};
+   const Mhi=MforAs(hiAs); if(MEd_Nmm>Mhi) return {As:hiAs,ok:false,Mdispo:Mhi};
+   for(let k=0;k<60;k++){ const mid=(loAs+hiAs)/2; if(MforAs(mid)<MEd_Nmm) loAs=mid; else hiAs=mid; }
+   const As=(loAs+hiAs)/2; return {As,ok:true,Mdispo:MforAs(As)};
+  }
+  /* Calcul complet : élancement (EC2 §5.8.3), moment du second ordre (§5.8.8, hypothèses par défaut
+     documentées dans la note — Kr=1, φef=2), interaction N-M, puis As,min/As,max/cadres/recouvrements
+     repris du classeur 096 (formules dans le skill dimensionnement-02-poteaux). */
+  function ptCompute(t){
+   const dp=ptData(t);
+   const fck=pcFck(dp.classeGlobale), fcd=fck/1.5, fyk=PC_FYK[dp.classeAcier]||500, fyd=fyk/1.15, Es=200000;
+   const geom=ptGeom(dp);
+   const b_mm=geom.b*10, h_mm=geom.h*10, d1_mm=geom.d1*10, d2_mm=geom.d2*10;
+   const Ac_mm2=geom.Ac*100;
+   const NEd_N=Math.max(0,(+dp.N_kN||0)*1000);
+   const l0_cm=ptL0_cm(dp), l0_mm=l0_cm*10;
+   const lambda=geom.i>1e-6 ? l0_cm/geom.i : 0;
+   const n=NEd_N/(Ac_mm2*fcd);
+   const A=0.7, Bn=1.1;
+   const M1=+dp.M_pied_kNm||0, M2v=+dp.M_tete_kNm||0;
+   const Mmax=Math.max(Math.abs(M1),Math.abs(M2v)), Mmin=Math.min(Math.abs(M1),Math.abs(M2v));
+   const memeSigne=(M1*M2v)>=0, rm= Mmax>1e-9 ? (memeSigne?Mmin/Mmax:-Mmin/Mmax) : 0;
+   const C=1.7-rm;
+   const lambdaLim = n>1e-6 ? 20*A*Bn*C/Math.sqrt(n) : 999;
+   const second = lambda>lambdaLim;
+   const signeMin=(M1*M2v>=0)?1:-1;
+   const M0e=Math.max(0.6*Mmax+0.4*signeMin*Mmin, 0.4*Mmax);
+   let M2mom=0;
+   if(second && NEd_N>1){
+    const beta=Math.max(0,0.35+fck/200-lambda/150), phief=2, Kphi=Math.max(1,1+beta*phief), Kr=1;
+    const invr=Kr*Kphi*(fyd/Es)/(0.45*(geom.d2*10));
+    M2mom=NEd_N*invr*(l0_mm*l0_mm)/10/1e6; // kN·m
+   }
+   const e0min_cm=Math.max(2,geom.hmin/30);
+   const MEd_min=NEd_N*(e0min_cm*10)/1e6; // kN·m
+   const MEd=Math.max(M0e+M2mom, MEd_min);
+   const inter=ptInteractionAs(NEd_N, MEd*1e6, b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es);
+   const AsMin_mm2=Math.max(0.002*Ac_mm2, 0.10*NEd_N/fyd);
+   const AsMax_mm2=0.04*Ac_mm2;
+   let AsTotal_mm2=Math.max(inter.As,AsMin_mm2);
+   const depasse=AsTotal_mm2>AsMax_mm2;
+   const barFace=ptChooseBar(AsTotal_mm2/2);
+   const AsReelle_mm2=barFace.As*2;
+   // Cadres (classeur 096, feuille Attentes) : diamètre ≥ max(6, φl/4) ; espacement courant
+   // ≤ min(20φl, 400mm, min(b,h)) ; réduit à 0,6× sur h (ou 45cm) en tête/pied.
+   const phiCadre=Math.max(6,Math.ceil(barFace.phi/4));
+   const sCourant_mm=Math.min(20*barFace.phi,400,geom.hmin*10);
+   const sExtrem_mm=0.6*sCourant_mm;
+   const hZoneExtrem_mm=Math.max(geom.hmin*10,450);
+   // Longueur d'ancrage/recouvrement (Attentes) : fbd=2,25·fctd ; lb,rqd=(φ/4)(fyd/fbd) ; lb,min=max(10φ,100,200mm).
+   const fctm=0.30*Math.pow(fck,2/3), fctd=fctm/1.5*0.7; // fctd≈0,7·fctk0,05/γc, approx usuelle
+   const fbd=2.25*fctd;
+   const lbrqd_mm=(barFace.phi/4)*(fyd/fbd);
+   const lbmin_mm=Math.max(10*barFace.phi,100,200);
+   const a6=1.5; // recouvrement (zone de jonction)
+   const lb_mm=Math.max(lbrqd_mm*(AsMin_mm2>0?AsTotal_mm2/Math.max(AsReelle_mm2,1):1)*a6, lbmin_mm);
+   return { fck,fcd,fyk,fyd,geom,l0_cm,lambda,lambdaLim,second,n,C,M0e,M2mom,MEd,
+    inter, AsMin_cm2:AsMin_mm2/100, AsMax_cm2:AsMax_mm2/100, AsTotal_cm2:AsTotal_mm2/100,
+    AsReelle_cm2:AsReelle_mm2/100, depasse, barFace, phiCadre, sCourant_mm, sExtrem_mm, hZoneExtrem_mm, lb_mm,
+    NEd_kN:NEd_N/1000 };
+  }
+  function ptSvg(dp){
+   const W=240,H=300, geom=ptGeom(dp);
+   const cx=W/2, topY=24, botY=H-54, colH=botY-topY, colW=Math.max(28,Math.min(70,geom.hmin*2));
+   const DX=8,DY=-8; const x0=cx-colW/2;
+   const secW=56, secH=56, secX=W-70, secY=H/2-secH/2;
+   const sb=geom.rect ? geom.b : geom.h, sh=geom.rect?geom.h:geom.h;
+   const sk= Math.min(secW/Math.max(sb,1),secH/Math.max(sh,1))*0.8;
+   const rw=sb*sk, rh=sh*sk, rx=secX+(secW-rw)/2, ry=secY+(secH-rh)/2;
+   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+Math.round(H*0.85)+'" class="pcSvg" role="img" aria-label="Poteau">'
+    +'<rect x="'+(x0+DX)+'" y="'+(topY+DY)+'" width="'+colW+'" height="'+colH+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.35" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.1"/>'
+    +'<line x1="'+x0+'" y1="'+topY+'" x2="'+(x0+DX)+'" y2="'+(topY+DY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+    +'<line x1="'+(x0+colW)+'" y1="'+topY+'" x2="'+(x0+colW+DX)+'" y2="'+(topY+DY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+    +'<line x1="'+(x0+colW)+'" y1="'+botY+'" x2="'+(x0+colW+DX)+'" y2="'+(botY+DY)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+    +'<rect x="'+x0+'" y="'+topY+'" width="'+colW+'" height="'+colH+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.8"/>'
+    +(dp.appuiBas==='encastre'?('<rect x="'+(x0-6)+'" y="'+botY+'" width="'+(colW+12)+'" height="6" fill="var(--blueprint-dark,#8a8a8a)"/>'):('<path d="M'+(x0-4)+' '+botY+' L'+(x0+colW/2)+' '+(botY+12)+' L'+(x0+colW+4)+' '+botY+' Z" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.5"/>'))
+    +(dp.appuiHaut==='encastre'?('<rect x="'+(x0-6)+'" y="'+(topY-6)+'" width="'+(colW+12)+'" height="6" fill="var(--blueprint-dark,#8a8a8a)"/>'):'')
+    +'<line x1="'+(x0+colW+16)+'" y1="'+(topY-6)+'" x2="'+(x0+colW+16)+'" y2="'+(topY+16)+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="2" marker-end="url(#ptArrN)"/>'
+    +'<text x="'+(x0+colW+20)+'" y="'+(topY+10)+'" font-size="11" fill="var(--blueprint,#2e6ea6)">N='+esc(dp.N_kN||0)+' kN</text>'
+    +(( +dp.M_tete_kNm)?('<text x="'+(x0-6)+'" y="'+(topY+10)+'" font-size="10" fill="var(--ink-soft,#999)" text-anchor="end">M='+esc(dp.M_tete_kNm)+'</text>'):'')
+    +(( +dp.M_pied_kNm)?('<text x="'+(x0-6)+'" y="'+(botY-4)+'" font-size="10" fill="var(--ink-soft,#999)" text-anchor="end">M='+esc(dp.M_pied_kNm)+'</text>'):'')
+    +'<rect x="'+(rx+6)+'" y="'+(ry-6)+'" width="'+rw+'" height="'+rh+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.35" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
+    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.5"/>'
+    +'<text x="'+(secX+secW/2)+'" y="'+(secY-8)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">Section</text>'
+    +'<defs><marker id="ptArrN" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--blueprint,#2e6ea6)"/></marker></defs>'
+    +'</svg>';
+  }
+  function ptStepHtml(n,dp,t){
+   if(n===1){
+    const geom=ptGeom(dp);
+    return '<h5>1 · Géométrie</h5>'
+     +'<label>Forme <select data-pt="forme"><option value="rect"'+(dp.forme!=='circ'?' selected':'')+'>Rectangulaire</option><option value="circ"'+(dp.forme==='circ'?' selected':'')+'>Circulaire</option></select></label>'
+     +(dp.forme==='circ'
+      ? '<label>Diamètre D <input type="number" step="1" min="10" data-pt="D_cm" value="'+(dp.D_cm||30)+'"> cm</label>'
+      : '<label>Largeur b <input type="number" step="1" min="10" data-pt="b_cm" value="'+(dp.b_cm||30)+'"> cm</label>'
+       +'<label>Hauteur h <input type="number" step="1" min="10" data-pt="h_cm" value="'+(dp.h_cm||30)+'"> cm</label>')
+     +'<label>Hauteur libre L <input type="number" step="0.1" min="0.5" data-pt="L_m" value="'+(dp.L_m||3)+'"> m</label>'
+     +'<p class="pcNote">Section Ac = '+geom.Ac.toFixed(0)+' cm² · rayon de giration i = '+geom.i.toFixed(2)+' cm (axe faible).</p>';
+   }
+   if(n===2){
+    return '<h5>2 · Matériau</h5>'
+     +'<label>Classe de béton <select data-pt="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
+     +'<label>Acier <select data-pt="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
+     +'<label>Enrobage <input type="number" step="0.5" min="1" data-pt="enrobage_cm" value="'+(dp.enrobage_cm??3)+'"> cm</label>'
+     +'<p class="pcNote">fck = '+pcFck(dp.classeGlobale)+' MPa · fcd = fck/1,5 · fyd = fyk/1,15.</p>';
+   }
+   if(n===3){
+    return '<h5>3 · Appuis (conditions de flambement)</h5>'
+     +'<label>Pied <select data-pt="appuiBas"><option value="encastre"'+(dp.appuiBas!=='articule'?' selected':'')+'>Encastré</option><option value="articule"'+(dp.appuiBas==='articule'?' selected':'')+'>Articulé</option></select></label>'
+     +'<label>Tête <select data-pt="appuiHaut"><option value="encastre"'+(dp.appuiHaut!=='articule'?' selected':'')+'>Encastré</option><option value="articule"'+(dp.appuiHaut==='articule'?' selected':'')+'>Articulé</option></select></label>'
+     +'<p class="pcNote">Longueur de flambement l₀ selon EC2 §5.8.3.2 : encastré-encastré 0,5·L, encastré-articulé 0,7·L, articulé-articulé 1,0·L. l₀ = '+(ptL0_cm(dp)/100).toFixed(2)+' m.</p>';
+   }
+   return '<h5>4 · Chargement (ELU)</h5>'
+    +'<label>Effort normal N <input type="number" step="1" data-pt="N_kN" value="'+(dp.N_kN??500)+'"> kN (compression)</label>'
+    +'<label>Moment en tête M <input type="number" step="0.5" data-pt="M_tete_kNm" value="'+(dp.M_tete_kNm??0)+'"> kN·m</label>'
+    +'<label>Moment en pied M <input type="number" step="0.5" data-pt="M_pied_kNm" value="'+(dp.M_pied_kNm??0)+'"> kN·m</label>'
+    +'<p class="pcNote">1 t = 10 kN. Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2.</p>';
+  }
+  function ptFormHtml(id,t){
+   const dp=ptData(t);
+   const body=[1,2,3,4].map(nn=>ptStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
+   return '<div class="pcFormSticky">'
+    +'<div class="pcModHead"><span class="pcModIco">🏛️</span><span class="pcModName">Poteau (EC2)</span></div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pt="nom" value="'+esc(dp.nom||t.nom||'Poteau')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcDraw">'+ptSvg(dp)+'</div>'
+    +'</div>'
+    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
+    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pt-act="validerForm">✓ Valider</button></div>'
+    +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, conditions d\'appui et chargement ELU (N, M). « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+  }
+  function ptResultatsHtml(res,dp){
+   const g=res.geom;
+   return '<h5>Résultats</h5>'
+    +'<div class="pcDimBox"><b>Flambement</b><p class="pcNote">l₀ = '+(res.l0_cm/100).toFixed(2)+' m · λ = '+res.lambda.toFixed(1)+' · λlim = '+res.lambdaLim.toFixed(1)+' ('+(res.second?'effets du 2nd ordre pris en compte':'négligeables')+')</p></div>'
+    +'<div class="pcDimBox"><b>Moments</b><p class="pcNote">M0e = '+res.M0e.toFixed(2)+' kN·m'+(res.second?(' · M2 (2nd ordre) = '+res.M2mom.toFixed(2)+' kN·m'):'')+' · MEd retenu = '+res.MEd.toFixed(2)+' kN·m</p></div>'
+    +'<div class="pcDimBox"><b>Ferraillage longitudinal</b><p class="pcNote">As requis (interaction N-M) = '+(res.inter.As/100).toFixed(2)+' cm² · As,min = '+res.AsMin_cm2.toFixed(2)+' cm² · As,max = '+res.AsMax_cm2.toFixed(2)+' cm²'+(res.depasse?' ⚠ As requis dépasse As,max — revoir la section':'')+'</p>'
+    +'<p class="pcNote"><b>'+(res.barFace.n*2)+' Φ'+res.barFace.phi+'</b> ('+res.barFace.n+' par face) = '+res.AsReelle_cm2.toFixed(2)+' cm²</p></div>'
+    +'<div class="pcDimBox"><b>Cadres</b><p class="pcNote">Φ'+res.phiCadre+' — espacement courant '+(res.sCourant_mm/10).toFixed(1)+' cm, réduit à '+(res.sExtrem_mm/10).toFixed(1)+' cm sur '+(res.hZoneExtrem_mm/10).toFixed(0)+' cm en tête/pied · longueur de recouvrement ≈ '+(res.lb_mm/10).toFixed(0)+' cm</p></div>'
+    +'<button type="button" class="ghost pcBtnSm" data-pt-act="printNote">🖶 Voir la note</button>';
+  }
+  function pteState(id){ window._dimViewPT=window._dimViewPT||{}; if(!window._dimViewPT[id]) window._dimViewPT[id]={view:'form'}; return window._dimViewPT[id]; }
+  function pteFiche(id){
+   const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t) return;
+   if(beTypeStructureNom(t.typeStructureId)!==POTEAU_TYPE_NOM){
+    const old=mb.querySelector('.pjPoteauRoot'); if(old) old.remove();
+    if(!mb.querySelector('.pjBeamRoot')) mb.querySelectorAll('.pjBeamHidden').forEach(x=>{ x.classList.remove('pjBeamHidden'); x.style.removeProperty('display'); });
+    delete (window._dimViewPT||{})[id]; return;
+   }
+   if(mb.querySelector('.pjPoteauRoot')) return;
+   const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
+   const wrap=document.createElement('div'); wrap.className='pjPoteauRoot';
+   const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
+   [...mb.children].forEach(c=>{ if(c.classList.contains('close-x')||c.tagName==='H3'||c===wrap) return; c.classList.add('pjBeamHidden'); c.style.setProperty('display','none','important'); });
+   pteRender(id);
+   if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>pteClick(e,id)); wrap.addEventListener('change',e=>pteChange(e,id)); }
+  }
+  const _od_poteau=window.openTaskDetail; if(typeof _od_poteau==='function'){ window.openTaskDetail=function(id){ const r=_od_poteau.apply(this,arguments); setTimeout(()=>{ try{ pteFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
+  function pteRender(id){
+   const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjPoteauRoot'); const t=taskById(id); if(!wrap||!t) return;
+   const dp=ptData(t); const st=pteState(id);
+   if(st.view==='note'){
+    const res=dp.resultats;
+    wrap.innerHTML='<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📄 Note de calcul</h4></div>'
+     +(res? ptNoteCalculHtml(t,dp,res) : '<p class="pcNote">Aucun résultat — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>');
+    return;
+   }
+   wrap.innerHTML=ptFormHtml(id,t)+(dp.resultats?ptResultatsHtml(dp.resultats,dp):'');
+  }
+  function pteClick(e,id){
+   const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ pteState(id).view='form'; pteRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
+   const okBtn=e.target.closest('[data-pt-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const pn=e.target.closest('[data-pt-act="printNote"]'); if(pn){ pteState(id).view='note'; pteRender(id); return; }
+  }
+  function pteChange(e,id){
+   const t=taskById(id); if(!t) return; const dp=ptData(t); const el=e.target;
+   if(el.matches('[data-pt="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
+   const key=el.dataset.pt; if(key){
+    if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
+    else dp[key]=el.value===''?null:+el.value;
+    pteRender(id); return;
+   }
+  }
+  /* Note de calcul : texte structuré + avertissement obligatoire (skill dimensionnement-beton-arme),
+     avec le détail des formules pour rester vérifiable pas à pas par un ingénieur. */
+  function ptNoteCalculHtml(t,dp,res){
+   const g=res.geom;
+   return '<div class="pcNC"><h3>Note de calcul — '+esc(dp.nom||t.nom||'Poteau')+'</h3>'
+    +'<p class="pcNote">Poteau (Eurocode 2 — EN 1992-1-1, Annexe Nationale française) · '+todayStr()+'</p>'
+    +'<h5>Hypothèses</h5><p class="pcNote">Section '+(g.rect?('rectangulaire '+g.b+'×'+g.h+' cm'):('circulaire D='+g.h+' cm'))+' · béton '+esc(dp.classeGlobale)+' (fck='+res.fck+' MPa, fcd='+res.fcd.toFixed(2)+' MPa) · acier '+esc(dp.classeAcier)+' (fyk='+res.fyk+' MPa, fyd='+res.fyd.toFixed(1)+' MPa) · enrobage '+g.enr+' cm · hauteur libre '+dp.L_m+' m, appuis '+esc(dp.appuiBas)+'/'+esc(dp.appuiHaut)+'.</p>'
+    +'<h5>Flambement (EC2 §5.8.3)</h5><p class="pcNote">l₀ = '+(res.l0_cm/100).toFixed(2)+' m · i = '+g.i.toFixed(2)+' cm · λ = l₀/i = '+res.lambda.toFixed(1)+'<br>n = NEd/(Ac·fcd) = '+res.n.toFixed(2)+' · A=0,7 (par défaut), B=1,1 (par défaut), C=1,7−rm = '+res.C.toFixed(2)+'<br>λlim = 20·A·B·C/√n = '+res.lambdaLim.toFixed(1)+' → '+(res.second?'λ>λlim : effets du second ordre à prendre en compte':'λ≤λlim : effets du second ordre négligeables')+'</p>'
+    +(res.second?'<p class="pcNote">⚠ Second ordre calculé par la méthode de la courbure nominale (§5.8.8) avec Kr=1 et φef=2 pris par défaut (hypothèses simplificatrices, à recaler par le validateur selon l\'historique de charge réel).</p>':'')
+    +'<h5>Sollicitations de calcul</h5><p class="pcNote">M0e (moment équivalent 1er ordre, §5.8.8.2) = '+res.M0e.toFixed(2)+' kN·m'+(res.second?(' · M2 = '+res.M2mom.toFixed(2)+' kN·m'):'')+' · MEd = '+res.MEd.toFixed(2)+' kN·m (≥ NEd·e0,min) · NEd = '+res.NEd_kN.toFixed(0)+' kN</p>'
+    +'<h5>Ferraillage longitudinal (interaction N-M)</h5><p class="pcNote">Résolution directe par bloc de contraintes rectangulaire (EC2 §3.1.7, λ=0,8, η=1,0), armatures symétriques sur 2 faces (poteau fléchi selon un seul axe — pas de flexion biaxiale). As requis = '+(res.inter.As/100).toFixed(2)+' cm² · As,min = max(0,002·Ac ; 0,10·NEd/fyd) = '+res.AsMin_cm2.toFixed(2)+' cm² · As,max = 0,04·Ac = '+res.AsMax_cm2.toFixed(2)+' cm²'+(res.depasse?' — ⚠ dépassé, revoir la section ou le béton':'')+'<br>Choix commercial : '+(res.barFace.n*2)+' Φ'+res.barFace.phi+' ('+res.barFace.n+' par face) = '+res.AsReelle_cm2.toFixed(2)+' cm²</p>'
+    +'<h5>Cadres et recouvrements (feuille « Attentes », classeur 096)</h5><p class="pcNote">Φcadre ≥ max(6 ; Φl/4) = '+res.phiCadre+' mm · espacement courant ≤ min(20Φl ; 400 mm ; min(b,h)) = '+(res.sCourant_mm/10).toFixed(1)+' cm · réduit à 0,6× = '+(res.sExtrem_mm/10).toFixed(1)+' cm sur max(h ; 45 cm) = '+(res.hZoneExtrem_mm/10).toFixed(0)+' cm en tête et en pied · longueur de recouvrement lb ≈ '+(res.lb_mm/10).toFixed(0)+' cm (a6=1,5).</p>'
+    +'<p class="pcNote">⚠ Cette note de calcul est générée automatiquement à partir des données saisies et de la méthode Eurocode 2 (EN 1992-1-1, Annexe Nationale française). Elle doit être vérifiée et validée par un ingénieur structure (bureau d\'études béton armé) avant toute utilisation pour l\'exécution. Elle ne remplace pas une étude signée par un bureau d\'études qualifié. Méthode d\'interaction N-M simplifiée (uniaxiale, armatures symétriques 2 faces) — une flexion biaxiale ou une disposition de barres différente doit être revue par le validateur.</p>'
+    +'</div>';
+  }
+  function ptPlanFerraillageSvg(dp,res){
+   const g=res.geom; const W=220,H=220; const sk=Math.min((W-60)/Math.max(g.b,1),(H-60)/Math.max(g.h,1));
+   const rw=g.b*sk, rh=g.h*sk, rx=(W-rw)/2, ry=(H-rh)/2; const r=Math.max(3,Math.min(6,rw/14));
+   const nFace=res.barFace.n; const pts=[];
+   for(let i=0;i<nFace;i++){ const t2=nFace>1?i/(nFace-1):0.5; pts.push([rx+6+t2*(rw-12), ry+6]); pts.push([rx+6+t2*(rw-12), ry+rh-6]); }
+   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="220" class="pcSvg">'
+    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>'
+    +'<rect x="'+(rx+4)+'" y="'+(ry+4)+'" width="'+(rw-8)+'" height="'+(rh-8)+'" fill="none" stroke="var(--rust,#c0392b)" stroke-width="1.2" stroke-dasharray="4 3"/>'
+    +pts.map(p=>'<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+r+'" fill="var(--rust,#c0392b)"/>').join('')
+    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">'+(nFace*2)+' Φ'+res.barFace.phi+' + cadres Φ'+res.phiCadre+'</text>'
+    +'</svg>';
+  }
+  function ptCreerNoteCalcul(t,dp){
+   const html=ptNoteCalculHtml(t,dp,dp.resultats);
+   const nom='Note de calcul '+(dp.nom||t.nom||'Poteau');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poteau'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  function ptCreerPlanFerraillage(t,dp){
+   const res=dp.resultats; if(!res) return null;
+   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Poteau')+'</h3>'
+    +'<p class="pcNote">Coupe courante · '+todayStr()+'</p>'+ptPlanFerraillageSvg(dp,res)
+    +'<p class="pcNote">⚠ Schéma généré automatiquement (coupe courante, méthode EC2 simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (élévation, recouvrements, zones de renfort tête/pied non représentés).</p></div>';
+   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Poteau');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poteau'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  async function ptNoteCalculPdf(t,dp,res){
+   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16; let y=M;
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Note de calcul — '+(dp.nom||t.nom||'Poteau')),M,y+6); y+=14;
+   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9);
+   const lines=[
+    'Section '+(res.geom.rect?(res.geom.b+'x'+res.geom.h+' cm'):('D='+res.geom.h+' cm'))+' - beton '+dp.classeGlobale+' - acier '+dp.classeAcier,
+    'l0='+(res.l0_cm/100).toFixed(2)+' m, lambda='+res.lambda.toFixed(1)+', lambdaLim='+res.lambdaLim.toFixed(1)+' ('+(res.second?'2nd ordre pris en compte':'negligeable')+')',
+    'MEd='+res.MEd.toFixed(2)+' kN.m, NEd='+res.NEd_kN.toFixed(0)+' kN',
+    'As requis='+(res.inter.As/100).toFixed(2)+' cm2, As,min='+res.AsMin_cm2.toFixed(2)+' cm2, As,max='+res.AsMax_cm2.toFixed(2)+' cm2',
+    'Choix : '+(res.barFace.n*2)+' phi'+res.barFace.phi+' ('+res.barFace.n+' par face) = '+res.AsReelle_cm2.toFixed(2)+' cm2',
+    'Cadres phi'+res.phiCadre+' - espacement courant '+(res.sCourant_mm/10).toFixed(1)+' cm, reduit '+(res.sExtrem_mm/10).toFixed(1)+' cm en tete/pied',
+   ];
+   lines.forEach(l=>{ pdoc.text(pdfTxt(l),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M}); y+=7; });
+   y+=4; pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Note generee automatiquement (EC2 simplifie) - a verifier par un ingenieur structure avant execution.'),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
+   return pdoc.output('blob');
+  }
+  async function ptPlanFerraillagePdf(t,dp,res){
+   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16;
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Plan de ferraillage — '+(dp.nom||t.nom||'Poteau')),M,M+6);
+   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9); pdoc.setTextColor(110); pdoc.text(pdfTxt('Coupe courante — '+todayStr()),M,M+12); pdoc.setTextColor(0);
+   const g=res.geom; const x0=M+10,y0=M+24,w=70,h=70*(g.h/Math.max(g.b,1));
+   pdoc.setDrawColor(55,53,47); pdoc.setLineWidth(0.4); pdoc.rect(x0,y0,w,Math.min(h,90));
+   pdoc.setFontSize(9); pdoc.text(pdfTxt((res.barFace.n*2)+' phi'+res.barFace.phi+' + cadres phi'+res.phiCadre),x0,y0+Math.min(h,90)+8);
+   pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Schema genere automatiquement. A reprendre par un dessinateur/ingenieur structure pour l\'execution.'),M,pdoc.internal.pageSize.getHeight()-10,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
+   return pdoc.output('blob');
+  }
+  async function ptCreerDocumentsDimensionnement(t,dp){
+   const res=dp.resultats; const docNote=ptCreerNoteCalcul(t,dp); const docPlan=ptCreerPlanFerraillage(t,dp);
+   try{
+    if(docNote&&res){ const blob=await ptNoteCalculPdf(t,dp,res); await pcAttacherPdf(docNote,blob,docNote.nom); }
+    if(docPlan&&res){ const blob=await ptPlanFerraillagePdf(t,dp,res); await pcAttacherPdf(docPlan,blob,docPlan.nom); }
+   }catch(err){ console.error(err); }
+   return {docNote,docPlan};
+  }
+  /* Étend le bulk « 🤖 Dimensionner » aux poteaux, en plus des poutres (pjDimensionnerSelection déjà
+     défini ci-dessus) : on enrobe la fonction existante pour traiter aussi ce second type. */
+  const _pjDim_beam=window.pjDimensionnerSelection;
+  window.pjDimensionnerSelection=async function(ids){
+   const rBeam= typeof _pjDim_beam==='function' ? await _pjDim_beam(ids) : {okN:0,skipTypeN:0,errN:0,incomplets:[]};
+   let okN=0, errN=0; const incomplets=[]; let lastOkT=null;
+   for(const id of (ids||[])){
+    const t=taskById(id); if(!t) continue;
+    if(beTypeStructureNom(t.typeStructureId)!==POTEAU_TYPE_NOM) continue;
+    const dp=ptData(t);
+    const geomOk=(dp.forme==='circ'?(+dp.D_cm>0):((+dp.b_cm>0)&&(+dp.h_cm>0)))&&(+dp.L_m>0);
+    const hasCharge=(+dp.N_kN>0);
+    if(!geomOk||!hasCharge){ incomplets.push(id); continue; }
+    try{ dp.resultats=ptCompute(t); await ptCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    catch(err){ console.error(err); errN++; }
+   }
+   try{ persist(); }catch(_){ }
+   if(okN||errN||incomplets.length){
+    const msg=okN+' poteau'+(okN>1?'x':'')+' dimensionné'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
+    try{ clipToast(msg); }catch(_){ }
+    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
+    else if(incomplets.length&&window.openTaskDetail&&!rBeam.okN) window.openTaskDetail(incomplets[0]);
+   }
+   return {okN:(rBeam.okN||0)+okN, skipTypeN:rBeam.skipTypeN||0, errN:(rBeam.errN||0)+errN, incomplets:(rBeam.incomplets||[]).concat(incomplets)};
+  };
+
   function pcResultatsHtml(res,dp,t){
    const vue=dp.vueCombo||'ELS';
    const isCR=res._engine==='charge_roulante';
