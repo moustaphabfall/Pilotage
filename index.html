@@ -20406,13 +20406,37 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   d.innerHTML='<div class="pjd-in"><div class="pjd-head">'+modeSw()+'<h1>Ouvrages du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' ouvrage'+(R.length>1?'s':'')+'</div>'
    +(FL.metLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement · Métier :</em> '+esc(FL.metLockNom)+'</button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'<button type="button" class="pjd-lnk" data-act="addOuvrage" style="font-weight:600;">＋ Ouvrage à dimensionner</button></div>'):'')
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
-   +'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-act="mbf" title="Exporter le projet en fichier .mbf (blocs A · E · T · C)">Exporter .mbf</button><button type="button" class="pjd-lnk" data-act="props">Propriétés</button></div>'
+   +'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-act="addOuvrage" title="Créer un ouvrage">+ Ouvrage</button><button type="button" class="pjd-lnk" data-act="mbf" title="Exporter le projet en fichier .mbf (blocs A · E · T · C)">Exporter .mbf</button><button type="button" class="pjd-lnk" data-act="props">Propriétés</button></div>'
    +'</div><div class="pjd-scroll"><table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34)+'px"><colgroup>'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr>'+cs.map(k=>'<th data-sort="'+k+'"><span class="pjd-hl">'+COLS[k]+(SORT&&SORT.k===k?(SORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th class="pjd-add" data-act="props" title="Ajouter une propriété">+</th></tr></thead><tbody>'
-   +(R.length?R.map(r=>'<tr data-id="'+esc(r.id)+'">'+cs.map(k=>'<td'+(MBF.includes(k)?' data-ed="'+k+'" title="Cliquer pour renseigner"':(k==='pieceArchi'?' data-sel="pieceArchi" title="Choisir la pièce archi"':''))+'>'+cell(r,k)+'</td>').join('')+'<td></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+1)+'">Aucun ouvrage pour ces filtres.</td></tr>')
+   +(R.length?R.map(r=>'<tr data-id="'+esc(r.id)+'">'+cs.map(k=>'<td'+(MBF.includes(k)?' data-ed="'+k+'" title="Cliquer pour renseigner"':(k==='pieceArchi'?' data-sel="pieceArchi" title="Choisir la pièce archi"':''))+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un ouvrage en dessous">＋</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+1)+'">Aucun ouvrage pour ces filtres.</td></tr>')
    +'</tbody></table></div></div>';
  }
+ /* ＋ sur une ligne (style Notion) : crée un ouvrage juste en dessous de la ligne cliquée, en reprenant son
+    projet/bâtiment/niveau, et propose aussitôt le choix du type d'ouvrage dans cette même ligne. */
+ function pjQuickAddRow(afterId){
+  const S=ST(); S.tasks=S.tasks||[];
+  const src=S.tasks.find(x=>x.id===afterId);
+  const t=taskBase(nextTaskId(),'Nouvel ouvrage',(src&&src.niveau)||'',{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:FL.metLock||(src&&src.metierId)||null,batId:(src&&src.batId)||null,typeStructureId:null,mbf:{projet:(src&&src.mbf&&src.mbf.projet)||FL.projLock||''}});
+  const S2=ST(); S2.tasks=S2.tasks||[]; const i=src?S2.tasks.indexOf(src):-1;
+  if(i>=0) S2.tasks.splice(i+1,0,t); else S2.tasks.unshift(t);
+  try{ persist(); }catch(_){}
+  dbRender();
+  setTimeout(()=>{
+   try{
+    const tr=document.querySelector('tr[data-id="'+t.id+'"]'); if(!tr) return;
+    const idx=colsOn().indexOf('ouvrage'); if(idx<0) return;
+    const td=tr.children[idx]; if(!td) return;
+    const L=(typeof window.L_typesStructure==='function')?window.L_typesStructure():[];
+    td.innerHTML='<select style="width:100%;font:inherit;border:1px solid #FFC400;border-radius:6px;padding:3px 6px;background:#fff;color:#37352F"><option value="">— Choisir —</option>'+L.map(x=>'<option value="'+esc(x.id)+'">'+esc((x.icone?x.icone+' ':'')+x.nom)+'</option>').join('')+'</select>';
+    const sel=td.querySelector('select'); sel.focus();
+    sel.onchange=()=>{ const tk=(ST().tasks||[]).find(x=>x.id===t.id); if(tk){ tk.typeStructureId=sel.value||null; try{ persist(); }catch(_){} } dbRender(); };
+   }catch(e){ console.error(e); }
+  },30);
+ }
+ window.pjQuickAddRow=pjQuickAddRow;
  function dbClick(e){
   if(docClick(e)) return;
+  const ra=e.target.closest('[data-rowadd]'); if(ra){ e.stopPropagation(); pjQuickAddRow(ra.dataset.rowadd); return; }
   const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='niv') FL.niv=[]; if(k==='etat') FL.etat=[]; if(k==='met') FL.met=[]; if(k==='chrono') FL.from=FL.to=''; after(); return; }
   const ch=e.target.closest('[data-chip]'); if(ch){ const g=document.getElementById('pjFilt'); if(!g||!g.classList.contains('open')) filtToggle(); setTimeout(()=>{ const b=document.querySelector('#pjFilt [data-k="'+ch.dataset.chip+'"]'); b&&b.click(); },30); return; }
   const a=e.target.closest('[data-act]'); if(a){ const k=a.dataset.act;
@@ -20698,9 +20722,39 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<input type="search" class="pjd-q" placeholder="Rechercher dans les documents…" value="'+esc(FL.q||'')+'">'+'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-dact="add">+ Document</button><button type="button" class="pjd-lnk" data-dact="upd" title="Mettre à jour un document (coché, ou à choisir)">✎ Mettre à jour un document</button><button type="button" class="pjd-lnk" data-dact="props">Propriétés</button></div>'
    +selBar()+'</div><div class="pjd-scroll"><table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34+58)+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-dsort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+DCOLS[k]+(DSORT&&DSORT.k===k?(DSORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th></th></tr></thead><tbody>'
-   +(R.length?R.map(r=>'<tr data-did="'+esc(r.id)+'"'+(SEL.has(r.id)||r._nf?' class="'+(SEL.has(r.id)?'sel ':'')+(r._nf?'nofile':'')+'"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+attr(k,r)+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-ddel="1" title="Supprimer">✕</span></td></tr>'+(EXP.has(r.id)?(r._subs||[]).map(u=>'<tr class="pjd-sub2"'+(u.id?' data-sub="'+esc(u.id)+'"':'')+'><td class="pjd-g"></td>'+cs.map(k=>'<td>'+(k==='nom'?'↳ '+esc(u.n||r.nom||''):k==='indice'?esc(u.i||''):k==='date'?esc(frDate(u.d)||''):k==='docType'?esc(r.docType||''):k==='niveau'?esc(r.niveau||''):k==='etat'?(u.st?esc(DET[visaK(u.st)]):''):k==='format'&&u.f?esc((/\.([A-Za-z0-9]+)$/.exec(u.f)||[])[1]||'').toUpperCase():'')+'</td>').join('')+'<td>'+(u.row?'<span class="pjd-open" data-dsubdel="'+esc(u.id)+'" title="Supprimer cet indice">✕</span>':'')+'</td></tr>').join(''):'')).join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun document. Dépose un fichier ou ajoute un document.</td></tr>')
+   +(R.length?R.map(r=>'<tr data-did="'+esc(r.id)+'"'+(SEL.has(r.id)||r._nf?' class="'+(SEL.has(r.id)?'sel ':'')+(r._nf?'nofile':'')+'"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+attr(k,r)+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un document en dessous">＋</span><span class="pjd-open" data-ddel="1" title="Supprimer">✕</span></td></tr>'+(EXP.has(r.id)?(r._subs||[]).map(u=>'<tr class="pjd-sub2"'+(u.id?' data-sub="'+esc(u.id)+'"':'')+'><td class="pjd-g"></td>'+cs.map(k=>'<td>'+(k==='nom'?'↳ '+esc(u.n||r.nom||''):k==='indice'?esc(u.i||''):k==='date'?esc(frDate(u.d)||''):k==='docType'?esc(r.docType||''):k==='niveau'?esc(r.niveau||''):k==='etat'?(u.st?esc(DET[visaK(u.st)]):''):k==='format'&&u.f?esc((/\.([A-Za-z0-9]+)$/.exec(u.f)||[])[1]||'').toUpperCase():'')+'</td>').join('')+'<td>'+(u.row?'<span class="pjd-open" data-dsubdel="'+esc(u.id)+'" title="Supprimer cet indice">✕</span>':'')+'</td></tr>').join(''):'')).join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun document. Dépose un fichier ou ajoute un document.</td></tr>')
    +'</tbody></table></div></div>';
  }
+ /* ===== ＋ sur une ligne (style Notion) : crée une ligne juste en dessous, en reprenant le bâtiment/niveau/
+    corps d'état de la ligne cliquée, et propose aussitôt le choix du type dans cette même ligne ===== */
+ function pjQuickAddDoc(afterId){
+  const d0=DOCS().find(x=>x.id===afterId), g0=d0?null:gedRows().find(x=>x.id===afterId);
+  const niveau=(d0&&d0.niveau)||(g0&&g0.niveau)||FL.niv[0]||'';
+  const discipline=(d0&&d0.discipline)||(g0&&g0.corps)||'';
+  const batId=(d0&&d0.batId)||null;
+  const projetMission=(d0&&d0.projetMission)||FL.projLock||'';
+  const nd={id:'D'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),nom:'Nouveau document',docType:'',niveau,emetteur:'',phase:'',periode:'',zone:'',discipline,type:'',numero:'',indice:'0',format:'',etat:'aemettre',date:(typeof todayISO==='function'?todayISO():''),fichier:'',taille:0,etapeNom:'E'+(nTaches()+1),batId,projetMission};
+  const L=DOCS(); const i=L.findIndex(x=>x.id===afterId);
+  if(i>=0) L.splice(i+1,0,nd); else L.unshift(nd);
+  try{ persist(); }catch(_){}
+  dbRender();
+  setTimeout(()=>{
+   try{
+    const tr=document.querySelector('tr[data-did="'+nd.id+'"]'); if(!tr) return;
+    const useTS=FL.metLock&&typeof window.L_typesStructure==='function';
+    const cs=(FL.metLock?['projet','batiment','niveau','nom','typeStructure']:dcolsOn());
+    const key=useTS?'typeStructure':'docType'; const idx=cs.indexOf(key); if(idx<0) return;
+    const td=tr.children[idx+1]; if(!td) return;   /* +1 : colonne gouttière (case à cocher) en tête de ligne */
+    let opts;
+    if(useTS){ opts=window.L_typesStructure().map(t=>[t.id,(t.icone?t.icone+' ':'')+t.nom]); }
+    else { let T=[]; try{ T=window.lotsApi.typesFor(discipline)||[]; }catch(_){} opts=T.map(t=>[t,t]); }
+    td.innerHTML='<select style="width:100%;font:inherit;border:1px solid #FFC400;border-radius:6px;padding:3px 6px;background:#fff;color:#37352F"><option value="">— Choisir —</option>'+opts.map(o=>'<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>').join('')+'</select>';
+    const sel=td.querySelector('select'); sel.focus();
+    sel.onchange=()=>{ const v=sel.value; const dd=DOCS().find(x=>x.id===nd.id); if(dd){ if(useTS) dd.typeStructureId=v||null; else dd.docType=v; try{ persist(); }catch(_){} } dbRender(); };
+   }catch(e){ console.error(e); }
+  },30);
+ }
+ window.pjQuickAddDoc=pjQuickAddDoc;
  /* ===== Déposer : nouveau document ou nouvel indice (historique des indices) ===== */
  const findRow=id=>{ const g=gedRows().find(x=>x.id===id); if(g) return {id,ged:true,g,get indice(){return g.indice;},nom:g.nom}; const d=DOCS().find(x=>x.id===id); return d?Object.assign(d,{ged:false}):null; };
  const hasFile=o=>o.ged?!!(o.g.fichier&&(o.g.fichier.name||o.g.fichier.id||o.g.fichier.ref)):!!o.fichier;
@@ -20757,6 +20811,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(e.target.closest('[data-selx]')){ SEL.clear(); updSel(); return true; }
   if(e.target.closest('[data-seld]')){ const n=SEL.size; miniConfirm('Supprimer '+n+' ligne'+(n>1?'s':'')+' ?',()=>{ const ids=[...SEL]; const pl=DOCS().filter(x=>ids.includes(x.id)&&x.planning).length; state.ged=gedRows().filter(x=>!ids.includes(x.id)); const L=DOCS(); for(let i=L.length-1;i>=0;i--) if(ids.includes(L[i].id)&&!L[i].planning) L.splice(i,1); SEL.clear(); try{ persist(); }catch(_){} if(pl) toast('Le planning ne se supprime pas.'); dbRender(); }); return true; }
   if(e.target.closest('.pjd-g')) return gutterClick(e);
+  const ra=e.target.closest('[data-rowadd]'); if(ra){ e.stopPropagation(); pjQuickAddDoc(ra.dataset.rowadd); return true; }
   const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(FL[k]&&Array.isArray(FL[k])) FL[k]=[]; if(k==='chrono') FL.from=FL.to=''; after(); return true; }
   const da=e.target.closest('[data-dact]'); if(da){ const k=da.dataset.dact;
    if(k==='drop') depChoice();
@@ -21638,7 +21693,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v471';
+  const VER='v472';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
