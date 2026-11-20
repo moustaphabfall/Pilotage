@@ -19296,7 +19296,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
     const mk=(cls,title,list)=>{ const d=document.createElement('section'); d.className='tf-box '+cls; if(title) d.innerHTML='<h4 class="tf-t">'+title+'</h4>'; list.forEach(x=>d.appendChild(x)); return d; };
     const g=document.createElement('div'); g.className='tf-grid'+(getV()==='colonnes'?' cols':'');
     const tech=mk('tf-tech','A · Architecture',B.A), ing=mk('tf-ing','E · Ingénierie',B.E), plan=mk('tf-plan','T · Planning',B.plan), ph=mk('tf-photos','',B.photos), au=mk('tf-autres','📎 Suivi et autres informations',B.autres);
-    const co=document.createElement('section'); co.className='tf-box tf-cout'; co.innerHTML='<h4 class="tf-t">C · Devis</h4><p class="tf-soon">Prix, devis et budget de l’ouvrage : à venir.</p>'; try{ if(window.pjAFields){ const af=window.pjAFields(t); const q=tech.querySelector('#e-quoi'); const qf=q&&q.closest('.field'); if(qf) qf.after(af); else tech.querySelector('.tf-t').after(af); } }catch(e){ console.error(e); }
+    const co=document.createElement('section'); co.className='tf-box tf-cout'; co.innerHTML='<h4 class="tf-t">C · Devis</h4><p class="tf-soon">Prix, devis et budget de l’ouvrage : à venir.</p>'; try{ if(window.pjAFields){ const af=window.pjAFields(t); const q=tech.querySelector('#e-quoi'); const qf=q&&q.closest('.field'); if(qf) qf.after(af); else tech.querySelector('.tf-t').after(af); try{ if(window.pjProjetField) af.after(window.pjProjetField(t)); }catch(e2){ console.error(e2); } } }catch(e){ console.error(e); }
     /* étapes précédente / suivante (liste des ouvrages de tout le projet) */
     const dep=plan.querySelector('#depList'); const depF=dep&&dep.closest('.field');
     const pr=taskById((t.dependances||[])[0]), nx=(state.tasks||[]).find(x=>(x.dependances||[]).includes(t.id));
@@ -20137,7 +20137,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  let CW=LS('pj_cw',{})||{}; const cw=k=>Math.max(50,+CW[k]||CW0[k]||160);
  (function(){ try{ if(!localStorage.getItem('pj_cols_v2')){ const c=LS('pj_cols',null); if(c&&!c.includes('pieceArchi')){ const i=c.indexOf('niveau'); c.splice(i>=0?i+1:c.length,0,'pieceArchi'); LSset('pj_cols',c); } localStorage.setItem('pj_cols_v2','1'); } }catch(_){} })();
  const colsOn=()=>{ const c=(LS('pj_cols',DEF)||DEF).filter(k=>COLS[k]); return c.length?c:DEF; };
- let FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:'',famLock:''}; /* aucun filtre actif au démarrage ; famLock = filtre verrouillé (mode dimensionnement), non persisté */
+ let FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:'',famLock:'',projLock:''}; /* aucun filtre actif au démarrage ; famLock/projLock = filtres verrouillés (mode dimensionnement), non persistés */
  try{ const sv=LS('pj_fl',null); if(sv&&typeof sv==='object'){ ['niv','met','etat','bat','coord','lot'].forEach(k=>{ if(Array.isArray(sv[k])) FL[k]=sv[k]; }); FL.from=sv.from||''; FL.to=sv.to||''; } }catch(_){}
  let SORT=LS('pj_sort',null);
  const nAct=()=>(FL.bat.length?1:0)+(FL.coord.length?1:0)+(FL.lot.length?1:0)+(FL.niv.length?1:0)+(FL.met.length?1:0)+(FL.etat.length?1:0)+((FL.from||FL.to)?1:0);
@@ -20152,11 +20152,15 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    try{ const ft=taskFamille(t); ouv=(ft&&(ft.nom||ft.label))||''; }catch(_){}
    try{ const m=taskMetier(t); met=(m&&(m.nom||m.label))||''; metId=(m&&m.id)||''; }catch(_){}
    const etat=(typeof ETAT_LABEL!=='undefined'&&ETAT_LABEL[t.etat])||t.etat||'';
-   return {t, id:t.id, projet:pn, niveau:t.niveau||'', piece, ouvrage:ouv, tache:t.quoi||t.id, metier:met, metId, etat, etatK:t.etat||'', debut:t.quand||'', fin:t.dateFin||'', avancement:(t.pct==null||t.pct==='')?'':String(Math.round(+t.pct||0)), pieceArchi:paInfer(t), emetteur:(t.mbf||{}).emetteur||'', phase:(t.mbf||{}).phase||'', periode:(t.mbf||{}).periode||'', zone:(t.mbf||{}).zone||'', discipline:(t.mbf||{}).discipline||'', type:(t.mbf||{}).type||'', numero:(t.mbf||{}).numero||'', indice:(t.mbf||{}).indice||'', code:[pn,(t.mbf||{}).emetteur,(t.mbf||{}).phase,(t.mbf||{}).periode,(t.mbf||{}).zone,t.niveau,(t.mbf||{}).discipline,(t.mbf||{}).type,(t.mbf||{}).numero,(t.mbf||{}).indice].filter(Boolean).join('-')};
+   /* projet : chaque tâche peut être rattachée à un projet de la bibliothèque (t.mbf.projet, via pjProjetField dans la fiche) ;
+      à défaut, on garde l'ancien comportement (nom du workspace entier), pour ne rien casser sur les tâches existantes */
+   const projet=(t.mbf&&t.mbf.projet)||pn;
+   return {t, id:t.id, projet, niveau:t.niveau||'', piece, ouvrage:ouv, tache:t.quoi||t.id, metier:met, metId, etat, etatK:t.etat||'', debut:t.quand||'', fin:t.dateFin||'', avancement:(t.pct==null||t.pct==='')?'':String(Math.round(+t.pct||0)), pieceArchi:paInfer(t), emetteur:(t.mbf||{}).emetteur||'', phase:(t.mbf||{}).phase||'', periode:(t.mbf||{}).periode||'', zone:(t.mbf||{}).zone||'', discipline:(t.mbf||{}).discipline||'', type:(t.mbf||{}).type||'', numero:(t.mbf||{}).numero||'', indice:(t.mbf||{}).indice||'', code:[pn,(t.mbf||{}).emetteur,(t.mbf||{}).phase,(t.mbf||{}).periode,(t.mbf||{}).zone,t.niveau,(t.mbf||{}).discipline,(t.mbf||{}).type,(t.mbf||{}).numero,(t.mbf||{}).indice].filter(Boolean).join('-')};
   });
  }
  function passF(r){
   if(FL.famLock&&r.ouvrage!==FL.famLock) return false;
+  if(FL.projLock&&r.projet!==FL.projLock) return false;
   if(FL.niv.length&&!FL.niv.includes(r.niveau)) return false;
   if(FL.etat.length&&!FL.etat.includes(r.etatK)) return false;
   if(FL.met.length&&!FL.met.includes(r.metId)) return false;
@@ -20170,15 +20174,16 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(!f){ f={id:uid('ft'),nom,icone:'🏗️',items:['Zone sécurisée','Zone propre en fin d’intervention'],lot:null,familleBaseId:null,metierId:null}; S.familleTypes.push(f); try{ persist(); }catch(_){} }
   return f;
  }
- window.pjOpenOuvragesStructure=function(famNom){
+ window.pjOpenOuvragesStructure=function(famNom,projetNom){
   const nom=famNom||'Gros œuvre / Structure';
   pjEnsureFamille(nom);
   FL.famLock=nom;
+  FL.projLock=projetNom||'';
   window.__pjKeep=true;
   try{ if(typeof showPage==='function') showPage('travaux'); }catch(_){}
   setTimeout(()=>{ window.__pjKeep=false; try{ window.pjOpenLib(); }catch(e){ console.error(e); } },30);
  };
- window.pjClearFamLock=function(){ FL.famLock=''; try{ filtDraw(); }catch(_){} try{ dbRender(); }catch(_){} };
+ window.pjClearFamLock=function(){ FL.famLock=''; FL.projLock=''; try{ filtDraw(); }catch(_){} try{ dbRender(); }catch(_){} };
  /* ---------- fenêtre flottante (menus) ---------- */
  function popClose(){ if(window.__pjOff){ document.removeEventListener('pointerdown',window.__pjOff,true); window.__pjOff=null; } const o=document.getElementById('pjPop'); if(o) o.remove(); document.querySelectorAll('.pjb.on').forEach(b=>b.classList.remove('on')); }
  function popOpen(anchor,html,bind){
@@ -20306,7 +20311,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const cell=(r,k)=>cell0(r,k)+((k==='nom'&&r._nf)?'<em class="pjd-nf"> · aucune pièce jointe</em>':'');
   const cell0=(r,k)=>{ let v=r[k]; if(k==='debut'||k==='fin') v=frDate(v); if(k==='avancement'&&v!=='') v+=' %'; const t=(k==='pieceArchi'&&v&&PAI[v]?'<span class="pa-i">'+PAI[v]+'</span>':'')+esc(v||''); return k==='tache'?t+'<span class="pjd-open">OUVRIR</span><span class="pjd-open" data-bloc="1" title="Enregistrer comme bloc dans la bibliothèque">→ BLOC</span>':t; };
   d.innerHTML='<div class="pjd-in"><div class="pjd-head">'+modeSw()+'<h1>Ouvrages du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' ouvrage'+(R.length>1?'s':'')+'</div>'
-   +(FL.famLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement :</em> '+esc(FL.famLock)+'</button><button type="button" class="pjd-lnk" data-act="exitFamLock">✕ Quitter le mode dimensionnement</button></div>'):'')
+   +(FL.famLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement :</em> '+esc(FL.famLock)+'</button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'<button type="button" class="pjd-lnk" data-act="exitFamLock">✕ Quitter le mode dimensionnement</button></div>'):'')
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-act="mbf" title="Exporter le projet en fichier .mbf (blocs A · E · T · C)">Exporter .mbf</button><button type="button" class="pjd-lnk" data-act="props">Propriétés</button></div>'
    +'</div><div class="pjd-scroll"><table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34)+'px"><colgroup>'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr>'+cs.map(k=>'<th data-sort="'+k+'"><span class="pjd-hl">'+COLS[k]+(SORT&&SORT.k===k?(SORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th class="pjd-add" data-act="props" title="Ajouter une propriété">+</th></tr></thead><tbody>'
@@ -20743,6 +20748,32 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   w.addEventListener('click',e=>{ const b=e.target.closest('[data-pa]'); if(!b) return; e.preventDefault();
    if(b.dataset.pa==='type') pickType(b,t.mbf.typeOuvrage,n=>{ t.mbf.typeOuvrage=n; const o3=ouvByName(n); if(o3&&o3.s==='A') t.mbf.pieceArchi=n; t.mbf.spec=''; try{ persist(); }catch(_){} draw(); });
    else pickSpec(b,t.mbf.typeOuvrage,t.mbf.spec,v=>{ t.mbf.spec=v; try{ persist(); }catch(_){} draw(); }); });
+  return w;
+ };
+
+ /* lien tâche → projet : chaque tâche peut être rattachée à un projet de la bibliothèque partagée
+    (state.projetsMission, gérée dans les Missions) ; sert au filtre verrouillé "projet de la mission"
+    du mode dimensionnement (window.pjOpenOuvragesStructure) */
+ window.pjProjetField=function(t){
+  t.mbf=t.mbf||{};
+  const w=document.createElement('div'); w.className='field pjProjF';
+  if(typeof window.beProjetOptsHtml!=='function'){ w.style.display='none'; return w; }
+  w.innerHTML='<label>Projet</label><select>'+window.beProjetOptsHtml(t.mbf.projet||'')+'</select>';
+  const sel=w.querySelector('select');
+  sel.onchange=()=>{
+   if(sel.value==='__new__'){
+    const prev=t.mbf.projet||''; sel.value=prev;
+    miniPrompt('Nom du nouveau projet','',nom=>{
+     if(!nom) return; nom=nom.trim(); if(!nom) return;
+     const L=window.L_projetsMission();
+     if(!L.some(p=>p.nom===nom)) L.push({id:uid('PJM'),nom});
+     t.mbf.projet=nom; try{ persist(); }catch(_){}
+     sel.innerHTML=window.beProjetOptsHtml(nom);
+    });
+    return;
+   }
+   t.mbf.projet=sel.value; try{ persist(); }catch(_){}
+  };
   return w;
  };
 
@@ -21491,7 +21522,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v458';
+  const VER='v459';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23102,6 +23133,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Bibliothèque des projets (partagée) parmi lesquels une mission peut choisir son Projet ; "＋ Ajouter" l'enrichit, comme les autres listes de l'appli */
   function L_projetsMission(){ return state.projetsMission=state.projetsMission||[]; }
   function beProjetOptsHtml(sel){ return '<option value="">— Aucun —</option>'+L_projetsMission().map(p=>'<option value="'+esc(p.nom)+'"'+(sel===p.nom?' selected':'')+'>'+esc(p.nom)+'</option>').join('')+'<option value="__new__">＋ Créer un projet…</option>'; }
+  /* bibliothèque des projets exposée globalement : réutilisée par la fiche tâche (pjProjetField, module pjV140Js) pour lier chaque tâche à un projet */
+  window.L_projetsMission=L_projetsMission;
+  window.beProjetOptsHtml=beProjetOptsHtml;
   function L_indices(){ return state.indicesKm=state.indicesKm||[]; }
   function L_frais(){ return state.notesFrais=state.notesFrais||[]; }
   function L_km(){ return state.notesKm=state.notesKm||[]; }
@@ -23244,7 +23278,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      ouvre directement la base Travaux filtrée sur Gros œuvre/Structure + le projet de la mission.
      Sinon (AMO, etc.), ouvre la fiche mission habituelle. */
   window.beMissionOpen=function(m){
-    if(m&&beIsDimMission(m)&&typeof window.pjOpenOuvragesStructure==='function'){ window.pjOpenOuvragesStructure(m); return; }
+    if(m&&beIsDimMission(m)&&typeof window.pjOpenOuvragesStructure==='function'){ window.pjOpenOuvragesStructure('Gros œuvre / Structure',m.projet||''); return; }
     beMissionEdit(m);
   };
   /* ===== Bibliothèque des gabarits de plan (modèle de mise en page utilisé à la génération du plan de ferraillage) ===== */
@@ -23282,7 +23316,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(showForm){
       const typeOpts='<option value="">— Choisir —</option>'+L_typesMission().map(t=>'<option value="'+esc(t.id)+'"'+(m.typeMissionId===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('');
       body='<div class="field"><label>Mission (client)</label><input type="text" id="be-m-a" value="'+esc(m.client||'')+'"></div>'
-        +'<div class="field"><label>Projet</label><select id="be-m-p">'+beProjetOptsHtml(m.projet||'')+'</select></div>'
+        +'<div class="field"><label>Projet <span style="color:var(--rust);">*</span></label><select id="be-m-p">'+beProjetOptsHtml(m.projet||'').replace('— Aucun —','— Choisir —')+'</select></div>'
         +'<div class="field"><label>Type de mission</label><select id="be-m-t">'+typeOpts+'</select></div>'
         +'<div class="field"><label>Date de début</label><input type="date" id="be-m-c" value="'+esc(m.dateDebut||'')+'"></div>'
         +'<div class="field"><label>Date de fin</label><input type="date" id="be-m-d" value="'+esc(m.dateFin||'')+'"></div>'
@@ -23538,6 +23572,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const dateFin=document.getElementById('be-m-d').value||'';
     const chatbotIA=!!document.getElementById('be-m-ia').checked;
     if(!client){ miniAlert('Le nom du client est requis.'); return; }
+    if(!projet){ miniAlert('Le projet associé à la mission est requis.'); return; }
     let mm;
     if(!id){ mm={id:uid('MI'),client,projet,typeMissionId,dateDebut,dateFin,chatbotIA}; L_missions().push(mm); }
     else{ mm=L_missions().find(x=>x.id===id); if(mm){ mm.client=client; mm.projet=projet; mm.typeMissionId=typeMissionId; mm.dateDebut=dateDebut; mm.dateFin=dateFin; mm.chatbotIA=chatbotIA; } }
