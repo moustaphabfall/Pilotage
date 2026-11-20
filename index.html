@@ -19637,6 +19637,9 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcBtnSm{width:auto!important;display:block;margin:4px auto 0;padding:9px 26px!important;border-radius:999px!important}
 .pcDimBox{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
 .pcDimBox .pcBtnSm{display:inline-block;margin:6px 6px 0 0}
+.pcFerrTbl{width:100%;border-collapse:collapse;margin:6px 0;font-size:12.5px}
+.pcFerrTbl th,.pcFerrTbl td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+.pcFerrTbl th{opacity:.7;font-weight:600}
 .pcNCTop{justify-content:space-between}
 .pcNCPrint{width:auto!important;padding:6px 14px!important}
 .pcNC h3{margin:4px 0 10px;font:700 17px system-ui,sans-serif}
@@ -21850,7 +21853,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v491';
+  const VER='v492';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23974,6 +23977,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=t.dimPC; if(!dp) return null;
    const choice=pcChooseEngine(dp);
    const res = choice.engine==='charge_roulante' ? pcComputeChargeRoulante(dp,choice) : pcComputePoutreContinue(dp,choice);
+   // Un seul passage : le ferraillage (flexion + cadres) est calculé tout de suite derrière le RDM,
+   // sans étape de validation séparée — mais l'utilisateur voit toujours les efforts (étape 6) avant/avec lui.
+   try{ res.ferraillage=pcFerraillage(dp,res); }catch(_){ res.ferraillage=null; }
    return res;
   }
   function pcComputePoutreContinue(dp,choice){
@@ -24040,14 +24046,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     _engine:choice.engine, _engineLabel:choice.label, _nCases:positions.length, _zone:{z0,z1}, _pas:pas };
   }
   const PC_ECM={'C20/25':30000,'C25/30':31000,'C30/37':33000,'C35/45':34000,'C40/50':35000};
+  const PC_FYK={'B500':500};
   function pcE(classe,terme,phi){ const ecm=PC_ECM[classe]||31000; return terme==='differe' ? ecm/(1+(phi||2)) : ecm; }
+  function pcFck(classe){ const m=/C(\d+)\//.exec(classe||''); return m?+m[1]:25; }
 
   /* -------------------- Parcours « Poutre continue » (étapes 1 à 6) -------------------- */
   const PC_STEPS=['Géométrie','Matériau','Appuis','Chargement','Calcul','Résultats'];
   const PC_NSTEPS=PC_STEPS.length;
   function pcDefaultData(t){
    return { nom:t.nom||'', travees:[{portee_m:6}], appuis:[{raideur_kN_m:null,blocage_rotation:false},{raideur_kN_m:null,blocage_rotation:false}],
-    classeGlobale:'C25/30', termeGlobal:'court', b_cm:20, h_cm:50, charges:[], resultats:null, vueCombo:'ELS', _maxStep:1,
+    classeGlobale:'C25/30', termeGlobal:'court', classeAcier:'B500', enrobage_cm:3, b_cm:20, h_cm:50, charges:[], resultats:null, vueCombo:'ELS', _maxStep:1,
     convoiActif:false, convoi:[{dx:0,P:50},{dx:1.5,P:50}], zone:{debut:null,fin:null}, sens:'deux' };
   }
   function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); if(!t.dimPC._maxStep) t.dimPC._maxStep=(t.dimPC.resultats?PC_NSTEPS:1); return t.dimPC; }
@@ -24229,7 +24237,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return '<h5>2 · Matériau</h5>'
      +'<label>Classe de béton <select data-pc="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
      +'<label>Module E <span class="pcInline"><label><input type="radio" name="pcTerme" data-pc="termeGlobal" value="court" '+(dp.termeGlobal!=='differe'?'checked':'')+'> court terme</label> <label><input type="radio" name="pcTerme" data-pc="termeGlobal" value="differe" '+(dp.termeGlobal==='differe'?'checked':'')+'> différé (φ=2)</label></span></label>'
-     +'<p class="pcNote">E = '+pcE(dp.classeGlobale||'C25/30',dp.termeGlobal,2).toFixed(0)+' MPa · Inertie I = b·h³/12 = '+(( (+dp.b_cm||20)/100*Math.pow((+dp.h_cm||50)/100,3)/12 ).toExponential(3))+' m⁴ (section '+(dp.b_cm||20)+'×'+(dp.h_cm||50)+' cm, appliquée à toutes les travées)</p>';
+     +'<label>Acier <select data-pc="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
+     +'<label>Enrobage <input type="number" step="0.5" min="1" data-pc="enrobage_cm" value="'+(dp.enrobage_cm??3)+'"> cm</label>'
+     +'<p class="pcNote">E = '+pcE(dp.classeGlobale||'C25/30',dp.termeGlobal,2).toFixed(0)+' MPa · Inertie I = b·h³/12 = '+(( (+dp.b_cm||20)/100*Math.pow((+dp.h_cm||50)/100,3)/12 ).toExponential(3))+' m⁴ (section '+(dp.b_cm||20)+'×'+(dp.h_cm||50)+' cm, appliquée à toutes les travées) · fck = '+pcFck(dp.classeGlobale)+' MPa, fyk = '+(PC_FYK[dp.classeAcier||'B500'])+' MPa, d ≈ h − enrobage − 1 cm (ferraillage EC2 simplifié)</p>';
    }
    if(step===3){
     return '<h5>3 · Appuis</h5>'
@@ -24318,6 +24328,18 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +yAxis+'<line x1="40" y1="'+zeroY.toFixed(1)+'" x2="'+(W-8)+'" y2="'+zeroY.toFixed(1)+'" stroke="var(--line)" stroke-width="1.2"/>'
     +xAxis+paths+'<text x="40" y="12" font-size="11" fill="var(--ink-soft,#777)">'+esc(title)+' ('+unit+')</text></svg>';
   }
+  function pcFerraillageHtml(res){
+   const fr=res.ferraillage; if(!fr) return '';
+   const asTxt=(f)=>f.As==null?'<span style="color:#D9574A">'+esc(f.warn)+'</span>':f.As.toFixed(2)+' cm²'+(f.As<=fr.AsMin+1e-6?' (= A_s,min)':'');
+   const travRows=fr.travees.map(tr=>'<tr><td>Travée '+(tr.e+1)+' (inf.)</td><td>'+tr.Mtravee.toFixed(1)+' kN·m</td><td>'+asTxt(tr.ferrInf)+'</td></tr>').join('');
+   const apRows=fr.appuis.map(ap=>'<tr><td>Appui '+ap.i+' (sup.)</td><td>'+ap.Mappui.toFixed(1)+' kN·m</td><td>'+asTxt(ap.ferrSup)+'</td></tr>').join('');
+   const cadRows=fr.cadres.map(c=>'<tr><td>Travée '+(c.e+1)+'</td><td>'+(c.besoin?'V_Ed > V_Rd,c':'V_Ed ≤ V_Rd,c (mini)')+'</td><td>'+c.AswS.toFixed(2)+' cm²/m</td></tr>').join('');
+   return '<div class="pcDimBox"><b>Ferraillage (EC2 simplifié)</b>'
+    +'<p class="pcNote">fck = '+fr.materiaux.fck+' MPa · fyk = '+fr.materiaux.fyk+' MPa · b = '+(fr.materiaux.b*100).toFixed(0)+' cm · d ≈ '+(fr.materiaux.d*100).toFixed(1)+' cm · A_s,min = '+fr.AsMin.toFixed(2)+' cm².</p>'
+    +'<table class="pcFerrTbl"><tr><th>Zone — flexion</th><th>M_Ed</th><th>A_s requis</th></tr>'+travRows+apRows+'</table>'
+    +'<table class="pcFerrTbl"><tr><th>Zone — effort tranchant</th><th>Vérif.</th><th>A_sw/s</th></tr>'+cadRows+'</table>'
+    +'<p class="pcNote" style="opacity:.75">Calcul simplifié (méthode pivot, section rectangulaire, enrobage saisi) — à vérifier par un ingénieur structure avant exécution. Armatures comprimées, poinçonnement et réservations non couverts ici.</p></div>';
+  }
   function pcResultatsHtml(res,dp,t){
    const vue=dp.vueCombo||'ELS';
    const isCR=res._engine==='charge_roulante';
@@ -24357,6 +24379,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Réactions ('+(isCR?'enveloppe':'CP→enveloppe')+') : '+Rline+'</p>'
     +(res.warnings&&res.warnings.length?'<ul class="pcWarn">'+res.warnings.map(w=>'<li>⚠ '+esc(w)+'</li>').join('')+'</ul>':'')
     +'<p class="pcNote">Longueur totale '+total.toFixed(2)+' m. Enveloppe'+(isCR?'':' (ELS ∪ ELU)')+' : M = '+env.M.abs.y.toFixed(1)+' kN·m à x = '+env.M.abs.x.toFixed(2)+' m · V = '+env.V.abs.y.toFixed(1)+' kN à x = '+env.V.abs.x.toFixed(2)+' m · flèche = '+env.Defl.abs.y.toFixed(1)+' mm à x = '+env.Defl.abs.x.toFixed(2)+' m.</p>'
+    +pcFerraillageHtml(res)
     +'<div class="pcDimBox"><b>Résultat de calcul (JSON)</b>'
     +'<p class="pcNote">Un seul paramètre sur l\'ouvrage, réutilisable par un autre module : géométrie, matériau, appuis, chargement, réactions et enveloppe des efforts.</p>'
     +(rcSaved?'<p class="pcNote" style="opacity:.8">✓ Enregistré sur l\'ouvrage le '+esc(rcSaved.date)+'.</p>':'')
@@ -24384,6 +24407,66 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    };
    return { M:scan('M',1), V:scan('V',1), Defl:scan('Defl',1000) };
   }
+  /* Enveloppe par zone (une travée = M max en travée + V max aux abouts ; un appui interne = M mini
+     (hogging) au nœud partagé par les deux travées adjacentes) — sert de base au ferraillage, qui ne
+     doit jamais redemander le calcul RDM : il relit simplement res.M/res.V déjà calculés. */
+  function pcZoneMoments(res){
+   const n=res.spans.length, isCR=res._engine==='charge_roulante';
+   const scanAt=(key,idxs)=>{
+    let mx=-Infinity, mn=Infinity;
+    ['ELS','ELU'].forEach(vueSel=>{
+     const fG=(!isCR&&vueSel==='ELU')?1.35:1, fQ=(!isCR&&vueSel==='ELU')?1.5:1;
+     idxs.forEach(({e,i})=>{ const o=res[key][e][i]; const dmin=o.min-o.g, dmax=o.max-o.g;
+      [fG*o.g+fQ*dmin, fG*o.g+fQ*dmax].forEach(y=>{ if(y>mx) mx=y; if(y<mn) mn=y; }); });
+    });
+    return {max:mx,min:mn};
+   };
+   const travee=res.spans.map((L,e)=>{
+    const idxs=res.samplesPerSpan[e].map((xi,i)=>({e,i}));
+    const M=scanAt('M',idxs), V=scanAt('V',idxs);
+    return { Mtravee:Math.max(M.max,0), Vmax:Math.max(Math.abs(V.max),Math.abs(V.min)) };
+   });
+   const appuis=[];
+   for(let k=0;k<=n;k++){
+    const idxs=[]; if(k>0) idxs.push({e:k-1,i:res.samplesPerSpan[k-1].length-1}); if(k<n) idxs.push({e:k,i:0});
+    appuis.push(Math.min(0,scanAt('M',idxs).min));
+   }
+   return { travee, appuis };
+  }
+  /* Ferraillage EC2 simplifié (flexion travée/appuis + cadres), branché directement sur l'enveloppe
+     RDM déjà calculée — un seul passage « efforts + ferraillage » comme demandé, sans recalculer le RDM.
+     Section rectangulaire, méthode pivot simplifiée ; si μ > 0,372 (section comprimée nécessaire), le
+     cas est signalé plutôt que forcé — hors périmètre de ce calcul simplifié. */
+  function pcFerraillage(dp,res){
+   const fck=pcFck(dp.classeGlobale), fyk=PC_FYK[dp.classeAcier||'B500']||500;
+   const fcd=fck/1.5, fyd=fyk/1.15;
+   const bcm=+dp.b_cm||20, hcm=+dp.h_cm||50, enrob=+dp.enrobage_cm||3;
+   const b=bcm/100, d=Math.max(0.05,(hcm-enrob-1)/100);
+   const fctm=0.3*Math.pow(fck,2/3);
+   const AsMin=Math.max(0.26*(fctm/fyk)*b*d, 0.0013*b*d)*1e4; // cm²
+   const flex=(M_kNm)=>{
+    const MEd=Math.abs(M_kNm)/1000; // kN·m -> MN·m
+    if(MEd<1e-9) return {As:AsMin,mu:0,z:0.9*d};
+    const mu=MEd/(b*d*d*fcd);
+    if(mu>0.372) return {As:null,mu,warn:'Section insuffisante (μ='+mu.toFixed(3)+' > 0,372) — armatures comprimées non couvertes par ce calcul simplifié.'};
+    const z=d*(0.5+Math.sqrt(Math.max(0,0.25-mu/1.134)));
+    return {As:Math.max(MEd/(z*fyd)*1e4,AsMin),mu,z};
+   };
+   const zones=pcZoneMoments(res);
+   const travees=zones.travee.map((zo,e)=>({ e, Mtravee:zo.Mtravee, Vmax:zo.Vmax, ferrInf:flex(zo.Mtravee) }));
+   const appuis=zones.appuis.map((Mn,i)=>({ i, Mappui:Mn, ferrSup:flex(Mn) }));
+   const cadres=travees.map(tr=>{
+    const VEd=Math.abs(tr.Vmax)/1000; // MN
+    const z=0.9*d, AswMin=0.08*Math.sqrt(fck)/fyk*b*10000; // cm²/m
+    const dmm=d*1000, k=Math.min(2,1+Math.sqrt(200/dmm));
+    const rho=Math.min(0.02,(tr.ferrInf.As||AsMin)/1e4/(b*d));
+    const VRdc=Math.max(0.18/1.5*k*Math.pow(100*rho*fck,1/3),0.035*Math.pow(k,1.5)*Math.sqrt(fck))*b*d; // MN
+    if(VEd<=VRdc) return { e:tr.e, besoin:false, VRdc, AswS:AswMin };
+    const AswS=Math.max(VEd/(z*fyd*2)*1e4,AswMin); // cotθ=2 par défaut
+    return { e:tr.e, besoin:true, VEd, VRdc, AswS };
+   });
+   return { travees, appuis, cadres, AsMin, materiaux:{fck,fyk,fcd:+fcd.toFixed(2),fyd:+fyd.toFixed(1),b,d:+d.toFixed(3)} };
+  }
   function pcSet(obj,path,val){ const parts=path.split('.'); let o=obj; for(let i=0;i<parts.length-1;i++){ o=o[parts[i]]; if(!o) return; } o[parts[parts.length-1]]=val; }
   function pcGet(obj,path){ const parts=path.split('.'); let o=obj; for(const p of parts){ if(o==null) return undefined; o=o[p]; } return o; }
   function pcChange(e,id){
@@ -24392,6 +24475,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(el.matches('[data-pc="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
    if(el.matches('[data-pc="classeGlobale"]')){ dp.classeGlobale=el.value; beamRender(id); return; }
    if(el.matches('[data-pc="termeGlobal"]')){ dp.termeGlobal=el.value; beamRender(id); return; }
+   if(el.matches('[data-pc="classeAcier"]')){ dp.classeAcier=el.value; beamRender(id); return; }
+   if(el.matches('[data-pc="enrobage_cm"]')){ dp.enrobage_cm=el.value===''?3:+el.value; beamRender(id); return; }
    if(el.matches('[data-pc="sens"]')){ dp.sens=el.value; beamRender(id); return; }
    const ii=el.dataset.pcI;
    if(ii){
@@ -24509,7 +24594,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p><b>Déformée</b> — max (enveloppe, en valeur absolue) = '+env.Defl.abs.y.toFixed(1)+' mm à x = '+env.Defl.abs.x.toFixed(2)+' m'+(isCR?'':' ('+env.Defl.abs.vue+')')+'</p>'
     +'<h4>Caractéristiques dimensionnantes</h4>'
     +'<p>Moment fléchissant dimensionnant = '+env.M.abs.y.toFixed(1)+' kN·m · Effort tranchant dimensionnant = '+env.V.abs.y.toFixed(1)+' kN · Déformée dimensionnante = '+env.Defl.abs.y.toFixed(1)+' mm.</p>'
-    +'<p class="pcNote">⚠ Note de calcul générée automatiquement à partir des données saisies (RDM). Ferraillage (EC2) non inclus — étape à venir.</p>'
+    +'<h4>7 · Ferraillage</h4>'+(res.ferraillage?pcFerraillageHtml(res):'<p class="pcNote">Non calculé.</p>')
+    +'<p class="pcNote">⚠ Note de calcul générée automatiquement à partir des données saisies (RDM + ferraillage EC2 simplifié). À vérifier et valider par un ingénieur structure avant exécution.</p>'
     +'</div>';
   }
   function beMissionDimSectionsHtml(m){
