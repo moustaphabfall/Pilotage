@@ -19635,6 +19635,21 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcRecap{font-size:12px;line-height:1.6;border-top:1px solid var(--line);margin-top:10px;padding-top:8px}
 .pcRecap b{opacity:.75}
 .pcBtnSm{width:auto!important;display:block;margin:4px auto 0;padding:9px 26px!important;border-radius:999px!important}
+.pcDimBox{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.pcDimBox .pcBtnSm{display:inline-block;margin:6px 6px 0 0}
+.pcNCTop{justify-content:space-between}
+.pcNCPrint{width:auto!important;padding:6px 14px!important}
+.pcNC h3{margin:4px 0 10px;font:700 17px system-ui,sans-serif}
+.pcNC h4{margin:16px 0 6px;font:700 13px system-ui,sans-serif;border-bottom:1px solid var(--line);padding-bottom:4px}
+.pcNC p{font-size:13px;line-height:1.6;margin:4px 0}
+.pcNCt{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0}
+.pcNCt th,.pcNCt td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+.pcNCt th{color:var(--ink-soft,#777);font-weight:600}
+@media print{
+ body *{visibility:hidden}
+ .pcNC,.pcNC *{visibility:visible}
+ .pcNC{position:absolute;left:0;top:0;width:100%}
+}
 .pjZ-in img{width:100%;display:block}
 .pjAF{position:relative;border:2px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:10px;padding:24px 10px 10px;margin:0;cursor:default;opacity:.55;min-width:0}
 .pjAF.has{opacity:1;border-color:#FFC400;cursor:pointer}
@@ -21835,7 +21850,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v488';
+  const VER='v489';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23785,7 +23800,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beamRender(id){
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjBeamRoot'); const t=taskById(id); if(!wrap||!t) return;
    const st=beamState(id);
-   wrap.innerHTML = st.view==='grid' ? beamGridHtml() : pcWizardHtml(id,t,st.step);
+   wrap.innerHTML = st.view==='grid' ? beamGridHtml() : st.view==='note' ? pcNoteViewHtml(t) : pcWizardHtml(id,t,st.step);
+  }
+  function pcNoteViewHtml(t){
+   const dp=pcData(t); const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]);
+   const doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+   const body=doc&&doc.contenuHtml ? doc.contenuHtml : '<p class="pcNote">Aucune note de calcul enregistrée pour cet ouvrage.</p>';
+   return '<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="wizard" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📄 Note de calcul</h4><button type="button" class="ghost pcNCPrint" data-pc-act="printNote">🖶 Imprimer</button></div>'
+    +body;
   }
   function beamGridHtml(){
    const tiles=beamModules().map((m,i)=>{ const ready=(m[1]==='Poutre continue');
@@ -23800,9 +23822,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    /* ‹ Retour : dans le parcours, revient à la grille des modules (fenêtre précédente) ; dans la grille
       (fenêtre de premier niveau de la fiche), referme la fiche — jamais un bouton muet. */
    const back=e.target.closest('[data-beam-back]'); if(back){
-    if(back.dataset.beamBack==='grid'){ st.view='grid'; beamRender(id); } else { try{ closeModal(); }catch(_){ } }
+    if(back.dataset.beamBack==='grid'){ st.view='grid'; beamRender(id); }
+    else if(back.dataset.beamBack==='wizard'){ st.view='wizard'; beamRender(id); }
+    else { try{ closeModal(); }catch(_){ } }
     return;
    }
+   const printN=e.target.closest('[data-pc-act="printNote"]'); if(printN){ try{ window.print(); }catch(_){ } return; }
    const mod=e.target.closest('[data-beam-mod]'); if(mod){ const m=beamModulesFlat()[+mod.dataset.beamMod]; if(!m) return;
     if(m[1]==='Poutre continue'){ st.view='wizard'; st.step=pcData(taskById(id))._maxStep||1; beamRender(id); }
     else{ try{ clipToast('Module « '+m[1]+' » — à développer.'); }catch(_){ } }
@@ -24233,11 +24258,38 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return svg+'<p class="pcNote pcNoteXtrm">'+xtrm+'</p>';
    };
    const Rline=res.R.map((r,i)=>'Appui '+i+' : '+(r.min/10).toFixed(2)+' à '+(r.max/10).toFixed(2)+' t').join(' · ');
+   const env=pcEnvelope(res);
+   const dimSaved=dp.dimensionnant;
    return '<h5>6 · Résultats <span class="pcCombo"><button type="button" class="ghost'+(vue!=='ELU'?' on':'')+'" data-pc-act="vue" data-pc-vue="ELS">ELS (G+Q)</button><button type="button" class="ghost'+(vue==='ELU'?' on':'')+'" data-pc-act="vue" data-pc-vue="ELU">ELU (1,35G+1,5Q)</button></span></h5>'
     +chartFor('M',1,'Moments','kN·m')+chartFor('V',1,'Tranchant','kN')+chartFor('Defl',1000,'Déformée','mm')
     +'<p class="pcNote">Réactions (CP→enveloppe) : '+Rline+'</p>'
     +(res.warnings&&res.warnings.length?'<ul class="pcWarn">'+res.warnings.map(w=>'<li>⚠ '+esc(w)+'</li>').join('')+'</ul>':'')
-    +'<p class="pcNote">Longueur totale '+total.toFixed(2)+' m. Ferraillage (EC2) et note de calcul PDF : étapes à venir.</p>';
+    +'<p class="pcNote">Longueur totale '+total.toFixed(2)+' m.</p>'
+    +'<div class="pcDimBox"><b>Caractéristiques dimensionnantes (enveloppe ELS ∪ ELU, valeur maximale en valeur absolue)</b>'
+    +'<p class="pcNote">Moment fléchissant dimensionnant = '+env.M.abs.y.toFixed(1)+' kN·m à x = '+env.M.abs.x.toFixed(2)+' m ('+env.M.abs.vue+') · Effort tranchant dimensionnant = '+env.V.abs.y.toFixed(1)+' kN à x = '+env.V.abs.x.toFixed(2)+' m ('+env.V.abs.vue+') · Déformée dimensionnante = '+env.Defl.abs.y.toFixed(1)+' mm à x = '+env.Defl.abs.x.toFixed(2)+' m ('+env.Defl.abs.vue+')</p>'
+    +(dimSaved?'<p class="pcNote" style="opacity:.8">✓ Enregistré sur l\'ouvrage le '+esc(dimSaved.date)+'.</p>':'')
+    +'<button type="button" class="ghost pcBtnSm" data-pc-act="saveDimensionnant">💾 Enregistrer les données dimensionnantes</button>'
+    +'<button type="button" class="primary pcBtnSm" data-pc-act="noteCalcul">📄 Créer la note de calcul</button></div>';
+  }
+  /* Enveloppe gouvernante (ELS ∪ ELU) : pour chaque effort, le maximum, le minimum et la valeur
+     gouvernante en valeur absolue (c'est celle-ci qui « dimensionne » l'élément). */
+  function pcEnvelope(res){
+   const pos=pcGlobalPositions(res.spans);
+   const scan=(key,scale)=>{
+    let mx={y:-Infinity,x:0,vue:'ELS'}, mn={y:Infinity,x:0,vue:'ELS'}, abs={y:0,x:0,vue:'ELS'};
+    ['ELS','ELU'].forEach(vueSel=>{
+     const fG=vueSel==='ELU'?1.35:1, fQ=vueSel==='ELU'?1.5:1;
+     res.spans.forEach((L,e)=>{ res.samplesPerSpan[e].forEach((xi,i)=>{ const o=res[key][e][i]; const x=pos[e]+xi;
+      const dmin=o.min-o.g, dmax=o.max-o.g;
+      [(fG*o.g+fQ*dmin)*scale,(fG*o.g+fQ*dmax)*scale].forEach(y=>{
+       if(y>mx.y) mx={y,x,vue:vueSel}; if(y<mn.y) mn={y,x,vue:vueSel};
+       if(Math.abs(y)>Math.abs(abs.y)) abs={y,x,vue:vueSel};
+      });
+     }); });
+    });
+    return {max:mx,min:mn,abs};
+   };
+   return { M:scan('M',1), V:scan('V',1), Defl:scan('Defl',1000) };
   }
   function pcSet(obj,path,val){ const parts=path.split('.'); let o=obj; for(let i=0;i<parts.length-1;i++){ o=o[parts[i]]; if(!o) return; } o[parts[parts.length-1]]=val; }
   function pcGet(obj,path){ const parts=path.split('.'); let o=obj; for(const p of parts){ if(o==null) return undefined; o=o[p]; } return o; }
@@ -24284,6 +24336,60 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const addSp=e.target.closest('[data-pc-act="addSpan"]'); if(addSp){ pcAddSpan(dp,addSp.dataset.pcSide); beamRender(id); return; }
    const rmSp=e.target.closest('[data-pc-act="removeSpan"]'); if(rmSp){ const ok=pcRemoveSpan(dp,rmSp.dataset.pcSide); if(!ok){ try{clipToast('Il doit rester au moins une travée.');}catch(_){ } return; } beamRender(id); return; }
    const apT=e.target.closest('[data-pc-act="apToggle"]'); if(apT){ const k=+apT.dataset.pcAp; dp._uiApOpen=(dp._uiApOpen===k?null:k); beamRender(id); return; }
+   const saveDim=e.target.closest('[data-pc-act="saveDimensionnant"]'); if(saveDim){
+    if(!dp.resultats){ try{clipToast('Lancer le calcul (étape 5) avant d\'enregistrer.');}catch(_){ } return; }
+    const env=pcEnvelope(dp.resultats);
+    dp.dimensionnant={ moment_dimensionnant_kNm:+env.M.abs.y.toFixed(1), effort_tranchant_dimensionnant_kN:+env.V.abs.y.toFixed(1), fleche_dimensionnante_mm:+env.Defl.abs.y.toFixed(1), date:todayStr() };
+    t.caracteristiques=Object.assign({},t.caracteristiques,{ moment_dimensionnant_kNm:dp.dimensionnant.moment_dimensionnant_kNm, effort_tranchant_dimensionnant_kN:dp.dimensionnant.effort_tranchant_dimensionnant_kN, fleche_dimensionnante_mm:dp.dimensionnant.fleche_dimensionnante_mm, source:'Poutre continue', maj:dp.dimensionnant.date });
+    try{persist();}catch(_){ } beamRender(id); try{clipToast('Données dimensionnantes enregistrées sur l\'ouvrage.');}catch(_){ } return;
+   }
+   const noteCalc=e.target.closest('[data-pc-act="noteCalcul"]'); if(noteCalc){
+    if(!dp.resultats){ try{clipToast('Lancer le calcul (étape 5) avant de créer la note de calcul.');}catch(_){ } return; }
+    pcCreerNoteCalcul(t,dp); beamState(id).view='note'; beamRender(id); return;
+   }
+  }
+  /* Crée (ou met à jour) le document « Note de calcul <ouvrage> » dans la base Études, rattaché à
+     cet ouvrage, et en garde le contenu complet (sections 1 à 6) pour affichage/impression. */
+  function pcCreerNoteCalcul(t,dp){
+   const html=pcNoteCalculHtml(t,dp,dp.resultats);
+   const nom='Note de calcul '+(dp.nom||t.nom||'Poutre');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'A',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poutre'; doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ }
+  }
+  function pcNoteCalculHtml(t,dp,res){
+   const total=dp.travees.reduce((a,tr)=>a+(+tr.portee_m||0),0);
+   const apLine=dp.appuis.map((ap,i)=>'Appui '+i+' — '+(ap.raideur_kN_m==null?'rigide':ap.raideur_kN_m===0?'console (pas d\'appui)':ap.raideur_kN_m+' kN/m')+(ap.blocage_rotation?', encastré (blocage rotation)':'')).join('<br>');
+   const chLines=(dp.charges||[]).map((c,i)=>{ const rep=(c.repere!=='global')?('travée '+c.repere):'sur toute la poutre';
+    const unit=c.forme==='ponctuelle'?'kN':c.forme==='couple'?'kN·m':'kN/m';
+    const val=c.forme==='ponctuelle'||c.forme==='couple'?(c.valeur_gauche||0)+' '+unit
+     :(c.valeur_gauche||0)+(c.valeur_droite!=null&&c.valeur_droite!==''&&c.valeur_droite!==c.valeur_gauche?' → '+c.valeur_droite:'')+' '+unit;
+    return '<tr><td>'+(c.type==='Q'?'Variable (Q)':'Permanente (G)')+' '+(i+1)+'</td><td>'+esc(c.forme)+'</td><td>'+esc(rep)+'</td><td>nu = '+(c.nu_gauche_m||0)+' m'+(c.longueur_m?', L = '+c.longueur_m+' m':'')+'</td><td>'+val+'</td></tr>';
+   }).join('');
+   const env=pcEnvelope(res);
+   const Rline=res.R.map((r,i)=>'<tr><td>Appui '+i+'</td><td>'+(r.min/10).toFixed(2)+' à '+(r.max/10).toFixed(2)+' t</td></tr>').join('');
+   const Ecourant=pcE(dp.classeGlobale||'C25/30',dp.termeGlobal,2);
+   const Ival=((+dp.b_cm||20)/100*Math.pow((+dp.h_cm||50)/100,3)/12);
+   return '<div class="pcNC">'
+    +'<h3>Note de calcul — '+esc(dp.nom||t.nom||'Poutre')+'</h3>'
+    +'<p class="pcNote">Module Poutre continue (dimensionnement RDM) · méthode des rigidités (Euler-Bernoulli) · '+todayStr()+'</p>'
+    +'<h4>1 · Géométrie</h4><p>'+dp.travees.length+' travée(s), longueur totale '+total.toFixed(2)+' m : '+dp.travees.map((tr,i)=>'Travée '+(i+1)+' = '+(+tr.portee_m||0).toFixed(2)+' m').join(' · ')+'.<br>Section b × h = '+(dp.b_cm||20)+' × '+(dp.h_cm||50)+' cm.</p>'
+    +'<h4>2 · Matériau</h4><p>Béton '+(dp.classeGlobale||'C25/30')+', module '+(dp.termeGlobal==='differe'?'différé (φ=2)':'court terme')+' : E = '+Ecourant.toFixed(0)+' MPa. Inertie I = b·h³/12 = '+Ival.toExponential(3)+' m⁴.</p>'
+    +'<h4>3 · Appuis</h4><p>'+apLine+'</p>'
+    +'<h4>4 · Chargement</h4>'+((dp.charges||[]).length?'<table class="pcNCt"><thead><tr><th>Charge</th><th>Forme</th><th>Repère</th><th>Position</th><th>Valeur</th></tr></thead><tbody>'+chLines+'</tbody></table>':'<p>Aucune charge saisie.</p>')
+    +'<h4>5 · Calcul</h4><p>Résolution par la méthode des rigidités (éléments finis de poutre, fonctions de forme d\'Hermite), charges nodales équivalentes exactes, enveloppe par superposition des groupes de charges variables (pianotage). Conventions : 1 t = 10 kN, moment positif vers le haut (axe conforme à l\'Excel de référence).</p>'
+    +'<h4>6 · Résultats</h4>'
+    +'<table class="pcNCt"><thead><tr><th>Réactions d\'appui (CP → enveloppe)</th></tr></thead></table>'
+    +'<table class="pcNCt"><tbody>'+Rline+'</tbody></table>'
+    +'<p><b>Moment fléchissant</b> — max travée (enveloppe) = '+env.M.max.y.toFixed(1)+' kN·m à x = '+env.M.max.x.toFixed(2)+' m ('+env.M.max.vue+') · min appui (enveloppe) = '+env.M.min.y.toFixed(1)+' kN·m à x = '+env.M.min.x.toFixed(2)+' m ('+env.M.min.vue+')</p>'
+    +'<p><b>Effort tranchant</b> — max (enveloppe, en valeur absolue) = '+env.V.abs.y.toFixed(1)+' kN à x = '+env.V.abs.x.toFixed(2)+' m ('+env.V.abs.vue+')</p>'
+    +'<p><b>Déformée</b> — max (enveloppe, en valeur absolue) = '+env.Defl.abs.y.toFixed(1)+' mm à x = '+env.Defl.abs.x.toFixed(2)+' m ('+env.Defl.abs.vue+')</p>'
+    +'<h4>Caractéristiques dimensionnantes</h4>'
+    +'<p>Moment fléchissant dimensionnant = '+env.M.abs.y.toFixed(1)+' kN·m · Effort tranchant dimensionnant = '+env.V.abs.y.toFixed(1)+' kN · Déformée dimensionnante = '+env.Defl.abs.y.toFixed(1)+' mm.</p>'
+    +'<p class="pcNote">⚠ Note de calcul générée automatiquement à partir des données saisies (RDM). Ferraillage (EC2) non inclus — étape à venir.</p>'
+    +'</div>';
   }
   function beMissionDimSectionsHtml(m){
     return (m.chatbotIA?'<div class="be-sub"><button type="button" class="primary" style="width:100%;" onclick="beMissionChatOpen(\''+esc(m.id)+'\')">🤖 Ouvrir le chatbot IA de la mission</button></div>':'')
