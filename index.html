@@ -21817,7 +21817,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v479';
+  const VER='v480';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23756,6 +23756,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(mb.querySelector('.pjBeamRoot')) return;
    [...mb.children].forEach(c=>{ if(c.classList.contains('close-x')||c.tagName==='H3') return; c.classList.add('pjBeamHidden'); c.style.setProperty('display','none','important'); });
    const kd=mb.querySelector('.tf-kind'); if(kd) kd.textContent='Dimensionnement';
+   const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
    const wrap=document.createElement('div'); wrap.className='pjBeamRoot';
    const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
    beamRender(id);
@@ -23785,11 +23786,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
    const mod=e.target.closest('[data-beam-mod]'); if(mod){ const m=beamModulesFlat()[+mod.dataset.beamMod]; if(!m) return;
-    if(m[1]==='Poutre continue'){ st.view='wizard'; st.step=(taskById(id).dimPC&&taskById(id).dimPC.resultats)?6:1; beamRender(id); }
+    if(m[1]==='Poutre continue'){ st.view='wizard'; st.step=pcData(taskById(id))._maxStep||1; beamRender(id); }
     else{ try{ clipToast('Module « '+m[1]+' » — à développer.'); }catch(_){ } }
     return;
    }
-   const goStep=e.target.closest('[data-pc-step]'); if(goStep){ const n=+goStep.dataset.pcStep; if(n<=6){ st.step=n; beamRender(id); } return; }
+   const goStep=e.target.closest('[data-pc-step]'); if(goStep){ const n=+goStep.dataset.pcStep; if(n<1||n>PC_NSTEPS) return;
+    const t=taskById(id); const dp=t&&pcData(t);
+    if(dp && n>st.step){ const v=pcStepValid(dp,st.step); if(!v.ok){ try{clipToast(v.msg);}catch(_){} return; } if(n>(dp._maxStep||1)) dp._maxStep=n; }
+    st.step=n; beamRender(id); return;
+   }
    pcClick(e,id);
   }
   function beamChange(e,id){ pcChange(e,id); }
@@ -23931,16 +23936,26 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcE(classe,terme,phi){ const ecm=PC_ECM[classe]||31000; return terme==='differe' ? ecm/(1+(phi||2)) : ecm; }
 
   /* -------------------- Parcours « Poutre continue » (étapes 1 à 6) -------------------- */
-  const PC_STEPS=['Géométrie','Matériau','Appuis','Chargement','Calcul','Résultats','Ferraillage','Note de calcul'];
+  const PC_STEPS=['Géométrie','Matériau','Appuis','Chargement','Calcul','Résultats'];
+  const PC_NSTEPS=PC_STEPS.length;
   function pcDefaultData(t){
    return { nom:t.nom||'', travees:[{portee_m:6}], appuis:[{raideur_kN_m:null,blocage_rotation:false},{raideur_kN_m:null,blocage_rotation:false}],
-    classeGlobale:'C25/30', termeGlobal:'court', b_cm:20, h_cm:50, charges:[], resultats:null, vueCombo:'ELS' };
+    classeGlobale:'C25/30', termeGlobal:'court', b_cm:20, h_cm:50, charges:[], resultats:null, vueCombo:'ELS', _maxStep:1 };
   }
-  function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); return t.dimPC; }
+  function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); if(!t.dimPC._maxStep) t.dimPC._maxStep=(t.dimPC.resultats?PC_NSTEPS:1); return t.dimPC; }
   function pcSyncAppuis(dp){ const need=dp.travees.length+1; while(dp.appuis.length<need) dp.appuis.push({raideur_kN_m:null,blocage_rotation:false}); while(dp.appuis.length>need) dp.appuis.pop(); }
+  function pcStepValid(dp,step){
+   if(step===1){ if(!dp.travees.length||dp.travees.some(tr=>!(+tr.portee_m>0))||!(+dp.b_cm>0)||!(+dp.h_cm>0)) return {ok:false,msg:'Les données de « Géométrie » n\'ont pas été saisies (travées, portées ou section manquantes).'}; return {ok:true}; }
+   if(step===2){ if(!dp.classeGlobale) return {ok:false,msg:'Les données de « Matériau » n\'ont pas été saisies.'}; return {ok:true}; }
+   if(step===3){ return {ok:true}; }
+   if(step===4){ if(!(dp.charges&&dp.charges.length&&dp.charges.some(c=>+c.valeur_gauche))) return {ok:false,msg:'Les données de « Chargement » n\'ont pas été saisies (ajouter au moins une charge).'}; return {ok:true}; }
+   if(step===5){ if(!dp.resultats) return {ok:false,msg:'Le calcul n\'a pas encore été lancé — toucher « Calculer ».'}; return {ok:true}; }
+   return {ok:true};
+  }
   function pcWizardHtml(id,t,step){
    const dp=pcData(t);
-   const dots=PC_STEPS.map((nm,i)=>{ const n=i+1,done=n<step,cur=n===step,dis=n>6;
+   const maxStep=dp._maxStep||1;
+   const dots=PC_STEPS.map((nm,i)=>{ const n=i+1,done=n<step,cur=n===step,dis=n>maxStep;
     return '<button type="button" class="pcDot'+(cur?' cur':'')+(done?' done':'')+(dis?' dis':'')+'" '+(dis?'disabled':'data-pc-step="'+n+'"')+' title="'+esc(nm)+(dis?' — à venir':'')+'">'+n+'</button>';
    }).join('<span class="pcDotSep"></span>');
    return '<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="grid" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
@@ -23989,11 +24004,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     spans.forEach((L,i)=>{ const arr=defl.bySpan[i]; const x0=x;
      const topPts=arr.map(p=>(x0+(p.x-pcGlobalPositions(spans)[i])*sx)+','+(topY+AMP*p.v));
      const botPts=arr.slice().reverse().map(p=>(x0+(p.x-pcGlobalPositions(spans)[i])*sx)+','+(botY+AMP*p.v));
-     rectHtml.push('<polygon points="'+topPts.concat(botPts).join(' ')+'" fill="var(--panel)" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>');
+     rectHtml.push('<polygon points="'+topPts.concat(botPts).join(' ')+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>');
      x+=L*sx; });
     rectHtml.push('<text x="'+(padL+beamW/2)+'" y="'+(topY-30)+'" text-anchor="middle" font-size="9.5" fill="#D9574A">Déformée × '+(AMP).toFixed(0)+' (échelle exagérée pour visibilité)</text>');
    } else {
-    spans.forEach((L,i)=>{ const w=L*sx; rectHtml.push('<rect x="'+x+'" y="'+topY+'" width="'+w+'" height="'+rectH+'" fill="var(--panel)" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>'); x+=w; });
+    spans.forEach((L,i)=>{ const w=L*sx; rectHtml.push('<rect x="'+x+'" y="'+topY+'" width="'+w+'" height="'+rectH+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.8"/>'); x+=w; });
    }
    x=padL; const supHtml=[], apBtnHtml=[];
    const pos=pcGlobalPositions(spans);
@@ -24027,7 +24042,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const w=Math.max(xb-xa,2); const nArr=Math.max(2,Math.min(8,Math.round(w/26)));
     const arrows=Array.from({length:nArr},(_,k)=>{ const t2=nArr>1?k/(nArr-1):0; const xx=xa+t2*w; const hh=ha+(hb-ha)*t2;
      return '<line x1="'+xx+'" y1="'+(topY-hh)+'" x2="'+xx+'" y2="'+(topY-1)+'" stroke="'+col+'" stroke-width="1.6" marker-end="url(#pcArr)"/>'; }).join('');
-    return '<polygon points="'+xa+','+ya+' '+xb+','+yb+' '+xb+','+topY+' '+xa+','+topY+'" fill="'+col+'" fill-opacity=".16" stroke="'+col+'" stroke-width="1.2"/>'
+    return '<polygon points="'+xa+','+ya+' '+xb+','+yb+' '+xb+','+topY+' '+xa+','+topY+'" fill="none" stroke="'+col+'" stroke-width="1.2"/>'
      +arrows+'<text x="'+((xa+xb)/2)+'" y="'+(Math.min(ya,yb)-4)+'" text-anchor="middle" font-size="9" fill="'+col+'">'+lab+'</text>';
    }).join('');
    // + buttons
@@ -24060,10 +24075,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const scaleSec=Math.min(42/Math.max(bcm,1), 46/Math.max(hcm,1));
    const sw=bcm*scaleSec, sh=hcm*scaleSec;
    const secHtml='<text x="'+secX+'" y="'+(secCY-sh/2-20)+'" text-anchor="middle" font-size="9" fill="var(--ink-soft,#777)">Section</text>'
-    +'<rect x="'+(secX-sw/2)+'" y="'+(secCY-sh/2)+'" width="'+sw+'" height="'+sh+'" fill="var(--panel)" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.6"/>'
+    +'<rect x="'+(secX-sw/2)+'" y="'+(secCY-sh/2)+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.6"/>'
     +'<foreignObject x="'+(secX-32)+'" y="'+(secCY-sh/2-17)+'" width="64" height="18"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">B=<input type="number" min="5" step="1" class="pcDimIn pcDimIn-sec" data-pc-i="b_cm" value="'+bcm+'" title="Largeur b (cm)"></div></foreignObject>'
     +'<foreignObject x="'+(secX+sw/2+4)+'" y="'+(secCY-9)+'" width="74" height="18"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">H=<input type="number" min="5" step="1" class="pcDimIn pcDimIn-sec" data-pc-i="h_cm" value="'+hcm+'" title="Hauteur h (cm)"></div></foreignObject>';
-   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+Math.round(H*0.82)+'" class="pcSvg" role="img" aria-label="Schéma de la poutre">'
+   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+Math.round(H*1.35)+'" class="pcSvg" role="img" aria-label="Schéma de la poutre">'
     +'<defs><marker id="pcArr" markerWidth="6" markerHeight="6" refX="3" refY="5" orient="auto"><path d="M0,0 L6,5 L0,10 Z" fill="currentColor"/></marker></defs>'
     +rectHtml.join('')+chgHtml+supHtml.join('')+apBtnHtml.join('')+addBtns+dimHtml+totDim+apPanel+secHtml
     +'</svg>';
@@ -24199,7 +24214,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const t=taskById(id); if(!t) return; const dp=pcData(t);
    const add=e.target.closest('[data-pc-act="addChg"]'); if(add){ dp.charges=dp.charges||[]; dp.charges.push({type:'G',forme:'repartie',repere:'global',nu_gauche_m:0,valeur_gauche:10}); beamRender(id); return; }
    const del=e.target.closest('[data-pc-act="delChg"]'); if(del){ dp.charges.splice(+del.dataset.pcIdx,1); beamRender(id); return; }
-   const run=e.target.closest('[data-pc-act="run"]'); if(run){ try{ dp.resultats=pcCompute(t); beamState(id).step=6; beamRender(id); try{persist();}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } return; }
+   const run=e.target.closest('[data-pc-act="run"]'); if(run){ try{ dp.resultats=pcCompute(t); dp._maxStep=Math.max(dp._maxStep||1,PC_NSTEPS); beamState(id).step=PC_NSTEPS; beamRender(id); try{persist();}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } return; }
    const vue=e.target.closest('[data-pc-act="vue"]'); if(vue){ dp.vueCombo=vue.dataset.pcVue; beamRender(id); return; }
    const addSp=e.target.closest('[data-pc-act="addSpan"]'); if(addSp){ pcAddSpan(dp,addSp.dataset.pcSide); beamRender(id); return; }
    const apT=e.target.closest('[data-pc-act="apToggle"]'); if(apT){ const k=+apT.dataset.pcAp; dp._uiApOpen=(dp._uiApOpen===k?null:k); beamRender(id); return; }
