@@ -20161,7 +20161,10 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
       ne rien casser sur les tâches créées avant ce champ */
    try{ if(t.typeStructureId&&window.beTypeStructureLabel) ouv=window.beTypeStructureLabel(t.typeStructureId); }catch(_){}
    if(!ouv){ try{ const ft=taskFamille(t); ouv=(ft&&(ft.nom||ft.label))||''; }catch(_){} }
-   try{ const m=taskMetier(t); met=(m&&(m.nom||m.label))||''; metId=(m&&m.id)||''; }catch(_){}
+   /* metId : id brut stocké sur la tâche en secours, même si le métier correspondant n'existe plus/pas
+      encore dans la bibliothèque courante (ex. juste après une resynchronisation) — sinon une tâche dont
+      le métier ne se résout pas disparaissait purement et simplement du filtre, invisible et sans message. */
+   try{ const m=taskMetier(t); met=(m&&(m.nom||m.label))||''; metId=(m&&m.id)||t.metierId||''; }catch(_){ metId=t.metierId||''; }
    const etat=(typeof ETAT_LABEL!=='undefined'&&ETAT_LABEL[t.etat])||t.etat||'';
    /* projet : chaque tâche peut être rattachée à un projet de la bibliothèque (t.mbf.projet, via pjProjetField dans la fiche) ;
       à défaut, on garde l'ancien comportement (nom du workspace entier), pour ne rien casser sur les tâches existantes */
@@ -20172,7 +20175,11 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   });
  }
  function passF(r){
-  if(FL.metLock&&r.metId!==FL.metLock) return false;
+  /* comparaison par id, mais aussi par nom (métier) en secours : une tâche créée avant la correction
+     du bug d'id de métier (ou créée pendant une resynchronisation) peut porter un metierId qui ne
+     correspond plus à l'entrée courante de la bibliothèque — elle reste filtrée par nom plutôt que
+     de disparaître silencieusement de la liste. */
+  if(FL.metLock&&r.metId!==FL.metLock&&(r.metier||'').trim().toLowerCase()!==(FL.metLockNom||'').trim().toLowerCase()) return false;
   if(FL.projLock&&r.projet!==FL.projLock) return false;
   if(FL.niv.length&&!FL.niv.includes(r.niveau)) return false;
   if(FL.etat.length&&!FL.etat.includes(r.etatK)) return false;
@@ -20190,6 +20197,18 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(!m) m=S.metiers.find(x=>norm(x.nom).includes('gros oeuvre'));
   if(m){ if(!norm(m.nom).includes('structure')){ m.nom=(m.nom||'Gros œuvre').trim()+' / Structure'; try{ persist(); }catch(_){} } }
   else{ m={id:uid('met'),nom:'Gros œuvre / Structure',couleur:'#8a8a8a'}; try{ if(typeof metierPushSorted==='function') metierPushSorted(m); else S.metiers.push(m); }catch(_){ S.metiers.push(m); } try{ persist(); }catch(_){} }
+  /* réparation : une tâche créée via ce module (reconnaissable à typeStructureId, propre à ce flux
+     « ouvrage à dimensionner ») mais dont metierId ne correspond à aucun métier de la bibliothèque
+     courante (bug corrigé ci-dessous à la création, mais des tâches existantes peuvent déjà porter
+     un id orphelin suite à une resynchronisation passée) est ré-attachée au même métier « Gros œuvre /
+     Structure » qu'on vient de retrouver/créer — jamais un nouveau métier, toujours celui-ci. */
+  try{
+   let fixed=false;
+   (S.tasks||[]).forEach(t=>{
+    if(t.typeStructureId&&t.metierId&&t.metierId!==m.id&&!S.metiers.some(x=>x.id===t.metierId)){ t.metierId=m.id; fixed=true; }
+   });
+   if(fixed) persist();
+  }catch(_){}
   return m;
  }
  window.pjOpenOuvragesStructure=function(_famNom,projetNom){
@@ -20263,12 +20282,15 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    const batId=mb.querySelector('#paoBat').value||null;
    const niv=mb.querySelector('#paoNiv').value||'';
    const typeStructureId=mb.querySelector('#paoType').value||null;
-   const t=taskBase(nextTaskId(),nom,niv,{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:FL.metLock||null,batId,typeStructureId,mbf:{projet}});
-   /* état courant relu au moment de la validation (pas celui capturé à l'ouverture du formulaire) : entre
-      l'ouverture du formulaire et le clic sur « Créer l'ouvrage », une synchronisation en arrière-plan peut
-      avoir remplacé l'objet `state` entier (mergeState d'un pull distant) — pousser sur l'ancien objet S
-      capturé à l'ouverture créait l'ouvrage dans une copie orpheline, jamais affichée ni sauvegardée :
-      c'est ce qui faisait « rester à zéro ouvrage » après création. */
+   /* métier relu/ré-assuré à la validation (pas FL.metLock capturé à l'ouverture du formulaire) :
+      une synchronisation en arrière-plan entre l'ouverture et le clic peut avoir remplacé l'objet
+      `state` par une version distante dont la bibliothèque des métiers n'a pas le même id pour
+      « Gros œuvre / Structure » (ou ne l'a pas encore) — pousser l'ancien FL.metLock créait un
+      ouvrage avec un metierId introuvable dans la bibliothèque courante, donc jamais affiché par
+      le filtre (qui compare au métier réellement résolu sur la tâche). pjEnsureMetierGO()
+      retrouve/recrée ce même métier par son nom (jamais de doublon) et donne son id à jour. */
+   const metNow=FL.metLock?pjEnsureMetierGO():null;
+   const t=taskBase(nextTaskId(),nom,niv,{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:(metNow&&metNow.id)||FL.metLock||null,batId,typeStructureId,mbf:{projet}});
    const S2=ST();
    S2.tasks=S2.tasks||[]; S2.tasks.unshift(t);
    try{ persist(); }catch(_){}
@@ -20416,7 +20438,10 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  function pjQuickAddRow(afterId){
   const S=ST(); S.tasks=S.tasks||[];
   const src=S.tasks.find(x=>x.id===afterId);
-  const t=taskBase(nextTaskId(),'Nouvel ouvrage',(src&&src.niveau)||'',{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:FL.metLock||(src&&src.metierId)||null,batId:(src&&src.batId)||null,typeStructureId:null,mbf:{projet:(src&&src.mbf&&src.mbf.projet)||FL.projLock||''}});
+  /* même correction que pjAjouterOuvrage : métier ré-assuré par nom à l'instant de la création,
+     jamais FL.metLock seul, pour éviter un metierId introuvable dans la bibliothèque courante. */
+  const metNow=FL.metLock?pjEnsureMetierGO():null;
+  const t=taskBase(nextTaskId(),'Nouvel ouvrage',(src&&src.niveau)||'',{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:(metNow&&metNow.id)||FL.metLock||(src&&src.metierId)||null,batId:(src&&src.batId)||null,typeStructureId:null,mbf:{projet:(src&&src.mbf&&src.mbf.projet)||FL.projLock||''}});
   const S2=ST(); S2.tasks=S2.tasks||[]; const i=src?S2.tasks.indexOf(src):-1;
   if(i>=0) S2.tasks.splice(i+1,0,t); else S2.tasks.unshift(t);
   try{ persist(); }catch(_){}
@@ -21693,7 +21718,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v472';
+  const VER='v473';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
