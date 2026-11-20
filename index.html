@@ -20156,7 +20156,11 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   return (S.tasks||[]).map(t=>{
    let piece='',ouv='',met='',metId='';
    try{ const z=t.zoneChantierId&&zoneById(t.zoneChantierId); piece=(z&&(z.nom||z.name))||t.zone||''; }catch(_){ piece=t.zone||''; }
-   try{ const ft=taskFamille(t); ouv=(ft&&(ft.nom||ft.label))||''; }catch(_){}
+   /* type d'ouvrage : t.typeStructureId (bibliothèque partagée Exé/Étude des groupes de structures,
+      choisi à la création de l'ouvrage à dimensionner) ; à défaut, ancien comportement (famille) pour
+      ne rien casser sur les tâches créées avant ce champ */
+   try{ if(t.typeStructureId&&window.beTypeStructureLabel) ouv=window.beTypeStructureLabel(t.typeStructureId); }catch(_){}
+   if(!ouv){ try{ const ft=taskFamille(t); ouv=(ft&&(ft.nom||ft.label))||''; }catch(_){} }
    try{ const m=taskMetier(t); met=(m&&(m.nom||m.label))||''; metId=(m&&m.id)||''; }catch(_){}
    const etat=(typeof ETAT_LABEL!=='undefined'&&ETAT_LABEL[t.etat])||t.etat||'';
    /* projet : chaque tâche peut être rattachée à un projet de la bibliothèque (t.mbf.projet, via pjProjetField dans la fiche) ;
@@ -20209,13 +20213,13 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const batHtml=()=>{ const L=bats(); return '<option value="">— Aucun —</option>'+L.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.nom)+'</option>').join('')+'<option value="__new__">＋ Créer un bâtiment…</option>'; };
   const projHtml=(typeof window.beProjetOptsHtml==='function')?window.beProjetOptsHtml(FL.projLock||''):'<option value="">— Aucun —</option>';
   const nivHtml='<option value="">— Aucun —</option>'+(S.niveaux||[]).map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('');
-  const ouvHtml='<option value="">— Aucun —</option>'+OUV.map(o=>'<option value="'+esc(o.n)+'">'+esc(o.n)+'</option>').join('');
+  const tsOpts=()=>{ const L=(typeof window.L_typesStructure==='function')?window.L_typesStructure():[]; return '<option value="">— Aucun —</option>'+L.map(t=>'<option value="'+esc(t.id)+'">'+esc((t.icone?t.icone+' ':'')+t.nom)+'</option>').join('')+'<option value="__new__">＋ Ajouter un type…</option>'; };
   openModal('<button class="close-x" onclick="closeModal()">×</button><div class="tf-kind">＋ Ouvrage à dimensionner</div><h3>Nouvel ouvrage</h3><div class="tf-grid"><section class="tf-box">'
    +'<div class="field"><label>Nom de l’ouvrage</label><input type="text" id="paoNom" placeholder="Nom de l’ouvrage"></div>'
    +'<div class="field"><label>Projet</label><select id="paoProjet">'+projHtml+'</select></div>'
    +'<div class="field"><label>Bâtiment</label><select id="paoBat">'+batHtml()+'</select></div>'
    +'<div class="field"><label>Niveau</label><select id="paoNiv">'+nivHtml+'</select></div>'
-   +'<div class="field"><label>Type d’ouvrage</label><select id="paoType">'+ouvHtml+'</select></div>'
+   +'<div class="field"><label>Type d’ouvrage</label><select id="paoType">'+tsOpts()+'</select></div>'
    +'</section></div><div class="modal-actions"><button class="primary" id="paoOk">Créer l’ouvrage</button><button class="ghost" onclick="closeModal()">Annuler</button></div>');
   const mb=document.getElementById('modalBody');
   const selP=mb.querySelector('#paoProjet');
@@ -20239,14 +20243,24 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
     selB.innerHTML=batHtml(); selB.value=nb.id;
    });
   };
+  const selT=mb.querySelector('#paoType');
+  selT.onchange=()=>{
+   if(selT.value!=='__new__') return; selT.value='';
+   miniPrompt('Nom du nouveau type d’ouvrage','',nom=>{
+    nom=(nom||'').trim(); if(!nom) return;
+    const t2={id:uid('TS'),nom}; (typeof window.L_typesStructure==='function'?window.L_typesStructure():[]).push(t2);
+    try{ persist(); }catch(_){}
+    selT.innerHTML=tsOpts(); selT.value=t2.id;
+   });
+  };
   mb.querySelector('#paoOk').onclick=()=>{
    const nom=(mb.querySelector('#paoNom').value||'').trim();
    if(!nom){ miniAlert('Le nom de l’ouvrage est requis.'); return; }
    const projet=mb.querySelector('#paoProjet').value||FL.projLock||'';
    const batId=mb.querySelector('#paoBat').value||null;
    const niv=mb.querySelector('#paoNiv').value||'';
-   const typeOuvrage=mb.querySelector('#paoType').value||'';
-   const t=taskBase(nextTaskId(),nom,niv,{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:FL.metLock||null,batId,mbf:{projet,typeOuvrage}});
+   const typeStructureId=mb.querySelector('#paoType').value||null;
+   const t=taskBase(nextTaskId(),nom,niv,{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:FL.metLock||null,batId,typeStructureId,mbf:{projet}});
    S.tasks=S.tasks||[]; S.tasks.unshift(t);
    try{ persist(); }catch(_){}
    closeModal();
@@ -21605,7 +21619,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v466';
+  const VER='v467';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
