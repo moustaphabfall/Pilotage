@@ -20461,7 +20461,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  const ouvIco=o=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+o.i+'</svg>';
  let mode=LS('pj_mode','exe')==='etude'?'etude':'exe';
  document.body.classList.toggle('pj-etude',mode==='etude');
- const DCOLS={ code:'Code', projet:'Projet', phase:'Phase', batiment:'Bâtiment', niveau:'Niveau', emetteur:'Émetteur', periode:'Période', zone:'Zone', discipline:'Lot', type:'Type', nature:'Nature', nom:'Nom du document', docType:'Type de document', ouvrage:'Ouvrage', numero:'N°', indice:'Indice', format:'Format', etat:'Visa', liens:'Documents liés', date:'Date' };
+ const DCOLS={ code:'Code', projet:'Projet', phase:'Phase', batiment:'Bâtiment', niveau:'Niveau', emetteur:'Émetteur', periode:'Période', zone:'Zone', discipline:'Lot', type:'Type', nature:'Nature', nom:'Nom du document', docType:'Type de document', ouvrage:'Ouvrage', numero:'N°', indice:'Indice', format:'Format', etat:'Visa', liens:'Documents liés', date:'Date', typeStructure:'Type structural' };
  const DDEF=['code','projet','phase','batiment','niveau','emetteur','discipline','nature','nom','docType','ouvrage','numero','indice','format','etat','liens','date'];
  const DET={avis:'À viser',vao:'Visé avec observation',vso:'Visé sans observation',refuse:'Refusé'};
  const DTXT=['nom','emetteur','phase','periode','zone','discipline','type','numero','indice','format'];
@@ -20494,6 +20494,10 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  const modeSw=()=>'<div class="pjd-mode" role="group" aria-label="Mode" data-m="'+mode+'"><i class="pjd-mt"></i><button type="button" data-mode="etude" aria-pressed="'+(mode==='etude')+'">Étude</button><button type="button" data-mode="exe" aria-pressed="'+(mode==='exe')+'">Exé</button></div>';
  function setMode(m){ mode=m; LSset('pj_mode',m); document.body.classList.toggle('pj-etude',m==='etude'); popClose(); filtDraw(); dbRender(); }
  function passD(x){
+  /* mode dimensionnement : même verrou que les Ouvrages (lot = métier dans ce modèle, donc on
+     compare directement au Lot du document) + projet de la mission */
+  if(FL.metLock&&(x.discipline||'')!==FL.metLockNom) return false;
+  if(FL.projLock&&(x.projetMission||'')!==FL.projLock) return false;
   if(FL.niv.length&&!FL.niv.includes(x.niveau)) return false;
   if(FL.bat.length&&!FL.bat.includes(x.batiment)) return false;
   if(FL.lot.length&&!FL.lot.includes(x.discipline)) return false;
@@ -20613,9 +20617,13 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   LO.filter(l=>l.famille==='CET').forEach(l=>{ NV.forEach(n=>{ addAuto('Plan LT',n,l.nom,1); addAuto('Plan de distribution',n,l.nom,1); addAuto('Plan de terminaux',n,l.nom,1); }); addAuto('Synoptique','',l.nom,1); });
   if(ch){ try{ persist(); }catch(_){} } }
  function dbRenderDocs(d){
-  try{ gedSyncPlans(); }catch(_){} ensurePlanning(); try{ ensureAutoDocs(); }catch(e){ console.error(e); } const cs=dcolsOn(), P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
+  try{ gedSyncPlans(); }catch(_){} ensurePlanning(); try{ ensureAutoDocs(); }catch(e){ console.error(e); }
+  const cs=(FL.metLock?['projet','batiment','niveau','nom','typeStructure']:dcolsOn()), P=window.PILOTAGE_PROJET||{}, pn=P.nom||(ST().projet&&ST().projet.nom)||'';
   const GR=(typeof gedRows==='function'?gedRows():[]).filter(g=>!g.snapSrc).map(g=>({id:g.id,ged:true,nom:g.nom||'',docType:g.type||'',niveau:g.niveau||'',discipline:g.corps||'',phase:g.phase||'',indice:g.indice||'',etat:g.statut||'',date:g.date||'',fichier:(g.fichier&&g.fichier.name)||'',taille:(g.fichier&&g.fichier.size)||0,format:(g.fichier&&g.fichier.name&&(/\.([A-Za-z0-9]+)$/.exec(g.fichier.name)||[])[1]||'').toUpperCase(),emetteur:'',periode:'',zone:'',type:'',numero:'',liens:g.liens||[],versions:g.versions||[],_g:g}));
-  let R=DOCS().concat(GR).map(x=>Object.assign({},x,{code:docCode(x,pn),projet:pn,batiment:(x.batId&&((state.batiments||[]).find(q=>q.id===x.batId)||{}).nom)||batOf(x.niveau),nature:x.ged?'architecture':natOf(x),emetteur:lotSoc(x.discipline)||x.emetteur||''})).filter(passD);
+  /* projet : un document peut être rattaché à un projet précis (x.projetMission, mode dimensionnement) ; sinon on garde
+     l'ancien comportement (nom du workspace), pour ne rien casser sur les documents existants.
+     typeStructure : nom du type structural (béton armé / structure métallique…) choisi sur le document, le cas échéant. */
+  let R=DOCS().concat(GR).map(x=>Object.assign({},x,{code:docCode(x,pn),projet:x.projetMission||pn,typeStructure:(x.typeStructureId&&window.beTypeStructureNom)?window.beTypeStructureNom(x.typeStructureId):'',batiment:(x.batId&&((state.batiments||[]).find(q=>q.id===x.batId)||{}).nom)||batOf(x.niveau),nature:x.ged?'architecture':natOf(x),emetteur:lotSoc(x.discipline)||x.emetteur||''})).filter(passD);
   try{ const MQ=(ST().lotsMasques||[]), LO2=(ST().lotsProjet||[]).map(l=>String(l.nom).toLowerCase().trim()); if(MQ.length) R=R.filter(x=>{ const k=String(x.discipline||'').toLowerCase().trim(); return !k||k==='architecture'||LO2.includes(k)||!MQ.includes(k); }); }catch(_){}
   if(FL.q){ const q=FL.q.toLowerCase(); R=R.filter(x=>[x.code,x.nom,x.docType,x.niveau,x.discipline,x.phase,x.indice,x.fichier].join(' ').toLowerCase().includes(q)); }
   if(DSORT&&cs.includes(DSORT.k)){ const k=DSORT.k, s=DSORT.d; R.sort((a,b)=>(k==='discipline'&&window.lotsApi?(window.lotsApi.rank(a[k])-window.lotsApi.rank(b[k])):String(a[k]||'').localeCompare(String(b[k]||''),'fr',{numeric:true}))*s); }
@@ -20631,6 +20639,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(!d._pd){ d._pd=1; d.addEventListener('pointerdown',e=>{ rowDrag(e); colDragStart(e); }); }
   if(!d._q){ d._q=1; d.addEventListener('input',e=>{ const i=e.target.closest('.pjd-q'); if(!i) return; FL.q=i.value; const p=i.selectionStart; dbRenderDocs(d); const n=d.querySelector('.pjd-q'); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(_){} } }); }
   d.innerHTML='<div class="pjd-in"><div class="pjd-head">'+modeSw()+'<h1>Documents du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' document'+(R.length>1?'s':'')+'</div>'
+   +(FL.metLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement · Métier :</em> '+esc(FL.metLockNom)+'</button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'<button type="button" class="pjd-lnk" data-act="exitFamLock">✕ Quitter le mode dimensionnement</button></div>'):'')
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<input type="search" class="pjd-q" placeholder="Rechercher dans les documents…" value="'+esc(FL.q||'')+'">'+'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-dact="add">+ Document</button><button type="button" class="pjd-lnk" data-dact="upd" title="Mettre à jour un document (coché, ou à choisir)">✎ Mettre à jour un document</button><button type="button" class="pjd-lnk" data-dact="props">Propriétés</button></div>'
    +selBar()+'</div><div class="pjd-scroll"><table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34+58)+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-dsort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+DCOLS[k]+(DSORT&&DSORT.k===k?(DSORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th></th></tr></thead><tbody>'
@@ -21004,7 +21013,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    +'<section class="tf-box">'+f('nom','Document')+sel('docType','Type de document',(()=>{ let L=docTypes().map(x=>[x[0],x[0]]); try{ const tl=window.lotsApi&&window.lotsApi.typesFor(doc.discipline); if(tl){ L=tl.map(x=>[x,x]); if(doc.docType&&!tl.includes(doc.docType)) L.push([doc.docType,doc.docType]); } }catch(_){} return L; })())+'<div class="field"><label>Ouvrages</label><button type="button" class="pjOuvBtn" data-ouv="1"><span class="pjOuvIc">🧰</span><span>Ouvrages</span><b>'+(window.pjOuvCount?window.pjOuvCount(doc):0)+'</b></button></div>'+sel('niveau','Niveau',(S.niveaux||[]).map(n=>[n,n]))+'</section>'
    +'<section class="tf-box">'+'<div class="field"><label>Lot</label><input type="text" data-df="discipline" data-lotpick="1" placeholder="Choisir ou créer un lot" value="'+esc(doc.discipline||'')+'"></div>'+'<div class="field"><label>Émetteur</label><div class="pjdf-v">'+esc(lotSoc(doc.discipline)||'—')+'</div></div><div class="field"><label>Type (code)</label><div class="pjdf-v">'+esc(docCode(doc,(window.PILOTAGE_PROJET||{}).nom||(S.projet&&S.projet.nom)||''))+'</div></div></section>'
    +'<section class="tf-box"><button type="button" class="pjPlan" data-planif="1">'+(window.pjPlanLabel?window.pjPlanLabel('doc',doc.id):'<b>Planifier</b>')+'</button>'+'<div class="field"><label>Durée (jours)</label><input type="number" min="0" step="1" data-df="duree" value="'+esc(doc.duree==null?'':doc.duree)+'"></div><div class="field"><label>Fin prévue</label><div class="pjdf-v">'+esc((()=>{ const e=docFin(doc); return e?frDate(e):'—'; })())+'</div></div>'+f('indice','Indice')+sel('etat','État',Object.keys(DET).map(k=>[k,DET[k]]))+f('phase','Phase')+f('periode','Période')+(doc.planning?'<p class="tf-soon">Le planning est la somme des documents : '+DOCS().filter(q=>!q.planning).length+' ouvrage(s), '+(DOCS().filter(q=>!q.planning).length+1)+' étape(s) (E0 à En).</p>':'')+'</section>'
-   +'<section class="tf-box"></section>'
+   +'<section class="tf-box">'+sel('typeStructureId','Type structural',(window.L_typesStructure?window.L_typesStructure():[]).map(t=>[t.id,t.nom]))+sel('projetMission','Projet',(window.L_projetsMission?window.L_projetsMission():[]).map(p=>[p.nom,p.nom]))+'</section>'
    +'<section class="tf-box"><h4 class="tf-t">Pièce jointe · indices</h4>'+histHtml(doc,doc.fichier)+'<button type="button" class="pjd-chg" data-charger="1">⬆ Mettre à jour</button></section>'+linksSec(id)+'</div>');
   const mb=document.getElementById('modalBody'); const bd=mb.querySelector('.modal-date-etat'); if(bd) bd.remove();
   const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
@@ -21560,7 +21569,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v462';
+  const VER='v463';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23410,6 +23419,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function L_typesStructure(){ if(!state.typesStructure||!state.typesStructure.length) state.typesStructure=[{id:uid('TS'),nom:'Béton armé'},{id:uid('TS'),nom:'Structure métallique'}]; return state.typesStructure; }
   function beTypeStructureNom(id){ const t=L_typesStructure().find(x=>x.id===id); return t?t.nom:''; }
   function beTypeStructureOptsHtml(sel){ return '<option value="">— Choisir —</option>'+L_typesStructure().map(t=>'<option value="'+esc(t.id)+'"'+(sel===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('')+'<option value="__new__">＋ Ajouter un type…</option>'; }
+  /* exposés globalement : réutilisés par la fiche document (mode dimensionnement, module pjV140Js) */
+  window.L_typesStructure=L_typesStructure;
+  window.beTypeStructureNom=beTypeStructureNom;
   function beMissionDimSectionsHtml(m){
     return (m.chatbotIA?'<div class="be-sub"><button type="button" class="primary" style="width:100%;" onclick="beMissionChatOpen(\''+esc(m.id)+'\')">🤖 Ouvrir le chatbot IA de la mission</button></div>':'')
       +'<div class="be-sub"><h4>🏢 Bâtiments & niveaux</h4>'
