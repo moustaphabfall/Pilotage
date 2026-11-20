@@ -20551,6 +20551,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    +(FL.metLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" data-chip="met"><em>Mode dimensionnement · Métier :</em> '+esc(FL.metLockNom)+' <span data-x="metlock" title="Retirer">✕</span></button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'<button type="button" class="pjd-lnk" data-act="addOuvrage" style="font-weight:600;">＋ Ouvrage à dimensionner</button></div>'):'')
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-act="addOuvrage" title="Créer un ouvrage">+ Ouvrage</button><button type="button" class="pjd-lnk" data-act="mbf" title="Exporter le projet en fichier .mbf (blocs A · E · T · C)">Exporter .mbf</button><button type="button" class="pjd-lnk" data-act="props">Propriétés</button></div>'
+   +selBar()
    +'</div><div class="pjd-scroll"><table class="pjd-t" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-sort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+COLS[k]+(SORT&&SORT.k===k?(SORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th class="pjd-add" data-act="props" title="Ajouter une propriété">+</th></tr></thead><tbody>'
    +(R.length?R.map(r=>'<tr data-id="'+esc(r.id)+'"'+(SEL.has(r.id)?' class="sel"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+(MBF.includes(k)?' data-ed="'+k+'" title="Cliquer pour renseigner"':(k==='pieceArchi'?' data-sel="pieceArchi" title="Choisir la pièce archi"':''))+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un ouvrage en dessous">＋</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun ouvrage pour ces filtres.</td></tr>')
    +'</tbody></table></div></div>';
@@ -20583,6 +20584,8 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  window.pjQuickAddRow=pjQuickAddRow;
  function dbClick(e){
   if(docClick(e)) return;
+  const sd=e.target.closest('[data-seldim]'); if(sd){ e.stopPropagation(); const ids=[...SEL]; if(!ids.length) return; sd.disabled=true; sd.textContent='⏳ Dimensionnement…';
+   setTimeout(()=>{ try{ if(window.pjDimensionnerSelection) window.pjDimensionnerSelection(ids); }catch(err){ console.error(err); } SEL.clear(); dbRender(); },10); return; }
   if(e.target.closest('.pjd-g')) return gutterClick(e);
   const ra=e.target.closest('[data-rowadd]'); if(ra){ e.stopPropagation(); pjQuickAddRow(ra.dataset.rowadd); return; }
   const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='metlock'){ pjExitDimLock(); return; } if(k==='niv') FL.niv=[]; if(k==='etat') FL.etat=[]; if(k==='met') FL.met=[]; if(k==='chrono') FL.from=FL.to=''; after(); return; }
@@ -20787,7 +20790,9 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   async function storeFile(f){ if(f.size>15*1024*1024) throw new Error('Fichier trop volumineux (15 Mo maximum).'); if(window.PILOTAGE_BLOBS){ const u=await window.PILOTAGE_BLOBS.upload(f); return {id:u.id,name:f.name,type:f.type||'',size:f.size}; } if(f.size>2*1024*1024) throw new Error('Sans stockage en ligne, 2 Mo maximum.'); return {data:await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(f); }),name:f.name,type:f.type||'',size:f.size}; }
  /* ===== Sélection, déplacement des lignes (poignée ⋮⋮) et des colonnes (appui long), comme Notion ===== */
  const SEL=new Set(); let SELLAST=null;
- const selBar=()=>SEL.size?'<div class="pjd-selbar"><span class="pjd-selc">'+SEL.size+' élément'+(SEL.size>1?'s':'')+' sélectionné'+(SEL.size>1?'s':'')+'</span><button type="button" data-seld="1">🗑 Supprimer</button></div>':'';
+ const selBar=()=>{ if(!SEL.size) return '';
+  if(mode!=='etude'){ return '<div class="pjd-selbar"><span class="pjd-selc">'+SEL.size+' ouvrage'+(SEL.size>1?'s':'')+' sélectionné'+(SEL.size>1?'s':'')+'</span><button type="button" class="primary" data-seldim="1" title="Calculer les efforts et le ferraillage, générer la note de calcul et le plan de ferraillage">🤖 Dimensionner</button></div>'; }
+  return '<div class="pjd-selbar"><span class="pjd-selc">'+SEL.size+' élément'+(SEL.size>1?'s':'')+' sélectionné'+(SEL.size>1?'s':'')+'</span><button type="button" data-seld="1">🗑 Supprimer</button></div>'; };
  /* généralisé pour les deux tableaux (Documents : data-did, Ouvrages : data-id) : même poignée ⋮⋮,
     même case à cocher, même survol, comme dans Notion — un seul jeu de fonctions pour les deux. */
  const rowSel='tbody tr[data-did],tbody tr[data-id]', rid=tr=>tr&&(tr.dataset.did||tr.dataset.id);
@@ -21853,7 +21858,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v492';
+  const VER='v493';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -24340,6 +24345,91 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<table class="pcFerrTbl"><tr><th>Zone — effort tranchant</th><th>Vérif.</th><th>A_sw/s</th></tr>'+cadRows+'</table>'
     +'<p class="pcNote" style="opacity:.75">Calcul simplifié (méthode pivot, section rectangulaire, enrobage saisi) — à vérifier par un ingénieur structure avant exécution. Armatures comprimées, poinçonnement et réservations non couverts ici.</p></div>';
   }
+  /* Schéma d'élévation de la poutre (plan de ferraillage simplifié) : lits inférieurs en travée,
+     chapeaux sur appuis, cadres indiqués par des traits verticaux — pièce graphique séparée de la
+     note de calcul, à la demande explicite de l'utilisateur (« on sépare note de calcul et plan de
+     ferraillage, comme dans l'usage classique »). */
+  function pcPlanFerraillageSvg(dp,res){
+   const fr=res.ferraillage; if(!fr) return '<p class="pcNote">Ferraillage non calculé.</p>';
+   const portees=dp.travees.map(tr=>Math.max(0.5,+tr.portee_m||0)); const n=portees.length;
+   const Ltot=portees.reduce((a,b)=>a+b,0)||1;
+   const W=760, M=46, H=230, by=110, bh=26; const scale=(W-2*M)/Ltot;
+   const nodeX=[]; let acc=0; for(let i=0;i<=n;i++){ nodeX.push(M+acc*scale); if(i<n) acc+=portees[i]; }
+   const asTxt=f=>f.As==null?'insuff.':f.As.toFixed(2)+' cm²';
+   let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, Arial, sans-serif">';
+   svg+='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#fff"/>';
+   // fibre neutre / contour de la poutre
+   svg+='<rect x="'+M+'" y="'+by+'" width="'+(W-2*M)+'" height="'+bh+'" fill="none" stroke="#37352F" stroke-width="1.5"/>';
+   // appuis (triangles) + chapeaux sur appuis
+   nodeX.forEach((x,i)=>{
+    svg+='<polygon points="'+(x-9)+','+(by+bh+14)+' '+(x+9)+','+(by+bh+14)+' '+x+','+(by+bh)+'" fill="none" stroke="#37352F" stroke-width="1.3"/>';
+    const ap=fr.appuis[i]; const half=14+Math.min(portees[i-1]||portees[0]||1,portees[i]||portees[n-1]||1)*scale*0.16;
+    svg+='<line x1="'+(x-half)+'" y1="'+(by+5)+'" x2="'+(x+half)+'" y2="'+(by+5)+'" stroke="#C0392B" stroke-width="3"/>';
+    svg+='<text x="'+x+'" y="'+(by-8)+'" text-anchor="middle" font-size="10.5" fill="#C0392B">'+esc(asTxt(ap.ferrSup))+'</text>';
+    svg+='<text x="'+x+'" y="'+(by+bh+28)+'" text-anchor="middle" font-size="10" fill="#6b6b6b">Appui '+i+'</text>';
+   });
+   // lits inférieurs en travée + cadres (traits verticaux) + repères de portée
+   for(let e=0;e<n;e++){
+    const x0=nodeX[e]+16, x1=nodeX[e+1]-16;
+    svg+='<line x1="'+x0+'" y1="'+(by+bh-5)+'" x2="'+x1+'" y2="'+(by+bh-5)+'" stroke="#1F6FEB" stroke-width="3"/>';
+    svg+='<text x="'+((x0+x1)/2)+'" y="'+(by+bh+14)+'" text-anchor="middle" font-size="10.5" fill="#1F6FEB">'+esc(asTxt(fr.travees[e].ferrInf))+'</text>';
+    const nCad=Math.max(4,Math.round((x1-x0)/26));
+    for(let k=0;k<=nCad;k++){ const xc=x0+(x1-x0)*k/nCad; svg+='<line x1="'+xc+'" y1="'+by+'" x2="'+xc+'" y2="'+(by+bh)+'" stroke="#37352F" stroke-width="0.8" opacity="0.55"/>'; }
+    const cad=fr.cadres[e];
+    svg+='<text x="'+((x0+x1)/2)+'" y="'+(by+bh+42)+'" text-anchor="middle" font-size="9.5" fill="#6b6b6b">cadres : A_sw/s = '+cad.AswS.toFixed(2)+' cm²/m'+(cad.besoin?'':' (mini)')+'</text>';
+    svg+='<text x="'+((nodeX[e]+nodeX[e+1])/2)+'" y="'+(by-24)+'" text-anchor="middle" font-size="10" fill="#37352F">Travée '+(e+1)+' — '+portees[e].toFixed(2)+' m</text>';
+   }
+   svg+='</svg>';
+   return '<div class="pcPFsvg">'+svg
+    +'<p class="pcNote" style="margin-top:6px">Lits inférieurs (bleu) en travée, chapeaux (rouge) sur appuis — sections d\'acier A_s indiquées à titre indicatif. A_s,min = '+fr.AsMin.toFixed(2)+' cm². Cadres schématiques (espacement réel à définir par le dessinateur).</p></div>';
+  }
+  /* Crée (ou met à jour) le document « Plan de ferraillage <ouvrage> » — pièce graphique, séparée de
+     la note de calcul (pièce écrite), comme dans l'usage classique d'un bureau d'études. */
+  function pcCreerPlanFerraillage(t,dp){
+   const res=dp.resultats; if(!res||!res.ferraillage) return false;
+   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Poutre')+'</h3>'
+    +'<p class="pcNote">Module '+esc(res._engineLabel||'Poutre continue')+' · '+todayStr()+'</p>'
+    +pcPlanFerraillageSvg(dp,res)
+    +'<p class="pcNote">⚠ Schéma généré automatiquement (ferraillage EC2 simplifié). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (enrobages, recouvrements, ancrages, réservations non représentés).</p></div>';
+   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Poutre');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return false;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'A',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poutre'; doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ }
+   return true;
+  }
+  /* Point d'entrée du dimensionnement (manuel ou en masse) : crée les deux pièces séparées —
+     note de calcul (écrite) et plan de ferraillage (graphique) — à partir d'un calcul déjà lancé. */
+  function pcCreerDocumentsDimensionnement(t,dp){
+   pcCreerNoteCalcul(t,dp);
+   const okPlan=pcCreerPlanFerraillage(t,dp);
+   return {noteCalcul:true, planFerraillage:okPlan};
+  }
+  /* Outil « IA de dimensionnement » en masse : l'utilisateur sélectionne des ouvrages dans le tableau
+     (checkboxes déjà en place), clique sur « 🤖 Dimensionner », et pour chacun on relit les données
+     déjà saisies (dimPC), on choisit le bon moteur RDM (pcChooseEngine), on calcule (pcCompute, qui
+     inclut déjà le ferraillage) et on génère/actualise les deux pièces — sans repasser par l'assistant
+     pas-à-pas. Appelé depuis l'autre <script> (tableau des ouvrages) via window.pjDimensionnerSelection. */
+  function pjDimensionnerSelection(ids){
+   let okN=0, skipN=0, errN=0;
+   (ids||[]).forEach(id=>{
+    const t=taskById(id); if(!t){ skipN++; return; }
+    if(beTypeStructureNom(t.typeStructureId)!==BEAM_TYPE_NOM){ skipN++; return; }
+    const dp=pcData(t);
+    if(!dp.charges||!dp.charges.length||!dp.travees||!dp.travees.some(tr=>+tr.portee_m>0)){ skipN++; return; }
+    try{
+     dp.resultats=pcCompute(t);
+     pcCreerDocumentsDimensionnement(t,dp);
+     okN++;
+    }catch(err){ console.error(err); errN++; }
+   });
+   try{persist();}catch(_){ }
+   const msg=okN+' ouvrage'+(okN>1?'s':'')+' dimensionné'+(okN>1?'s':'')+(skipN?' · '+skipN+' ignoré'+(skipN>1?'s':'')+' (hors type « Poutres & éléments horizontaux » ou données non saisies)':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
+   try{clipToast(msg);}catch(_){ }
+   return {okN,skipN,errN};
+  }
+  window.pjDimensionnerSelection=pjDimensionnerSelection;
   function pcResultatsHtml(res,dp,t){
    const vue=dp.vueCombo||'ELS';
    const isCR=res._engine==='charge_roulante';
@@ -24539,7 +24629,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
    const noteCalc=e.target.closest('[data-pc-act="noteCalcul"]'); if(noteCalc){
     if(!dp.resultats){ try{clipToast('Lancer le calcul (étape 5) avant de créer la note de calcul.');}catch(_){ } return; }
-    pcCreerNoteCalcul(t,dp); beamState(id).view='note'; beamRender(id); return;
+    pcCreerDocumentsDimensionnement(t,dp); beamState(id).view='note'; beamRender(id); try{clipToast('Note de calcul + plan de ferraillage créés.');}catch(_){ } return;
    }
   }
   /* Crée (ou met à jour) le document « Note de calcul <ouvrage> » dans la base Études, rattaché à
