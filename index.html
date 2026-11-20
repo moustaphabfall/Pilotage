@@ -20137,7 +20137,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  let CW=LS('pj_cw',{})||{}; const cw=k=>Math.max(50,+CW[k]||CW0[k]||160);
  (function(){ try{ if(!localStorage.getItem('pj_cols_v2')){ const c=LS('pj_cols',null); if(c&&!c.includes('pieceArchi')){ const i=c.indexOf('niveau'); c.splice(i>=0?i+1:c.length,0,'pieceArchi'); LSset('pj_cols',c); } localStorage.setItem('pj_cols_v2','1'); } }catch(_){} })();
  const colsOn=()=>{ const c=(LS('pj_cols',DEF)||DEF).filter(k=>COLS[k]); return c.length?c:DEF; };
- let FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:''}; /* aucun filtre actif au démarrage */
+ let FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:'',famLock:''}; /* aucun filtre actif au démarrage ; famLock = filtre verrouillé (mode dimensionnement), non persisté */
  try{ const sv=LS('pj_fl',null); if(sv&&typeof sv==='object'){ ['niv','met','etat','bat','coord','lot'].forEach(k=>{ if(Array.isArray(sv[k])) FL[k]=sv[k]; }); FL.from=sv.from||''; FL.to=sv.to||''; } }catch(_){}
  let SORT=LS('pj_sort',null);
  const nAct=()=>(FL.bat.length?1:0)+(FL.coord.length?1:0)+(FL.lot.length?1:0)+(FL.niv.length?1:0)+(FL.met.length?1:0)+(FL.etat.length?1:0)+((FL.from||FL.to)?1:0);
@@ -20156,12 +20156,29 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   });
  }
  function passF(r){
+  if(FL.famLock&&r.ouvrage!==FL.famLock) return false;
   if(FL.niv.length&&!FL.niv.includes(r.niveau)) return false;
   if(FL.etat.length&&!FL.etat.includes(r.etatK)) return false;
   if(FL.met.length&&!FL.met.includes(r.metId)) return false;
   if(FL.from||FL.to){ const a=r.debut||r.fin, b=r.fin||r.debut; if(!a) return false; if(FL.from&&b<FL.from) return false; if(FL.to&&a>FL.to) return false; }
   return true;
  }
+ /* ---------- mode dimensionnement (verrouillé sur une famille d'ouvrage) ---------- */
+ function pjEnsureFamille(nom){
+  const S=ST(); S.familleTypes=S.familleTypes||[];
+  let f=S.familleTypes.find(x=>(x.nom||'').trim().toLowerCase()===nom.trim().toLowerCase());
+  if(!f){ f={id:uid('ft'),nom,icone:'🏗️',items:['Zone sécurisée','Zone propre en fin d’intervention'],lot:null,familleBaseId:null,metierId:null}; S.familleTypes.push(f); try{ persist(); }catch(_){} }
+  return f;
+ }
+ window.pjOpenOuvragesStructure=function(famNom){
+  const nom=famNom||'Gros œuvre / Structure';
+  pjEnsureFamille(nom);
+  FL.famLock=nom;
+  window.__pjKeep=true;
+  try{ if(typeof showPage==='function') showPage('travaux'); }catch(_){}
+  setTimeout(()=>{ window.__pjKeep=false; try{ window.pjOpenLib(); }catch(e){ console.error(e); } },30);
+ };
+ window.pjClearFamLock=function(){ FL.famLock=''; try{ filtDraw(); }catch(_){} try{ dbRender(); }catch(_){} };
  /* ---------- fenêtre flottante (menus) ---------- */
  function popClose(){ if(window.__pjOff){ document.removeEventListener('pointerdown',window.__pjOff,true); window.__pjOff=null; } const o=document.getElementById('pjPop'); if(o) o.remove(); document.querySelectorAll('.pjb.on').forEach(b=>b.classList.remove('on')); }
  function popOpen(anchor,html,bind){
@@ -20289,6 +20306,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const cell=(r,k)=>cell0(r,k)+((k==='nom'&&r._nf)?'<em class="pjd-nf"> · aucune pièce jointe</em>':'');
   const cell0=(r,k)=>{ let v=r[k]; if(k==='debut'||k==='fin') v=frDate(v); if(k==='avancement'&&v!=='') v+=' %'; const t=(k==='pieceArchi'&&v&&PAI[v]?'<span class="pa-i">'+PAI[v]+'</span>':'')+esc(v||''); return k==='tache'?t+'<span class="pjd-open">OUVRIR</span><span class="pjd-open" data-bloc="1" title="Enregistrer comme bloc dans la bibliothèque">→ BLOC</span>':t; };
   d.innerHTML='<div class="pjd-in"><div class="pjd-head">'+modeSw()+'<h1>Ouvrages du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' ouvrage'+(R.length>1?'s':'')+'</div>'
+   +(FL.famLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement :</em> '+esc(FL.famLock)+'</button><button type="button" class="pjd-lnk" data-act="exitFamLock">✕ Quitter le mode dimensionnement</button></div>'):'')
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-act="mbf" title="Exporter le projet en fichier .mbf (blocs A · E · T · C)">Exporter .mbf</button><button type="button" class="pjd-lnk" data-act="props">Propriétés</button></div>'
    +'</div><div class="pjd-scroll"><table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34)+'px"><colgroup>'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr>'+cs.map(k=>'<th data-sort="'+k+'"><span class="pjd-hl">'+COLS[k]+(SORT&&SORT.k===k?(SORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th class="pjd-add" data-act="props" title="Ajouter une propriété">+</th></tr></thead><tbody>'
@@ -20300,7 +20318,8 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='niv') FL.niv=[]; if(k==='etat') FL.etat=[]; if(k==='met') FL.met=[]; if(k==='chrono') FL.from=FL.to=''; after(); return; }
   const ch=e.target.closest('[data-chip]'); if(ch){ const g=document.getElementById('pjFilt'); if(!g||!g.classList.contains('open')) filtToggle(); setTimeout(()=>{ const b=document.querySelector('#pjFilt [data-k="'+ch.dataset.chip+'"]'); b&&b.click(); },30); return; }
   const a=e.target.closest('[data-act]'); if(a){ const k=a.dataset.act;
-   if(k==='reset'){ FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:''}; after(); }
+   if(k==='reset'){ FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:'',famLock:FL.famLock}; after(); }
+   else if(k==='exitFamLock'){ window.pjClearFamLock(); }
    else if(k==='filt'){ filtToggle(); }
    else if(k==='mbf'){ exportMbf(); }
    else if(k==='props'){ popOpen(a,'<div class="pp-t">Propriétés</div>'+Object.keys(COLS).map(c=>'<label class="pp-i"><input type="checkbox" data-c="'+c+'"'+(colsOn().includes(c)?' checked':'')+'><span>'+COLS[c]+'</span></label>').join('')+'<button type="button" class="pp-lnk" data-def="1">Colonnes par défaut</button>',d=>{
@@ -21472,7 +21491,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v457';
+  const VER='v458';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23217,15 +23236,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beMAdd">＋ Mission</button>':'')
       +'</div>'
       +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.client||'(Sans nom)')+'</b><small>'+(m.projet?esc(m.projet)+' · ':'')+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(m.dateDebut?' · '+esc(fmtDate(m.dateDebut)):'')+(m.dateFin?' → '+esc(fmtDate(m.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.</p>')
-      +'</div>'
-      +beGabaritsSectionHtml();
+      +'</div>';
     const b=document.getElementById('beMAdd'); if(b) b.onclick=()=>beMissionEdit(null);
-    if(beAdmin()) w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beMissionEdit(L.find(m=>m.id===r.dataset.id)));
-    const gAdd=w.querySelector('[data-gab-add]'); if(gAdd) gAdd.onclick=()=>beGabaritAdd();
-    w.querySelectorAll('[data-gab-def]').forEach(b2=>b2.onclick=()=>beGabaritDefaut(b2.dataset.gabDef));
-    w.querySelectorAll('[data-gab-vu]').forEach(b2=>b2.onclick=()=>beGabaritApercu(b2.dataset.gabVu));
-    w.querySelectorAll('[data-gab-ren]').forEach(b2=>b2.onclick=()=>beGabaritRename(b2.dataset.gabRen));
-    w.querySelectorAll('[data-gab-del]').forEach(b2=>b2.onclick=()=>beGabaritDel(b2.dataset.gabDel));
+    if(beAdmin()) w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beMissionOpen(L.find(m=>m.id===r.dataset.id)));
+  };
+  /* Clic sur une mission : si c'est une mission d'élaboration (béton armé / métallique / pré-dimensionnement),
+     ouvre directement la base Travaux filtrée sur Gros œuvre/Structure + le projet de la mission.
+     Sinon (AMO, etc.), ouvre la fiche mission habituelle. */
+  window.beMissionOpen=function(m){
+    if(m&&beIsDimMission(m)&&typeof window.pjOpenOuvragesStructure==='function'){ window.pjOpenOuvragesStructure(m); return; }
+    beMissionEdit(m);
   };
   /* ===== Bibliothèque des gabarits de plan (modèle de mise en page utilisé à la génération du plan de ferraillage) ===== */
   function L_gabarits(){ return state.gabaritsPlan=state.gabaritsPlan||[]; }
