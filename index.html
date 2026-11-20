@@ -21850,7 +21850,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v489';
+  const VER='v490';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -24259,16 +24259,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    };
    const Rline=res.R.map((r,i)=>'Appui '+i+' : '+(r.min/10).toFixed(2)+' à '+(r.max/10).toFixed(2)+' t').join(' · ');
    const env=pcEnvelope(res);
-   const dimSaved=dp.dimensionnant;
+   const rcSaved=t.resultat_calcul;
    return '<h5>6 · Résultats <span class="pcCombo"><button type="button" class="ghost'+(vue!=='ELU'?' on':'')+'" data-pc-act="vue" data-pc-vue="ELS">ELS (G+Q)</button><button type="button" class="ghost'+(vue==='ELU'?' on':'')+'" data-pc-act="vue" data-pc-vue="ELU">ELU (1,35G+1,5Q)</button></span></h5>'
     +chartFor('M',1,'Moments','kN·m')+chartFor('V',1,'Tranchant','kN')+chartFor('Defl',1000,'Déformée','mm')
     +'<p class="pcNote">Réactions (CP→enveloppe) : '+Rline+'</p>'
     +(res.warnings&&res.warnings.length?'<ul class="pcWarn">'+res.warnings.map(w=>'<li>⚠ '+esc(w)+'</li>').join('')+'</ul>':'')
-    +'<p class="pcNote">Longueur totale '+total.toFixed(2)+' m.</p>'
-    +'<div class="pcDimBox"><b>Caractéristiques dimensionnantes (enveloppe ELS ∪ ELU, valeur maximale en valeur absolue)</b>'
-    +'<p class="pcNote">Moment fléchissant dimensionnant = '+env.M.abs.y.toFixed(1)+' kN·m à x = '+env.M.abs.x.toFixed(2)+' m ('+env.M.abs.vue+') · Effort tranchant dimensionnant = '+env.V.abs.y.toFixed(1)+' kN à x = '+env.V.abs.x.toFixed(2)+' m ('+env.V.abs.vue+') · Déformée dimensionnante = '+env.Defl.abs.y.toFixed(1)+' mm à x = '+env.Defl.abs.x.toFixed(2)+' m ('+env.Defl.abs.vue+')</p>'
-    +(dimSaved?'<p class="pcNote" style="opacity:.8">✓ Enregistré sur l\'ouvrage le '+esc(dimSaved.date)+'.</p>':'')
-    +'<button type="button" class="ghost pcBtnSm" data-pc-act="saveDimensionnant">💾 Enregistrer les données dimensionnantes</button>'
+    +'<p class="pcNote">Longueur totale '+total.toFixed(2)+' m. Enveloppe (ELS ∪ ELU) : M = '+env.M.abs.y.toFixed(1)+' kN·m à x = '+env.M.abs.x.toFixed(2)+' m · V = '+env.V.abs.y.toFixed(1)+' kN à x = '+env.V.abs.x.toFixed(2)+' m · flèche = '+env.Defl.abs.y.toFixed(1)+' mm à x = '+env.Defl.abs.x.toFixed(2)+' m.</p>'
+    +'<div class="pcDimBox"><b>Résultat de calcul (JSON)</b>'
+    +'<p class="pcNote">Un seul paramètre sur l\'ouvrage, réutilisable par un autre module : géométrie, matériau, appuis, charges, réactions et enveloppe des efforts.</p>'
+    +(rcSaved?'<p class="pcNote" style="opacity:.8">✓ Enregistré sur l\'ouvrage le '+esc(rcSaved.date)+'.</p>':'')
+    +'<button type="button" class="ghost pcBtnSm" data-pc-act="saveDimensionnant">💾 Enregistrer le résultat de calcul (JSON)</button>'
     +'<button type="button" class="primary pcBtnSm" data-pc-act="noteCalcul">📄 Créer la note de calcul</button></div>';
   }
   /* Enveloppe gouvernante (ELS ∪ ELU) : pour chaque effort, le maximum, le minimum et la valeur
@@ -24339,9 +24339,21 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const saveDim=e.target.closest('[data-pc-act="saveDimensionnant"]'); if(saveDim){
     if(!dp.resultats){ try{clipToast('Lancer le calcul (étape 5) avant d\'enregistrer.');}catch(_){ } return; }
     const env=pcEnvelope(dp.resultats);
-    dp.dimensionnant={ moment_dimensionnant_kNm:+env.M.abs.y.toFixed(1), effort_tranchant_dimensionnant_kN:+env.V.abs.y.toFixed(1), fleche_dimensionnante_mm:+env.Defl.abs.y.toFixed(1), date:todayStr() };
-    t.caracteristiques=Object.assign({},t.caracteristiques,{ moment_dimensionnant_kNm:dp.dimensionnant.moment_dimensionnant_kNm, effort_tranchant_dimensionnant_kN:dp.dimensionnant.effort_tranchant_dimensionnant_kN, fleche_dimensionnante_mm:dp.dimensionnant.fleche_dimensionnante_mm, source:'Poutre continue', maj:dp.dimensionnant.date });
-    try{persist();}catch(_){ } beamRender(id); try{clipToast('Données dimensionnantes enregistrées sur l\'ouvrage.');}catch(_){ } return;
+    const date=todayStr();
+    const resJson={
+     geometrie:{ travees:dp.travees.map(tr=>+tr.portee_m||0), b_cm:+dp.b_cm||20, h_cm:+dp.h_cm||50 },
+     materiau:{ classe:dp.classeGlobale||'C25/30', terme:dp.termeGlobal||'court' },
+     appuis:dp.appuis.map(ap=>({ raideur_kN_m:ap.raideur_kN_m==null?null:+ap.raideur_kN_m, blocage_rotation:!!ap.blocage_rotation })),
+     charges:(dp.charges||[]).map(c=>({ type:c.type, forme:c.forme, repere:c.repere, nu_gauche_m:c.nu_gauche_m||0, longueur_m:c.longueur_m||null, valeur_gauche:c.valeur_gauche||0, valeur_droite:c.valeur_droite!=null&&c.valeur_droite!==''?c.valeur_droite:null })),
+     reactions:dp.resultats.R.map(r=>({min_t:+(r.min/10).toFixed(2),max_t:+(r.max/10).toFixed(2)})),
+     enveloppe:{
+      M:{max_kNm:+env.M.max.y.toFixed(1),x_max_m:+env.M.max.x.toFixed(2),min_kNm:+env.M.min.y.toFixed(1),x_min_m:+env.M.min.x.toFixed(2),abs_kNm:+env.M.abs.y.toFixed(1),x_abs_m:+env.M.abs.x.toFixed(2)},
+      V:{abs_kN:+env.V.abs.y.toFixed(1),x_abs_m:+env.V.abs.x.toFixed(2)},
+      Defl:{abs_mm:+env.Defl.abs.y.toFixed(1),x_abs_m:+env.Defl.abs.x.toFixed(2)}
+     }
+    };
+    t.resultat_calcul={ module:'poutre_continue', ouvrage:dp.nom||t.nom||'Poutre', date, json:resJson };
+    try{persist();}catch(_){ } beamRender(id); try{clipToast('Résultat de calcul (JSON) enregistré sur l\'ouvrage.');}catch(_){ } return;
    }
    const noteCalc=e.target.closest('[data-pc-act="noteCalcul"]'); if(noteCalc){
     if(!dp.resultats){ try{clipToast('Lancer le calcul (étape 5) avant de créer la note de calcul.');}catch(_){ } return; }
