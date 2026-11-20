@@ -19572,14 +19572,17 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pjBeam-g .pjAT-n{font:600 12px system-ui,sans-serif;text-align:center;line-height:1.3}
 .pjBeam-f{font-size:12px;opacity:.65;margin:14px 0 0}
 /* Parcours « Poutre continue » : étapes, dessin, panneau, navigation */
-.pcDots{display:flex;align-items:center;justify-content:center;gap:0;margin:4px 0 10px;flex-wrap:wrap}
-.pcDot{width:26px;height:26px;border-radius:50%;padding:0;font:700 11px system-ui,sans-serif;display:flex;align-items:center;justify-content:center}
-.pcDot.cur{background:#FFC400;color:#000;border-color:#FFC400}
-.pcDot.done{border-color:#FFC400;color:#FFC400}
-.pcDot.dis{opacity:.35;cursor:default}
-.pcDotSep{width:10px;height:1px;background:var(--line);display:inline-block}
-.pcDraw{border:1px solid var(--line);border-radius:12px;padding:6px 4px;margin-bottom:10px;background:var(--panel)}
-.pcSvg{color:var(--ink)}
+.pcDots{display:flex;align-items:flex-start;justify-content:center;gap:0;margin:4px 0 10px;flex-wrap:wrap}
+.pcDotWrap{display:flex;flex-direction:column;align-items:center;gap:3px;width:40px}
+.pcDot{width:24px;height:24px;border-radius:50%;padding:0;font:700 11px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--line);background:transparent;color:var(--ink-soft,#777);opacity:.5;box-sizing:border-box}
+.pcDot.prev{opacity:1;color:var(--ink);border-color:var(--line)}
+.pcDot.cur{width:32px;height:32px;margin-top:-4px;font-size:13px;background:#FFC400;color:#000;border-color:#FFC400;opacity:1}
+.pcDot.dis{cursor:default}
+.pcDotName{font-size:9.5px;color:var(--ink-soft,#777);text-align:center;line-height:1.15;max-width:46px}
+.pcDotName.cur{font-size:11px;font-weight:700;color:var(--ink)}
+.pcDotSep{width:10px;height:1px;background:var(--line);display:inline-block;margin-top:12px}
+.pcDraw{border:1px solid var(--line);border-radius:12px;padding:6px 4px;margin-bottom:10px;background:var(--panel);display:flex;justify-content:center;overflow-x:auto}
+.pcSvg{color:var(--ink);display:block;margin:0 auto}
 .pcPanel{margin-bottom:10px}
 .pcPanel h5{margin:0 0 10px;font:700 14px system-ui,sans-serif}
 .pcPanel label{display:block;margin:0 0 10px;font:600 12.5px system-ui,sans-serif}
@@ -21819,7 +21822,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v482';
+  const VER='v483';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23957,8 +23960,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcWizardHtml(id,t,step){
    const dp=pcData(t);
    const maxStep=dp._maxStep||1;
-   const dots=PC_STEPS.map((nm,i)=>{ const n=i+1,done=n<step,cur=n===step,dis=n>maxStep;
-    return '<button type="button" class="pcDot'+(cur?' cur':'')+(done?' done':'')+(dis?' dis':'')+'" '+(dis?'disabled':'data-pc-step="'+n+'"')+' title="'+esc(nm)+(dis?' — à venir':'')+'">'+n+'</button>';
+   const dots=PC_STEPS.map((nm,i)=>{ const n=i+1,cur=n===step,prev=n===step-1,next=n===step+1,dis=n>maxStep;
+    const cls='pcDot'+(cur?' cur':'')+(prev?' prev':'')+(dis?' dis':'');
+    const showName=cur||next;
+    return '<span class="pcDotWrap"><button type="button" class="'+cls+'" '+(dis?'disabled':'data-pc-step="'+n+'"')+' title="'+esc(nm)+(dis?' — à venir':'')+'">'+n+'</button>'
+     +(showName?'<span class="pcDotName'+(cur?' cur':'')+'">'+esc(nm)+'</span>':'')+'</span>';
    }).join('<span class="pcDotSep"></span>');
    return '<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="grid" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDots">'+dots+'</div>'
@@ -23997,8 +24003,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const W=810,padL=96,padR=300; const beamW=W-padL-padR; const sx=beamW/total;
    const rectH=Math.max(10,Math.min(50,hcm*0.55));
    const baseY=98; const topY=baseY-rectH/2, botY=baseY+rectH/2;
+   // taille des appuis proportionnelle à la hauteur de la poutre (évite un appui minuscule sous une grosse section)
+   const triW=Math.max(6,Math.min(22,rectH*0.46)), triH=Math.max(9,Math.min(26,rectH*0.56));
    const apOpen=dp._uiApOpen;
-   const dimY=botY+68, totY=dimY+48, apPanelY=totY+28;
+   const apBtnY=botY+triH+11, dimY=apBtnY+44, totY=dimY+48, apPanelY=totY+28;
    const H = apOpen!=null ? apPanelY+72 : totY+36;
    const defl=(step===6)?pcDeflSamples(dp):null;
    const sameGeom=defl && defl.maxAbs>1e-6 && defl.spans.length===spans.length && defl.spans.every((L,i)=>Math.abs(L-spans[i])<1e-6);
@@ -24018,10 +24026,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const pos=pcGlobalPositions(spans);
    dp.appuis.forEach((ap,i)=>{ const fixed=(i===0||i===dp.appuis.length-1)&&ap.blocage_rotation; const console_=ap.raideur_kN_m===0;
     if(!console_){
-     supHtml.push('<path d="M'+x+' '+botY+' L'+(x-7)+' '+(botY+13)+' L'+(x+7)+' '+(botY+13)+' Z" fill="none" stroke="var(--ink-soft,#777)" stroke-width="1.6"/>');
-     if(fixed) supHtml.push('<line x1="'+(x-10)+'" y1="'+(botY+13)+'" x2="'+(x+10)+'" y2="'+(botY+13)+'" stroke="var(--ink-soft,#777)" stroke-width="3"/>'+[-8,-4,0,4,8].map(o=>'<line x1="'+(x+o)+'" y1="'+(botY+13)+'" x2="'+(x+o-3)+'" y2="'+(botY+20)+'" stroke="var(--ink-soft,#777)" stroke-width="1"/>').join(''));
+     supHtml.push('<path d="M'+x+' '+botY+' L'+(x-triW)+' '+(botY+triH)+' L'+(x+triW)+' '+(botY+triH)+' Z" fill="none" stroke="var(--ink-soft,#777)" stroke-width="1.6"/>');
+     if(fixed) supHtml.push('<line x1="'+(x-triW*1.4)+'" y1="'+(botY+triH)+'" x2="'+(x+triW*1.4)+'" y2="'+(botY+triH)+'" stroke="var(--ink-soft,#777)" stroke-width="3"/>'+[-triW,-triW*0.5,0,triW*0.5,triW].map(o=>'<line x1="'+(x+o)+'" y1="'+(botY+triH)+'" x2="'+(x+o-triW*0.4)+'" y2="'+(botY+triH*1.5)+'" stroke="var(--ink-soft,#777)" stroke-width="1"/>').join(''));
     }
-    apBtnHtml.push('<foreignObject x="'+(x-36)+'" y="'+(botY+24)+'" width="72" height="34"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="pcApBtn'+(apOpen===i?' on':'')+'" data-pc-act="apToggle" data-pc-ap="'+i+'" title="Régler l\'appui '+i+'">Appui '+i+'</button></foreignObject>');
+    apBtnHtml.push('<foreignObject x="'+(x-36)+'" y="'+apBtnY+'" width="72" height="34"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="pcApBtn'+(apOpen===i?' on':'')+'" data-pc-act="apToggle" data-pc-ap="'+i+'" title="Régler l\'appui '+i+'">Appui '+i+'</button></foreignObject>');
     x += (i<spans.length?spans[i]*sx:0);
    });
    // charges
