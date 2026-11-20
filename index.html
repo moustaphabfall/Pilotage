@@ -20192,7 +20192,13 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
     nouvelle famille d'ouvrage créée ici, on retrouve/complète directement le métier existant. */
  function pjEnsureMetierGO(){
   const S=ST(); S.metiers=S.metiers||[];
-  const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+  /* « œ »/« æ » ne se décomposent pas par normalize('NFD') (ce ne sont pas des caractères accentués
+     composés) : ils tombaient directement dans le replace(/[^a-z0-9]+/) suivant et disparaissaient
+     purement et simplement — « Gros œuvre / Structure » devenait « gros uvre structure », jamais égal
+     à « gros oeuvre structure » recherché ci-dessous. Du coup un nouveau métier « fantôme » était
+     fabriqué à chaque entrée en mode dimensionnement, jamais le même id, d'où le filtre qui ne
+     retrouvait plus rien. Les remplacer explicitement par « oe »/« ae » avant le reste corrige ça. */
+  const norm=s=>(s||'').toLowerCase().replace(/œ/g,'oe').replace(/æ/g,'ae').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
   let m=S.metiers.find(x=>norm(x.nom)==='gros oeuvre structure');
   if(!m) m=S.metiers.find(x=>norm(x.nom).includes('gros oeuvre'));
   if(m){ if(!norm(m.nom).includes('structure')){ m.nom=(m.nom||'Gros œuvre').trim()+' / Structure'; try{ persist(); }catch(_){} } }
@@ -20211,6 +20217,10 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   }catch(_){}
   return m;
  }
+ /* sort du mode dimensionnement : remet à plat et revient au tableau de bord — appelé depuis la croix
+    ✕ de la puce « Mode dimensionnement · Métier » (le verrou doit rester un filtre visible et
+    retirable comme les autres, jamais un badge figé). */
+ function pjExitDimLock(){ FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:'',metLock:'',metLockNom:'',projLock:''}; window.__pjKeep=false; try{ saveFl(); }catch(_){} try{ if(typeof showPage==='function') showPage('dashboard'); }catch(e){ console.error(e); } }
  window.pjOpenOuvragesStructure=function(_famNom,projetNom){
   const met=pjEnsureMetierGO();
   /* on repart de filtres vierges à chaque entrée en mode dimensionnement : d'anciens filtres (niveau,
@@ -20403,7 +20413,19 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   else if(k==='lot'){ let L=[]; try{ L=window.lotsApi.ensure().map(l=>[l.nom,l.nom]); }catch(_){} popOpen(b,'<div class="pp-t">Lot</div>'+mk(L,FL.lot),d=>bindCk(d,FL.lot)); }
   else if(k==='coord') popOpen(b,'<div class="pp-t">Corps d’état</div>'+mk(Object.entries(CFAM),FL.coord),d=>bindCk(d,FL.coord));
   else if(k==='etat') popOpen(b,'<div class="pp-t">État</div>'+mk(Object.entries(ETL),FL.etat),d=>bindCk(d,FL.etat));
-  else if(k==='met') popOpen(b,'<div class="pp-t">Métier</div>'+mk((S.metiers||[]).map(m=>[m.id,m.nom||m.label||m.id]),FL.met),d=>bindCk(d,FL.met));
+  else if(k==='met'){
+   /* le métier verrouillé du mode dimensionnement doit apparaître coché dans ce même panneau Métier
+      (jamais un badge séparé qu'on ne peut pas voir/modifier) ; le décocher en sort proprement. */
+   const selArr=FL.met.length?FL.met:(FL.metLock?[FL.metLock]:[]);
+   popOpen(b,'<div class="pp-t">Métier</div>'+mk((S.metiers||[]).map(m=>[m.id,m.nom||m.label||m.id]),selArr),d=>{
+    d.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{
+     const v=c.dataset.v;
+     if(FL.metLock&&v===FL.metLock&&!FL.met.includes(v)&&!c.checked){ popClose(); pjExitDimLock(); return; }
+     const i=FL.met.indexOf(v); if(c.checked&&i<0) FL.met.push(v); if(!c.checked&&i>=0) FL.met.splice(i,1); after();
+    });
+    const cl=d.querySelector('[data-clr]'); if(cl) cl.onclick=()=>{ FL.met.length=0; popClose(); after(); };
+   });
+  }
   else if(k==='chrono') popOpen(b,'<div class="pp-t">Chronologie</div><div class="pp-r"><label>Du</label><input type="date" id="pjF1" value="'+esc(FL.from)+'"></div><div class="pp-r"><label>Au</label><input type="date" id="pjF2" value="'+esc(FL.to)+'"></div><button type="button" class="pp-lnk" data-clr="1">Toutes dates</button>',d=>{
    d.querySelector('#pjF1').onchange=e=>{ FL.from=e.target.value; after(); }; d.querySelector('#pjF2').onchange=e=>{ FL.to=e.target.value; after(); };
    d.querySelector('[data-clr]').onclick=()=>{ FL.from=FL.to=''; popClose(); after(); }; });
@@ -20425,12 +20447,14 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(FL.niv.length) chips.push(['niv','Niveau',sumTxt('niv')]); if(FL.from||FL.to) chips.push(['chrono','Chronologie',sumTxt('chrono')]); if(FL.etat.length) chips.push(['etat','État',sumTxt('etat')]); if(FL.met.length) chips.push(['met','Métier',sumTxt('met')]);
   const cell=(r,k)=>cell0(r,k)+((k==='nom'&&r._nf)?'<em class="pjd-nf"> · aucune pièce jointe</em>':'');
   const cell0=(r,k)=>{ let v=r[k]; if(k==='debut'||k==='fin') v=frDate(v); if(k==='avancement'&&v!=='') v+=' %'; const t=(k==='pieceArchi'&&v&&PAI[v]?'<span class="pa-i">'+PAI[v]+'</span>':'')+esc(v||''); return k==='tache'?t+'<span class="pjd-open">OUVRIR</span><span class="pjd-open" data-bloc="1" title="Enregistrer comme bloc dans la bibliothèque">→ BLOC</span>':t; };
+  if(!d._pd){ d._pd=1; d.addEventListener('pointerdown',e=>{ rowDrag(e); colDragStart(e); }); }
+  const minW=cs.reduce((a,k)=>a+cw(k),0)+34+58;
   d.innerHTML='<div class="pjd-in"><div class="pjd-head">'+modeSw()+'<h1>Ouvrages du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' ouvrage'+(R.length>1?'s':'')+'</div>'
-   +(FL.metLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement · Métier :</em> '+esc(FL.metLockNom)+'</button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'<button type="button" class="pjd-lnk" data-act="addOuvrage" style="font-weight:600;">＋ Ouvrage à dimensionner</button></div>'):'')
+   +(FL.metLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" data-chip="met"><em>Mode dimensionnement · Métier :</em> '+esc(FL.metLockNom)+' <span data-x="metlock" title="Retirer">✕</span></button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'<button type="button" class="pjd-lnk" data-act="addOuvrage" style="font-weight:600;">＋ Ouvrage à dimensionner</button></div>'):'')
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-act="addOuvrage" title="Créer un ouvrage">+ Ouvrage</button><button type="button" class="pjd-lnk" data-act="mbf" title="Exporter le projet en fichier .mbf (blocs A · E · T · C)">Exporter .mbf</button><button type="button" class="pjd-lnk" data-act="props">Propriétés</button></div>'
-   +'</div><div class="pjd-scroll"><table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34)+'px"><colgroup>'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr>'+cs.map(k=>'<th data-sort="'+k+'"><span class="pjd-hl">'+COLS[k]+(SORT&&SORT.k===k?(SORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th class="pjd-add" data-act="props" title="Ajouter une propriété">+</th></tr></thead><tbody>'
-   +(R.length?R.map(r=>'<tr data-id="'+esc(r.id)+'">'+cs.map(k=>'<td'+(MBF.includes(k)?' data-ed="'+k+'" title="Cliquer pour renseigner"':(k==='pieceArchi'?' data-sel="pieceArchi" title="Choisir la pièce archi"':''))+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un ouvrage en dessous">＋</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+1)+'">Aucun ouvrage pour ces filtres.</td></tr>')
+   +'</div><div class="pjd-scroll"><table class="pjd-t" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-sort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+COLS[k]+(SORT&&SORT.k===k?(SORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th class="pjd-add" data-act="props" title="Ajouter une propriété">+</th></tr></thead><tbody>'
+   +(R.length?R.map(r=>'<tr data-id="'+esc(r.id)+'"'+(SEL.has(r.id)?' class="sel"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+(MBF.includes(k)?' data-ed="'+k+'" title="Cliquer pour renseigner"':(k==='pieceArchi'?' data-sel="pieceArchi" title="Choisir la pièce archi"':''))+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un ouvrage en dessous">＋</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun ouvrage pour ces filtres.</td></tr>')
    +'</tbody></table></div></div>';
  }
  /* ＋ sur une ligne (style Notion) : crée un ouvrage juste en dessous de la ligne cliquée, en reprenant son
@@ -20450,7 +20474,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    try{
     const tr=document.querySelector('tr[data-id="'+t.id+'"]'); if(!tr) return;
     const idx=colsOn().indexOf('ouvrage'); if(idx<0) return;
-    const td=tr.children[idx]; if(!td) return;
+    const td=tr.children[idx+1]; if(!td) return;   /* +1 : colonne gouttière (case à cocher) en tête de ligne */
     const L=(typeof window.L_typesStructure==='function')?window.L_typesStructure():[];
     td.innerHTML='<select style="width:100%;font:inherit;border:1px solid #FFC400;border-radius:6px;padding:3px 6px;background:#fff;color:#37352F"><option value="">— Choisir —</option>'+L.map(x=>'<option value="'+esc(x.id)+'">'+esc((x.icone?x.icone+' ':'')+x.nom)+'</option>').join('')+'</select>';
     const sel=td.querySelector('select'); sel.focus();
@@ -20461,8 +20485,9 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  window.pjQuickAddRow=pjQuickAddRow;
  function dbClick(e){
   if(docClick(e)) return;
+  if(e.target.closest('.pjd-g')) return gutterClick(e);
   const ra=e.target.closest('[data-rowadd]'); if(ra){ e.stopPropagation(); pjQuickAddRow(ra.dataset.rowadd); return; }
-  const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='niv') FL.niv=[]; if(k==='etat') FL.etat=[]; if(k==='met') FL.met=[]; if(k==='chrono') FL.from=FL.to=''; after(); return; }
+  const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='metlock'){ pjExitDimLock(); return; } if(k==='niv') FL.niv=[]; if(k==='etat') FL.etat=[]; if(k==='met') FL.met=[]; if(k==='chrono') FL.from=FL.to=''; after(); return; }
   const ch=e.target.closest('[data-chip]'); if(ch){ const g=document.getElementById('pjFilt'); if(!g||!g.classList.contains('open')) filtToggle(); setTimeout(()=>{ const b=document.querySelector('#pjFilt [data-k="'+ch.dataset.chip+'"]'); b&&b.click(); },30); return; }
   const a=e.target.closest('[data-act]'); if(a){ const k=a.dataset.act;
    if(k==='reset'){ FL={niv:[],met:[],etat:[],bat:[],coord:[],lot:[],from:'',to:'',metLock:FL.metLock,metLockNom:FL.metLockNom,projLock:FL.projLock}; after(); }
@@ -20665,25 +20690,34 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  /* ===== Sélection, déplacement des lignes (poignée ⋮⋮) et des colonnes (appui long), comme Notion ===== */
  const SEL=new Set(); let SELLAST=null;
  const selBar=()=>SEL.size?'<div class="pjd-selbar"><span class="pjd-selc">'+SEL.size+' élément'+(SEL.size>1?'s':'')+' sélectionné'+(SEL.size>1?'s':'')+'</span><button type="button" data-seld="1">🗑 Supprimer</button></div>':'';
- const rowIds=d=>[...d.querySelectorAll('tbody tr[data-did]')].map(r=>r.dataset.did);
- function updSel(){ const d=document.getElementById('pjDb'); if(!d) return; const rows=[...d.querySelectorAll('tbody tr[data-did]')];
-  rows.forEach(tr=>{ const on=SEL.has(tr.dataset.did); tr.classList.toggle('sel',on); const c=tr.querySelector('.pjd-ck'); if(c) c.checked=on; });
-  const all=d.querySelector('.pjd-ck[data-all]'); if(all){ const n=rows.filter(r=>SEL.has(r.dataset.did)).length; all.checked=n>0&&n===rows.length; all.indeterminate=n>0&&n<rows.length; }
+ /* généralisé pour les deux tableaux (Documents : data-did, Ouvrages : data-id) : même poignée ⋮⋮,
+    même case à cocher, même survol, comme dans Notion — un seul jeu de fonctions pour les deux. */
+ const rowSel='tbody tr[data-did],tbody tr[data-id]', rid=tr=>tr&&(tr.dataset.did||tr.dataset.id);
+ const rowIds=d=>[...d.querySelectorAll(rowSel)].map(rid);
+ function updSel(){ const d=document.getElementById('pjDb'); if(!d) return; const rows=[...d.querySelectorAll(rowSel)];
+  rows.forEach(tr=>{ const on=SEL.has(rid(tr)); tr.classList.toggle('sel',on); const c=tr.querySelector('.pjd-ck'); if(c) c.checked=on; });
+  const all=d.querySelector('.pjd-ck[data-all]'); if(all){ const n=rows.filter(r=>SEL.has(rid(r))).length; all.checked=n>0&&n===rows.length; all.indeterminate=n>0&&n<rows.length; }
   d.classList.toggle('has-sel',SEL.size>0); const b=d.querySelector('.pjd-selbar'), h=selBar();
   if(b){ if(h) b.outerHTML=h; else b.remove(); } else if(h){ const t=d.querySelector('.pjd-head'); if(t) t.insertAdjacentHTML('beforeend',h); } }
  function gutterClick(e){ e.stopPropagation(); const ck=e.target.closest('.pjd-ck'); if(!ck) return true; const d=document.getElementById('pjDb'), ids=rowIds(d);
   if(ck.dataset.all){ if(SEL.size) SEL.clear(); else ids.forEach(x=>SEL.add(x)); }
-  else { const id=ck.closest('tr[data-did]').dataset.did;
+  else { const id=rid(ck.closest(rowSel));
    if(e.shiftKey&&SELLAST&&ids.includes(SELLAST)){ const a=ids.indexOf(SELLAST), b=ids.indexOf(id); ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(x=>SEL.add(x)); }
    else if(ck.checked) SEL.add(id); else SEL.delete(id); SELLAST=id; }
   updSel(); return true; }
  function reorderRows(ids,tid,after){ const d=document.getElementById('pjDb'); const cur=rowIds(d); const rest=cur.filter(x=>!ids.includes(x)); let i=rest.indexOf(tid); if(i<0) return; if(after) i++; rest.splice(i,0,...cur.filter(x=>ids.includes(x)));
   state.docOrder=rest.concat((state.docOrder||[]).filter(x=>!rest.includes(x))); if(DSORT){ DSORT=null; LSset('pj_dsort',null); } try{ persist(); }catch(_){} dbRender(); }
- function rowDrag(e){ const h=e.target.closest&&e.target.closest('.pjd-h'); if(!h||(e.button||0)>0) return; const d=document.getElementById('pjDb'); const tr=h.closest('tr[data-did]'); e.preventDefault();
-  const rows=[...d.querySelectorAll('tbody tr[data-did]')], id=tr.dataset.did; const ids=(SEL.has(id)&&SEL.size>1)?rows.map(r=>r.dataset.did).filter(x=>SEL.has(x)):[id];
-  rows.forEach(r=>{ if(ids.includes(r.dataset.did)) r.classList.add('dragging'); }); document.body.classList.add('pjd-moving'); let tgt=null, after=false;
-  const mv=ev=>{ const y=ev.clientY; rows.forEach(r=>r.classList.remove('dtop','dbot')); let hit=null; for(const r of rows){ const b=r.getBoundingClientRect(); if(y<b.top+b.height/2){ hit=r; after=false; break; } } if(!hit){ hit=rows[rows.length-1]; after=true; } tgt=hit; if(!ids.includes(hit.dataset.did)) hit.classList.add(after?'dbot':'dtop'); };
-  const up=()=>{ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); document.body.classList.remove('pjd-moving'); rows.forEach(r=>r.classList.remove('dragging','dtop','dbot')); if(tgt&&!ids.includes(tgt.dataset.did)) reorderRows(ids,tgt.dataset.did,after); };
+ /* même principe que reorderRows, mais pour les ouvrages : pas de champ d'ordre séparé à gérer, on
+    réordonne directement S.tasks (l'ordre naturel du tableau Ouvrages, en l'absence de tri de colonne). */
+ function reorderTasks(ids,tid,after){ const S=ST(); S.tasks=S.tasks||[]; const byId={}; S.tasks.forEach(t=>byId[t.id]=t);
+  const cur=S.tasks.map(t=>t.id); const rest=cur.filter(x=>!ids.includes(x)); let i=rest.indexOf(tid); if(i<0) return; if(after) i++; rest.splice(i,0,...cur.filter(x=>ids.includes(x)));
+  S.tasks=rest.map(id=>byId[id]).filter(Boolean); if(SORT){ SORT=null; LSset('pj_sort',null); } try{ persist(); }catch(_){} dbRender(); }
+ function rowDrag(e){ const h=e.target.closest&&e.target.closest('.pjd-h'); if(!h||(e.button||0)>0) return; const d=document.getElementById('pjDb'); const tr=h.closest(rowSel); if(!tr) return; e.preventDefault();
+  const isDoc=!!tr.dataset.did;
+  const rows=[...d.querySelectorAll(rowSel)], id=rid(tr); const ids=(SEL.has(id)&&SEL.size>1)?rows.map(rid).filter(x=>SEL.has(x)):[id];
+  rows.forEach(r=>{ if(ids.includes(rid(r))) r.classList.add('dragging'); }); document.body.classList.add('pjd-moving'); let tgt=null, after=false;
+  const mv=ev=>{ const y=ev.clientY; rows.forEach(r=>r.classList.remove('dtop','dbot')); let hit=null; for(const r of rows){ const b=r.getBoundingClientRect(); if(y<b.top+b.height/2){ hit=r; after=false; break; } } if(!hit){ hit=rows[rows.length-1]; after=true; } tgt=hit; if(!ids.includes(rid(hit))) hit.classList.add(after?'dbot':'dtop'); };
+  const up=()=>{ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); document.body.classList.remove('pjd-moving'); rows.forEach(r=>r.classList.remove('dragging','dtop','dbot')); if(tgt&&!ids.includes(rid(tgt))){ if(isDoc) reorderRows(ids,rid(tgt),after); else reorderTasks(ids,rid(tgt),after); } };
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up); mv(e); }
  function colDragStart(e){ const th=e.target.closest&&e.target.closest('th[data-dcol]'); if(!th||e.target.closest('.pjd-rz')||(e.button||0)>0) return; const d=document.getElementById('pjDb');
   const ths=()=>[...d.querySelectorAll('thead th[data-dcol]')]; let active=false, tgt=null, after=false; const sx=e.clientX, sy=e.clientY, from=th.dataset.dcol;
@@ -20692,7 +20726,10 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const timer=setTimeout(()=>{ active=true; th.classList.add('colsel'); mkGhost(); const idx=ths().indexOf(th)+1; d.querySelectorAll('tbody tr').forEach(tr=>{ const c=tr.children[idx]; if(c) c.classList.add('colsel'); }); document.body.classList.add('pjd-moving'); try{ navigator.vibrate&&navigator.vibrate(12); }catch(_){} },380);
   const end=()=>{ clearTimeout(timer); if(ghost){ ghost.remove(); ghost=null; } document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); document.removeEventListener('touchmove',stopTouch); document.body.classList.remove('pjd-moving'); };
   const mv=ev=>{ if(!active){ if(Math.hypot(ev.clientX-sx,ev.clientY-sy)>8){ end(); } return; } if(ghost) ghost.style.transform='translateX('+(ev.clientX-sx)+'px)'; ths().forEach(t=>t.classList.remove('cl','cr')); const x=ev.clientX; let hit=null; for(const t of ths()){ const b=t.getBoundingClientRect(); if(x<b.left+b.width/2){ hit=t; after=false; break; } } if(!hit){ hit=ths().pop(); after=true; } tgt=hit.dataset.dcol; if(tgt!==from) hit.classList.add(after?'cr':'cl'); };
-  const up=()=>{ const was=active; end(); if(!was) return; window.__pjColDrag=Date.now(); ths().forEach(t=>t.classList.remove('cl','cr','colsel')); d.querySelectorAll('.colsel').forEach(c=>c.classList.remove('colsel')); if(!tgt||tgt===from) return; const arr=dcolsOn().filter(k=>k!==from); let i=arr.indexOf(tgt); if(after) i++; arr.splice(i,0,from); LSset('pj_dcols',arr); dbRender(); };
+  const up=()=>{ const was=active; end(); if(!was) return; window.__pjColDrag=Date.now(); ths().forEach(t=>t.classList.remove('cl','cr','colsel')); d.querySelectorAll('.colsel').forEach(c=>c.classList.remove('colsel')); if(!tgt||tgt===from) return;
+   /* Documents (mode étude) et Ouvrages ont chacun leur propre liste/clé de colonnes persistée */
+   const isDoc=mode==='etude', getCols=isDoc?dcolsOn:colsOn, key=isDoc?'pj_dcols':'pj_cols';
+   const arr=getCols().filter(k=>k!==from); let i=arr.indexOf(tgt); if(after) i++; arr.splice(i,0,from); LSset(key,arr); dbRender(); };
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up); document.addEventListener('touchmove',stopTouch,{passive:false}); }
 
  function ensureAutoDocs(){ const S=ST(); try{ if(typeof archEns==='function') archEns(); }catch(_){} S.autoDocKeys=S.autoDocKeys||{}; const L=DOCS(), G=(typeof gedRows==='function'?gedRows():[]).filter(g=>!g.snapSrc), today=(typeof todayISO==='function'?todayISO():''); let ch=false;
@@ -20743,10 +20780,10 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(!d._pd){ d._pd=1; d.addEventListener('pointerdown',e=>{ rowDrag(e); colDragStart(e); }); }
   if(!d._q){ d._q=1; d.addEventListener('input',e=>{ const i=e.target.closest('.pjd-q'); if(!i) return; FL.q=i.value; const p=i.selectionStart; dbRenderDocs(d); const n=d.querySelector('.pjd-q'); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(_){} } }); }
   d.innerHTML='<div class="pjd-in"><div class="pjd-head">'+modeSw()+'<h1>Documents du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' document'+(R.length>1?'s':'')+'</div>'
-   +(FL.metLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement · Métier :</em> '+esc(FL.metLockNom)+'</button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'</div>'):'')
+   +(FL.metLock?('<div class="pjd-bar"><button type="button" class="pjd-chip" style="pointer-events:none;"><em>Mode dimensionnement · Métier :</em> '+esc(FL.metLockNom)+' <span data-x="metlock" title="Retirer" style="pointer-events:auto;cursor:pointer;">✕</span></button>'+(FL.projLock?('<button type="button" class="pjd-chip" style="pointer-events:none;"><em>Projet :</em> '+esc(FL.projLock)+'</button>'):'')+'</div>'):'')
    +'<div class="pjd-bar">'+chips.map(c=>'<button type="button" class="pjd-chip" data-chip="'+c[0]+'"><em>'+c[1]+' :</em> '+esc(c[2])+' <span data-x="'+c[0]+'" title="Retirer">✕</span></button>').join('')
    +'<input type="search" class="pjd-q" placeholder="Rechercher dans les documents…" value="'+esc(FL.q||'')+'">'+'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-dact="add">+ Document</button><button type="button" class="pjd-lnk" data-dact="upd" title="Mettre à jour un document (coché, ou à choisir)">✎ Mettre à jour un document</button><button type="button" class="pjd-lnk" data-dact="props">Propriétés</button></div>'
-   +selBar()+'</div><div class="pjd-scroll"><table class="pjd-t" style="width:'+(cs.reduce((a,k)=>a+cw(k),0)+34+58)+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-dsort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+DCOLS[k]+(DSORT&&DSORT.k===k?(DSORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th></th></tr></thead><tbody>'
+   +selBar()+'</div><div class="pjd-scroll"><table class="pjd-t" style="width:100%;min-width:'+(cs.reduce((a,k)=>a+cw(k),0)+34+58)+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-dsort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+DCOLS[k]+(DSORT&&DSORT.k===k?(DSORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th></th></tr></thead><tbody>'
    +(R.length?R.map(r=>'<tr data-did="'+esc(r.id)+'"'+(SEL.has(r.id)||r._nf?' class="'+(SEL.has(r.id)?'sel ':'')+(r._nf?'nofile':'')+'"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+attr(k,r)+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un document en dessous">＋</span><span class="pjd-open" data-ddel="1" title="Supprimer">✕</span></td></tr>'+(EXP.has(r.id)?(r._subs||[]).map(u=>'<tr class="pjd-sub2"'+(u.id?' data-sub="'+esc(u.id)+'"':'')+'><td class="pjd-g"></td>'+cs.map(k=>'<td>'+(k==='nom'?'↳ '+esc(u.n||r.nom||''):k==='indice'?esc(u.i||''):k==='date'?esc(frDate(u.d)||''):k==='docType'?esc(r.docType||''):k==='niveau'?esc(r.niveau||''):k==='etat'?(u.st?esc(DET[visaK(u.st)]):''):k==='format'&&u.f?esc((/\.([A-Za-z0-9]+)$/.exec(u.f)||[])[1]||'').toUpperCase():'')+'</td>').join('')+'<td>'+(u.row?'<span class="pjd-open" data-dsubdel="'+esc(u.id)+'" title="Supprimer cet indice">✕</span>':'')+'</td></tr>').join(''):'')).join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun document. Dépose un fichier ou ajoute un document.</td></tr>')
    +'</tbody></table></div></div>';
  }
@@ -20837,7 +20874,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   if(e.target.closest('[data-seld]')){ const n=SEL.size; miniConfirm('Supprimer '+n+' ligne'+(n>1?'s':'')+' ?',()=>{ const ids=[...SEL]; const pl=DOCS().filter(x=>ids.includes(x.id)&&x.planning).length; state.ged=gedRows().filter(x=>!ids.includes(x.id)); const L=DOCS(); for(let i=L.length-1;i>=0;i--) if(ids.includes(L[i].id)&&!L[i].planning) L.splice(i,1); SEL.clear(); try{ persist(); }catch(_){} if(pl) toast('Le planning ne se supprime pas.'); dbRender(); }); return true; }
   if(e.target.closest('.pjd-g')) return gutterClick(e);
   const ra=e.target.closest('[data-rowadd]'); if(ra){ e.stopPropagation(); pjQuickAddDoc(ra.dataset.rowadd); return true; }
-  const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(FL[k]&&Array.isArray(FL[k])) FL[k]=[]; if(k==='chrono') FL.from=FL.to=''; after(); return true; }
+  const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='metlock'){ pjExitDimLock(); return true; } if(FL[k]&&Array.isArray(FL[k])) FL[k]=[]; if(k==='chrono') FL.from=FL.to=''; after(); return true; }
   const da=e.target.closest('[data-dact]'); if(da){ const k=da.dataset.dact;
    if(k==='drop') depChoice();
    else if(k==='add'){ DOCS().unshift({id:'D'+Date.now().toString(36),nom:'Nouveau document',docType:'',niveau:FL.niv[0]||'',emetteur:'',phase:'',periode:'',zone:'',discipline:'',type:'',numero:'',indice:'0',format:'',etat:'aemettre',date:(typeof todayISO==='function'?todayISO():''),fichier:'',taille:0,etapeNom:'E'+(nTaches()+1)}); try{ persist(); }catch(_){} dbRender(); const nd=DOCS()[0]; if(nd) openDocFiche(nd.id); }
@@ -21718,7 +21755,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v473';
+  const VER='v474';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
