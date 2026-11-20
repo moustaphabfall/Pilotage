@@ -19619,6 +19619,19 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcFormSep{border:0;border-top:1px dashed var(--line,rgba(255,255,255,.14));margin:16px 0}
 .pcFormNav{justify-content:center;margin-top:10px}
 .pcFormHint{text-align:center;margin-top:8px}
+.pcChat{margin-top:18px;padding-top:14px;border-top:1px solid var(--line,rgba(255,255,255,.14))}
+.pcChatH{font-size:13px;font-weight:600;color:var(--ink-soft,#999);margin:0 0 8px}
+.pcChatLog{max-height:38vh;overflow:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.pcChatEmpty{font-size:12.5px;color:var(--ink-soft,#999);margin:0 0 8px}
+.pcChatMsg{padding:7px 10px;border-radius:10px;font-size:13px;white-space:pre-wrap;max-width:90%}
+.pcChatMsg-user{align-self:flex-end;background:var(--blueprint,#2e6ea6);color:#fff}
+.pcChatMsg-bot{align-self:flex-start;background:var(--panel-2,var(--panel,#f4f1e8));border:1px solid var(--line,rgba(0,0,0,.1))}
+.pcChatMsg-err{align-self:flex-start;background:rgba(200,60,50,.12);border:1px solid rgba(200,60,50,.35);color:#c83c32}
+.pcChatRow{display:flex;gap:8px;align-items:flex-end}
+.pcChatIn{flex:1;min-width:0;resize:vertical;font-size:13.5px;padding:7px 9px;border-radius:8px;border:1px solid var(--line,rgba(0,0,0,.18));background:var(--input-bg,var(--panel,#fff));color:inherit}
+.pcChatBtns{display:flex;gap:6px}
+.pcChatMic.on{background:rgba(200,60,50,.15);border-color:#c83c32;color:#c83c32}
+.pcChatNote{font-size:11.5px;color:var(--ink-soft,#999);text-align:center;margin:8px 0 0}
 .pcChart{display:block;margin:6px 0}
 .pcCombo{float:right;display:inline-flex;gap:4px}
 .pcCombo button{font-size:11px;padding:3px 8px}
@@ -21905,7 +21918,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v498';
+  const VER='v499';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23847,7 +23860,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const wrap=document.createElement('div'); wrap.className='pjBeamRoot';
    const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
    beamRender(id);
-   if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>beamClick(e,id)); wrap.addEventListener('change',e=>beamChange(e,id)); }
+   if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>beamClick(e,id)); wrap.addEventListener('change',e=>beamChange(e,id)); wrap.addEventListener('keydown',e=>beamKeydown(e,id)); }
   }
   const _od_beam=window.openTaskDetail; if(typeof _od_beam==='function'){ window.openTaskDetail=function(id){ const r=_od_beam.apply(this,arguments); setTimeout(()=>{ try{ beamFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
 
@@ -23883,6 +23896,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
    const printN=e.target.closest('[data-pc-act="printNote"]'); if(printN){ try{ window.print(); }catch(_){ } return; }
    const okBtn=e.target.closest('[data-pc-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const chatSend=e.target.closest('[data-pc-chat-send]'); if(chatSend){ pcChatSend(id); return; }
+   const chatMic=e.target.closest('[data-pc-chat-mic]'); if(chatMic){ pcChatMic(id); return; }
    const mod=e.target.closest('[data-beam-mod]'); if(mod){ const m=beamModulesFlat()[+mod.dataset.beamMod]; if(!m) return;
     if(m[1]==='Poutre continue (RDM)'){ st.view='wizard'; st.step=pcData(taskById(id))._maxStep||1; beamRender(id); }
     else{ try{ clipToast('Module « '+m[1]+' » — à développer.'); }catch(_){ } }
@@ -23896,6 +23911,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    pcClick(e,id);
   }
   function beamChange(e,id){ pcChange(e,id); }
+  function beamKeydown(e,id){ if(e.target&&e.target.matches&&e.target.matches('[data-pc-chat-in]')&&e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); pcChatSend(id); } }
 
   /* -------------------- Moteur « Poutre continue » (méthode des rigidités, Euler-Bernoulli) --------------------
      Shape functions d'Hermite N1..N4 (DOF v,θ à chaque nœud) : matrice de raideur élémentaire classique ;
@@ -24153,7 +24169,64 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'</div>'
     +'<div class="pcPanel pcFormPanel">'+body+'</div>'
     +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pc-act="validerForm">✓ Valider</button></div>'
-    +'<p class="pcNote pcFormHint">Renseigner uniquement les données nécessaires au calcul (géométrie, matériau, appuis, chargement). « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+    +'<p class="pcNote pcFormHint">Renseigner uniquement les données nécessaires au calcul (géométrie, matériau, appuis, chargement). « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>'
+    +pcAiChatHtml(id);
+  }
+  /* ===== Chat IA de remplissage (Poutre continue) : appelle l'edge function Supabase
+     « dimensionnement-ia-poutre » (vrai modèle Claude côté serveur, réseau requis — exception
+     volontaire au fonctionnement hors-ligne de l'appli, pour cette fonction précise). Le chat ne
+     calcule rien : il ne fait que remplir dp à partir du texte/de la dictée, « Valider » puis
+     « 🤖 Dimensionner » restent les étapes qui enregistrent et qui lancent le calcul. */
+  function pcChatState(id){ window._pcChat=window._pcChat||{}; return window._pcChat[id]=window._pcChat[id]||{log:[],busy:false}; }
+  function pcChatLogHtml(cs){
+   if(!cs.log.length) return '<p class="pcChatEmpty">Décrire l\'ouvrage, au clavier ou au micro : « poutre de 2 travées de 6 et 5 m, section 25×50, béton C25/30, G=18 kN/m, Q=10 kN/m »…</p>';
+   return cs.log.map(h=>'<div class="pcChatMsg pcChatMsg-'+h.role+'">'+esc(h.text)+'</div>').join('');
+  }
+  function pcAiChatHtml(id){
+   const cs=pcChatState(id);
+   return '<div class="pcChat">'
+    +'<p class="pcChatH">🤖 Assistant IA — décrire l\'ouvrage (vocal ou texte), remplit la fiche ci-dessus</p>'
+    +'<div class="pcChatLog">'+pcChatLogHtml(cs)+'</div>'
+    +'<div class="pcChatRow"><textarea class="pcChatIn" data-pc-chat-in rows="2" placeholder="Ex. : poutre continue 2 travées de 6 m, section 25×50…"'+(cs.busy?' disabled':'')+'></textarea>'
+    +'<div class="pcChatBtns"><button type="button" class="ghost pcChatMic" data-pc-chat-mic title="Dicter (français)"'+(cs.busy?' disabled':'')+'>🎤</button><button type="button" class="primary" data-pc-chat-send'+(cs.busy?' disabled':'')+'>'+(cs.busy?'…':'Envoyer')+'</button></div></div>'
+    +'<p class="pcChatNote">Appel à un modèle IA externe (connexion réseau requise) — vérifier les données avant « 🤖 Dimensionner ».</p>'
+    +'</div>';
+  }
+  async function pcChatSend(id){
+   const t=taskById(id); if(!t) return; const dp=pcData(t);
+   const root=document.getElementById('modalBody'); const ta=root&&root.querySelector('[data-pc-chat-in]'); if(!ta) return;
+   const msg=(ta.value||'').trim(); if(!msg) return;
+   const cs=pcChatState(id); if(cs.busy) return;
+   cs.log.push({role:'user',text:msg}); cs.busy=true; beamRender(id);
+   try{
+    const current={nom:dp.nom,travees:dp.travees,b_cm:dp.b_cm,h_cm:dp.h_cm,classeGlobale:dp.classeGlobale,termeGlobal:dp.termeGlobal,classeAcier:dp.classeAcier,enrobage_cm:dp.enrobage_cm,appuis:dp.appuis,charges:dp.charges,convoiActif:dp.convoiActif,convoi:dp.convoi,zone:dp.zone,sens:dp.sens};
+    const resp=await fetch(SUPABASE_URL+'/functions/v1/dimensionnement-ia-poutre',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({message:msg,current:current})});
+    const j=await resp.json().catch(()=>null);
+    if(!resp.ok||!j||j.error||!j.data) throw new Error((j&&j.error)||('Erreur réseau ('+resp.status+')'));
+    const d=j.data;
+    ['nom','travees','b_cm','h_cm','classeGlobale','termeGlobal','classeAcier','enrobage_cm','appuis','charges','convoiActif','convoi','zone','sens'].forEach(k=>{ if(d[k]!==undefined) dp[k]=d[k]; });
+    if(dp.nom) t.nom=dp.nom;
+    try{ pcSyncAppuis(dp); }catch(_){}
+    let txt=d.resume||'Fiche mise à jour.';
+    if(Array.isArray(d.manquant)&&d.manquant.length) txt+=' Encore à préciser : '+d.manquant.join(', ')+'.';
+    cs.log.push({role:'bot',text:txt});
+    try{ persist(); }catch(_){}
+   }catch(e){
+    cs.log.push({role:'err',text:'⚠ '+(e&&e.message||String(e))});
+   } finally {
+    cs.busy=false; beamRender(id);
+   }
+  }
+  function pcChatMic(id){
+   const root=document.getElementById('modalBody'); const ta=root&&root.querySelector('[data-pc-chat-in]'); const b=root&&root.querySelector('[data-pc-chat-mic]'); if(!ta||!b) return;
+   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+   if(!SR){ try{ clipToast('Dictée intégrée non disponible sur ce navigateur. Utilisez la dictée du clavier : touche 🎤 du clavier (iPhone / Android), Windows + H (PC) ou Fn deux fois (Mac).'); }catch(_){ } return; }
+   if(window._pcChatRec){ try{ window._pcChatRec.stop(); }catch(_){ } return; }
+   const r=new SR(); r.lang='fr-FR'; r.interimResults=true; r.continuous=false; window._pcChatRec=r; b.classList.add('on');
+   r.onresult=e=>{ let txt=''; for(let i=0;i<e.results.length;i++) txt+=e.results[i][0].transcript; ta.value=txt; };
+   r.onerror=e=>{ const c=e&&e.error; try{ clipToast((c==='not-allowed'||c==='service-not-allowed')?'Micro bloqué dans cet artefact par le navigateur. Utilisez la dictée du clavier.':c==='no-speech'?'Aucune voix détectée.':c==='audio-capture'?'Aucun micro détecté.':'Dictée indisponible ('+(c||'erreur')+').'); }catch(_){ } };
+   r.onend=()=>{ window._pcChatRec=null; try{ b.classList.remove('on'); }catch(_){ } const v=(ta.value||'').trim(); if(v) pcChatSend(id); };
+   try{ r.start(); }catch(e){ window._pcChatRec=null; try{ b.classList.remove('on'); }catch(_){ } }
   }
   const PC_CHG_COL=['#4C8FD6','#E8A33D','#8E6FD6','#3DAE8B','#D9574A','#C9A227','#6B9BD1','#B06FD6'];
   function pcChgExtent(spans,pos,ch){
