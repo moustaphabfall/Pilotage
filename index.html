@@ -25978,50 +25978,59 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return Object.assign({mat},fn(dp,mat,P1));
   }
   function puSvg(dp){
-   /* Cadrage (viewBox) ajusté au contenu réellement dessiné, pas un canevas fixe surdimensionné ;
-      taille minimale visible imposée au pieu (RMIN), quelle que soit l'échelle réelle — voir skill
-      dimensionnement-modules-design, §1 « Cadrage du schéma » / « Taille minimale visible ».
-      Cotes (a, b, F, a') et charges (G, Q) entrelacées directement sur le schéma (foreignObject),
-      comme pour Poutre continue — on ne les ressaisit pas dans une liste de champs séparée. */
+   /* Vue en plan de la tête de pieux, cotée selon le skill « schemas-cotes-dimensionnement » :
+      cotes normalisées (window.dimCote) — a et F en bas (deux rangées), b à droite, a' à gauche
+      (plusieurs pieux) —, charges G et Q nommées au-dessus, aucun texte sur une cote, titre sous
+      le cadre (pcSchemaCap). Taille minimale visible du pieu (RMIN) quelle que soit l'échelle. */
    const cfg=dp.config||'simple';
-   const RMIN=22; /* rayon minimum du pieu à l'écran, en unités svg */
+   const RMIN=26, CIBLE=170; /* rayon mini du pieu ; emprise visée de l'objet, en unités svg */
    const a=+dp.a_cm||40,b=+dp.b_cm||40;
    const F=+dp.F_cm||50, aPrime0=+dp.aPrime_cm||Math.max(2.5*F,F);
-   const sk=Math.max(RMIN/(F/2||1),0.35);
-   const pw=a*sk, ph=b*sk, r=RMIN, aPrime=aPrime0*sk;
+   const ext=(cfg==='simple'?Math.max(a,b,F):Math.max(a,b,aPrime0+F));
+   const sk=Math.max(CIBLE/(ext||1),RMIN/(F/2||1));
+   const pw=a*sk, ph=b*sk, r=(F/2)*sk, aPrime=aPrime0*sk;
    let pts=[];
    if(cfg==='simple') pts=[[0,0]];
    else if(cfg==='double') pts=[[0,-aPrime/2],[0,aPrime/2]];
    else if(cfg==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; pts.push([R*Math.cos(ang),R*Math.sin(ang)]); } }
    else pts=[[-aPrime/2,-aPrime/2],[aPrime/2,-aPrime/2],[-aPrime/2,aPrime/2],[aPrime/2,aPrime/2]];
-   const MARGE=20, TXT=24, HAUT=88, DROITE=74, GAUCHE=(cfg!=='simple'?74:MARGE);
-   let minX=-pw/2,maxX=pw/2,minY=-ph/2,maxY=ph/2;
-   pts.forEach(([x,y])=>{ minX=Math.min(minX,x-r); maxX=Math.max(maxX,x+r); minY=Math.min(minY,y-r); maxY=Math.max(maxY,y+r); });
-   minX-=GAUCHE; maxX+=DROITE; minY-=HAUT; maxY+=(MARGE+TXT);
-   const Wb=maxX-minX, Hb=maxY-minY;
-   let piles=''; pts.forEach(([x,y])=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.5" stroke="var(--rust,#c0392b)" stroke-width="2"/>'; });
-   const fo=(x,y,w,h,inner)=>'<foreignObject x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'">'+inner+'</foreignObject>';
-   const cote=(id,val,unit,title)=>'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">'+(id==='aPrime_cm'?'a\'':id==='F_cm'?'F':id)[0]+'=<input type="number" step="1" min="1" class="pcDimIn" style="width:'+pcChW(val,2)+'" data-pu="'+id+'" value="'+(val==null?'':val)+'" title="'+esc(title)+'"><i class="pcUnit">'+unit+'</i></div>';
-   /* cote « a » (sous le poteau) */
-   let html=fo(-40,ph/2+8,80,30,cote('a_cm',a,'cm','Côté a du poteau'));
-   /* cote « b » (à droite du poteau) */
-   html+=fo(pw/2+6,-15,70,30,cote('b_cm',b,'cm','Côté b du poteau'));
-   /* cote « F » (près du premier pieu) */
-   const p0=pts[0];
-   html+=fo(p0[0]+r+4,p0[1]-15,70,30,cote('F_cm',F,'cm','Diamètre des pieux'));
-   /* cote « a' » (entraxe, à gauche de la colonne de pieux) si plus d'un pieu */
-   if(cfg!=='simple') html+=fo(minX+4,-15,66,30,cote('aPrime_cm',dp.aPrime_cm||'',"cm",'Entraxe des pieux a\' (mini 2,5×F, vide = suggestion)'));
-   /* charge : flèche au-dessus du poteau + G et Q entrelacés dessus */
-   const axY=-ph/2;
-   html+='<line x1="0" y1="'+(axY-54)+'" x2="0" y2="'+axY+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/><path d="M-7 '+(axY-9)+' L0 '+axY+' L7 '+(axY-9)+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>';
-   html+=fo(-54,axY-78,52,26,'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">G=<input type="number" step="1" class="pcDimIn" style="width:'+pcChW(dp.G_kN,2)+'" data-pu="G_kN" value="'+(dp.G_kN??'')+'" title="Charges permanentes G"><i class="pcUnit">kN</i></div>');
-   html+=fo(4,axY-78,52,26,'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">Q=<input type="number" step="1" class="pcDimIn" style="width:'+pcChW(dp.Q_kN,2)+'" data-pu="Q_kN" value="'+(dp.Q_kN??'')+'" title="Charges d\'exploitation Q"><i class="pcUnit">kN</i></div>');
-   return '<svg viewBox="'+minX+' '+minY+' '+Wb+' '+Hb+'" width="100%" height="190" class="pcSvg" role="img" aria-label="Tête de pieux">'
+   /* emprise de l'objet (poteau + pieux) */
+   let oX0=-pw/2,oX1=pw/2,oY0=-ph/2,oY1=ph/2;
+   pts.forEach(([x,y])=>{ oX0=Math.min(oX0,x-r); oX1=Math.max(oX1,x+r); oY0=Math.min(oY0,y-r); oY1=Math.max(oY1,y+r); });
+   const DC=window.dimCote; const parts=[]; const boxes=[];
+   const add=c=>{ parts.push(c.svg); boxes.push(c.box); };
+   const bot=[...pts].sort((p,q)=>q[1]-p[1])[0];
+   /* rangée 1 en bas : côté a du poteau ; rangée 2 : diamètre F d'un pieu */
+   add(DC({dir:'h',a:[-pw/2,ph/2],b:[pw/2,ph/2],off:(oY1-ph/2)+22,key:'pu-a',label:'a',val:dp.a_cm??a,unit:'cm',attr:'data-pu="a_cm"',title:'Côté a du poteau'}));
+   add(DC({dir:'h',a:[bot[0]-r,bot[1]+r],b:[bot[0]+r,bot[1]+r],off:(oY1-(bot[1]+r))+22+36,key:'pu-F',label:'Ø',val:dp.F_cm??F,unit:'cm',attr:'data-pu="F_cm"',title:'Diamètre des pieux F'}));
+   /* à droite : côté b du poteau */
+   add(DC({dir:'v',a:[pw/2,-ph/2],b:[pw/2,ph/2],off:(oX1-pw/2)+22,key:'pu-b',label:'b',val:dp.b_cm??b,unit:'cm',attr:'data-pu="b_cm"',title:'Côté b du poteau'}));
+   /* à gauche : entraxe a' (plusieurs pieux) */
+   if(cfg!=='simple'){
+    const p1=(cfg==='double')?pts[0]:(cfg==='triple'?pts[1]:pts[0]), p2=(cfg==='double')?pts[1]:(cfg==='triple'?pts[2]:pts[2]);
+    if(cfg==='triple') add(DC({dir:'h',a:[p2[0],p2[1]],b:[p1[0],p1[1]],off:(oY1-p1[1])+22+72,key:'pu-ap',label:"a'",val:dp.aPrime_cm??'',unit:'cm',attr:'data-pu="aPrime_cm" placeholder="'+Math.round(aPrime0)+'"',title:"Entraxe des pieux a' (mini 2,5 × F, vide = valeur suggérée)"}));
+    else add(DC({dir:'v',a:[p1[0],p1[1]],b:[p2[0],p2[1]],off:-((p1[0]-oX0)+22),key:'pu-ap',label:"a'",val:dp.aPrime_cm??'',unit:'cm',attr:'data-pu="aPrime_cm" placeholder="'+Math.round(aPrime0)+'"',title:"Entraxe des pieux a' (mini 2,5 × F, vide = valeur suggérée)"}));
+   }
+   /* charge : flèche jusqu'au bord supérieur de l'objet, G et Q nommés au-dessus */
+   const yT=oY0, yA=yT-46;
+   const arrow='<line x1="0" y1="'+yA+'" x2="0" y2="'+yT+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/><path d="M-7 '+(yT-9)+' L0 '+yT+' L7 '+(yT-9)+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>';
+   const ld=(key,lab,val,title)=>'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">'+lab+' =</span><input type="number" step="1" class="pcDimIn" style="width:'+pcChW(val,3)+'" data-pu="'+key+'" value="'+(val??'')+'" title="'+title+'" aria-label="'+title+'"><i class="pcUnit">kN</i></div>';
+   const lw=Math.round(30+9+(+pcChW(dp.G_kN,3).replace('ch',''))*8.5+16+18), lw2=Math.round(30+9+(+pcChW(dp.Q_kN,3).replace('ch',''))*8.5+16+18);
+   const yL=yA-34;
+   parts.push('<foreignObject x="'+(-lw-6)+'" y="'+yL+'" width="'+lw+'" height="28">'+ld('G_kN','G',dp.G_kN,'Charges permanentes G')+'</foreignObject>');
+   parts.push('<foreignObject x="6" y="'+yL+'" width="'+lw2+'" height="28">'+ld('Q_kN','Q',dp.Q_kN,"Charges d'exploitation Q")+'</foreignObject>');
+   boxes.push({x:-lw-6,y:yL,w:lw,h:28},{x:6,y:yL,w:lw2,h:28});
+   const yP=yL-10;
+   /* cadrage ajusté au contenu, marge de 24 */
+   let X0=oX0,X1=oX1,Y0=yP-16,Y1=oY1;
+   boxes.forEach(q=>{ X0=Math.min(X0,q.x); X1=Math.max(X1,q.x+q.w); Y0=Math.min(Y0,q.y); Y1=Math.max(Y1,q.y+q.h); });
+   X0-=24; X1+=24; Y0-=12; Y1+=16;
+   let piles=''; pts.forEach(([x,y])=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="none" stroke="var(--rust,#c0392b)" stroke-width="2"/>'; });
+   return '<svg viewBox="'+X0+' '+Y0+' '+(X1-X0)+' '+(Y1-Y0)+'" width="100%" height="300" class="pcSvg" role="img" aria-label="Tête de pieux, vue en plan">'
     +piles
     +'<rect x="'+(-pw/2)+'" y="'+(-ph/2)+'" width="'+pw+'" height="'+ph+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>'
-    +html
-    +'<text x="0" y="'+(minY+14)+'" font-size="11.5" text-anchor="middle" fill="var(--ink-soft,#999)">P1=G+1,2Q='+esc((puP1_t(dp)).toFixed(1))+' t</text>'
-    +'<text x="0" y="'+(maxY-8)+'" font-size="12" text-anchor="middle" fill="var(--ink-soft,#999)">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[cfg]+'</text>'
+    +arrow+parts.join('')
+    +'<text x="0" y="'+yP+'" font-size="13" text-anchor="middle" fill="var(--ink-soft,#999)">P1 = G + 1,2 Q = '+esc((puP1_t(dp)).toFixed(1))+' t</text>'
     +'</svg>';
   }
   function puStepHtml(n,dp,t){
@@ -26050,6 +26059,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<div class="pcModHead"><span class="pcModIco">⚓</span><span class="pcModName">Tête de pieux (CCBA68)</span></div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pu="nom" value="'+esc(dp.nom||t.nom||'Pieu')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+puSvg(dp)+'</div>'
+    +'<p class="pcSchemaCap">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[dp.config||'simple']+' · vue en plan</p>'
     +'</div>'
     +'<div class="pcPanel pcFormPanel">'+body+'</div>'
     +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pu-act="validerForm">✓ Valider</button></div>'
@@ -27844,4 +27854,92 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   })();
 })();
 </script>
+<script id="dimCoteJs">(function(){
+/* ===================== Cotation commune des schémas de dimensionnement =====================
+   Skill « schemas-cotes-dimensionnement » : appliqué à TOUS les schémas de dimensionnement,
+   actuels et futurs (Poutres, Poteaux, Dalles, Semelles, Pieux…).
+   1) window.dimCote(o) : cote normalisée (lignes d'attache, ligne de cote à tirets obliques,
+      champ « nom = valeur unité » posé sur la cote). À utiliser pour toute nouvelle cote.
+   2) Passe automatique sur chaque schéma (.pcDraw svg) après affichage : élargit les champs
+      coupés, écarte les étiquettes qui se chevauchent (écart ≥ 8 px), recadre si besoin.
+   3) Lien champ ↔ cote : survol / saisie d'un champ → sa cote passe en jaune (CSS :focus-within). */
+function E(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function chW(v,min){ const s=(v===null||v===undefined||v==='')?'':String(v); return Math.max(min||2,s.length+1.5); }
+/* o = { dir:'h'|'v', a:[x,y], b:[x,y] (extrémités mesurées sur l'objet), off: distance objet→ligne
+   (signée : + vers le bas / la droite), key, label, val, unit, attr (attribut data-* du champ),
+   title, place:'on'|'side' (champ sur la ligne, ou à côté pour une cote verticale) } */
+window.dimCote=function(o){
+ const off=o.off||22, t=4, k=E(o.key||o.label||'');
+ const fw=Math.round(30+String(o.label||'').length*9+chW(o.val,3)*8.5+String(o.unit||'').length*8+18), fh=28;
+ let g='<g class="dimCote" data-dim-key="'+k+'">';
+ const L=(x1,y1,x2,y2,cls)=>'<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"'+(cls?' class="'+cls+'"':'')+'/>';
+ let fx,fy;
+ if(o.dir==='v'){
+  const xr=Math.max(o.a[0],o.b[0]), x=(off>=0?xr+off:Math.min(o.a[0],o.b[0])+off), s=off>=0?1:-1;
+  g+=L(o.a[0]+3*s,o.a[1],x+4*s,o.a[1],'dimAtt')+L(o.b[0]+3*s,o.b[1],x+4*s,o.b[1],'dimAtt')+L(x,o.a[1],x,o.b[1],'dimLn')
+   +L(x-t,o.a[1]+t,x+t,o.a[1]-t,'dimTk')+L(x-t,o.b[1]+t,x+t,o.b[1]-t,'dimTk');
+  const ym=(o.a[1]+o.b[1])/2; fy=ym-fh/2;
+  fx=(o.place==='on')?x-fw/2:(s>0?x+6:x-6-fw);
+ } else {
+  const yr=Math.max(o.a[1],o.b[1]), y=(off>=0?yr+off:Math.min(o.a[1],o.b[1])+off), s=off>=0?1:-1;
+  g+=L(o.a[0],o.a[1]+3*s,o.a[0],y+4*s,'dimAtt')+L(o.b[0],o.b[1]+3*s,o.b[0],y+4*s,'dimAtt')+L(o.a[0],y,o.b[0],y,'dimLn')
+   +L(o.a[0]-t,y+t,o.a[0]+t,y-t,'dimTk')+L(o.b[0]-t,y+t,o.b[0]+t,y-t,'dimTk');
+  const span=Math.abs(o.b[0]-o.a[0]);
+  /* cote plus courte que son champ : valeur sortie à droite de la cote, sur la même ligne */
+  fx=(span<fw+8)?Math.max(o.a[0],o.b[0])+8:(o.a[0]+o.b[0])/2-fw/2; fy=y-fh/2;
+ }
+ g+='<foreignObject class="dimFo" x="'+Math.round(fx)+'" y="'+Math.round(fy)+'" width="'+fw+'" height="'+fh+'"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl">'
+  +'<span class="dimNm">'+E(o.label)+' =</span><input type="number" step="any" class="pcDimIn" style="width:'+chW(o.val,2)+'ch" '+(o.attr||'')+' value="'+E(o.val)+'" title="'+E(o.title||o.label)+'" aria-label="'+E(o.title||o.label)+'"><i class="pcUnit">'+E(o.unit||'')+'</i></div></foreignObject>';
+ return {svg:g+'</g>', box:{x:fx,y:fy,w:fw,h:fh}};
+};
+/* ---- passe automatique : champs coupés, chevauchements, recadrage ---- */
+function boxOf(el){
+ if(el.tagName.toLowerCase()==='foreignobject'){ return {x:+el.getAttribute('x')||0,y:+el.getAttribute('y')||0,w:+el.getAttribute('width')||0,h:+el.getAttribute('height')||0}; }
+ try{ const b=el.getBBox(); return {x:b.x,y:b.y,w:b.width,h:b.height}; }catch(_){ return null; }
+}
+function hit(a,b,g){ return a.x<b.x+b.w+g && b.x<a.x+a.w+g && a.y<b.y+b.h+g && b.y<a.y+a.h+g; }
+function moveY(el,dy){
+ if(el.tagName.toLowerCase()==='foreignobject'){ el.setAttribute('y',(+el.getAttribute('y')||0)+dy); return; }
+ const y=el.getAttribute('y'); if(y!=null){ el.setAttribute('y',(+y)+dy); } else { el.setAttribute('transform',((el.getAttribute('transform')||'')+' translate(0,'+dy+')').trim()); }
+}
+window.dimPolish=function(svg){
+ if(!svg||svg.dataset.dimDone) return; svg.dataset.dimDone='1';
+ const vb=(svg.getAttribute('viewBox')||'').split(/[\s,]+/).map(Number); if(vb.length!==4||!vb[2]) return;
+ let sc=1; try{ const r=svg.getBoundingClientRect(); if(r.width) sc=Math.min(r.width/vb[2], (r.height||r.width)/vb[3])||1; }catch(_){ }
+ const gap=8/sc;
+ /* 1) champs coupés : on élargit le foreignObject autour de son centre */
+ svg.querySelectorAll('foreignObject').forEach(fo=>{ const el=fo.firstElementChild; if(!el) return;
+  const w=+fo.getAttribute('width')||0, need=el.scrollWidth+4; if(need>w+1){ fo.setAttribute('x',(+fo.getAttribute('x')||0)-(need-w)/2); fo.setAttribute('width',need); }
+  const h=+fo.getAttribute('height')||0, needH=el.scrollHeight; if(needH>h+1) fo.setAttribute('height',needH);
+ });
+ /* 2) chevauchements : priorité aux champs (ordre du dessin), puis aux textes */
+ const fos=[...svg.querySelectorAll('foreignObject')], txts=[...svg.querySelectorAll('text')].filter(t=>(t.textContent||'').trim());
+ const cy=vb[1]+vb[3]/2, placed=[];
+ [...fos,...txts].forEach(el=>{ let b=boxOf(el); if(!b||!b.w) return; let n=0;
+  while(n<14){ const o=placed.find(p=>hit(b,p,gap)); if(!o) break;
+   const down=(b.y+b.h/2)>=cy; const dy=down?(o.y+o.h+gap-b.y):(o.y-gap-(b.y+b.h)); moveY(el,dy); b={x:b.x,y:b.y+dy,w:b.w,h:b.h}; n++; }
+  placed.push(b);
+ });
+ /* 3) recadrage : tout reste dans le cadre */
+ let x0=vb[0],y0=vb[1],x1=vb[0]+vb[2],y1=vb[1]+vb[3];
+ placed.forEach(b=>{ x0=Math.min(x0,b.x-4); y0=Math.min(y0,b.y-4); x1=Math.max(x1,b.x+b.w+4); y1=Math.max(y1,b.y+b.h+4); });
+ if(x0<vb[0]||y0<vb[1]||x1>vb[0]+vb[2]||y1>vb[1]+vb[3]) svg.setAttribute('viewBox',x0+' '+y0+' '+(x1-x0)+' '+(y1-y0));
+};
+let raf=0;
+function scan(){ raf=0; document.querySelectorAll('.pcDraw svg:not([data-dim-done])').forEach(s=>{ if(s.closest('.pcDraw')&&s.getBoundingClientRect().width){ try{ window.dimPolish(s); }catch(e){ console.error(e); } } }); }
+try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
+const st=document.createElement('style'); st.id='dimCoteCss';
+st.textContent='.dimCote line{stroke:var(--ink-soft,#8a8a8a);stroke-width:1;fill:none}'
+ +'.dimCote .dimTk{stroke-width:1.3}'
+ +'.dimCote:hover line,.dimCote:focus-within line{stroke:#FFC400;stroke-width:1.6}'
+ +':root[data-theme="blanc"] .dimCote:hover line,:root[data-theme="blanc"] .dimCote:focus-within line{stroke:#D9930A}'
+ +'.dimCote:hover .pcDimIn{border-bottom-color:#FFC400}'
+ +'.dimLbl{background:var(--panel,#fff);border-radius:6px;padding:0 4px;white-space:nowrap;font-size:13px}'
+ +':root[data-theme="sombre"] .dimLbl{background:#0d0d0d}'
+ +'.dimNm{white-space:nowrap}'
+ +'.pcSchemaCap{text-align:center;font-size:12px;color:var(--ink-soft,#777);margin:4px 0 0}'
+ +'.pcDimWrap{white-space:nowrap}';
+document.head.appendChild(st);
+})();</script>
+
 </body></html>
