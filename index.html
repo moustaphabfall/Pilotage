@@ -21926,7 +21926,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v504';
+  const VER='v505';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -25459,6 +25459,363 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    try{ persist(); }catch(_){ }
    if(okN||errN||incomplets.length){
     const msg=okN+' dalle'+(okN>1?'s':'')+' dimensionnée'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
+    try{ clipToast(msg); }catch(_){ }
+    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
+    else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
+   }
+   return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
+  };
+
+  /* --- Semelles & fondations superficielles (type 04) --------------------------------------------
+     Même architecture que les modules précédents. Méthode des bielles BAEL91 révisé 99 / CBA93,
+     validée sur le classeur « Dimensionnement semelle de fondation isolée+filante.xlsx » (onglets
+     Isolée et Continue — cas tests reproduits à l'identique). La contrainte admissible du sol est
+     une donnée d'entrée (étude géotechnique), pas calculée ici — voir skill
+     dimensionnement-04-semelles pour les limites (portance pressiométrique, excentricité biaxiale,
+     semelles sur pieux non reprises). */
+  const SEMELLE_TYPE_NOM='Semelles & fondations superficielles';
+  const SM_BARDIAMS=[8,10,12,14,16,20]; // mm
+  const SM_SPACINGS=[100,125,150,175,200,250]; // mm
+  function smChooseBars(AsReq_mm2perm,sMax_mm){
+   let best=null;
+   for(const phi of SM_BARDIAMS){
+    const a=Math.PI/4*phi*phi;
+    for(const s of SM_SPACINGS){
+     if(s>sMax_mm) continue;
+     const As=a*(1000/s);
+     if(As>=AsReq_mm2perm){ if(!best||As<best.As) best={phi,s,As}; }
+    }
+   }
+   if(!best){ const phi=20,s=100; best={phi,s,As:(Math.PI/4*phi*phi)*(1000/s)}; }
+   return best;
+  }
+  /* Semelle isolée : barres réparties sur la largeur totale (pas par ml), avec un espacement
+     constructif maximal de 25 cm. */
+  function smChooseBarsTotal(AsReq_cm2,largeur_m){
+   const AsReq_mm2=Math.max(0,AsReq_cm2)*100;
+   const nMinEsp=Math.max(4,Math.ceil((largeur_m*1000)/250));
+   let best=null;
+   for(const phi of SM_BARDIAMS){
+    const a=Math.PI/4*phi*phi;
+    const n=Math.max(nMinEsp,Math.ceil(AsReq_mm2/a));
+    const As=n*a;
+    if(!best||As<best.As) best={phi,n,As};
+   }
+   return best;
+  }
+  function smDefaultData(t){
+   return { nom:t.nom||'', sens:'isolee',
+    a_cm:30, b_cm:30, // poteau (isolée) ; b_cm seul utilisé comme largeur du mur en filante
+    classeGlobale:'C25/30', classeAcier:'B500', fissuration:'FP',
+    qsol_MPa:0.15, G_kN:200, Q_kN:100, excentrique:false, Mser_kNm:0,
+    resultats:null };
+  }
+  function smData(t){ if(!t.dimSM) t.dimSM=smDefaultData(t); return t.dimSM; }
+  /* Contrainte admissible de traction de l'acier (BAEL91, fissuration préjudiciable/très
+     préjudiciable), η=1,6 pour les aciers HA — validée sur les deux onglets du classeur. */
+  function smSigmaSt(fissuration,Ft28,Fe){
+   const FP=Math.min((2/3)*Fe,Math.max(0.5*Fe,110*Math.sqrt(1.6*Ft28)));
+   return fissuration==='FTP'?0.8*FP:FP;
+  }
+  function smRoundUp(v,pas){ return Math.ceil(v/pas)*pas; }
+  function smComputeIsolee(dp,mat){
+   const a=Math.min(+dp.a_cm||30,+dp.b_cm||30)/100, b=Math.max(+dp.a_cm||30,+dp.b_cm||30)/100; // a=petit côté, b=grand côté
+   const qsol=+dp.qsol_MPa||0.15;
+   const Nser=((+dp.G_kN||0)+(+dp.Q_kN||0))/1000, Nu=(1.35*(+dp.G_kN||0)+1.5*(+dp.Q_kN||0))/1000; // MN
+   const S1=qsol>1e-9?Nu/qsol:0;
+   const A1=Math.sqrt(S1*a/b), B1=Math.sqrt(S1*b/a);
+   const A=smRoundUp(Math.max(A1,a+0.1),0.05), B=smRoundUp(Math.max(B1,b+0.1),0.05);
+   const debordA=(A-a)/2, debordB=(B-b)/2, debordMax=Math.max(debordA,debordB);
+   const HtMin=debordMax>=0.15?((B-b)/4+0.05):(2*debordMax+0.05);
+   const Ht=Math.max(0.20,smRoundUp(HtMin,0.05));
+   const d=Ht-0.05;
+   const S=A*B, Pp=A*B*Ht*0.025, N=Nu+Pp, qp=S>1e-9?N/S:0, ok=qp<=qsol;
+   let exc=null;
+   if(dp.excentrique){
+    const e=Nser>1e-9?((+dp.Mser_kNm||0)/1000)/Nser:0;
+    const qmax=(N/S)*(1+6*e/B);
+    exc={e,qmax,ok:qmax<=1.33*qsol};
+   }
+   const sst=smSigmaSt(dp.fissuration,mat.Ft28,mat.Fe);
+   const Ax_cm2=(Nser/8)*(B-b)/(d*sst)*1e4; // nappe inférieure, // b
+   const Ay_cm2=(Nser/8)*(A-a)/(d*sst)*1e4; // nappe supérieure, // a
+   const barX=smChooseBarsTotal(Ax_cm2,B), barY=smChooseBarsTotal(Ay_cm2,A);
+   return {a,b,A,B,debordA,debordB,HtMin,Ht,d,S,Pp,N,qp,qsol,ok,exc,Nser,Nu,sst,
+    Ax_cm2,Ay_cm2,barX,barY};
+  }
+  function smComputeFilante(dp,mat){
+   const b=(+dp.b_cm||20)/100; // largeur du mur
+   const qsol=+dp.qsol_MPa||0.15;
+   const Nser=(+dp.G_kN||0+0)/1000, Nser2=((+dp.G_kN||0)+(+dp.Q_kN||0))/1000, Nu=(1.35*(+dp.G_kN||0)+1.5*(+dp.Q_kN||0))/1000; // MN/ml
+   const S1=qsol>1e-9?Nu/qsol:0, B1=S1; // par ml, B1=S1
+   const B=smRoundUp(Math.max(B1,b+0.1),0.05);
+   const petite=((B-b)/2)<0.15;
+   const HtMin=petite?(2*((B-b)/2+0.05)):((B-b)/4+0.05);
+   const Ht=Math.max(0.20,smRoundUp(HtMin,0.05));
+   const d=Ht-0.05;
+   const S=B*1, Pp=B*1*Ht*0.025, N=Nu+Pp, qp=S>1e-9?N/S:0, ok=qp<=qsol;
+   const sst=smSigmaSt(dp.fissuration,mat.Ft28,mat.Fe);
+   const chainageMin_cm2=Math.max(1.6*B,1.6); // B500 uniquement dans cette appli
+   let Ay_cm2=0, Ax_cm2=chainageMin_cm2;
+   if(!petite){ Ay_cm2=(Nser2/8)*(B-b)/(d*sst)*1e4; Ax_cm2=Math.max(Ay_cm2/4,chainageMin_cm2); }
+   const sMax_mm=250;
+   const barAy=petite?null:smChooseBars(Ay_cm2*100,sMax_mm);
+   const barAx=smChooseBars(Ax_cm2*100,sMax_mm);
+   return {b,B,petite,HtMin,Ht,d,S,Pp,N,qp,qsol,ok,Nser:Nser2,Nu,sst,chainageMin_cm2,
+    Ay_cm2,Ax_cm2,barAy,barAx};
+  }
+  function smCompute(t){
+   const dp=smData(t);
+   const fck=pcFck(dp.classeGlobale), Fc28=fck, Fe=PC_FYK[dp.classeAcier]||500;
+   const Ft28=0.6+0.06*Fc28;
+   const mat={fck,Fc28,Fe,Ft28};
+   const isolee=dp.sens!=='filante';
+   const r = isolee? smComputeIsolee(dp,mat) : smComputeFilante(dp,mat);
+   return Object.assign({isolee,mat},r);
+  }
+  function smSvg(dp){
+   const W=240,H=160; const isolee=dp.sens!=='filante';
+   if(isolee){
+    const a=+dp.a_cm||30,b=+dp.b_cm||30; const sk=Math.min(90/Math.max(a,b),90/Math.max(a,b));
+    const cx=W/2,cy=H/2-10; const pw=Math.min(a,b)*sk, ph=Math.max(a,b)*sk;
+    const fw=pw+48, fh=ph+48;
+    return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="140" class="pcSvg" role="img" aria-label="Semelle isolée">'
+     +'<rect x="'+(cx-fw/2)+'" y="'+(cy-fh/2)+'" width="'+fw+'" height="'+fh+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.3" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.3"/>'
+     +'<rect x="'+(cx-pw/2)+'" y="'+(cy-ph/2)+'" width="'+pw+'" height="'+ph+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.8"/>'
+     +'<line x1="'+cx+'" y1="'+(cy-fh/2-14)+'" x2="'+cx+'" y2="'+(cy-fh/2)+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="2" marker-end="url(#smArr)"/>'
+     +'<text x="'+cx+'" y="'+(cy-fh/2-18)+'" font-size="10" text-anchor="middle" fill="var(--blueprint,#2e6ea6)">N='+esc(((+dp.G_kN||0)+(+dp.Q_kN||0)))+' kN</text>'
+     +'<text x="'+cx+'" y="'+(cy+fh/2+16)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">Semelle isolée</text>'
+     +'<defs><marker id="smArr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--blueprint,#2e6ea6)"/></marker></defs>'
+     +'</svg>';
+   }
+   const b=+dp.b_cm||20; const fw=180, fh=28, mw=Math.max(10,b*0.8);
+   const x0=(W-fw)/2, y0=H/2-10;
+   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="140" class="pcSvg" role="img" aria-label="Semelle filante">'
+    +'<rect x="'+x0+'" y="'+y0+'" width="'+fw+'" height="'+fh+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.3" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.3"/>'
+    +'<rect x="'+(x0+fw/2-mw/2)+'" y="'+(y0-30)+'" width="'+mw+'" height="30" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.8"/>'
+    +'<text x="'+(x0+fw/2)+'" y="'+(y0-36)+'" font-size="10" text-anchor="middle" fill="var(--blueprint,#2e6ea6)">mur, b='+esc(b)+' cm</text>'
+    +'<text x="'+(x0+fw/2)+'" y="'+(y0+fh+16)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">Semelle filante (coupe)</text>'
+    +'</svg>';
+  }
+  function smStepHtml(n,dp,t){
+   const isolee=dp.sens!=='filante';
+   if(n===1){
+    return '<h5>1 · Type et géométrie</h5>'
+     +'<label>Type de semelle <select data-sm="sens"><option value="isolee"'+(isolee?' selected':'')+'>Isolée (sous poteau)</option><option value="filante"'+(!isolee?' selected':'')+'>Filante (sous mur)</option></select></label>'
+     +(isolee
+      ? ('<label>Petit côté du poteau a <input type="number" step="1" min="10" data-sm="a_cm" value="'+(dp.a_cm||30)+'"> cm</label>'
+        +'<label>Grand côté du poteau b <input type="number" step="1" min="10" data-sm="b_cm" value="'+(dp.b_cm||30)+'"> cm</label>')
+      : '<label>Largeur du mur <input type="number" step="1" min="10" data-sm="b_cm" value="'+(dp.b_cm||20)+'"> cm</label>');
+   }
+   if(n===2){
+    return '<h5>2 · Matériau et sol</h5>'
+     +'<label>Classe de béton <select data-sm="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
+     +'<label>Acier <select data-sm="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
+     +'<label>Fissuration <select data-sm="fissuration"><option value="FP"'+(dp.fissuration!=='FTP'?' selected':'')+'>Peu préjudiciable (FP)</option><option value="FTP"'+(dp.fissuration==='FTP'?' selected':'')+'>Très préjudiciable (FTP)</option></select></label>'
+     +'<label>Contrainte admissible du sol q.sol <input type="number" step="0.01" min="0.01" data-sm="qsol_MPa" value="'+(dp.qsol_MPa??0.15)+'"> MPa</label>'
+     +'<p class="pcNote">q.sol est une donnée de l\'étude géotechnique (non calculée ici). 0,1 MPa = 1 bar ≈ 10 t/m².</p>';
+   }
+   if(n===3){
+    return '<h5>3 · Chargement</h5>'
+     +'<label>Charges permanentes G <input type="number" step="1" data-sm="G_kN" value="'+(dp.G_kN??200)+'"> kN'+(isolee?'':'/ml')+'</label>'
+     +'<label>Charges d\'exploitation Q <input type="number" step="1" data-sm="Q_kN" value="'+(dp.Q_kN??100)+'"> kN'+(isolee?'':'/ml')+'</label>'
+     +(isolee?('<label>Excentricité (moment transmis) <select data-sm="excentrique"><option value=""'+(!dp.excentrique?' selected':'')+'>Non</option><option value="1"'+(dp.excentrique?' selected':'')+'>Oui</option></select></label>'
+       +(dp.excentrique?'<label>Moment de service Mser <input type="number" step="1" data-sm="Mser_kNm" value="'+(dp.Mser_kNm??0)+'"> kN·m</label>':'')):'')
+     +'<p class="pcNote">1 t = 10 kN. Nu = 1,35 G + 1,5 Q.</p>';
+   }
+  }
+  function smFormHtml(id,t){
+   const dp=smData(t);
+   const body=[1,2,3].map(nn=>smStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
+   return '<div class="pcFormSticky">'
+    +'<div class="pcModHead"><span class="pcModIco">🦶</span><span class="pcModName">Semelle (EC2/BAEL)</span></div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-sm="nom" value="'+esc(dp.nom||t.nom||'Semelle')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcDraw">'+smSvg(dp)+'</div>'
+    +'</div>'
+    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
+    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-sm-act="validerForm">✓ Valider</button></div>'
+    +'<p class="pcNote pcFormHint">Renseigner type, géométrie, matériau/sol et chargement. « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+  }
+  function smResultatsHtml(res,dp){
+   let h='<h5>Résultats</h5>';
+   if(res.isolee){
+    h+='<div class="pcDimBox"><b>Dimensions</b><p class="pcNote">A='+res.A.toFixed(2)+' m × B='+res.B.toFixed(2)+' m · Ht='+(res.Ht*100).toFixed(0)+' cm (d='+(res.d*100).toFixed(0)+' cm)</p></div>'
+     +'<div class="pcDimBox"><b>Contrainte sur le sol</b><p class="pcNote">q\'='+(res.qp*1000).toFixed(1)+' kPa ≤ q.sol='+(res.qsol*1000).toFixed(0)+' kPa → '+(res.ok?'✓ vérifiée':'⚠ non vérifiée')+'</p>'
+     +(res.exc?('<p class="pcNote">Excentricité : qmax='+(res.exc.qmax*1000).toFixed(1)+' kPa ≤ 1,33·q.sol='+(1.33*res.qsol*1000).toFixed(0)+' kPa → '+(res.exc.ok?'✓':'⚠')+'</p>'):'')+'</div>'
+     +'<div class="pcDimBox"><b>Ferraillage</b><p class="pcNote">Nappe inf. (//b) : As='+res.Ax_cm2.toFixed(2)+' cm² → <b>'+res.barX.n+' Φ'+res.barX.phi+'</b></p>'
+     +'<p class="pcNote">Nappe sup. (//a) : As='+res.Ay_cm2.toFixed(2)+' cm² → <b>'+res.barY.n+' Φ'+res.barY.phi+'</b></p></div>';
+   } else {
+    h+='<div class="pcDimBox"><b>Dimensions</b><p class="pcNote">B='+res.B.toFixed(2)+' m (par ml) · Ht='+(res.Ht*100).toFixed(0)+' cm (d='+(res.d*100).toFixed(0)+' cm) · '+(res.petite?'petite dimension':'grande dimension')+'</p></div>'
+     +'<div class="pcDimBox"><b>Contrainte sur le sol</b><p class="pcNote">q\'='+(res.qp*1000).toFixed(1)+' kPa ≤ q.sol='+(res.qsol*1000).toFixed(0)+' kPa → '+(res.ok?'✓ vérifiée':'⚠ non vérifiée')+'</p></div>'
+     +'<div class="pcDimBox"><b>Ferraillage</b>'+(res.petite?('<p class="pcNote">Petite dimension : pas de calcul, chaînage minimal en nappe inférieure.</p>'):('<p class="pcNote">Nappe sup. : As='+res.Ay_cm2.toFixed(2)+' cm²/ml → <b>Φ'+res.barAy.phi+' e='+res.barAy.s+'mm</b></p>'))
+     +'<p class="pcNote">Nappe inf. (chaînage'+(res.petite?'':' / répartition')+') : As='+res.Ax_cm2.toFixed(2)+' cm²/ml → <b>Φ'+res.barAx.phi+' e='+res.barAx.s+'mm</b></p></div>';
+   }
+   h+='<button type="button" class="ghost pcBtnSm" data-sm-act="printNote">🖶 Voir la note</button>';
+   return h;
+  }
+  function smeState(id){ window._dimViewSM=window._dimViewSM||{}; if(!window._dimViewSM[id]) window._dimViewSM[id]={view:'form'}; return window._dimViewSM[id]; }
+  function smeFiche(id){
+   const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t) return;
+   if(beTypeStructureNom(t.typeStructureId)!==SEMELLE_TYPE_NOM){
+    const old=mb.querySelector('.pjSemelleRoot'); if(old) old.remove();
+    if(!mb.querySelector('.pjBeamRoot')&&!mb.querySelector('.pjPoteauRoot')&&!mb.querySelector('.pjDalleRoot')) mb.querySelectorAll('.pjBeamHidden').forEach(x=>{ x.classList.remove('pjBeamHidden'); x.style.removeProperty('display'); });
+    delete (window._dimViewSM||{})[id]; return;
+   }
+   if(mb.querySelector('.pjSemelleRoot')) return;
+   const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
+   const wrap=document.createElement('div'); wrap.className='pjSemelleRoot';
+   const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
+   [...mb.children].forEach(c=>{ if(c.classList.contains('close-x')||c.tagName==='H3'||c===wrap) return; c.classList.add('pjBeamHidden'); c.style.setProperty('display','none','important'); });
+   smeRender(id);
+   if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>smeClick(e,id)); wrap.addEventListener('change',e=>smeChange(e,id)); }
+  }
+  const _od_semelle=window.openTaskDetail; if(typeof _od_semelle==='function'){ window.openTaskDetail=function(id){ const r=_od_semelle.apply(this,arguments); setTimeout(()=>{ try{ smeFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
+  function smeRender(id){
+   const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjSemelleRoot'); const t=taskById(id); if(!wrap||!t) return;
+   const dp=smData(t); const st=smeState(id);
+   if(st.view==='note'){
+    const res=dp.resultats;
+    wrap.innerHTML='<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📄 Note de calcul</h4></div>'
+     +(res? smNoteCalculHtml(t,dp,res) : '<p class="pcNote">Aucun résultat — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>');
+    return;
+   }
+   wrap.innerHTML=smFormHtml(id,t)+(dp.resultats?smResultatsHtml(dp.resultats,dp):'');
+  }
+  function smeClick(e,id){
+   const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ smeState(id).view='form'; smeRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
+   const okBtn=e.target.closest('[data-sm-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const pn=e.target.closest('[data-sm-act="printNote"]'); if(pn){ smeState(id).view='note'; smeRender(id); return; }
+  }
+  function smeChange(e,id){
+   const t=taskById(id); if(!t) return; const dp=smData(t); const el=e.target;
+   if(el.matches('[data-sm="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
+   const key=el.dataset.sm; if(key){
+    if(key==='excentrique') dp[key]=!!el.value;
+    else if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
+    else dp[key]=el.value===''?null:+el.value;
+    smeRender(id); return;
+   }
+  }
+  function smNoteCalculHtml(t,dp,res){
+   let h='<div class="pcNC"><h3>Note de calcul — '+esc(dp.nom||t.nom||'Semelle')+'</h3>'
+    +'<p class="pcNote">Semelle '+(res.isolee?'isolée':'filante')+' (méthode des bielles, BAEL91 révisé 99 / CBA93 — cohérente avec l\'Eurocode 2) · '+todayStr()+'</p>'
+    +'<h5>Hypothèses</h5><p class="pcNote">Béton '+esc(dp.classeGlobale)+' (Fc28='+res.mat.Fc28+' MPa) · acier '+esc(dp.classeAcier)+' (Fe='+res.mat.Fe+' MPa) · fissuration '+esc(dp.fissuration)+' · q.sol='+((res.qsol||0)*1000).toFixed(0)+' kPa (donnée géotechnique).</p>';
+   if(res.isolee){
+    h+='<h5>Géométrie</h5><p class="pcNote">Poteau '+((res.a*100).toFixed(0))+'×'+((res.b*100).toFixed(0))+' cm · S1=Nu/q.sol='+( (res.qsol>1e-9?( (1.35*(+dp.G_kN)+1.5*(+dp.Q_kN))/1000/res.qsol):0).toFixed(2))+' m² · A='+res.A.toFixed(2)+' m, B='+res.B.toFixed(2)+' m (débords '+(res.debordA*100).toFixed(0)+'/'+(res.debordB*100).toFixed(0)+' cm) · Ht='+(res.Ht*100).toFixed(0)+' cm (Ht,min='+(res.HtMin*100).toFixed(1)+' cm), d='+(res.d*100).toFixed(0)+' cm.</p>'
+     +'<h5>Contrôle de la contrainte sur le sol</h5><p class="pcNote">S=A·B='+res.S.toFixed(2)+' m² · Pp=A·B·Ht·0,025='+res.Pp.toFixed(4)+' MN · N=Nu+Pp='+res.N.toFixed(4)+' MN · q\'=N/S='+(res.qp*1000).toFixed(1)+' kPa ≤ q.sol='+(res.qsol*1000).toFixed(0)+' kPa → '+(res.ok?'vérifiée':'⚠ NON vérifiée — augmenter A/B')+'.</p>'
+     +(res.exc?('<p class="pcNote">Excentricité (méthode uniaxiale simplifiée) : e=Mser/Nser='+res.exc.e.toFixed(3)+' m · qmax=(N/S)(1+6e/B)='+(res.exc.qmax*1000).toFixed(1)+' kPa ≤ 1,33·q.sol='+(1.33*res.qsol*1000).toFixed(0)+' kPa → '+(res.exc.ok?'vérifiée':'⚠ non vérifiée')+'. ⚠ Méthode simplifiée (uniaxiale) — une excentricité biaxiale importante ou un soulèvement partiel nécessite la méthode complète (hors périmètre de ce module).</p>'):'')
+     +'<h5>Ferraillage (méthode des bielles)</h5><p class="pcNote">σst='+res.sst.toFixed(1)+' MPa (fissuration '+esc(dp.fissuration)+') · Nappe inférieure (//b) : Ax=(Nser/8)(B-b)/(d·σst)='+res.Ax_cm2.toFixed(2)+' cm² → '+res.barX.n+' Φ'+res.barX.phi+' ('+(res.barX.As/100).toFixed(2)+' cm²).<br>Nappe supérieure (//a) : Ay=(Nser/8)(A-a)/(d·σst)='+res.Ay_cm2.toFixed(2)+' cm² → '+res.barY.n+' Φ'+res.barY.phi+' ('+(res.barY.As/100).toFixed(2)+' cm²).</p>';
+   } else {
+    h+='<h5>Géométrie (par mètre linéaire)</h5><p class="pcNote">Mur b='+(res.b*100).toFixed(0)+' cm · B='+res.B.toFixed(2)+' m · '+(res.petite?'petite':'grande')+' dimension ([(B-b)/2] '+(res.petite?'<':'≥')+' 15 cm) · Ht='+(res.Ht*100).toFixed(0)+' cm (Ht,min='+(res.HtMin*100).toFixed(1)+' cm), d='+(res.d*100).toFixed(0)+' cm.</p>'
+     +'<h5>Contrôle de la contrainte sur le sol</h5><p class="pcNote">S=B·1='+res.S.toFixed(2)+' m² · Pp='+res.Pp.toFixed(4)+' MN · N=Nu+Pp='+res.N.toFixed(4)+' MN · q\'=N/S='+(res.qp*1000).toFixed(1)+' kPa ≤ q.sol='+(res.qsol*1000).toFixed(0)+' kPa → '+(res.ok?'vérifiée':'⚠ NON vérifiée — augmenter B')+'.</p>'
+     +'<h5>Ferraillage</h5><p class="pcNote">σst='+res.sst.toFixed(1)+' MPa · chaînage minimal=1,6·B (plancher 1,6 cm²/ml)='+res.chainageMin_cm2.toFixed(2)+' cm²/ml.<br>'+(res.petite?('Petite dimension : pas de calcul — chaînage minimal en nappe inférieure = '+res.Ax_cm2.toFixed(2)+' cm²/ml → Φ'+res.barAx.phi+' e='+res.barAx.s+'mm.'):('Nappe supérieure : Ay=(Nser/8)(B-b)/(d·σst)='+res.Ay_cm2.toFixed(2)+' cm²/ml → Φ'+res.barAy.phi+' e='+res.barAy.s+'mm.<br>Nappe inférieure : Ax=max(Ay/4 ; chaînage mini)='+res.Ax_cm2.toFixed(2)+' cm²/ml → Φ'+res.barAx.phi+' e='+res.barAx.s+'mm.'))+'</p>';
+   }
+   h+='<p class="pcNote">⚠ Cette note de calcul est générée automatiquement à partir des données saisies et de la méthode des bielles (BAEL91 révisé 99 / CBA93, cohérente avec l\'Eurocode 2). Elle doit être vérifiée et validée par un ingénieur structure (bureau d\'études béton armé / géotechnicien pour q.sol) avant toute utilisation pour l\'exécution. Elle ne remplace pas une étude signée par un bureau d\'études qualifié. La portance du sol (q.sol) est une donnée d\'entrée, non vérifiée par un calcul pressiométrique ou pénétrométrique dans ce module.</p>'
+    +'</div>';
+   return h;
+  }
+  function smPlanFerraillageSvg(dp,res){
+   const W=220,H=170;
+   if(res.isolee){
+    const sk=Math.min((W-60)/Math.max(res.B,1),(H-60)/Math.max(res.A,1));
+    const rw=res.B*sk, rh=res.A*sk, rx=(W-rw)/2, ry=(H-rh)/2;
+    const nx=Math.max(2,res.barX.n), ny=Math.max(2,res.barY.n);
+    let lines='';
+    for(let i=0;i<=nx;i++){ const x=rx+i*(rw/nx); lines+='<line x1="'+x+'" y1="'+ry+'" x2="'+x+'" y2="'+(ry+rh)+'" stroke="var(--rust,#c0392b)" stroke-width="0.8"/>'; }
+    for(let i=0;i<=ny;i++){ const y=ry+i*(rh/ny); lines+='<line x1="'+rx+'" y1="'+y+'" x2="'+(rx+rw)+'" y2="'+y+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="0.8"/>'; }
+    return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
+     +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="2"/>'+lines
+     +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ink-soft,#999)">'+res.barX.n+'Φ'+res.barX.phi+' //b · '+res.barY.n+'Φ'+res.barY.phi+' //a</text>'
+     +'</svg>';
+   }
+   const rw=160, rh=40, rx=(W-rw)/2, ry=H/2-rh/2;
+   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
+    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="2"/>'
+    +'<line x1="'+rx+'" y1="'+(ry+8)+'" x2="'+(rx+rw)+'" y2="'+(ry+8)+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.2"/>'
+    +'<line x1="'+rx+'" y1="'+(ry+rh-8)+'" x2="'+(rx+rw)+'" y2="'+(ry+rh-8)+'" stroke="var(--rust,#c0392b)" stroke-width="1.2"/>'
+    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ink-soft,#999)">Φ'+(res.barAy?res.barAy.phi:res.barAx.phi)+' (coupe, semelle filante)</text>'
+    +'</svg>';
+  }
+  function smCreerNoteCalcul(t,dp){
+   const html=smNoteCalculHtml(t,dp,dp.resultats);
+   const nom='Note de calcul '+(dp.nom||t.nom||'Semelle');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Semelle'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  function smCreerPlanFerraillage(t,dp){
+   const res=dp.resultats; if(!res) return null;
+   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Semelle')+'</h3>'
+    +'<p class="pcNote">Vue en plan · '+todayStr()+'</p>'+smPlanFerraillageSvg(dp,res)
+    +'<p class="pcNote">⚠ Schéma généré automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, attentes de poteau non représentées).</p></div>';
+   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Semelle');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Semelle'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  async function smNoteCalculPdf(t,dp,res){
+   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16; let y=M;
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Note de calcul — '+(dp.nom||t.nom||'Semelle')),M,y+6); y+=14;
+   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9);
+   const lines = res.isolee ? [
+    'Semelle isolee - beton '+dp.classeGlobale+' - acier '+dp.classeAcier+' - fissuration '+dp.fissuration,
+    'A='+res.A.toFixed(2)+' m, B='+res.B.toFixed(2)+' m, Ht='+(res.Ht*100).toFixed(0)+' cm',
+    'q\'='+(res.qp*1000).toFixed(1)+' kPa <= q.sol='+(res.qsol*1000).toFixed(0)+' kPa -> '+(res.ok?'OK':'NON VERIFIEE'),
+    'Ferraillage : nappe inf (//b) '+res.barX.n+' phi'+res.barX.phi+' ; nappe sup (//a) '+res.barY.n+' phi'+res.barY.phi,
+   ] : [
+    'Semelle filante - beton '+dp.classeGlobale+' - acier '+dp.classeAcier+' - fissuration '+dp.fissuration,
+    'B='+res.B.toFixed(2)+' m/ml, Ht='+(res.Ht*100).toFixed(0)+' cm, '+(res.petite?'petite dimension':'grande dimension'),
+    'q\'='+(res.qp*1000).toFixed(1)+' kPa <= q.sol='+(res.qsol*1000).toFixed(0)+' kPa -> '+(res.ok?'OK':'NON VERIFIEE'),
+    'Ferraillage : '+(res.petite?('chainage phi'+res.barAx.phi+' e='+res.barAx.s+'mm'):('nappe sup phi'+res.barAy.phi+' e='+res.barAy.s+'mm, nappe inf phi'+res.barAx.phi+' e='+res.barAx.s+'mm')),
+   ];
+   lines.forEach(l=>{ pdoc.text(pdfTxt(l),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M}); y+=7; });
+   y+=4; pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Note generee automatiquement (methode des bielles BAEL/EC2) - a verifier par un ingenieur structure avant execution.'),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
+   return pdoc.output('blob');
+  }
+  async function smPlanFerraillagePdf(t,dp,res){
+   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16;
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Plan de ferraillage — '+(dp.nom||t.nom||'Semelle')),M,M+6);
+   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9); pdoc.setTextColor(110); pdoc.text(pdfTxt('Vue en plan — '+todayStr()),M,M+12); pdoc.setTextColor(0);
+   const x0=M+10,y0=M+24,w=70,h=res.isolee?(70*(res.A/Math.max(res.B,1))):30;
+   pdoc.setDrawColor(55,53,47); pdoc.setLineWidth(0.4); pdoc.rect(x0,y0,w,Math.min(h,90));
+   pdoc.setFontSize(9); pdoc.text(pdfTxt(res.isolee?(res.barX.n+' phi'+res.barX.phi+' //b + '+res.barY.n+' phi'+res.barY.phi+' //a'):('phi'+(res.barAy?res.barAy.phi:res.barAx.phi))),x0,y0+Math.min(h,90)+8);
+   pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Schema genere automatiquement. A reprendre par un dessinateur/ingenieur structure pour l\'execution.'),M,pdoc.internal.pageSize.getHeight()-10,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
+   return pdoc.output('blob');
+  }
+  async function smCreerDocumentsDimensionnement(t,dp){
+   const res=dp.resultats; const docNote=smCreerNoteCalcul(t,dp); const docPlan=smCreerPlanFerraillage(t,dp);
+   try{
+    if(docNote&&res){ const blob=await smNoteCalculPdf(t,dp,res); await pcAttacherPdf(docNote,blob,docNote.nom); }
+    if(docPlan&&res){ const blob=await smPlanFerraillagePdf(t,dp,res); await pcAttacherPdf(docPlan,blob,docPlan.nom); }
+   }catch(err){ console.error(err); }
+   return {docNote,docPlan};
+  }
+  /* Étend le bulk « 🤖 Dimensionner » aux semelles, en plus des poutres/poteaux/dalles. */
+  const _pjDim_dalle=window.pjDimensionnerSelection;
+  window.pjDimensionnerSelection=async function(ids){
+   const rPrev= typeof _pjDim_dalle==='function' ? await _pjDim_dalle(ids) : {okN:0,skipTypeN:0,errN:0,incomplets:[]};
+   let okN=0, errN=0; const incomplets=[]; let lastOkT=null;
+   for(const id of (ids||[])){
+    const t=taskById(id); if(!t) continue;
+    if(beTypeStructureNom(t.typeStructureId)!==SEMELLE_TYPE_NOM) continue;
+    const dp=smData(t);
+    const geomOk=dp.sens==='filante'?(+dp.b_cm>0):((+dp.a_cm>0)&&(+dp.b_cm>0));
+    const hasData=(+dp.qsol_MPa>0)&&((+dp.G_kN>0)||(+dp.Q_kN>0));
+    if(!geomOk||!hasData){ incomplets.push(id); continue; }
+    try{ dp.resultats=smCompute(t); await smCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    catch(err){ console.error(err); errN++; }
+   }
+   try{ persist(); }catch(_){ }
+   if(okN||errN||incomplets.length){
+    const msg=okN+' semelle'+(okN>1?'s':'')+' dimensionnée'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
     try{ clipToast(msg); }catch(_){ }
     if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
     else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
