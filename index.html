@@ -21956,7 +21956,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v515';
+  const VER='v516';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23812,7 +23812,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {nom:'Semelles & fondations superficielles',icone:'🦶',illu:'semelle'},
    {nom:'Pieux & fondations profondes',icone:'⚓',illu:'pieu'},
    {nom:'Tassements & géotechnique',icone:'🪨'},
-   {nom:'Soutènement & écrans',icone:'🛡️'},
+   {nom:'Mur de soutènement',icone:'🧱'},
+   {nom:'Rideau de palplanches',icone:'🚧'},
+   {nom:'Massif enterré',icone:'⬛'},
    {nom:'Voiles & murs en béton armé',icone:'🧱'},
    {nom:'Analyse de sections & ferraillage',icone:'🔩'},
    {nom:'Précontrainte',icone:'🪢'},
@@ -23834,6 +23836,19 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
        créés en base, par nom, sans toucher au reste (id, icône texte de secours conservés) */
     let ch=false;
     state.typesStructure.forEach(t=>{ const seed=TS_SEED.find(x=>x.nom===t.nom); if(seed&&seed.illu&&t.illu!==seed.illu){ t.illu=seed.illu; ch=true; } });
+    /* rattrapage : l'ancien type unique « Soutènement & écrans » devient 3 types séparés (Mur de
+       soutènement / Rideau de palplanches / Massif enterré). On renomme l'entrée existante en place
+       (même id conservé, pour ne pas perdre la référence des ouvrages déjà créés avec ce type) puis
+       on ajoute les 2 types manquants. */
+    const ancienSout=state.typesStructure.find(t=>t.nom==='Soutènement & écrans');
+    if(ancienSout){ ancienSout.nom='Mur de soutènement'; ancienSout.icone='🧱'; ch=true; }
+    ['Rideau de palplanches','Massif enterré'].forEach(nom=>{
+     if(!state.typesStructure.some(t=>t.nom===nom)){
+      const seed=TS_SEED.find(x=>x.nom===nom);
+      state.typesStructure.push({id:uid('TS'),nom,icone:(seed&&seed.icone)||'📐',illu:(seed&&seed.illu)||null});
+      ch=true;
+     }
+    });
     if(ch){ try{ persist(); }catch(_){} }
    }
    return state.typesStructure;
@@ -26313,6 +26328,362 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
    return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
   };
+
+  /* ===================== Mur de soutènement (type « Mur de soutènement ») =====================
+     Issu du dossier Google Drive 07 - Soutènement & écrans, classeur de référence « Dimensionnement
+     de murs de soutènement 1.xlsm » (contrôlé par 046/106). V1 simplifiée (skill dimensionnement-07-
+     soutenement) : méthode de Rankine (poussée statique uniquement, pas de séisme, pas de Coulomb/
+     Caquot/Poncelet), vérifications de stabilité (glissement, renversement, contrainte sous semelle
+     vs. contrainte admissible saisie par l'utilisateur — pas de recalcul de qlim par Meyerhof) et
+     ferraillage simplifié par flexion simple (méthode μ/z, cf. skill dimensionnement-beton-arme) du
+     voile en pied, du patin avant et du talon arrière. À vérifier/étendre plus tard si besoin. */
+  const MUR_TYPE_NOM='Mur de soutènement';
+  function muDefaultData(t){
+   return {
+    nom:(t&&t.nom)||'',
+    H_m:3.5, ep_cm:30, hs_cm:40, aPatin_m:0.4, eTalon_m:1.5,
+    beche:false, hBeche_cm:30, bBeche_cm:30, D_m:1,
+    gamma1_kNm3:18, phi1_deg:30, phi3_deg:30, q_kPa:0, qsolAdm_kPa:200, gammaFond_kNm3:18,
+    classeGlobale:'C25/30', classeAcier:'B500', enrobage_cm:4,
+    V_kN:0, H_kN:0, M_kNm:0,
+    resultats:null
+   };
+  }
+  function muData(t){ if(!t.dimMU) t.dimMU=muDefaultData(t); return t.dimMU; }
+
+  /* flexion simple, section 1 m de large (b=1000mm) — méthode μ/z (skill dimensionnement-beton-arme §3.9) */
+  function muAsFlexion(M_kNm,d_cm,fck,fyk){
+   if(!(M_kNm>1e-6)||!(d_cm>0)) return {As_cm2:0,mu:0,ok:true};
+   const fcd=fck/1.5, fyd=fyk/1.15, b_mm=1000, d_mm=d_cm*10;
+   const mu=(M_kNm*1e6)/(b_mm*d_mm*d_mm*fcd);
+   if(mu>0.372) return {As_cm2:null,mu,ok:false};
+   let z_mm=d_mm*(0.5+Math.sqrt(Math.max(0,0.25-mu/1.134))); z_mm=Math.min(z_mm,0.95*d_mm);
+   const As_mm2=(M_kNm*1e6)/(z_mm*fyd);
+   return {As_cm2:As_mm2/100, mu, ok:true};
+  }
+
+  function muCompute(t){
+   const dp=muData(t);
+   const fck=pcFck(dp.classeGlobale), Fe=PC_FYK[dp.classeAcier]||500, gammaBeton=25;
+   const H=Math.max(0.3,+dp.H_m||3.5), ep=Math.max(0.1,(+dp.ep_cm||30)/100), hs=Math.max(0.1,(+dp.hs_cm||40)/100);
+   const aPatin=Math.max(0,+dp.aPatin_m||0), eTalon=Math.max(0,+dp.eTalon_m||0);
+   const B=aPatin+ep+eTalon, Htot=H+hs;
+   const gamma1=+dp.gamma1_kNm3||18, phi1=(+dp.phi1_deg||30)*Math.PI/180, phi3=(+dp.phi3_deg||30)*Math.PI/180;
+   const q=+dp.q_kPa||0, D=Math.max(0,+dp.D_m||0), gammaFond=+dp.gammaFond_kNm3||18;
+   const qsolAdm=+dp.qsolAdm_kPa||200;
+   const Ka=(1-Math.sin(phi1))/(1+Math.sin(phi1));
+   const beche=!!dp.beche, hBeche=Math.max(0,(+dp.hBeche_cm||0)/100), bBeche=Math.max(0,(+dp.bBeche_cm||0)/100);
+   const Vkn=+dp.V_kN||0, Hkn=+dp.H_kN||0, Mkn=+dp.M_kNm||0;
+
+   /* poids propres par mètre linéaire de mur, bras de levier mesurés depuis le nu avant (toe, x=0) */
+   const Wv=ep*H*gammaBeton,                 xv=aPatin+ep/2;
+   const Ws=B*hs*gammaBeton,                  xs=B/2;
+   const Wt=eTalon*H*gamma1,                  xt=aPatin+ep+eTalon/2;
+   const Wa=(D>0&&aPatin>0)?aPatin*D*gammaFond:0, xa=aPatin/2;
+   const Wq=q*eTalon,                         xq=xt;
+   const Wb=beche?bBeche*hBeche*gammaBeton:0, xb=aPatin;
+
+   /* poussée des terres (Rankine), sur la hauteur totale Htot, triangulaire (terre) + rectangulaire (surcharge) */
+   const Pa=0.5*gamma1*Htot*Htot*Ka, braPa=Htot/3;
+   const Pq=q*Htot*Ka,               braPq=Htot/2;
+
+   function combo(fG,fQ){
+    const V=fG*(Wv+Ws+Wt+Wa+Wb+Vkn)+fQ*Wq;
+    const Mstab=fG*(Wv*xv+Ws*xs+Wt*xt+Wa*xa+Wb*xb+Vkn*xv)+fQ*Wq*xq;
+    const H_=fQ*(Pa+Pq+Hkn);
+    const Mrenv=fQ*(Pa*braPa+Pq*braPq+Hkn*Htot+Mkn);
+    const Mnet=Mstab-Mrenv, xR=V>1e-9?Mnet/V:B/2, e=B/2-xR;
+    let sigMax,sigMin,souleve=false;
+    if(Math.abs(e)<=B/6){ sigMax=(V/B)*(1+6*Math.abs(e)/B); sigMin=(V/B)*(1-6*Math.abs(e)/B); }
+    else { souleve=true; const Bc=Math.max(1e-6,3*(B/2-Math.abs(e))); sigMax=2*V/Bc; sigMin=0; }
+    const fsGliss=H_>1e-9?(V*Math.tan(phi3))/H_:Infinity;
+    const fsRenv=Mrenv>1e-9?Mstab/Mrenv:Infinity;
+    return {V,H:H_,Mstab,Mrenv,e,sigMax,sigMin,souleve,fsGliss,fsRenv};
+   }
+   const ELS=combo(1,1), ELU=combo(1.35,1.5);
+   /* pression du sol le long de la base, x=0 au nu avant (toe) ... x=B au nu arrière (heel) */
+   const sigmaAt=x=>{ const xc=Math.max(0,Math.min(B,x)); return ELU.sigMax-(ELU.sigMax-ELU.sigMin)*(xc/Math.max(B,1e-6)); };
+   /* moment à l'encastrement d'une console de longueur L, chargée par une pression variant linéairement
+      de p0 (bord libre) à p1 (bord encastré) : M = L²·(2·p0+p1)/6 (intégration du moment fléchissant) */
+   const Mconsole=(L,p0,p1)=>L>1e-6? L*L*(2*p0+p1)/6 : 0;
+
+   /* ferraillage voile : moment en pied, sur la hauteur H seule (poussée + charge en tête), à l'ELU */
+   const PaV=0.5*gamma1*H*H*Ka, PqV=q*H*Ka;
+   const Mvoile_ELU=1.5*(PaV*(H/3)+PqV*(H/2)+Hkn*H+Mkn);
+   const dVoile_cm=Math.max(5,(+dp.ep_cm||30)-(+dp.enrobage_cm||4)-1);
+   const ferrVoile=muAsFlexion(Mvoile_ELU,dVoile_cm,fck,Fe);
+
+   /* ferraillage patin avant : console de longueur aPatin, soulevée par la réaction du sol (aciers inférieurs) */
+   const Mpatin_ELU=Mconsole(aPatin, sigmaAt(0), sigmaAt(aPatin));
+   const dPatinTalon_cm=Math.max(5,(+dp.hs_cm||40)-(+dp.enrobage_cm||4)-1);
+   const ferrPatin=muAsFlexion(Mpatin_ELU,dPatinTalon_cm,fck,Fe);
+
+   /* ferraillage talon arrière : console de longueur eTalon, charge nette = poids des terres+surcharge
+      au-dessus moins réaction du sol en dessous (aciers supérieurs) */
+   const wAbove_ELU=1.35*gamma1*H+1.5*q;
+   const nFree=Math.max(0,wAbove_ELU-sigmaAt(B)), nFixe=Math.max(0,wAbove_ELU-sigmaAt(aPatin+ep));
+   const Mtalon_ELU=Mconsole(eTalon, nFree, nFixe);
+   const ferrTalon=muAsFlexion(Mtalon_ELU,dPatinTalon_cm,fck,Fe);
+
+   const barVoile=smChooseBars(Math.max(0,ferrVoile.As_cm2||0)*100,250);
+   const barPatin=smChooseBars(Math.max(0,ferrPatin.As_cm2||0)*100,250);
+   const barTalon=smChooseBars(Math.max(0,ferrTalon.As_cm2||0)*100,250);
+
+   const seuilGlissAdm=1.5, seuilRenvAdm=1.5; // ELS ; 1.2 à l'ELU (cf. skill)
+   return {fck,Fe,B,Htot,Ka,ELS,ELU,beche,qsolAdm,
+    seuilGliss_ELS:1.5, seuilGliss_ELU:1.2, seuilRenv_ELS:1.5, seuilRenv_ELU:1.2,
+    Mvoile_ELU,ferrVoile,barVoile,dVoile_cm,
+    Mpatin_ELU,ferrPatin,barPatin,
+    Mtalon_ELU,ferrTalon,barTalon,dPatinTalon_cm};
+  }
+
+  function muSvg(dp){
+   const DC=window.dimCote, FL=window.dimField, parts=[], boxes=[];
+   const add=c=>{ parts.push(c.svg); boxes.push(c.box); };
+   const SB='var(--ds-draw,#2e6ea6)', ST='var(--ds-ink-soft,#8a8a8a)';
+   const H=Math.max(0.3,+dp.H_m||3.5), ep=Math.max(0.1,(+dp.ep_cm||30)/100), hs=Math.max(0.1,(+dp.hs_cm||40)/100);
+   const aPatin=Math.max(0,+dp.aPatin_m||0), eTalon=Math.max(0,+dp.eTalon_m||0), B=aPatin+ep+eTalon;
+   const beche=!!dp.beche, hBeche=Math.max(0,(+dp.hBeche_cm||0)/100), bBeche=Math.max(0,(+dp.bBeche_cm||0)/100);
+   const q=+dp.q_kPa||0, V=+dp.V_kN||0, Hk=+dp.H_kN||0, M=+dp.M_kNm||0;
+   const sk=Math.max(16,Math.min(220/Math.max(B,0.5), 170/Math.max(H+hs+(beche?hBeche:0),0.5)));
+   const X=v=>v*sk;
+   const x0=0, xV0=X(aPatin), xV1=X(aPatin+ep), xB=X(B);
+   const yTop=-X(H), y0=0, yBase=X(hs);
+   let g='<rect x="'+xV0+'" y="'+yTop+'" width="'+(xV1-xV0)+'" height="'+(y0-yTop)+'" fill="none" stroke="'+SB+'" stroke-width="2"/>';
+   g+='<rect x="'+x0+'" y="'+y0+'" width="'+(xB-x0)+'" height="'+(yBase-y0)+'" fill="none" stroke="'+SB+'" stroke-width="2"/>';
+   boxes.push({x:x0,y:yTop,w:xB-x0,h:yBase-yTop});
+   let yBecheBot=yBase, xBc0=xV0, xBc1=xV0;
+   if(beche&&hBeche>0&&bBeche>0){
+    xBc1=xV0+X(bBeche); yBecheBot=yBase+X(hBeche);
+    g+='<rect x="'+xBc0+'" y="'+yBase+'" width="'+(xBc1-xBc0)+'" height="'+X(hBeche)+'" fill="none" stroke="'+SB+'" stroke-width="1.6"/>';
+    boxes.push({x:xBc0,y:yBase,w:xBc1-xBc0,h:X(hBeche)});
+   }
+   /* remblai (hachures 45°) derrière le voile, sur le talon */
+   let hatch=''; const stepH=14, dYH=y0-yTop;
+   for(let hx=xV1-dYH; hx<xB; hx+=stepH){ hatch+='<line x1="'+hx+'" y1="'+yTop+'" x2="'+(hx+dYH)+'" y2="'+y0+'" stroke="'+ST+'" stroke-width="1" opacity="0.5"/>'; }
+   g='<clipPath id="muRC"><rect x="'+xV1+'" y="'+yTop+'" width="'+(xB-xV1)+'" height="'+dYH+'"/></clipPath><g clip-path="url(#muRC)">'+hatch+'</g>'+g;
+   boxes.push({x:x0,y:Math.min(yTop,yBase),w:xB-x0,h:Math.max(y0,yBecheBot)-Math.min(yTop,yBase)});
+   parts.push(g);
+
+   add(DC({dir:'v', a:[x0,yTop], b:[x0,y0], off:-32, key:'H_m', label:'H', val:dp.H_m, unit:'m', attr:'H_m', title:'Hauteur du voile'}));
+   add(DC({dir:'h', a:[xV0,yTop], b:[xV1,yTop], off:-28, key:'ep_cm', label:'ep', val:dp.ep_cm, unit:'cm', attr:'ep_cm', title:'Épaisseur du voile'}));
+   add(DC({dir:'v', a:[xB,y0], b:[xB,yBase], off:32, key:'hs_cm', label:'hs', val:dp.hs_cm, unit:'cm', attr:'hs_cm', title:'Épaisseur de la semelle'}));
+   if(aPatin>0) add(DC({dir:'h', a:[x0,yBase], b:[xV0,yBase], off:32, key:'aPatin_m', label:'a', val:dp.aPatin_m, unit:'m', attr:'aPatin_m', title:'Largeur du patin avant'}));
+   if(eTalon>0) add(DC({dir:'h', a:[xV1,yBase], b:[xB,yBase], off:32, key:'eTalon_m', label:'e', val:dp.eTalon_m, unit:'m', attr:'eTalon_m', title:'Largeur du talon arrière'}));
+   if(beche&&hBeche>0&&bBeche>0){
+    add(DC({dir:'v', a:[xBc1,yBase], b:[xBc1,yBecheBot], off:24, key:'hBeche_cm', label:'hb', val:dp.hBeche_cm, unit:'cm', attr:'hBeche_cm', title:'Hauteur de la bêche'}));
+    add(DC({dir:'h', a:[xBc0,yBecheBot], b:[xBc1,yBecheBot], off:22, key:'bBeche_cm', label:'bb', val:dp.bBeche_cm, unit:'cm', attr:'bBeche_cm', title:'Largeur de la bêche'}));
+   }
+   if(q>0) add(FL({x:(xV1+xB)/2, y:yTop-46, label:'q', val:dp.q_kPa, unit:'kN/m²', attr:'q_kPa', title:'Surcharge sur le talon', align:'center'}));
+   if(V>0||Hk>0||M>0){
+    if(V>0) add(FL({x:xV0+(xV1-xV0)/2, y:yTop-20, label:'V', val:dp.V_kN, unit:'kN', attr:'V_kN', title:'Effort vertical en tête', align:'center'}));
+    if(Hk>0) add(FL({x:xV1+30, y:yTop+16, label:'H', val:dp.H_kN, unit:'kN', attr:'H_kN', title:'Effort horizontal en tête', align:'left'}));
+    if(M>0) add(FL({x:xV1+30, y:yTop+40, label:'M', val:dp.M_kNm, unit:'kN·m', attr:'M_kNm', title:'Moment en tête', align:'left'}));
+   }
+   const fr=window.dimFrame(boxes);
+   return '<svg viewBox="'+fr.vb+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Coupe du mur de soutènement">'+parts.join('')+'</svg>';
+  }
+
+  function muStepHtml(n,dp,t){
+   const svg=muSvg(dp);
+   const pol=()=>'<script>(function(){var s=document.currentScript.previousElementSibling; if(window.dimPolish) window.dimPolish(s);})();<\/script>';
+   if(n===1){
+    return '<div class="pcDraw">'+svg+'</div><p class="pcSchemaCap">Géométrie du mur : à régler directement sur le schéma ci-dessus (hauteur, épaisseur du voile, épaisseur de semelle, patin avant, talon arrière, bêche optionnelle).</p>'+pol();
+   }
+   if(n===2){
+    return '<div class="pcForm">'
+     +'<label>Classe de béton<select data-mu="classeGlobale">'+['C20/25','C25/30','C30/37','C35/45'].map(c=>'<option'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
+     +'<label>Classe d\'acier<select data-mu="classeAcier"><option'+(dp.classeAcier==='B500'?' selected':'')+'>B500</option></select></label>'
+     +'<label>Enrobage (cm)<input type="number" step="0.5" data-mu="enrobage_cm" value="'+esc(dp.enrobage_cm)+'"></label>'
+     +'<label>γ remblai (kN/m³)<input type="number" step="0.5" data-mu="gamma1_kNm3" value="'+esc(dp.gamma1_kNm3)+'"></label>'
+     +'<label>φ remblai (°)<input type="number" step="1" data-mu="phi1_deg" value="'+esc(dp.phi1_deg)+'"></label>'
+     +'<label>φ sol de fondation (°)<input type="number" step="1" data-mu="phi3_deg" value="'+esc(dp.phi3_deg)+'"></label>'
+     +'<label>Contrainte admissible du sol (kPa)<input type="number" step="10" data-mu="qsolAdm_kPa" value="'+esc(dp.qsolAdm_kPa)+'"></label>'
+     +'<label>γ sol sous semelle (kN/m³)<input type="number" step="0.5" data-mu="gammaFond_kNm3" value="'+esc(dp.gammaFond_kNm3)+'"></label>'
+     +'<label>Fiche avant-semelle D (m)<input type="number" step="0.1" data-mu="D_m" value="'+esc(dp.D_m)+'"></label>'
+     +'<label class="pcChk"><input type="checkbox" data-mu="beche"'+(dp.beche?' checked':'')+'> Bêche sous le voile</label>'
+     +'</div>';
+   }
+   return '<div class="pcDraw">'+svg+'</div><p class="pcSchemaCap">Surcharge q et charge en tête (V, H, M) : à régler directement sur le schéma ci-dessus si l\'ouvrage les comporte.</p>'+pol();
+  }
+  function muFormHtml(id,t){
+   const dp=muData(t);
+   return '<div class="pcSteps" data-mu-steps>'
+    +[1,2,3].map(n=>'<div class="pcStep" data-step="'+n+'">'+muStepHtml(n,dp,t)+'</div>').join('')
+    +'</div>';
+  }
+
+  function muResultatsHtml(res,dp){
+   const fmt=(v,d)=>Number.isFinite(v)?v.toFixed(d==null?1:d):'—';
+   const okGliss_ELS=res.ELS.fsGliss>=res.seuilGliss_ELS, okGliss_ELU=res.ELU.fsGliss>=res.seuilGliss_ELU;
+   const okRenv_ELS=res.ELS.fsRenv>=res.seuilRenv_ELS, okRenv_ELU=res.ELU.fsRenv>=res.seuilRenv_ELU;
+   const okSol=res.ELU.sigMax<=res.qsolAdm;
+   const badge=ok=>'<span class="pcDimBadge '+(ok?'ok':'ko')+'">'+(ok?'OK':'À revoir')+'</span>';
+   const ferrLine=(nom,f,bar)=>f.ok
+    ? nom+' : A<sub>s</sub> = '+fmt(f.As_cm2,2)+' cm²/m → '+(bar?bar.n?bar.n+'HA'+bar.phi:'HA'+bar.phi+' / '+bar.s+' mm':'—')
+    : nom+' : section insuffisante (μ > 0,372) — revoir la géométrie';
+   return '<div class="pcDimBox"><h4>Stabilité</h4>'
+    +'<p>Glissement — ELS : F<sub>s</sub> = '+fmt(res.ELS.fsGliss,2)+' (seuil '+res.seuilGliss_ELS+') '+badge(okGliss_ELS)+'</p>'
+    +'<p>Glissement — ELU : F<sub>s</sub> = '+fmt(res.ELU.fsGliss,2)+' (seuil '+res.seuilGliss_ELU+') '+badge(okGliss_ELU)+'</p>'
+    +'<p>Renversement — ELS : F<sub>s</sub> = '+fmt(res.ELS.fsRenv,2)+' (seuil '+res.seuilRenv_ELS+') '+badge(okRenv_ELS)+'</p>'
+    +'<p>Renversement — ELU : F<sub>s</sub> = '+fmt(res.ELU.fsRenv,2)+' (seuil '+res.seuilRenv_ELU+') '+badge(okRenv_ELU)+'</p>'
+    +'<p>Contrainte sous semelle — ELU : σ<sub>max</sub> = '+fmt(res.ELU.sigMax)+' kPa / σ<sub>min</sub> = '+fmt(res.ELU.sigMin)+' kPa (admissible '+fmt(res.qsolAdm,0)+' kPa) '+badge(okSol)+(res.ELU.souleve?' <em>(soulèvement partiel de la base)</em>':'')+'</p>'
+    +'<p>Contrainte sous semelle — ELS : σ<sub>max</sub> = '+fmt(res.ELS.sigMax)+' kPa / σ<sub>min</sub> = '+fmt(res.ELS.sigMin)+' kPa</p>'
+    +'</div><div class="pcDimBox"><h4>Ferraillage (par mètre linéaire de mur)</h4>'
+    +'<p>'+ferrLine('Voile (en pied)',res.ferrVoile,res.barVoile)+'</p>'
+    +'<p>'+ferrLine('Patin avant',res.ferrPatin,res.barPatin)+'</p>'
+    +'<p>'+ferrLine('Talon arrière',res.ferrTalon,res.barTalon)+'</p>'
+    +'</div>';
+  }
+
+  function muNoteCalculHtml(t,dp,res){
+   return '<h3>Note de calcul — Mur de soutènement — '+esc(t.nom||'')+'</h3>'
+    +'<p><em>Méthode Rankine simplifiée (poussée statique) — voir skill dimensionnement-07-soutenement et dimensionnement-beton-arme.</em></p>'
+    +'<h4>Données</h4><ul>'
+    +'<li>Hauteur du voile H = '+dp.H_m+' m ; épaisseur voile = '+dp.ep_cm+' cm ; épaisseur semelle = '+dp.hs_cm+' cm</li>'
+    +'<li>Patin avant a = '+dp.aPatin_m+' m ; talon arrière e = '+dp.eTalon_m+' m'+(dp.beche?' ; bêche '+dp.hBeche_cm+'×'+dp.bBeche_cm+' cm':'')+'</li>'
+    +'<li>Remblai γ = '+dp.gamma1_kNm3+' kN/m³, φ = '+dp.phi1_deg+'° → K<sub>a</sub> = '+res.Ka.toFixed(4)+' ; surcharge q = '+dp.q_kPa+' kN/m²</li>'
+    +'<li>Sol de fondation : φ = '+dp.phi3_deg+'°, σ<sub>adm</sub> = '+dp.qsolAdm_kPa+' kPa</li>'
+    +'<li>Béton '+dp.classeGlobale+', acier '+dp.classeAcier+', enrobage '+dp.enrobage_cm+' cm</li>'
+    +'</ul>'
+    +muResultatsHtml(res,dp)
+    +'<p style="font-style:italic;font-size:12px;opacity:.75">⚠ Note de calcul générée automatiquement (méthode de Rankine simplifiée, sans séisme ni calcul Coulomb/Caquot, sans recalcul de la portance admissible par Meyerhof). À vérifier et valider par un ingénieur structure avant toute exécution.</p>';
+  }
+
+  function muPlanFerraillageSvg(dp,res){ return muSvg(dp); }
+
+  function muCreerNoteCalcul(t,dp){
+   if(!window.pjDocsList||typeof window.pjCreerDoc!=='function') return null;
+   const nom='Note de calcul '+(t.nom||'');
+   let doc=(window.pjDocsList()||[]).find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+   const html=muNoteCalculHtml(t,dp,dp.resultats);
+   if(doc){ doc.contenuHtml=html; } else { doc=window.pjCreerDoc({nom,docType:'Note de calcul',ouvrageTaskId:t.id,contenuHtml:html}); }
+   return doc;
+  }
+  function muCreerPlanFerraillage(t,dp){
+   if(!window.pjDocsList||typeof window.pjCreerDoc!=='function') return null;
+   const nom='Plan de ferraillage '+(t.nom||'');
+   let doc=(window.pjDocsList()||[]).find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
+   const svg=muPlanFerraillageSvg(dp,dp.resultats);
+   if(doc){ doc.contenuHtml=svg; } else { doc=window.pjCreerDoc({nom,docType:'Plan de ferraillage',ouvrageTaskId:t.id,contenuHtml:svg}); }
+   return doc;
+  }
+  async function muNoteCalculPdf(t,dp,res){
+   await loadPdfLibs();
+   const {jsPDF}=window.jspdf; const pdoc=new jsPDF({unit:'mm',format:'a4'});
+   const M=15; let y=18;
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(14); pdoc.text(pdfTxt('Note de calcul — Mur de soutenement'),M,y); y+=6;
+   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(10); pdoc.text(pdfTxt(t.nom||''),M,y); y+=4; pdoc.text(pdfTxt(todayStr()),M,y); y+=8;
+   const lines=[
+    'H = '+dp.H_m+' m, ep. voile = '+dp.ep_cm+' cm, ep. semelle = '+dp.hs_cm+' cm',
+    'Patin avant a = '+dp.aPatin_m+' m, talon arriere e = '+dp.eTalon_m+' m'+(dp.beche?' , beche '+dp.hBeche_cm+'x'+dp.bBeche_cm+' cm':''),
+    'Ka = '+res.Ka.toFixed(4)+' (gamma='+dp.gamma1_kNm3+' kN/m3, phi='+dp.phi1_deg+'deg), q = '+dp.q_kPa+' kN/m2',
+    '',
+    'Glissement ELS : Fs='+res.ELS.fsGliss.toFixed(2)+' (seuil 1.5)   ELU : Fs='+res.ELU.fsGliss.toFixed(2)+' (seuil 1.2)',
+    'Renversement ELS : Fs='+res.ELS.fsRenv.toFixed(2)+' (seuil 1.5)   ELU : Fs='+res.ELU.fsRenv.toFixed(2)+' (seuil 1.2)',
+    'Contrainte sol ELU : max='+res.ELU.sigMax.toFixed(1)+' kPa / min='+res.ELU.sigMin.toFixed(1)+' kPa (adm. '+dp.qsolAdm_kPa+' kPa)',
+    '',
+    'Ferraillage (par m lineaire) :',
+    '  Voile (pied) : As='+(res.ferrVoile.As_cm2!=null?res.ferrVoile.As_cm2.toFixed(2):'—')+' cm2/m',
+    '  Patin avant : As='+(res.ferrPatin.As_cm2!=null?res.ferrPatin.As_cm2.toFixed(2):'—')+' cm2/m',
+    '  Talon arriere : As='+(res.ferrTalon.As_cm2!=null?res.ferrTalon.As_cm2.toFixed(2):'—')+' cm2/m'
+   ];
+   lines.forEach(l=>{ pdoc.text(pdfTxt(l),M,y); y+=5.5; });
+   y+=4; pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Methode de Rankine simplifiee (sans seisme, sans Coulomb/Caquot). A verifier par un ingenieur structure avant execution.'),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
+   return pdoc.output('blob');
+  }
+  async function muPlanFerraillagePdf(t,dp,res){
+   await loadPdfLibs();
+   const {jsPDF}=window.jspdf; const pdoc=new jsPDF({unit:'mm',format:'a4'});
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(12); pdoc.text(pdfTxt('Plan (schema) — Mur de soutenement — '+(t.nom||'')),15,18);
+   pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Schema genere automatiquement. A reprendre par un dessinateur/ingenieur structure pour l\'execution.'),15,pdoc.internal.pageSize.getHeight()-10,{maxWidth:pdoc.internal.pageSize.getWidth()-30});
+   return pdoc.output('blob');
+  }
+  async function muCreerDocumentsDimensionnement(t,dp){
+   const res=dp.resultats; const docNote=muCreerNoteCalcul(t,dp); const docPlan=muCreerPlanFerraillage(t,dp);
+   try{
+    if(docNote&&res){ const blob=await muNoteCalculPdf(t,dp,res); await pcAttacherPdf(docNote,blob,docNote.nom); }
+    if(docPlan&&res){ const blob=await muPlanFerraillagePdf(t,dp,res); await pcAttacherPdf(docPlan,blob,docPlan.nom); }
+   }catch(err){ console.error(err); }
+   return {docNote,docPlan};
+  }
+
+  function mueState(id){ const t=taskById(id); if(!t) return null; return {t,dp:muData(t)}; }
+  function mueFiche(id){
+   const s=mueState(id); if(!s) return '';
+   const {t,dp}=s;
+   return '<div class="pjMurRoot" data-mu-id="'+id+'">'
+    +'<div class="pcHead"><h3>🧱 Mur de soutènement</h3></div>'
+    +muFormHtml(id,t)
+    +'<button type="button" class="pcBtnMain" data-mu-calc="'+id+'">Calculer</button>'
+    +'<div class="pcDimResults" data-mu-res></div>'
+    +'</div>';
+  }
+  function mueRender(id){
+   const mb=document.querySelector('[data-mu-id="'+id+'"]'); if(!mb) return;
+   const s=mueState(id); if(!s) return;
+   const resEl=mb.querySelector('[data-mu-res]');
+   if(resEl) resEl.innerHTML=s.dp.resultats? muResultatsHtml(s.dp.resultats,s.dp) : '';
+  }
+  async function mueClick(e,id){
+   const btn=e.target.closest('[data-mu-calc]'); if(!btn) return;
+   const s=mueState(id); if(!s) return;
+   try{ s.dp.resultats=muCompute(s.t); await muCreerDocumentsDimensionnement(s.t,s.dp); persist(); mueRender(id); clipToast('Mur de soutènement calculé.'); }
+   catch(err){ console.error(err); clipToast('Erreur de calcul.'); }
+  }
+  function mueChange(e,id){
+   const el=e.target.closest('[data-mu]'); if(!el) return;
+   const s=mueState(id); if(!s) return;
+   const k=el.getAttribute('data-mu');
+   s.dp[k]= el.type==='checkbox'? el.checked : (el.tagName==='SELECT'? el.value : (el.value===''?'':+el.value));
+   try{ persist(); }catch(_){ }
+   if(el.closest('[data-step]')) { const svgHost=el.closest('.pcDraw'); if(svgHost) svgHost.innerHTML=muSvg(s.dp); }
+  }
+  (function(){
+   const _prevOpen=window.openTaskDetail;
+   window.openTaskDetail=function(id){
+    const r=typeof _prevOpen==='function'?_prevOpen(id):undefined;
+    setTimeout(()=>{
+     const t=taskById(id); if(!t||beTypeStructureNom(t.typeStructureId)!==MUR_TYPE_NOM) return;
+     const mb=document.querySelector('.pjMurHidden'); if(!mb) return;
+     if(!mb.querySelector('.pjBeamRoot')&&!mb.querySelector('.pjPoteauRoot')&&!mb.querySelector('.pjDalleRoot')&&!mb.querySelector('.pjSemelleRoot')&&!mb.querySelector('.pjPieuRoot')){
+      mb.classList.remove('pjMurHidden'); mb.innerHTML=mueFiche(id);
+      mb.addEventListener('click',ev=>mueClick(ev,id));
+      mb.addEventListener('change',ev=>mueChange(ev,id));
+      mueRender(id);
+     }
+    },700);
+    return r;
+   };
+  })();
+  /* Étend le bulk « 🤖 Dimensionner » aux murs de soutènement, en plus des modules précédents. */
+  (function(){
+   const _pjDim_pieu=window.pjDimensionnerSelection;
+   window.pjDimensionnerSelection=async function(ids){
+    const rPrev= typeof _pjDim_pieu==='function' ? await _pjDim_pieu(ids) : {okN:0,skipTypeN:0,errN:0,incomplets:[]};
+    let okN=0, errN=0; const incomplets=[]; let lastOkT=null;
+    for(const id of (ids||[])){
+     const t=taskById(id); if(!t) continue;
+     if(beTypeStructureNom(t.typeStructureId)!==MUR_TYPE_NOM) continue;
+     const dp=muData(t);
+     const geomOk=(+dp.H_m>0)&&(+dp.ep_cm>0)&&(+dp.hs_cm>0);
+     if(!geomOk){ incomplets.push(id); continue; }
+     try{ dp.resultats=muCompute(t); await muCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+     catch(err){ console.error(err); errN++; }
+    }
+    try{ persist(); }catch(_){ }
+    if(okN||errN||incomplets.length){
+     const msg=okN+' mur'+(okN>1?'s':'')+' de soutènement dimensionné'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
+     try{ clipToast(msg); }catch(_){ }
+     if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
+     else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
+    }
+    return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
+   };
+  })();
+  /* =================== fin Mur de soutènement =================== */
 
   function pcResultatsHtml(res,dp,t){
    const vue=dp.vueCombo||'ELS';
