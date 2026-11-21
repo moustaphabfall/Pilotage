@@ -21931,7 +21931,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v511';
+  const VER='v512';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -25244,33 +25244,48 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return res;
   }
   function dlSvg(dp){
-   const W=240,H=170; const pad=28;
+   /* Géométrie (lx, ly, h) et charges (G, Q) — ainsi que les paramètres de poinçonnement si activé —
+      entrelacés directement sur le schéma (foreignObject), comme pour Poutre continue — voir skill
+      dimensionnement-modules-design, §1. */
+   const W=300,H=250; const padL=70,padR=70,padT=112,padB=46;
    const lx=+dp.lx_m||5, ly=(dp.sens==='deux')?(+dp.ly_m||5):lx*1.6;
-   const sk=Math.min((W-2*pad)/Math.max(lx,1),(H-2*pad)/Math.max(ly,1));
-   const rw=lx*sk, rh=ly*sk, rx=(W-rw)/2, ry=(H-rh)/2;
+   const sk=Math.min((W-padL-padR)/Math.max(lx,1),(H-padT-padB)/Math.max(ly,1));
+   const rw=lx*sk, rh=ly*sk, rx=padL+((W-padL-padR)-rw)/2, ry=padT+((H-padT-padB)-rh)/2;
    let hatch=''; const step=Math.max(10,Math.min(rw,rh)/8);
    for(let x=-rh;x<rw;x+=step) hatch+='<line x1="'+(rx+Math.max(0,x))+'" y1="'+(ry+Math.max(0,-x))+'" x2="'+(rx+Math.min(rw,x+rh))+'" y2="'+(ry+Math.min(rh,rh-x))+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="0.4" stroke-opacity="0.35"/>';
-   let poteau='';
+   const fo=(x,y,w,h,inner)=>'<foreignObject x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'">'+inner+'</foreignObject>';
+   const cote=(lbl,id,val,unit,min,title)=>'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">'+lbl+'=<input type="number" step="1"'+(min==null?'':' min="'+min+'"')+' class="pcDimIn" style="width:'+pcChW(val,2)+'" data-dl="'+id+'" value="'+(val==null?'':val)+'" title="'+esc(title)+'"><i class="pcUnit">'+unit+'</i></div>';
+   let poteau='',poinconCotes='';
    if(dp.poincon){
     const cx=rx+rw/2, cy=ry+rh/2, r=Math.max(4,Math.min(rw,rh)*0.06);
     poteau='<rect x="'+(cx-r)+'" y="'+(cy-r)+'" width="'+(2*r)+'" height="'+(2*r)+'" fill="var(--rust,#c0392b)" fill-opacity="0.75"/>';
+    if(dp.poteauForme==='circ'){
+     poinconCotes=fo(cx+r+4,cy-13,62,26,cote('D','D_cm',dp.D_cm||40,'cm',10,'Diamètre du poteau'));
+    } else {
+     poinconCotes=fo(cx+r+4,cy-28,62,24,cote('c1','c1_cm',dp.c1_cm||40,'cm',10,'Côté c1 du poteau'))
+      +fo(cx+r+4,cy+2,62,24,cote('c2','c2_cm',dp.c2_cm||40,'cm',10,'Côté c2 du poteau'));
+    }
+    poinconCotes+=fo(cx-32,cy+r+6,64,24,cote('N','N_poincon_kN',dp.N_poincon_kN??0,'kN',0,'Effort transmis NEd (ELU, poinçonnement)'));
    }
    return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+Math.round(H*0.9)+'" class="pcSvg" role="img" aria-label="Dalle">'
     +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.35" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.8"/>'
     +'<clipPath id="dlClip"><rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'"/></clipPath>'
-    +'<g clip-path="url(#dlClip)">'+hatch+'</g>'+poteau
+    +'<g clip-path="url(#dlClip)">'+hatch+'</g>'+poteau+poinconCotes
     +'<line x1="'+rx+'" y1="'+(ry+rh+10)+'" x2="'+(rx+rw)+'" y2="'+(ry+rh+10)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'
-    +'<text x="'+(rx+rw/2)+'" y="'+(ry+rh+22)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">lx='+esc(lx)+' m</text>'
-    +(dp.sens==='deux'?('<line x1="'+(rx+rw+10)+'" y1="'+ry+'" x2="'+(rx+rw+10)+'" y2="'+(ry+rh)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/><text x="'+(rx+rw+14)+'" y="'+(ry+rh/2)+'" font-size="10" fill="var(--ink-soft,#999)">ly='+esc(dp.ly_m)+' m</text>'):'')
+    +fo(rx+rw/2-30,ry+rh+14,60,26,cote('lx','lx_m',lx,'m',0.5,'Portée lx'))
+    +(dp.sens==='deux'?('<line x1="'+(rx+rw+10)+'" y1="'+ry+'" x2="'+(rx+rw+10)+'" y2="'+(ry+rh)+'" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1"/>'+fo(rx+rw+14,ry+rh/2-13,62,26,cote('ly','ly_m',dp.ly_m||5,'m',0.5,'Portée ly'))):'')
+    +fo(rx-66,ry+6,62,26,cote('h','h_cm',dp.h_cm||20,'cm',8,'Épaisseur h'))
+    +'<line x1="'+(rx+rw/2)+'" y1="'+(ry-56)+'" x2="'+(rx+rw/2)+'" y2="'+(ry-6)+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="2" marker-end="url(#dlArrQ)"/>'
+    +fo(rx+rw/2-58,ry-98,54,26,cote('G','G_kNm2',dp.G_kNm2??5,'kN/m²',0,'Charges permanentes G'))
+    +fo(rx+rw/2+4,ry-98,54,26,cote('Q','Q_kNm2',dp.Q_kNm2??2.5,'kN/m²',0,'Charges d\'exploitation Q'))
+    +'<defs><marker id="dlArrQ" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--blueprint,#2e6ea6)"/></marker></defs>'
     +'</svg>';
   }
   function dlStepHtml(n,dp,t){
    if(n===1){
     return '<h5>1 · Géométrie et portées</h5>'
      +'<label>Sens de portée <select data-dl="sens"><option value="un"'+(dp.sens!=='deux'?' selected':'')+'>Un seul sens (dalle continue)</option><option value="deux"'+(dp.sens==='deux'?' selected':'')+'>Deux sens (sur 4 appuis)</option></select></label>'
-     +'<label>Portée lx <input type="number" step="0.1" min="0.5" data-dl="lx_m" value="'+(dp.lx_m||5)+'"> m</label>'
-     +(dp.sens==='deux'?'<label>Portée ly <input type="number" step="0.1" min="0.5" data-dl="ly_m" value="'+(dp.ly_m||5)+'"> m</label>':'')
-     +'<label>Épaisseur h <input type="number" step="1" min="8" data-dl="h_cm" value="'+(dp.h_cm||20)+'"> cm</label>'
+     +'<p class="pcNote">Portée'+(dp.sens==='deux'?'s lx/ly':' lx')+' et épaisseur h : à régler directement sur le schéma ci-dessus.</p>'
      +'<label>Enrobage <input type="number" step="0.5" min="1" data-dl="enrobage_cm" value="'+(dp.enrobage_cm??2)+'"> cm</label>';
    }
    if(n===2){
@@ -25284,20 +25299,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      +'<label>Nombre de travées (sens lx) <input type="number" step="1" min="1" data-dl="nTravees" value="'+(dp.nTravees??3)+'"></label>'
      +((+dp.nTravees||1)>1?('<label>Position de la travée étudiée <select data-dl="position"><option value="intermediaire"'+(dp.position!=='rive'?' selected':'')+'>Intermédiaire</option><option value="rive"'+(dp.position==='rive'?' selected':'')+'>De rive</option></select></label>'
       +(dp.position==='rive'?'<label>Appui de rive solidaire d\'un poteau (encastrement partiel) <select data-dl="riveSolidaire"><option value=""'+(!dp.riveSolidaire?' selected':'')+'>Non</option><option value="1"'+(dp.riveSolidaire?' selected':'')+'>Oui</option></select></label>':'')):'')
-     +'<label>Charges permanentes G <input type="number" step="0.1" data-dl="G_kNm2" value="'+(dp.G_kNm2??5)+'"> kN/m²</label>'
-     +'<label>Charges d\'exploitation Q <input type="number" step="0.1" data-dl="Q_kNm2" value="'+(dp.Q_kNm2??2.5)+'"> kN/m²</label>'
+     +'<p class="pcNote">Charges G et Q : à régler directement sur le schéma ci-dessus.</p>'
      +'<p class="pcNote">Méthode forfaitaire BAEL91 Annexe E.1 : applicable si Q ≤ 2G ou Q ≤ 5 kN/m², rapport des portées adjacentes entre 0,8 et 1,25, fissuration non préjudiciable.</p>';
    }
    return '<h5>4 · Poinçonnement (optionnel)</h5>'
     +'<label>Dalle sur appui ponctuel (poteau) <select data-dl="poincon"><option value=""'+(!dp.poincon?' selected':'')+'>Non</option><option value="1"'+(dp.poincon?' selected':'')+'>Oui</option></select></label>'
     +(dp.poincon?(
       '<label>Forme du poteau <select data-dl="poteauForme"><option value="rect"'+(dp.poteauForme!=='circ'?' selected':'')+'>Rectangulaire</option><option value="circ"'+(dp.poteauForme==='circ'?' selected':'')+'>Circulaire</option></select></label>'
-      +(dp.poteauForme==='circ'
-        ? '<label>Diamètre <input type="number" step="1" min="10" data-dl="D_cm" value="'+(dp.D_cm||40)+'"> cm</label>'
-        : '<label>Côté c1 <input type="number" step="1" min="10" data-dl="c1_cm" value="'+(dp.c1_cm||40)+'"> cm</label>'
-         +'<label>Côté c2 <input type="number" step="1" min="10" data-dl="c2_cm" value="'+(dp.c2_cm||40)+'"> cm</label>')
-      +'<label>Effort transmis NEd <input type="number" step="1" min="0" data-dl="N_poincon_kN" value="'+(dp.N_poincon_kN??0)+'"> kN (ELU)</label>'
-      +'<p class="pcNote">Vérification EC2 §6.4, β forfaitaire = 1,15 (poteau intérieur courant).</p>'
+      +'<p class="pcNote">Côté(s) du poteau et effort transmis NEd : à régler directement sur le schéma ci-dessus. Vérification EC2 §6.4, β forfaitaire = 1,15 (poteau intérieur courant).</p>'
      ):'');
   }
   function dlFormHtml(id,t){
