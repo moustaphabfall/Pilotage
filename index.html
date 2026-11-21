@@ -19589,7 +19589,12 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcModHead{display:flex;align-items:center;justify-content:center;gap:7px;margin:0 0 6px}
 .pcModIco{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1.5px solid var(--line);border-radius:8px;font-size:14px}
 .pcModName{font:700 13px system-ui,sans-serif;opacity:.8}
-.pcDraw{border:1.5px dashed var(--blueprint-dark,#8a8a8a);border-radius:12px;padding:10px 4px;margin-bottom:10px;background:var(--panel);display:flex;justify-content:center;overflow-x:auto}
+.pcDraw{border:1.5px dashed var(--blueprint-dark,#8a8a8a);border-radius:12px;padding:10px 4px;margin-bottom:10px;background:var(--panel);display:flex;justify-content:center;overflow:hidden;position:relative;touch-action:none}
+.pcDraw{cursor:grab}
+.pcDraw.pcDrawGrab{cursor:grabbing}
+.pcZoomTools{position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:5}
+.pcZoomBtn{width:30px;height:30px;min-height:0;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft,#777);font-size:16px;line-height:1;padding:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.85;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.pcZoomBtn:active{opacity:1}
 .pcFormSticky{position:sticky;top:0;z-index:30;background:var(--panel);background-color:var(--panel);padding:2px 0 8px;margin:0 0 6px;will-change:transform;transform:translateZ(0);-webkit-transform:translateZ(0);isolation:isolate;box-shadow:0 8px 12px -8px rgba(0,0,0,.4)}
 .pcFormSticky::before{content:'';position:absolute;inset:-6px -6px 0 -6px;background-color:var(--panel);z-index:-1}
 .pcFormSticky::after{content:'';position:absolute;inset:0;background-color:var(--panel);z-index:-1}
@@ -19604,7 +19609,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcDraw .pcApPanel{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;font-size:12px;color:var(--ink-soft,#777);white-space:normal}
 .pcDraw .pcApLbl{display:flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto}
 .pcDraw .pcApNum{width:96px;min-width:96px;font-size:12px;box-sizing:border-box}
-.pcSvg{color:var(--ink);display:block;margin:0 auto}
+.pcSvg{color:var(--ink);display:block;margin:0 auto;transform-origin:center center;will-change:transform}
 .pcPanel{margin-bottom:10px}
 .pcPanel h5{margin:0 0 10px;font:700 14px system-ui,sans-serif}
 .pcPanel label{display:block;margin:0 0 10px;font:600 12.5px system-ui,sans-serif}
@@ -21931,7 +21936,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v513';
+  const VER='v514';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -27754,6 +27759,73 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   window.beFoCancelBack=beFoCancelBack;
   window.beFormationRenderEleve=beFormationRenderEleve;
   window.beSessionOpenEleve=beSessionOpenEleve;
+
+  /* ===== Zoom / pan sur les schémas de dimensionnement (2D) =====
+     S'applique génériquement à tout schéma .pcSvg affiché dans un conteneur .pcDraw, pour tous
+     les modules de dimensionnement (poutre, poteau, dalle, semelle, pieu), sans code spécifique
+     par module. Glisser pour déplacer, pincer ou molette pour zoomer, boutons −/⟲/＋ pour le
+     tactile. Un geste démarré sur un contrôle entrelacé (cote, bouton ＋, select…) ne déclenche
+     jamais de glissement, pour que ces contrôles restent cliquables/éditables au zoom courant. */
+  function pcZoomApply(draw){
+   const svg=draw.querySelector('svg.pcSvg'); if(!svg) return;
+   const z=draw.__pcZ||{s:1,x:0,y:0};
+   svg.style.transform='translate('+z.x+'px,'+z.y+'px) scale('+z.s+')';
+   draw.classList.toggle('pcDrawZoomed',z.s>1.001);
+  }
+  function pcZoomSetup(draw){
+   if(!draw.__pcZ) draw.__pcZ={s:1,x:0,y:0};
+   if(!draw.querySelector('.pcZoomTools')){
+    const tools=document.createElement('div'); tools.className='pcZoomTools';
+    tools.innerHTML='<button type="button" class="pcZoomBtn" data-pcz="out" aria-label="Réduire le schéma" title="Réduire">−</button><button type="button" class="pcZoomBtn" data-pcz="reset" aria-label="Réinitialiser le zoom" title="Réinitialiser">⟲</button><button type="button" class="pcZoomBtn" data-pcz="in" aria-label="Agrandir le schéma" title="Agrandir">＋</button>';
+    draw.appendChild(tools);
+    tools.addEventListener('click',e=>{
+     const b=e.target.closest('[data-pcz]'); if(!b) return;
+     if(b.dataset.pcz==='reset'){ draw.__pcZ={s:1,x:0,y:0}; }
+     else { const f=b.dataset.pcz==='in'?1.3:(1/1.3); draw.__pcZ.s=Math.max(1,Math.min(4,draw.__pcZ.s*f)); }
+     pcZoomApply(draw);
+    });
+   }
+   pcZoomApply(draw);
+   if(draw.__pcZoomReady) return;
+   draw.__pcZoomReady=true;
+   let panning=false,lastX=0,lastY=0,pts={},pinchD0=0,pinchS0=1;
+   const isFormEl=t=>!!(t.closest&&t.closest('input,button,select,textarea,.pcZoomTools'));
+   draw.addEventListener('pointerdown',e=>{
+    if(isFormEl(e.target)) return;
+    pts[e.pointerId]={x:e.clientX,y:e.clientY};
+    const ids=Object.keys(pts);
+    if(ids.length===1){ panning=true; lastX=e.clientX; lastY=e.clientY; try{ draw.setPointerCapture(e.pointerId); }catch(_){ } draw.classList.add('pcDrawGrab'); }
+    else if(ids.length===2){ panning=false; const p=ids.map(k=>pts[k]); pinchD0=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1; pinchS0=draw.__pcZ.s; }
+   });
+   draw.addEventListener('pointermove',e=>{
+    if(!(e.pointerId in pts)) return;
+    pts[e.pointerId]={x:e.clientX,y:e.clientY};
+    const ids=Object.keys(pts);
+    if(ids.length===2){
+     const p=ids.map(k=>pts[k]); const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1;
+     draw.__pcZ.s=Math.max(1,Math.min(4,pinchS0*(d/pinchD0)));
+     pcZoomApply(draw);
+    } else if(panning){
+     draw.__pcZ.x+=(e.clientX-lastX); draw.__pcZ.y+=(e.clientY-lastY); lastX=e.clientX; lastY=e.clientY;
+     pcZoomApply(draw);
+    }
+   });
+   const endPt=e=>{ delete pts[e.pointerId]; if(!Object.keys(pts).length){ panning=false; draw.classList.remove('pcDrawGrab'); } try{ draw.releasePointerCapture(e.pointerId); }catch(_){ } };
+   draw.addEventListener('pointerup',endPt); draw.addEventListener('pointercancel',endPt);
+   draw.addEventListener('wheel',e=>{
+    if(isFormEl(e.target)) return;
+    e.preventDefault();
+    const f=e.deltaY<0?1.12:(1/1.12);
+    draw.__pcZ.s=Math.max(1,Math.min(4,draw.__pcZ.s*f));
+    pcZoomApply(draw);
+   },{passive:false});
+  }
+  try{
+   new MutationObserver(()=>{
+    const mb=document.getElementById('modalBody'); if(!mb) return;
+    mb.querySelectorAll('.pcDraw').forEach(pcZoomSetup);
+   }).observe(document.getElementById('modalBody')||document.body,{childList:true,subtree:true});
+  }catch(_){ }
 
   let beTries=0;
   (function wait(){
