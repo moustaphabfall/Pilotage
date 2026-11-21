@@ -6379,13 +6379,13 @@ function miniPrompt(message, defaultValue, cb){
   document.getElementById('miniPromptOverlay').style.display='flex';
   setTimeout(()=>{ inp.focus(); inp.select(); },0);
 }
-function miniConfirm(message, cb){
+function miniConfirm(message, cb, okLbl, cancelLbl){
   _miniPromptCb = cb;
   document.getElementById('miniPromptMsg').textContent = message;
   const inp = document.getElementById('miniPromptInput');
   inp.style.display='none';
-  document.getElementById('miniPromptOkBtn').textContent='Confirmer';
-  document.getElementById('miniPromptCancelBtn').textContent='Annuler'; _miniNoCb=null;
+  document.getElementById('miniPromptOkBtn').textContent=okLbl||'Confirmer';
+  document.getElementById('miniPromptCancelBtn').textContent=cancelLbl||'Annuler'; _miniNoCb=null;
   document.getElementById('miniPromptCancelBtn').style.display='inline-block';
   document.getElementById('miniPromptOverlay').style.display='flex';
 }
@@ -8461,13 +8461,14 @@ function saveTask(id){
   persist(); closeModal(); renderAll();
 }
 function deleteTask(id){
-  miniConfirm('Supprimer cet ouvrage ?', ()=>{
+  const _dt=(typeof taskById==='function'?taskById(id):null);
+  miniConfirm('Supprimer '+((_dt&&(_dt.quoi||_dt.nom))?('« '+(_dt.quoi||_dt.nom)+' »'):'cet ouvrage')+' ? Cette action est définitive.', ()=>{
     state.cloisons = (state.cloisons||[]).filter(c=>c.taskId!==id);
     state.tasks = state.tasks.filter(t=>t.id!==id);
     state.interlocuteurs.forEach(i=>{ if(i.taches) i.taches = i.taches.filter(x=>x.taskId!==id); });
     state.tasks.forEach(t=>{ if(t.dependances) t.dependances = t.dependances.filter(x=>x!==id); });
     persist(); closeModal(); renderAll();
-  });
+  }, 'Supprimer', 'Garder');
 }
 
 let downloadsCap = null;
@@ -12440,7 +12441,7 @@ blobRehydrate().then(()=>initSupabaseSync()).then(()=>blobPullMissing()).then(()
 
 /* ===== Copier / coller (Ctrl+C / Ctrl+V) : ouvrages (pastilles), pièces (avec leurs ouvrages) et cloisons ===== */
 let _clip=null, _clipN=0;
-function clipToast(msg){ let d=document.getElementById('clipToast'); if(!d){ d=document.createElement('div'); d.id='clipToast'; d.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:18px;font-size:13px;z-index:9500;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;'; document.body.appendChild(d); } d.textContent=msg; d.style.opacity=1; clearTimeout(d._t); d._t=setTimeout(()=>{ d.style.opacity=0; },1800); }
+function clipToast(msg){ let d=document.getElementById('clipToast'); if(!d){ d=document.createElement('div'); d.id='clipToast'; d.setAttribute('role','status'); d.setAttribute('aria-live','polite'); d.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:18px;font-size:13px;z-index:9500;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;'; document.body.appendChild(d); } d.textContent=msg; d.style.opacity=1; clearTimeout(d._t); d._t=setTimeout(()=>{ d.style.opacity=0; },1800); }
 function clipContext(){
   if(document.getElementById('overlay').classList.contains('open')) return null;
   const a=document.activeElement; if(a&&(/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)||a.isContentEditable)) return null;
@@ -19632,6 +19633,17 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcFldRow{display:flex}
 .pcFldIn{width:100%;background:transparent;border:none;border-bottom:1.5px solid var(--line);color:var(--ink);font-size:14px;padding:3px 0;-webkit-appearance:none;appearance:none;-moz-appearance:textfield;border-radius:0}
 .pcFldIn:focus{outline:none;border-bottom-color:#FFC400}
+/* Audit design 21/11 — accessibilité (WCAG 2.1 AA) */
+.pcDot{position:relative}
+.pcDot::after{content:'';position:absolute;inset:-10px}
+.pcDotName{font-size:11px}
+.pcFldLbl{font-size:12px}
+:root[data-theme="sombre"] .pcFldLbl,:root[data-theme="sombre"] .pcDotName,:root[data-theme="sombre"] .pcDraw .pcApPanel{color:#a3a3a3}
+:root[data-theme="blanc"] .pcFldLbl,:root[data-theme="blanc"] .pcDotName,:root[data-theme="blanc"] .pcDraw .pcApPanel{color:#5f5f5f}
+:root[data-theme="blanc"] .pcWarn{color:#B4432D}
+:root[data-theme="blanc"] :is(.pjAT-v,.pjCE-c i,.menu-btn:hover,.nc-row .sugg,.pb-niv-h,.pb-strip-l,.tr-niv-lbl,.tr-task,.cr-lot,.mat-task a,.eff-help){color:#16232B}
+button:focus-visible,a:focus-visible,select:focus-visible,[role="button"]:focus-visible,[tabindex]:focus-visible,.pcFldIn:focus-visible{outline:2px solid #FFC400;outline-offset:2px}
+:root[data-theme="blanc"] :is(button,a,select,[role="button"],[tabindex],.pcFldIn):focus-visible{outline-color:#16232B}
 .pcChgDel{align-self:flex-end;margin-left:auto}
 .pcNav{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
 .pcFormSep{border:0;border-top:1px dashed var(--line,rgba(255,255,255,.14));margin:16px 0}
@@ -20601,7 +20613,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    +'<button type="button" class="pjd-lnk" data-act="filt">+ Filtre</button>'+(chips.length?'<button type="button" class="pjd-lnk" data-act="reset">Réinitialiser</button>':'')+'<span class="pjd-sp"></span><button type="button" class="pjd-lnk" data-act="addOuvrage" title="Créer un ouvrage">+ Ouvrage</button><button type="button" class="pjd-lnk" data-act="mbf" title="Exporter le projet en fichier .mbf (blocs A · E · T · C)">Exporter .mbf</button><button type="button" class="pjd-lnk" data-act="props">Propriétés</button></div>'
    +selBar()
    +'</div><div class="pjd-scroll"><table class="pjd-t" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:58px">'+cs.map(k=>'<col data-col="'+k+'" style="width:'+cw(k)+'px">').join('')+'<col style="width:34px"></colgroup><thead><tr><th class="pjd-g"><input type="checkbox" class="pjd-ck" data-all="1" aria-label="Tout sélectionner"></th>'+cs.map(k=>'<th data-sort="'+k+'" data-dcol="'+k+'" title="Appui long puis glisser pour déplacer la colonne"><span class="pjd-hl">'+COLS[k]+(SORT&&SORT.k===k?(SORT.d>0?' ▲':' ▼'):'')+'</span><i class="pjd-rz" data-rz="'+k+'" title="Glisser pour redimensionner"></i></th>').join('')+'<th class="pjd-add" data-act="props" title="Ajouter une propriété">+</th></tr></thead><tbody>'
-   +(R.length?R.map(r=>'<tr data-id="'+esc(r.id)+'"'+(SEL.has(r.id)?' class="sel"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+(MBF.includes(k)?' data-ed="'+k+'" title="Cliquer pour renseigner"':(k==='pieceArchi'?' data-sel="pieceArchi" title="Choisir la pièce archi"':''))+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un ouvrage en dessous">＋</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun ouvrage pour ces filtres.</td></tr>')
+   +(R.length?R.map(r=>'<tr data-id="'+esc(r.id)+'"'+(SEL.has(r.id)?' class="sel"':'')+'><td class="pjd-g"><span class="pjd-h" title="Glisser pour déplacer la ligne">⋮⋮</span><input type="checkbox" class="pjd-ck" aria-label="Sélectionner la ligne"'+(SEL.has(r.id)?' checked':'')+'></td>'+cs.map(k=>'<td'+(MBF.includes(k)?' data-ed="'+k+'" title="Cliquer pour renseigner"':(k==='pieceArchi'?' data-sel="pieceArchi" title="Choisir la pièce archi"':''))+'>'+cell(r,k)+'</td>').join('')+'<td><span class="pjd-open" data-rowadd="'+esc(r.id)+'" title="Ajouter un ouvrage en dessous">＋</span></td></tr>').join(''):'<tr><td class="pjd-empty" colspan="'+(cs.length+2)+'">Aucun ouvrage pour ces filtres. <button type="button" class="pjd-lnk" data-act="reset">Effacer les filtres</button></td></tr>')
    +'</tbody></table></div></div>';
  }
  /* ＋ sur une ligne (style Notion) : crée un ouvrage juste en dessous de la ligne cliquée, en reprenant son
@@ -23904,11 +23916,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function beamGridHtml(){
    const tiles=beamModules().map((m,i)=>{ const ready=(m[1]==='Poutre continue (RDM)');
-    return '<button type="button" class="pjAT'+(ready?' pjAT-ready':'')+'" data-beam-mod="'+i+'" title="'+esc(m[1])+(ready?'':' — à développer')+'"><span class="pjAT-i">'+beamIconHtml(m[0])+'</span><span class="pjAT-n">'+esc(m[1])+'</span></button>';
+    return '<button type="button" class="pjAT'+(ready?' pjAT-ready':'')+'" data-beam-mod="'+i+'" title="'+esc(m[1])+(ready?'':' — bientôt disponible')+'"><span class="pjAT-i">'+beamIconHtml(m[0])+'</span><span class="pjAT-n">'+esc(m[1])+'</span></button>';
    }).join('');
    return '<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📐 Poutres &amp; éléments horizontaux</h4></div>'
     +'<p class="pjBeam-h">Choisir un module</p><div class="pjAT-g pjBeam-g">'+tiles+'</div>'
-    +'<p class="pjBeam-f">Modules développés un par un. Les autres restent grisés en attendant leur tour ; les 16 autres types de structure gardent la fiche classique en attendant leurs modules.</p>';
+    ;
   }
   function beamClick(e,id){
    const st=beamState(id);
@@ -23926,7 +23938,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const chatMic=e.target.closest('[data-pc-chat-mic]'); if(chatMic){ pcChatMic(id); return; }
    const mod=e.target.closest('[data-beam-mod]'); if(mod){ const m=beamModulesFlat()[+mod.dataset.beamMod]; if(!m) return;
     if(m[1]==='Poutre continue (RDM)'){ st.view='wizard'; st.step=pcData(taskById(id))._maxStep||1; beamRender(id); }
-    else{ try{ clipToast('Module « '+m[1]+' » — à développer.'); }catch(_){ } }
+    else{ try{ clipToast('Module « '+m[1]+' » : bientôt disponible.'); }catch(_){ } }
     return;
    }
    const goStep=e.target.closest('[data-pc-step]'); if(goStep){ const n=+goStep.dataset.pcStep; if(n<1||n>PC_NSTEPS) return;
@@ -24396,7 +24408,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const ap=dp.appuis[apOpen]; const extr=(apOpen===0||apOpen===dp.appuis.length-1);
     const apPanelW=Math.max(beamW,W-padL-16);
     apPanel='<foreignObject x="'+padL+'" y="'+apPanelY+'" width="'+apPanelW+'" height="64"><div xmlns="http://www.w3.org/1999/xhtml" class="pcApPanel"><b>Appui '+apOpen+'</b>'
-     +'<label class="pcApLbl">Raideur (kN/m) <input type="number" step="any" placeholder="vide=rigide" class="pcApNum" data-pc-i="appuis.'+apOpen+'.raideur_kN_m" value="'+(ap.raideur_kN_m??'')+'"></label>'
+     +'<label class="pcApLbl">Raideur (kN/m) · vide = appui rigide <input type="number" step="any" class="pcApNum" data-pc-i="appuis.'+apOpen+'.raideur_kN_m" value="'+(ap.raideur_kN_m??'')+'"></label>'
      +(extr?'<label class="pcApLbl pcApChk"><input type="checkbox" data-pc-i="appuis.'+apOpen+'.blocage_rotation" '+(ap.blocage_rotation?'checked':'')+'> encastrement (blocage rotation)</label>':'<span class="pcNote2">appui intermédiaire</span>')
      +'</div></foreignObject>';
    }
@@ -24421,8 +24433,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function pcStepHtml(step,dp,t){
    if(step===1){
-    return '<h5>1 · Géométrie</h5>'
-     +'<p class="pcNote">Tout se règle directement sur le schéma ci-dessus : nom de l\'ouvrage (titre, cliquable), nombre de travées (＋ de part et d\'autre), portée de chaque travée (cote cliquable), longueur totale (calculée) et section b × h (coupe à droite de la poutre, cliquable).</p>';
+    return '<h5>1 · Géométrie</h5>';
    }
    if(step===2){
     return '<h5>2 · Matériau</h5>'
@@ -24461,9 +24472,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const choice=pcChooseEngine(dp);
     return '<h5>5 · Calcul</h5>'
      +'<div class="pcDimBox"><b>🤖 '+esc(choice.label)+'</b><p class="pcNote">'+esc(choice.reason)+'</p><p class="pcNote">'+choice.steps.map(esc).join(' → ')+'</p></div>'
-     +(warn.length?'<ul class="pcWarn">'+warn.map(w=>'<li>⚠ '+esc(w)+'</li>').join('')+'</ul>':'<p class="pcNote">Données cohérentes — prêt pour le calcul.</p>')
-     +'<button type="button" class="primary pcBtnSm" data-pc-act="run">▶ Valider et calculer</button>'
-     +'<p class="pcNote">Calcul instantané et local (hors réseau). Conventions : 1 t = 10 kN, moment positif vers le haut comme Excel.</p>';
+     +(warn.length?'<ul class="pcWarn">'+warn.map(w=>'<li>⚠ '+esc(w)+'</li>').join('')+'</ul>':'<p class="pcNote">Données complètes.</p>')
+     +'<button type="button" class="primary pcBtnSm" data-pc-act="run">▶ Valider et calculer</button>';
    }
    if(step===6){
     const res=dp.resultats;
@@ -24485,12 +24495,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +fld('Type','', '<select class="pcFldIn" data-pc-i="charges.'+i+'.type"><option value="G"'+(c.type!=='Q'?' selected':'')+'>Permanente (G)</option><option value="Q"'+(c.type==='Q'?' selected':'')+'>Variable (Q)</option></select>')
     +fld('Forme','', '<select class="pcFldIn" data-pc-i="charges.'+i+'.forme"><option value="repartie"'+(!isPonct?' selected':'')+'>Répartie</option><option value="ponctuelle"'+(c.forme==='ponctuelle'?' selected':'')+'>Ponctuelle</option><option value="couple"'+(c.forme==='couple'?' selected':'')+'>Couple</option></select>')
     +fld('Repère','', '<select class="pcFldIn" data-pc-i="charges.'+i+'.repere">'+repOpts.join('')+'</select>')
-    +fld('Nu (abscisse gauche)','m', '<input type="number" step="any" class="pcFldIn" data-pc-i="charges.'+i+'.nu_gauche_m" value="'+(c.nu_gauche_m??0)+'">')
+    +fld('Début (abscisse gauche)','m', '<input type="number" step="any" class="pcFldIn" data-pc-i="charges.'+i+'.nu_gauche_m" value="'+(c.nu_gauche_m??0)+'">')
     +(!isPonct?fld('Longueur (vide = toute la portée)','m', '<input type="number" step="any" class="pcFldIn" data-pc-i="charges.'+i+'.longueur_m" value="'+(c.longueur_m??'')+'">'):'')
     +fld(lblVal,unitVal, '<input type="number" step="any" class="pcFldIn" data-pc-i="charges.'+i+'.valeur_gauche" value="'+(c.valeur_gauche??'')+'">')
     +(!isPonct?fld('Valeur à droite (= gauche si vide)',unitVal, '<input type="number" step="any" class="pcFldIn" data-pc-i="charges.'+i+'.valeur_droite" value="'+(c.valeur_droite??'')+'">'):'')
     +fld('Pondération','', '<input type="number" step="any" class="pcFldIn" data-pc-i="charges.'+i+'.ponderation" value="'+(c.ponderation??1)+'">')
-    +fld('Groupe (pianotage Q)','', '<input type="number" step="1" class="pcFldIn" data-pc-i="charges.'+i+'.groupe" value="'+(c.groupe??'')+'">')
+    +fld('Groupe d\'alternance Q','', '<input type="number" step="1" class="pcFldIn" data-pc-i="charges.'+i+'.groupe" value="'+(c.groupe??'')+'">')
     +'<button type="button" class="ghost pcChgDel" data-pc-act="delChg" data-pc-idx="'+i+'">✕ Retirer</button>'
     +'</div>';
   }
