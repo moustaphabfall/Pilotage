@@ -21929,7 +21929,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v508';
+  const VER='v509';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -25942,12 +25942,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function puSvg(dp){
    /* Cadrage (viewBox) ajusté au contenu réellement dessiné, pas un canevas fixe surdimensionné ;
       taille minimale visible imposée au pieu (RMIN), quelle que soit l'échelle réelle — voir skill
-      dimensionnement-modules-design, §1 « Cadrage du schéma » / « Taille minimale visible ». */
+      dimensionnement-modules-design, §1 « Cadrage du schéma » / « Taille minimale visible ».
+      Cotes (a, b, F, a') et charges (G, Q) entrelacées directement sur le schéma (foreignObject),
+      comme pour Poutre continue — on ne les ressaisit pas dans une liste de champs séparée. */
    const cfg=dp.config||'simple';
    const RMIN=22; /* rayon minimum du pieu à l'écran, en unités svg */
    const a=+dp.a_cm||40,b=+dp.b_cm||40;
    const F=+dp.F_cm||50, aPrime0=+dp.aPrime_cm||Math.max(2.5*F,F);
-   /* échelle choisie pour garantir RMIN sur le pieu (jamais plus petit que lisible) */
    const sk=Math.max(RMIN/(F/2||1),0.35);
    const pw=a*sk, ph=b*sk, r=RMIN, aPrime=aPrime0*sk;
    let pts=[];
@@ -25955,16 +25956,33 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    else if(cfg==='double') pts=[[0,-aPrime/2],[0,aPrime/2]];
    else if(cfg==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; pts.push([R*Math.cos(ang),R*Math.sin(ang)]); } }
    else pts=[[-aPrime/2,-aPrime/2],[aPrime/2,-aPrime/2],[-aPrime/2,aPrime/2],[aPrime/2,aPrime/2]];
-   const MARGE=20, TXT=26; /* marge de dessin + place réservée aux deux légendes texte */
+   const MARGE=20, TXT=24, HAUT=88, DROITE=74, GAUCHE=(cfg!=='simple'?74:MARGE);
    let minX=-pw/2,maxX=pw/2,minY=-ph/2,maxY=ph/2;
    pts.forEach(([x,y])=>{ minX=Math.min(minX,x-r); maxX=Math.max(maxX,x+r); minY=Math.min(minY,y-r); maxY=Math.max(maxY,y+r); });
-   minX-=MARGE; maxX+=MARGE; minY-=(MARGE+TXT); maxY+=(MARGE+TXT);
+   minX-=GAUCHE; maxX+=DROITE; minY-=HAUT; maxY+=(MARGE+TXT);
    const Wb=maxX-minX, Hb=maxY-minY;
    let piles=''; pts.forEach(([x,y])=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.5" stroke="var(--rust,#c0392b)" stroke-width="2"/>'; });
-   return '<svg viewBox="'+minX+' '+minY+' '+Wb+' '+Hb+'" width="100%" height="150" class="pcSvg" role="img" aria-label="Tête de pieux">'
+   const fo=(x,y,w,h,inner)=>'<foreignObject x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'">'+inner+'</foreignObject>';
+   const cote=(id,val,unit,title)=>'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">'+(id==='aPrime_cm'?'a\'':id==='F_cm'?'F':id)[0]+'=<input type="number" step="1" min="1" class="pcDimIn" style="width:'+pcChW(val,2)+'" data-pu="'+id+'" value="'+(val==null?'':val)+'" title="'+esc(title)+'"><i class="pcUnit">'+unit+'</i></div>';
+   /* cote « a » (sous le poteau) */
+   let html=fo(-40,ph/2+8,80,30,cote('a_cm',a,'cm','Côté a du poteau'));
+   /* cote « b » (à droite du poteau) */
+   html+=fo(pw/2+6,-15,70,30,cote('b_cm',b,'cm','Côté b du poteau'));
+   /* cote « F » (près du premier pieu) */
+   const p0=pts[0];
+   html+=fo(p0[0]+r+4,p0[1]-15,70,30,cote('F_cm',F,'cm','Diamètre des pieux'));
+   /* cote « a' » (entraxe, à gauche de la colonne de pieux) si plus d'un pieu */
+   if(cfg!=='simple') html+=fo(minX+4,-15,66,30,cote('aPrime_cm',dp.aPrime_cm||'',"cm",'Entraxe des pieux a\' (mini 2,5×F, vide = suggestion)'));
+   /* charge : flèche au-dessus du poteau + G et Q entrelacés dessus */
+   const axY=-ph/2;
+   html+='<line x1="0" y1="'+(axY-54)+'" x2="0" y2="'+axY+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/><path d="M-7 '+(axY-9)+' L0 '+axY+' L7 '+(axY-9)+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>';
+   html+=fo(-54,axY-78,52,26,'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">G=<input type="number" step="1" class="pcDimIn" style="width:'+pcChW(dp.G_kN,2)+'" data-pu="G_kN" value="'+(dp.G_kN??'')+'" title="Charges permanentes G"><i class="pcUnit">kN</i></div>');
+   html+=fo(4,axY-78,52,26,'<div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap">Q=<input type="number" step="1" class="pcDimIn" style="width:'+pcChW(dp.Q_kN,2)+'" data-pu="Q_kN" value="'+(dp.Q_kN??'')+'" title="Charges d\'exploitation Q"><i class="pcUnit">kN</i></div>');
+   return '<svg viewBox="'+minX+' '+minY+' '+Wb+' '+Hb+'" width="100%" height="190" class="pcSvg" role="img" aria-label="Tête de pieux">'
     +piles
     +'<rect x="'+(-pw/2)+'" y="'+(-ph/2)+'" width="'+pw+'" height="'+ph+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>'
-    +'<text x="0" y="'+(minY+16)+'" font-size="13" text-anchor="middle" fill="var(--blueprint,#2e6ea6)">P1='+esc((puP1_t(dp)).toFixed(1))+' t</text>'
+    +html
+    +'<text x="0" y="'+(minY+14)+'" font-size="11.5" text-anchor="middle" fill="var(--ink-soft,#999)">P1=G+1,2Q='+esc((puP1_t(dp)).toFixed(1))+' t</text>'
     +'<text x="0" y="'+(maxY-8)+'" font-size="12" text-anchor="middle" fill="var(--ink-soft,#999)">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[cfg]+'</text>'
     +'</svg>';
   }
@@ -25973,10 +25991,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(n===1){
     return '<h5>1 · Configuration</h5>'
      +'<label>Nombre de pieux sous le poteau <select data-pu="config"><option value="simple"'+(cfg==='simple'?' selected':'')+'>1 pieu</option><option value="double"'+(cfg==='double'?' selected':'')+'>2 pieux</option><option value="triple"'+(cfg==='triple'?' selected':'')+'>3 pieux</option><option value="quadruple"'+(cfg==='quadruple'?' selected':'')+'>4 pieux</option></select></label>'
-     +'<label>Côté a du poteau <input type="number" step="1" min="10" data-pu="a_cm" value="'+(dp.a_cm||40)+'"> cm</label>'
-     +'<label>Côté b du poteau <input type="number" step="1" min="10" data-pu="b_cm" value="'+(dp.b_cm||40)+'"> cm</label>'
-     +'<label>Diamètre des pieux F <input type="number" step="1" min="20" data-pu="F_cm" value="'+(dp.F_cm||50)+'"> cm</label>'
-     +(cfg!=='simple'?('<label>Entraxe des pieux a\' <input type="number" step="1" data-pu="aPrime_cm" value="'+(dp.aPrime_cm||'')+'" placeholder="mini 2,5×F — laisser vide pour la valeur suggérée"> cm</label>'):'')
+     +'<p class="pcNote">Côtés du poteau (a, b), diamètre des pieux (F)'+(cfg!=='simple'?", entraxe (a')":'')+' : à régler directement sur le schéma ci-dessus.</p>'
      +(cfg==='triple'?('<label>Bras de levier d (cerces) <input type="number" step="1" data-pu="dChoisi_cm" value="'+(dp.dChoisi_cm||'')+'" placeholder="laisser vide pour la valeur suggérée"> cm</label>'):'');
    }
    if(n===2){
@@ -25986,8 +26001,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
    if(n===3){
     return '<h5>3 · Chargement</h5>'
-     +'<label>Charges permanentes G <input type="number" step="1" data-pu="G_kN" value="'+(dp.G_kN??400)+'"> kN</label>'
-     +'<label>Charges d\'exploitation Q <input type="number" step="1" data-pu="Q_kN" value="'+(dp.Q_kN??200)+'"> kN</label>'
+     +'<p class="pcNote">Charges G et Q : à régler directement sur le schéma ci-dessus (flèche au-dessus du poteau).</p>'
      +'<p class="pcNote">P1 = G + 1,2·Q (charge reprise par la semelle sur pieux, méthode CCBA68). 1 t = 10 kN. La portance du pieu lui-même (frottement + pointe) n\'est pas vérifiée ici — donnée d\'étude géotechnique.</p>';
    }
   }
