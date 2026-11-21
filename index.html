@@ -21929,7 +21929,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v507';
+  const VER='v508';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -25940,24 +25940,33 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return Object.assign({mat},fn(dp,mat,P1));
   }
   function puSvg(dp){
-   const W=240,H=160,cx=W/2,cy=H/2;
+   /* Cadrage (viewBox) ajusté au contenu réellement dessiné, pas un canevas fixe surdimensionné ;
+      taille minimale visible imposée au pieu (RMIN), quelle que soit l'échelle réelle — voir skill
+      dimensionnement-modules-design, §1 « Cadrage du schéma » / « Taille minimale visible ». */
    const cfg=dp.config||'simple';
-   const a=+dp.a_cm||40,b=+dp.b_cm||40, sk=Math.min(60/Math.max(a,b,40),0.9);
-   const pw=a*sk,ph=b*sk;
-   const F=+dp.F_cm||50, r=Math.max(6,F*sk*0.5);
-   const aPrime=(+dp.aPrime_cm||Math.max(2.5*F,F))*sk;
-   let piles='';
-   const addPile=(x,y)=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.5" stroke="var(--rust,#c0392b)" stroke-width="1.6"/>'; };
-   if(cfg==='simple') addPile(cx,cy);
-   else if(cfg==='double'){ addPile(cx,cy-aPrime/2); addPile(cx,cy+aPrime/2); }
-   else if(cfg==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; addPile(cx+R*Math.cos(ang),cy+R*Math.sin(ang)); } }
-   else { addPile(cx-aPrime/2,cy-aPrime/2); addPile(cx+aPrime/2,cy-aPrime/2); addPile(cx-aPrime/2,cy+aPrime/2); addPile(cx+aPrime/2,cy+aPrime/2); }
-   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="140" class="pcSvg" role="img" aria-label="Tête de pieux">'
+   const RMIN=22; /* rayon minimum du pieu à l'écran, en unités svg */
+   const a=+dp.a_cm||40,b=+dp.b_cm||40;
+   const F=+dp.F_cm||50, aPrime0=+dp.aPrime_cm||Math.max(2.5*F,F);
+   /* échelle choisie pour garantir RMIN sur le pieu (jamais plus petit que lisible) */
+   const sk=Math.max(RMIN/(F/2||1),0.35);
+   const pw=a*sk, ph=b*sk, r=RMIN, aPrime=aPrime0*sk;
+   let pts=[];
+   if(cfg==='simple') pts=[[0,0]];
+   else if(cfg==='double') pts=[[0,-aPrime/2],[0,aPrime/2]];
+   else if(cfg==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; pts.push([R*Math.cos(ang),R*Math.sin(ang)]); } }
+   else pts=[[-aPrime/2,-aPrime/2],[aPrime/2,-aPrime/2],[-aPrime/2,aPrime/2],[aPrime/2,aPrime/2]];
+   const MARGE=20, TXT=26; /* marge de dessin + place réservée aux deux légendes texte */
+   let minX=-pw/2,maxX=pw/2,minY=-ph/2,maxY=ph/2;
+   pts.forEach(([x,y])=>{ minX=Math.min(minX,x-r); maxX=Math.max(maxX,x+r); minY=Math.min(minY,y-r); maxY=Math.max(maxY,y+r); });
+   minX-=MARGE; maxX+=MARGE; minY-=(MARGE+TXT); maxY+=(MARGE+TXT);
+   const Wb=maxX-minX, Hb=maxY-minY;
+   let piles=''; pts.forEach(([x,y])=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.5" stroke="var(--rust,#c0392b)" stroke-width="2"/>'; });
+   return '<svg viewBox="'+minX+' '+minY+' '+Wb+' '+Hb+'" width="100%" height="150" class="pcSvg" role="img" aria-label="Tête de pieux">'
     +piles
-    +'<rect x="'+(cx-pw/2)+'" y="'+(cy-ph/2)+'" width="'+pw+'" height="'+ph+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.8"/>'
-    +'<text x="'+cx+'" y="'+(cy-60)+'" font-size="10" text-anchor="middle" fill="var(--blueprint,#2e6ea6)">P1='+esc((puP1_t(dp)).toFixed(1))+' t</text>'
-    +'<text x="'+cx+'" y="'+(cy+66)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[cfg]+'</text>'
-    +'<defs></defs></svg>';
+    +'<rect x="'+(-pw/2)+'" y="'+(-ph/2)+'" width="'+pw+'" height="'+ph+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>'
+    +'<text x="0" y="'+(minY+16)+'" font-size="13" text-anchor="middle" fill="var(--blueprint,#2e6ea6)">P1='+esc((puP1_t(dp)).toFixed(1))+' t</text>'
+    +'<text x="0" y="'+(maxY-8)+'" font-size="12" text-anchor="middle" fill="var(--ink-soft,#999)">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[cfg]+'</text>'
+    +'</svg>';
   }
   function puStepHtml(n,dp,t){
    const cfg=dp.config||'simple';
