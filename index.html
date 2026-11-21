@@ -461,6 +461,7 @@ tr.tr-row:hover{background:#F7F9F6; cursor:pointer;}
 .systeme-body{display:none; padding:0 10px 10px;}
 .systeme-body.open{display:block;}
 .fam-illu{width:30px; height:30px; border-radius:7px; vertical-align:middle;}
+.ts-illu{width:40px; height:40px; object-fit:contain; vertical-align:middle;}
 .pv-open{cursor:pointer;}
 .pv-open:hover{background:rgba(0,0,0,.04);}
 .pr-ctr{display:flex; align-items:center; gap:8px;}
@@ -1687,7 +1688,9 @@ const ILLU = {
   gaine: '<path d="M8 28h40v24H8z"/><path d="M8 28l12-10h40L48 28M60 18v24L48 52"/>',
   gaineV: '<rect x="20" y="8" width="24" height="48" rx="2"/><path d="M32 46V18M26 24l6-6 6 6"/>',
   calorifuge: '<rect x="8" y="22" width="48" height="26" rx="2"/><path d="M8 22l8-8h40M16 48l10-26M28 48l10-26M40 48l10-26"/>',
-  acc: '<path d="M32 8l20 12v24L32 56 12 44V20z"/><circle cx="32" cy="32" r="8"/>'
+  acc: '<path d="M32 8l20 12v24L32 56 12 44V20z"/><circle cx="32" cy="32" r="8"/>',
+  semelle: '<line x1="6" y1="46" x2="58" y2="46"/><path d="M10 46l-5 6M20 46l-5 6M30 46l-5 6M40 46l-5 6M50 46l-5 6"/><rect x="12" y="34" width="40" height="12" rx="1"/><rect x="26" y="10" width="12" height="24"/><path d="M29 10V4M35 10V4"/>',
+  pieu: '<line x1="4" y1="20" x2="60" y2="20"/><path d="M10 20l-5 6M20 20l-5 6M30 20l-5 6M40 20l-5 6M50 20l-5 6"/><rect x="24" y="12" width="16" height="10" rx="1"/><path d="M32 22V54"/><path d="M25 54l7 7 7-7"/>'
 };
 function illuUri(key){
   const inner = ILLU[key]; if(!inner) return '';
@@ -21908,7 +21911,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
           (Plan de coffrage, Plan de ferraillage…) pour ce corps d'état. */
        const TS=window.L_typesStructure();
        title='📐 Type d’ouvrage'; msg=lot?'Lot : '+lot+'. Quel type d’ouvrage ?':'Quel type d’ouvrage ?';
-       items=TS.map(t=>[t.icone||'📐',t.nom]);
+       items=TS.map(t=>[(typeof window.tsIconHtml==='function'?window.tsIconHtml(t):(t.icone||'📐')),t.nom]);
        act=i=>{ const t=TS[i]; doc.typeStructureId=t.id; fin(t.nom); };
       }
       else { const T=(window.lotsApi.TYPES||{})[fam]||[]; title='📐 Type de document'; msg=lot?'Lot : '+lot+'. Quel type de document ?':'Quel type de document ?'; items=T.map(t=>[TIC(t),TLAB[t]||t]); act=i=>fin(T[i]); }
@@ -21926,7 +21929,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v506';
+  const VER='v507';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -23779,8 +23782,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {nom:'Poutres & éléments horizontaux',icone:'➖'},
    {nom:'Poteaux & structures verticales',icone:'🏛️'},
    {nom:'Dalles, planchers & poinçonnement',icone:'🔲'},
-   {nom:'Semelles & fondations superficielles',icone:'🦶'},
-   {nom:'Pieux & fondations profondes',icone:'⚓'},
+   {nom:'Semelles & fondations superficielles',icone:'🦶',illu:'semelle'},
+   {nom:'Pieux & fondations profondes',icone:'⚓',illu:'pieu'},
    {nom:'Tassements & géotechnique',icone:'🪨'},
    {nom:'Soutènement & écrans',icone:'🛡️'},
    {nom:'Voiles & murs en béton armé',icone:'🧱'},
@@ -23797,19 +23800,27 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function L_typesStructure(){
    const old2=['Béton armé','Structure métallique'];
    if(!state.typesStructure||!state.typesStructure.length||(state.typesStructure.length<=2&&state.typesStructure.every(x=>old2.includes(x.nom)))){
-    state.typesStructure=TS_SEED.map(x=>({id:uid('TS'),nom:x.nom,icone:x.icone}));
+    state.typesStructure=TS_SEED.map(x=>({id:uid('TS'),nom:x.nom,icone:x.icone,illu:x.illu||null}));
     try{ persist(); }catch(_){}
+   } else {
+    /* rattrapage : propage une illustration (illu) ajoutée après coup au TS_SEED sur les types déjà
+       créés en base, par nom, sans toucher au reste (id, icône texte de secours conservés) */
+    let ch=false;
+    state.typesStructure.forEach(t=>{ const seed=TS_SEED.find(x=>x.nom===t.nom); if(seed&&seed.illu&&t.illu!==seed.illu){ t.illu=seed.illu; ch=true; } });
+    if(ch){ try{ persist(); }catch(_){} }
    }
    return state.typesStructure;
   }
   function beTypeStructureNom(id){ const t=L_typesStructure().find(x=>x.id===id); return t?t.nom:''; }
   function beTypeStructureIco(id){ const t=L_typesStructure().find(x=>x.id===id); return (t&&t.icone)||''; }
+  function tsIconHtml(t){ return (t&&t.illu&&ILLU[t.illu]) ? '<img src="'+illuUri(t.illu)+'" class="ts-illu" alt="">' : ((t&&t.icone)||'📐'); }
   function beTypeStructureLabel(id){ const t=L_typesStructure().find(x=>x.id===id); return t?((t.icone?t.icone+' ':'')+t.nom):''; }
   function beTypeStructureOptsHtml(sel){ return '<option value="">— Choisir —</option>'+L_typesStructure().map(t=>'<option value="'+esc(t.id)+'"'+(sel===t.id?' selected':'')+'>'+esc((t.icone?t.icone+' ':'')+t.nom)+'</option>').join('')+'<option value="__new__">＋ Ajouter un type…</option>'; }
   /* exposés globalement : réutilisés par la fiche document (mode dimensionnement, module pjV140Js) */
   window.L_typesStructure=L_typesStructure;
   window.beTypeStructureNom=beTypeStructureNom;
   window.beTypeStructureIco=beTypeStructureIco;
+  window.tsIconHtml=tsIconHtml;
   window.beTypeStructureLabel=beTypeStructureLabel;
   /* ===================== Dimensionnement — « Poutre continue » (grille de modules + moteur) =====================
      Grille du type « Poutres & éléments horizontaux ». Les classeurs Excel « Poutre continue », « Effort dans
@@ -25816,6 +25827,344 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    try{ persist(); }catch(_){ }
    if(okN||errN||incomplets.length){
     const msg=okN+' semelle'+(okN>1?'s':'')+' dimensionnée'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
+    try{ clipToast(msg); }catch(_){ }
+    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
+    else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
+   }
+   return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
+  };
+
+  /* --- Pieux & fondations profondes (type 05) : têtes de pieux ----------------------------------
+     Méthode des bielles CCBA68 (simple/double/triple/quadruple), validée sur le classeur
+     "Dimensionnement tête de pieux.xlsx". P1 (charge reprise par la semelle) est une donnée
+     d'entrée (G+1,2Q) — voir skill dimensionnement-05-pieux pour les limites (portance du pieu,
+     répartition rigoureuse entre pieux, frottement négatif, flambement, battage : hors périmètre). */
+  const PIEU_TYPE_NOM='Pieux & fondations profondes';
+  const PU_BARDIAMS=[8,10,12,14,16,20,25,32];
+  function puChooseBarsTotal(AsReq_cm2,largeur_m){
+   const AsReq_mm2=Math.max(0,AsReq_cm2)*100;
+   const nMinEsp=Math.max(4,Math.ceil((Math.max(largeur_m,0.3)*1000)/250));
+   let best=null;
+   for(const phi of PU_BARDIAMS){
+    const a=Math.PI/4*phi*phi;
+    const n=Math.max(nMinEsp,Math.ceil(AsReq_mm2/a));
+    const As=n*a;
+    if(!best||As<best.As) best={phi,n,As};
+   }
+   return best;
+  }
+  function puRound5Up(v){ return Math.ceil(v/5)*5; }
+  function puDefaultData(t){
+   return { nom:t.nom||'', config:'simple',
+    a_cm:40, b_cm:40, F_cm:50, classeGlobale:'C25/30', classeAcier:'B500',
+    G_kN:400, Q_kN:200, aPrime_cm:null, dChoisi_cm:null,
+    resultats:null };
+  }
+  function puData(t){ if(!t.dimPU) t.dimPU=puDefaultData(t); return t.dimPU; }
+  function puP1_t(dp){ return ((+dp.G_kN||0)+1.2*(+dp.Q_kN||0))/10; } /* 1 t = 10 kN */
+  function puComputeSimple(dp,mat,P1){
+   const a=Math.min(+dp.a_cm||40,+dp.b_cm||40), b=Math.max(+dp.a_cm||40,+dp.b_cm||40);
+   const F=+dp.F_cm||50, fe=mat.Fe, fc28=mat.Fc28;
+   const e=Math.min(F/8,15), aPrime=F;
+   const hMin=F+2*e, h=puRound5Up(hMin);
+   const Ainf=((P1*0.01*3*(aPrime-a))/(8*0.9*h*2*fe))*10000;
+   const Asup=Math.max(0,((P1*0.01*3*(b-aPrime))/(8*0.9*h*2*fe))*10000);
+   const Attente=((1.335*P1*0.01-(1.1*0.85*fc28*b*a*0.0001)/1.5)/(fe/1.15))*10000;
+   const barInf=puChooseBarsTotal(Ainf,aPrime/100), barSup=Asup>0?puChooseBarsTotal(Asup,b/100):null;
+   return {config:'simple',a,b,F,e,aPrime,h,Ainf,Asup,Attente,barInf,barSup,P1};
+  }
+  function puComputeDouble(dp,mat,P1){
+   const a=+dp.a_cm||40, b=+dp.b_cm||110, F=+dp.F_cm||72, fe=mat.Fe, fc28=mat.Fc28;
+   const e=Math.min(F/8,15), aPrimeMin=2.5*F;
+   const aPrime=Math.max(+dp.aPrime_cm||Math.round(3*F),aPrimeMin);
+   const bPrime=F+2*e;
+   const dMin=0.5*(aPrime-a/2), dMax=(aPrime-a/2)*0.7, dMoy=(dMin+dMax)/2;
+   const hCalc=dMoy/0.9, h=Math.max(20,Math.round(hCalc/5)*5);
+   const d=Math.round((h*0.9)/0.5)*0.5;
+   const Ai=((1.1*P1*(aPrime-a/2))/(4*d*(2/3)*fe))*100;
+   const As=Ai/10;
+   const qDeg=Math.min(Math.atan2(0.9*h,(aPrime/2-a/4))*180/Math.PI,55), qRad=qDeg*Math.PI/180;
+   const sPrimeC28=fc28+3, sC28=0.7+0.06*sPrimeC28;
+   const limSigma=0.6*sPrimeC28, limTau=1.2*sC28;
+   const sousPoteau=P1*100/((a*b)*Math.sin(qRad)*Math.sin(qRad));
+   const surPieux=P1*100/((2*(Math.PI*F*F/4))*Math.sin(qRad)*Math.sin(qRad));
+   const tau=P1*100/(2*bPrime*(7/8)*0.9*h);
+   const barAi=puChooseBarsTotal(Ai,aPrime/100), barAs=puChooseBarsTotal(As,aPrime/100);
+   return {config:'double',a,b,F,e,aPrime,aPrimeMin,bPrime,h,d,Ai,As,qDeg,sPrimeC28,sC28,
+    sousPoteau,surPieux,limSigma,okSousPoteau:sousPoteau<=limSigma,okSurPieux:surPieux<=limSigma,
+    tau,limTau,okTau:tau<=limTau,barAi,barAs,P1};
+  }
+  function puComputeTriple(dp,mat,P1){
+   const a=+dp.a_cm||60, b=+dp.b_cm||60, F=+dp.F_cm||67, fe=mat.Fe, fc28=mat.Fc28;
+   const aPrimeMin=2.5*F;
+   const aPrime=Math.max(+dp.aPrime_cm||Math.ceil((2.5*F)/10)*10,aPrimeMin);
+   const dMin=0.58*(aPrime-a/2), dCobt=0.825*(aPrime-a/2);
+   const d=Math.min(dCobt,Math.max(dMin,+dp.dChoisi_cm||Math.ceil(((dMin+dCobt)/2)/5)*5));
+   const qDeg=Math.min(Math.atan2(d,(aPrime*Math.sqrt(3)/3-a*0.3))*180/Math.PI,55), qRad=qDeg*Math.PI/180;
+   const sPrimeC28=fc28+3, sC28=0.7+0.06*sPrimeC28, limSigma=0.75*sPrimeC28;
+   const sousPoteau=P1*100/((a*b)*Math.sin(qRad)*Math.sin(qRad));
+   const surPieux=P1*100/((2*(Math.PI*F*F/4))*Math.sin(qRad)*Math.sin(qRad));
+   const NacTotal=P1*(aPrime-a/2)/(9*d), AacTotal=(NacTotal*3/(2*fe))*100;
+   const quadrillageMin=(1/5)*AacTotal;
+   const coefA=0.7, Nac=NacTotal*coefA, Aac=(Nac*3/(2*fe))*100;
+   const Nam=(1-coefA)*NacTotal*Math.sqrt(3), Aam=Nam*1.5*100/fe;
+   const barCerces=puChooseBarsTotal(AacTotal,aPrime/100), barQuad=puChooseBarsTotal(quadrillageMin,aPrime/100);
+   return {config:'triple',a,b,F,aPrime,aPrimeMin,d,dMin,dCobt,qDeg,sPrimeC28,limSigma,
+    sousPoteau,surPieux,okSousPoteau:sousPoteau<=limSigma,okSurPieux:surPieux<=limSigma,
+    NacTotal,AacTotal,quadrillageMin,coefA,Nac,Aac,Nam,Aam,barCerces,barQuad,P1};
+  }
+  function puComputeQuadruple(dp,mat,P1){
+   const a=+dp.a_cm||100, b=+dp.b_cm||100, F=+dp.F_cm||85, fe=mat.Fe, fc28=mat.Fc28;
+   const aPrimeMin=2.5*F;
+   const aPrime=Math.max(+dp.aPrime_cm||Math.ceil((2.5*F)/10)*10,aPrimeMin); /* carré : a'=b' */
+   const hMin=0.71*(aPrime-a/2), hCobt=aPrime-a/2, h=puRound5Up(hCobt);
+   const d=0.9*h;
+   const qDeg=Math.min(Math.atan2(d,(aPrime/2-a/4)*Math.sqrt(2))*180/Math.PI,55), qRad=qDeg*Math.PI/180;
+   const sPrimeC28=fc28+3, sC28=0.7+0.06*sPrimeC28, limSigma=0.9*sPrimeC28;
+   const sousPoteau=P1*100/((a*b)*Math.sin(qRad)*Math.sin(qRad));
+   const surPieux=P1*100/((2*(Math.PI*F*F/4))*Math.sin(qRad)*Math.sin(qRad));
+   /* ⚠ pas de formule de ferraillage explicite pour 4 pieux dans le classeur source : approché
+      par analogie avec les cerces du cas triple (à signaler dans la note). */
+   const NacTotal=P1*(aPrime-a/2)/(9*d), AacTotal=(NacTotal*3/(2*fe))*100;
+   const barCerces=puChooseBarsTotal(AacTotal,aPrime/100);
+   return {config:'quadruple',a,b,F,aPrime,aPrimeMin,hMin,h,d,qDeg,sPrimeC28,limSigma,
+    sousPoteau,surPieux,okSousPoteau:sousPoteau<=limSigma,okSurPieux:surPieux<=limSigma,
+    NacTotal,AacTotal,barCerces,approche:true,P1};
+  }
+  function puCompute(t){
+   const dp=puData(t);
+   const fck=pcFck(dp.classeGlobale), Fe=PC_FYK[dp.classeAcier]||500;
+   const mat={Fc28:fck,Fe};
+   const P1=puP1_t(dp);
+   const fn={simple:puComputeSimple,double:puComputeDouble,triple:puComputeTriple,quadruple:puComputeQuadruple}[dp.config]||puComputeSimple;
+   return Object.assign({mat},fn(dp,mat,P1));
+  }
+  function puSvg(dp){
+   const W=240,H=160,cx=W/2,cy=H/2;
+   const cfg=dp.config||'simple';
+   const a=+dp.a_cm||40,b=+dp.b_cm||40, sk=Math.min(60/Math.max(a,b,40),0.9);
+   const pw=a*sk,ph=b*sk;
+   const F=+dp.F_cm||50, r=Math.max(6,F*sk*0.5);
+   const aPrime=(+dp.aPrime_cm||Math.max(2.5*F,F))*sk;
+   let piles='';
+   const addPile=(x,y)=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="var(--panel,#f4f1e8)" fill-opacity="0.5" stroke="var(--rust,#c0392b)" stroke-width="1.6"/>'; };
+   if(cfg==='simple') addPile(cx,cy);
+   else if(cfg==='double'){ addPile(cx,cy-aPrime/2); addPile(cx,cy+aPrime/2); }
+   else if(cfg==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; addPile(cx+R*Math.cos(ang),cy+R*Math.sin(ang)); } }
+   else { addPile(cx-aPrime/2,cy-aPrime/2); addPile(cx+aPrime/2,cy-aPrime/2); addPile(cx-aPrime/2,cy+aPrime/2); addPile(cx+aPrime/2,cy+aPrime/2); }
+   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="140" class="pcSvg" role="img" aria-label="Tête de pieux">'
+    +piles
+    +'<rect x="'+(cx-pw/2)+'" y="'+(cy-ph/2)+'" width="'+pw+'" height="'+ph+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.8"/>'
+    +'<text x="'+cx+'" y="'+(cy-60)+'" font-size="10" text-anchor="middle" fill="var(--blueprint,#2e6ea6)">P1='+esc((puP1_t(dp)).toFixed(1))+' t</text>'
+    +'<text x="'+cx+'" y="'+(cy+66)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[cfg]+'</text>'
+    +'<defs></defs></svg>';
+  }
+  function puStepHtml(n,dp,t){
+   const cfg=dp.config||'simple';
+   if(n===1){
+    return '<h5>1 · Configuration</h5>'
+     +'<label>Nombre de pieux sous le poteau <select data-pu="config"><option value="simple"'+(cfg==='simple'?' selected':'')+'>1 pieu</option><option value="double"'+(cfg==='double'?' selected':'')+'>2 pieux</option><option value="triple"'+(cfg==='triple'?' selected':'')+'>3 pieux</option><option value="quadruple"'+(cfg==='quadruple'?' selected':'')+'>4 pieux</option></select></label>'
+     +'<label>Côté a du poteau <input type="number" step="1" min="10" data-pu="a_cm" value="'+(dp.a_cm||40)+'"> cm</label>'
+     +'<label>Côté b du poteau <input type="number" step="1" min="10" data-pu="b_cm" value="'+(dp.b_cm||40)+'"> cm</label>'
+     +'<label>Diamètre des pieux F <input type="number" step="1" min="20" data-pu="F_cm" value="'+(dp.F_cm||50)+'"> cm</label>'
+     +(cfg!=='simple'?('<label>Entraxe des pieux a\' <input type="number" step="1" data-pu="aPrime_cm" value="'+(dp.aPrime_cm||'')+'" placeholder="mini 2,5×F — laisser vide pour la valeur suggérée"> cm</label>'):'')
+     +(cfg==='triple'?('<label>Bras de levier d (cerces) <input type="number" step="1" data-pu="dChoisi_cm" value="'+(dp.dChoisi_cm||'')+'" placeholder="laisser vide pour la valeur suggérée"> cm</label>'):'');
+   }
+   if(n===2){
+    return '<h5>2 · Matériau</h5>'
+     +'<label>Classe de béton <select data-pu="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
+     +'<label>Acier <select data-pu="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>';
+   }
+   if(n===3){
+    return '<h5>3 · Chargement</h5>'
+     +'<label>Charges permanentes G <input type="number" step="1" data-pu="G_kN" value="'+(dp.G_kN??400)+'"> kN</label>'
+     +'<label>Charges d\'exploitation Q <input type="number" step="1" data-pu="Q_kN" value="'+(dp.Q_kN??200)+'"> kN</label>'
+     +'<p class="pcNote">P1 = G + 1,2·Q (charge reprise par la semelle sur pieux, méthode CCBA68). 1 t = 10 kN. La portance du pieu lui-même (frottement + pointe) n\'est pas vérifiée ici — donnée d\'étude géotechnique.</p>';
+   }
+  }
+  function puFormHtml(id,t){
+   const dp=puData(t);
+   const body=[1,2,3].map(nn=>puStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
+   return '<div class="pcFormSticky">'
+    +'<div class="pcModHead"><span class="pcModIco">⚓</span><span class="pcModName">Tête de pieux (CCBA68)</span></div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pu="nom" value="'+esc(dp.nom||t.nom||'Pieu')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcDraw">'+puSvg(dp)+'</div>'
+    +'</div>'
+    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
+    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pu-act="validerForm">✓ Valider</button></div>'
+    +'<p class="pcNote pcFormHint">Renseigner configuration, matériau et chargement. « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+  }
+  function puResultatsHtml(res,dp){
+   let h='<h5>Résultats</h5>';
+   h+='<div class="pcDimBox"><b>Configuration</b><p class="pcNote">'+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[res.config]+' · P1='+res.P1.toFixed(2)+' t · entraxe retenu'+(res.aPrime?(' a\'='+res.aPrime.toFixed(0)+' cm'):'')+'</p></div>';
+   if(res.config==='simple'){
+    h+='<div class="pcDimBox"><b>Ferraillage</b><p class="pcNote">h='+res.h.toFixed(0)+' cm (e='+res.e.toFixed(1)+' cm) · A inf='+res.Ainf.toFixed(2)+' cm² → '+res.barInf.n+' Φ'+res.barInf.phi
+     +(res.barSup?('<br>A sup='+res.Asup.toFixed(2)+' cm² → '+res.barSup.n+' Φ'+res.barSup.phi):'<br>A sup : non requis (b ≤ a\')')
+     +'<br>Attente du pieu dans la semelle = '+res.Attente.toFixed(2)+' cm²</p></div>';
+   } else {
+    h+='<div class="pcDimBox"><b>Géométrie / bielle</b><p class="pcNote">h='+(res.h!=null?res.h.toFixed(0)+' cm · ':'')+'d='+res.d.toFixed(1)+' cm · angle de bielle q='+res.qDeg.toFixed(1)+'°</p></div>'
+     +'<div class="pcDimBox"><b>Vérification du béton</b><p class="pcNote">σ sous poteau='+res.sousPoteau.toFixed(2)+' MPa ≤ '+res.limSigma.toFixed(2)+' MPa → '+(res.okSousPoteau?'✓':'⚠')+'<br>σ sur pieux='+res.surPieux.toFixed(2)+' MPa ≤ '+res.limSigma.toFixed(2)+' MPa → '+(res.okSurPieux?'✓':'⚠')
+     +(res.tau!=null?('<br>τ cisaillement='+res.tau.toFixed(2)+' MPa ≤ '+res.limTau.toFixed(2)+' MPa → '+(res.okTau?'✓':'⚠')):'')+'</p></div>';
+    if(res.config==='double'){
+     h+='<div class="pcDimBox"><b>Ferraillage</b><p class="pcNote">Ai='+res.Ai.toFixed(2)+' cm² → '+res.barAi.n+' Φ'+res.barAi.phi+' (nappe inf.)<br>As=Ai/10='+res.As.toFixed(2)+' cm² → '+res.barAs.n+' Φ'+res.barAs.phi+' (nappe sup.)</p></div>';
+    } else {
+     h+='<div class="pcDimBox"><b>Ferraillage'+(res.approche?' (approché — voir note)':'')+'</b><p class="pcNote">Cerces : N\'ac='+res.AacTotal.toFixed(2)+' cm² → '+res.barCerces.n+' Φ'+res.barCerces.phi
+      +(res.barQuad?('<br>Quadrillage de répartition (chaque sens) ≥ '+res.quadrillageMin.toFixed(2)+' cm² → '+res.barQuad.n+' Φ'+res.barQuad.phi):'')+'</p></div>';
+    }
+   }
+   h+='<button type="button" class="ghost pcBtnSm" data-pu-act="printNote">🖶 Voir la note</button>';
+   return h;
+  }
+  function pueState(id){ window._dimViewPU=window._dimViewPU||{}; if(!window._dimViewPU[id]) window._dimViewPU[id]={view:'form'}; return window._dimViewPU[id]; }
+  function pueFiche(id){
+   const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t) return;
+   if(beTypeStructureNom(t.typeStructureId)!==PIEU_TYPE_NOM){
+    const old=mb.querySelector('.pjPieuRoot'); if(old) old.remove();
+    if(!mb.querySelector('.pjBeamRoot')&&!mb.querySelector('.pjPoteauRoot')&&!mb.querySelector('.pjDalleRoot')&&!mb.querySelector('.pjSemelleRoot')) mb.querySelectorAll('.pjBeamHidden').forEach(x=>{ x.classList.remove('pjBeamHidden'); x.style.removeProperty('display'); });
+    delete (window._dimViewPU||{})[id]; return;
+   }
+   if(mb.querySelector('.pjPieuRoot')) return;
+   const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
+   const wrap=document.createElement('div'); wrap.className='pjPieuRoot';
+   const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
+   [...mb.children].forEach(c=>{ if(c.classList.contains('close-x')||c.tagName==='H3'||c===wrap) return; c.classList.add('pjBeamHidden'); c.style.setProperty('display','none','important'); });
+   pueRender(id);
+   if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>pueClick(e,id)); wrap.addEventListener('change',e=>pueChange(e,id)); }
+  }
+  const _od_pieu=window.openTaskDetail; if(typeof _od_pieu==='function'){ window.openTaskDetail=function(id){ const r=_od_pieu.apply(this,arguments); setTimeout(()=>{ try{ pueFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
+  function pueRender(id){
+   const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjPieuRoot'); const t=taskById(id); if(!wrap||!t) return;
+   const dp=puData(t); const st=pueState(id);
+   if(st.view==='note'){
+    const res=dp.resultats;
+    wrap.innerHTML='<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📄 Note de calcul</h4></div>'
+     +(res? puNoteCalculHtml(t,dp,res) : '<p class="pcNote">Aucun résultat — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>');
+    return;
+   }
+   wrap.innerHTML=puFormHtml(id,t)+(dp.resultats?puResultatsHtml(dp.resultats,dp):'');
+  }
+  function pueClick(e,id){
+   const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ pueState(id).view='form'; pueRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
+   const okBtn=e.target.closest('[data-pu-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const pn=e.target.closest('[data-pu-act="printNote"]'); if(pn){ pueState(id).view='note'; pueRender(id); return; }
+  }
+  function pueChange(e,id){
+   const t=taskById(id); if(!t) return; const dp=puData(t); const el=e.target;
+   if(el.matches('[data-pu="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
+   const key=el.dataset.pu; if(key){
+    if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
+    else dp[key]=el.value===''?null:+el.value;
+    pueRender(id); return;
+   }
+  }
+  function puNoteCalculHtml(t,dp,res){
+   const nomCfg=({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[res.config];
+   let h='<div class="pcNC"><h3>Note de calcul — '+esc(dp.nom||t.nom||'Pieu')+'</h3>'
+    +'<p class="pcNote">Tête de pieux, '+nomCfg+' (méthode des bielles CCBA68) · '+todayStr()+'</p>'
+    +'<h5>Hypothèses</h5><p class="pcNote">Béton '+esc(dp.classeGlobale)+' (fc28='+res.mat.Fc28+' MPa) · acier '+esc(dp.classeAcier)+' (fe='+res.mat.Fe+' MPa) · P1=G+1,2Q='+res.P1.toFixed(2)+' t.</p>'
+    +'<h5>Géométrie</h5><p class="pcNote">Poteau '+res.a.toFixed(0)+'×'+res.b.toFixed(0)+' cm · pieu Φ'+res.F.toFixed(0)+' cm'+(res.aPrime?(' · entraxe a\'='+res.aPrime.toFixed(0)+' cm (mini 2,5F='+(res.aPrimeMin||0).toFixed(0)+' cm)'):'')+'.</p>';
+   if(res.config==='simple'){
+    h+='<h5>Ferraillage (bielles CCBA68)</h5><p class="pcNote">e=min(F/8,15)='+res.e.toFixed(1)+' cm · a\'=F · h=F+2e (arrondi)='+res.h.toFixed(0)+' cm.<br>A inf=(P1·0,01·3·(a\'-a))/(8·0,9·h·2·fe)·10000='+res.Ainf.toFixed(2)+' cm² → '+res.barInf.n+' Φ'+res.barInf.phi+'.<br>A sup (si b>a\')='+res.Asup.toFixed(2)+' cm²'+(res.barSup?(' → '+res.barSup.n+' Φ'+res.barSup.phi):' (non requis)')+'.<br>Attente du pieu dans la semelle = '+res.Attente.toFixed(2)+' cm² (vérifie l\'ancrage de la compression transmise par le pieu).</p>';
+   } else {
+    h+='<h5>Bielle et vérification du béton</h5><p class="pcNote">d='+res.d.toFixed(1)+' cm · angle de bielle q='+res.qDeg.toFixed(1)+'° (plafonné à 55°).<br>σ\'c28=fc28+3='+res.sPrimeC28.toFixed(1)+' MPa · limite='+res.limSigma.toFixed(2)+' MPa.<br>σ sous poteau='+res.sousPoteau.toFixed(2)+' MPa → '+(res.okSousPoteau?'vérifiée':'⚠ NON vérifiée')+'.<br>σ sur pieux='+res.surPieux.toFixed(2)+' MPa → '+(res.okSurPieux?'vérifiée':'⚠ NON vérifiée')+'.'
+     +(res.tau!=null?('<br>τ cisaillement='+res.tau.toFixed(2)+' MPa ≤ '+res.limTau.toFixed(2)+' MPa → '+(res.okTau?'vérifiée':'⚠ NON vérifiée')+'.'):'')+'</p>';
+    if(res.config==='double'){
+     h+='<h5>Ferraillage</h5><p class="pcNote">Ai=(1,1·P1·(a\'-a/2))/(4·d·(2/3)·fe)·100='+res.Ai.toFixed(2)+' cm² → '+res.barAi.n+' Φ'+res.barAi.phi+' (nappe inférieure).<br>As=Ai/10='+res.As.toFixed(2)+' cm² → '+res.barAs.n+' Φ'+res.barAs.phi+' (nappe supérieure) + cadres verticaux Φ/3 tous les 20 cm.</p>';
+    } else {
+     h+='<h5>Ferraillage en cerces'+(res.approche?' (approché par analogie avec le cas triple — à vérifier)':'')+'</h5><p class="pcNote">N\'ac=P1·(a\'-a/2)/(9·d)='+res.NacTotal.toFixed(2)+' t · A\'ac=N\'ac·3/(2·fe)·100='+res.AacTotal.toFixed(2)+' cm² → '+res.barCerces.n+' Φ'+res.barCerces.phi+'.'
+      +(res.barQuad?('<br>Quadrillage de répartition, chaque sens ≥ 1/5·A\'ac='+res.quadrillageMin.toFixed(2)+' cm² → '+res.barQuad.n+' Φ'+res.barQuad.phi+'.'):'')+'</p>';
+    }
+   }
+   h+='<p class="pcNote">⚠ Cette note de calcul est générée automatiquement à partir des données saisies et de la méthode des bielles CCBA68 pour les têtes de pieux. Elle doit être vérifiée et validée par un ingénieur structure (bureau d\'études béton armé / géotechnicien) avant toute utilisation pour l\'exécution. Elle ne remplace pas une étude signée par un bureau d\'études qualifié. La portance du pieu lui-même (frottement latéral, résistance de pointe, méthode pressiométrique) n\'est pas vérifiée dans ce module : P1 est une donnée d\'entrée. La répartition rigoureuse des efforts entre pieux d\'un groupe sous charge excentrée n\'est pas traitée (méthode simplifiée : charge totale P1 reprise par la semelle).</p>'
+    +'</div>';
+   return h;
+  }
+  function puPlanFerraillageSvg(dp,res){
+   const W=220,H=190,cx=W/2,cy=H/2-10;
+   const sk=0.5, aPrime=(res.aPrime||res.F*2.5)*sk, r=Math.max(10,(res.F||50)*sk*0.5);
+   let piles='';
+   const addPile=(x,y)=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.6"/>'; };
+   if(res.config==='simple') addPile(cx,cy);
+   else if(res.config==='double'){ addPile(cx,cy-aPrime/2); addPile(cx,cy+aPrime/2); }
+   else if(res.config==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; addPile(cx+R*Math.cos(ang),cy+R*Math.sin(ang)); } }
+   else { addPile(cx-aPrime/2,cy-aPrime/2); addPile(cx+aPrime/2,cy-aPrime/2); addPile(cx-aPrime/2,cy+aPrime/2); addPile(cx+aPrime/2,cy+aPrime/2); }
+   const barLbl=res.config==='simple'?(res.barInf.n+'Φ'+res.barInf.phi):(res.barAi?(res.barAi.n+'Φ'+res.barAi.phi):(res.barCerces.n+'Φ'+res.barCerces.phi));
+   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'+piles
+    +'<text x="'+cx+'" y="'+(cy+aPrime/2+30)+'" font-size="9.5" text-anchor="middle" fill="var(--ink-soft,#999)">'+esc(barLbl)+' (ferraillage de la semelle sur pieux)</text>'
+    +'</svg>';
+  }
+  function puCreerNoteCalcul(t,dp){
+   const html=puNoteCalculHtml(t,dp,dp.resultats);
+   const nom='Note de calcul '+(dp.nom||t.nom||'Pieu');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Pieu'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  function puCreerPlanFerraillage(t,dp){
+   const res=dp.resultats; if(!res) return null;
+   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Pieu')+'</h3>'
+    +'<p class="pcNote">Vue en plan · '+todayStr()+'</p>'+puPlanFerraillageSvg(dp,res)
+    +'<p class="pcNote">⚠ Schéma généré automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution.</p></div>';
+   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Pieu');
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Pieu'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  async function puNoteCalculPdf(t,dp,res){
+   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16; let y=M;
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Note de calcul — '+(dp.nom||t.nom||'Pieu')),M,y+6); y+=14;
+   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9);
+   const lines=['Tete de pieux - '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[res.config]+' - beton '+dp.classeGlobale+' - acier '+dp.classeAcier,
+    'P1=G+1.2Q='+res.P1.toFixed(2)+' t'];
+   if(res.config==='simple') lines.push('A inf='+res.Ainf.toFixed(2)+' cm2 -> '+res.barInf.n+' phi'+res.barInf.phi, 'Attente du pieu='+res.Attente.toFixed(2)+' cm2');
+   else { lines.push('q (angle de bielle)='+res.qDeg.toFixed(1)+' deg', 'Verif beton : sous poteau '+(res.okSousPoteau?'OK':'NON VERIFIEE')+', sur pieux '+(res.okSurPieux?'OK':'NON VERIFIEE')); if(res.config==='double') lines.push('Ai='+res.Ai.toFixed(2)+' cm2 -> '+res.barAi.n+' phi'+res.barAi.phi); else lines.push('A\'ac='+res.AacTotal.toFixed(2)+' cm2 -> '+res.barCerces.n+' phi'+res.barCerces.phi); }
+   lines.forEach(l=>{ pdoc.text(pdfTxt(l),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M}); y+=7; });
+   y+=4; pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Note generee automatiquement (methode des bielles CCBA68) - a verifier par un ingenieur structure avant execution.'),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
+   return pdoc.output('blob');
+  }
+  async function puPlanFerraillagePdf(t,dp,res){
+   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16;
+   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Plan de ferraillage — '+(dp.nom||t.nom||'Pieu')),M,M+6);
+   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9); pdoc.setTextColor(110); pdoc.text(pdfTxt('Vue en plan — '+todayStr()),M,M+12); pdoc.setTextColor(0);
+   const barLbl=res.config==='simple'?(res.barInf.n+' phi'+res.barInf.phi):(res.barAi?(res.barAi.n+' phi'+res.barAi.phi):(res.barCerces.n+' phi'+res.barCerces.phi));
+   pdoc.text(pdfTxt(barLbl),M+10,M+34);
+   pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
+   pdoc.text(pdfTxt('Schema genere automatiquement. A reprendre par un dessinateur/ingenieur structure pour l\'execution.'),M,pdoc.internal.pageSize.getHeight()-10,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
+   return pdoc.output('blob');
+  }
+  async function puCreerDocumentsDimensionnement(t,dp){
+   const res=dp.resultats; const docNote=puCreerNoteCalcul(t,dp); const docPlan=puCreerPlanFerraillage(t,dp);
+   try{
+    if(docNote&&res){ const blob=await puNoteCalculPdf(t,dp,res); await pcAttacherPdf(docNote,blob,docNote.nom); }
+    if(docPlan&&res){ const blob=await puPlanFerraillagePdf(t,dp,res); await pcAttacherPdf(docPlan,blob,docPlan.nom); }
+   }catch(err){ console.error(err); }
+   return {docNote,docPlan};
+  }
+  /* Étend le bulk « 🤖 Dimensionner » aux têtes de pieux, en plus des poutres/poteaux/dalles/semelles. */
+  const _pjDim_semelle=window.pjDimensionnerSelection;
+  window.pjDimensionnerSelection=async function(ids){
+   const rPrev= typeof _pjDim_semelle==='function' ? await _pjDim_semelle(ids) : {okN:0,skipTypeN:0,errN:0,incomplets:[]};
+   let okN=0, errN=0; const incomplets=[]; let lastOkT=null;
+   for(const id of (ids||[])){
+    const t=taskById(id); if(!t) continue;
+    if(beTypeStructureNom(t.typeStructureId)!==PIEU_TYPE_NOM) continue;
+    const dp=puData(t);
+    const geomOk=(+dp.a_cm>0)&&(+dp.b_cm>0)&&(+dp.F_cm>0);
+    const hasData=((+dp.G_kN>0)||(+dp.Q_kN>0));
+    if(!geomOk||!hasData){ incomplets.push(id); continue; }
+    try{ dp.resultats=puCompute(t); await puCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    catch(err){ console.error(err); errN++; }
+   }
+   try{ persist(); }catch(_){ }
+   if(okN||errN||incomplets.length){
+    const msg=okN+' tête'+(okN>1?'s':'')+' de pieux dimensionnée'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
     try{ clipToast(msg); }catch(_){ }
     if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
     else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
