@@ -136,6 +136,29 @@ Deno.serve(async (req) => {
       return J({ ok: true, id });
     }
 
+    /* ---------- Mes devis & factures (client payant, connecté) ---------- */
+    if (b.action === 'devis_client_list') {
+      const { data: devis } = await admin.from('devis').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+      const { data: factures } = await admin.from('factures').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+      return J({ devis: devis || [], factures: factures || [], programme: me.programme || 'basique' });
+    }
+    if (b.action === 'devis_client_valider') {
+      const { data: d } = await admin.from('devis').select('user_id,statut').eq('id', b.id).maybeSingle();
+      if (!d || d.user_id !== user.id) return J({ error: 'Devis introuvable' }, 404);
+      if (!['envoye', 'contre_propose'].includes(d.statut)) return J({ error: 'Ce devis ne peut plus être validé' }, 400);
+      await admin.from('devis').update({ statut: 'valide', valide_le: new Date().toISOString(), reponse_le: new Date().toISOString() }).eq('id', b.id);
+      return J({ ok: true });
+    }
+    if (b.action === 'devis_client_contre_proposer') {
+      const { data: d } = await admin.from('devis').select('user_id,statut').eq('id', b.id).maybeSingle();
+      if (!d || d.user_id !== user.id) return J({ error: 'Devis introuvable' }, 404);
+      if (d.statut !== 'envoye') return J({ error: 'Ce devis n’est pas en attente de réponse' }, 400);
+      const lignes = Array.isArray(b.lignes) ? b.lignes : [];
+      const commentaire = clean(b.commentaire, 2000);
+      await admin.from('devis').update({ statut: 'contre_propose', contre_proposition: { lignes, commentaire }, commentaire_client: commentaire, reponse_le: new Date().toISOString() }).eq('id', b.id);
+      return J({ ok: true });
+    }
+
     if (!isGlobal) return J({ error: 'Réservé à l’administrateur général' }, 403);
     const invPar = me.nom || user.email || '';
 

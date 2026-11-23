@@ -16619,17 +16619,21 @@ const PG_FEATS=[
       const th=(k,l)=>'<th class="mth'+((k==='u'?FL.u:FL[k].size)?' on':'')+'" data-col="'+k+'" tabindex="0">'+l+' <i>▾</i></th>';
       const vis=sels;
       body.push(vis.map(pj=>{ const c=caches[pj.id]; if(!c||!c.notifs||!c.notifs.length) return ''; return '<div class="pgs" data-pj="'+esc(pj.id)+'"><div class="pgs-t">Projet : <b>'+esc(pj.nom)+'</b></div>'+c.notifs.map(n=>'<div class="nt" data-nu="'+n.user_id+'"><b>'+esc(n.nom||n.email)+'</b> — '+(n.type==='expire'?'accès <span class="ko">expiré</span> depuis le ':'accès qui expire le ')+fmt(n.echeance)+'.<br>Prolonger d’un mois ?<div class="row"><button class="p" data-prolong="'+n.user_id+'">Prolonger 1 mois</button><button data-lapse="'+n.user_id+'">Laisser expirer</button></div></div>').join('')+'</div>'; }).join(''));
-      const bodies=vis.map(pj=>{ const c=caches[pj.id]; if(!c) return '<tbody class="pgs" data-pj="'+esc(pj.id)+'"><tr><td colspan="8"><b>'+esc(pj.nom)+'</b> : données indisponibles (droits insuffisants ?)</td></tr></tbody>'; const M=c.members.filter(m=>okRow(m,pj.id)), today2=c.today;
+      /* quota de facturation (Manager / Collaborateur) : 1 classification par espace ouvert du client payant */
+      { const qc=Object.values(caches).find(c=>c&&c.quota); const q=qc&&qc.quota;
+        if(q) body.push('<div class="card" style="font-size:13px"><b>Quota de facturation (Manager / Collaborateur)</b> : '+q.classes+' / '+q.ouverts+' espace(s) ouvert(s) classé(s)'+(q.classes<q.ouverts?' — <span class="warn">classez encore '+(q.ouverts-q.classes)+' membre(s) ci-dessous</span>':' — ✓ complet')+'</div>'); }
+      const bodies=vis.map(pj=>{ const c=caches[pj.id]; if(!c) return '<tbody class="pgs" data-pj="'+esc(pj.id)+'"><tr><td colspan="9"><b>'+esc(pj.nom)+'</b> : données indisponibles (droits insuffisants ?)</td></tr></tbody>'; const M=c.members.filter(m=>okRow(m,pj.id)), today2=c.today;
         return '<tbody class="pgs" data-pj="'+esc(pj.id)+'">'+M.map(m=>'<tr data-u="'+m.user_id+'"><td><span class="pj-tag">'+esc(pj.nom)+'</span></td><td><b>'+esc(m.nom||m.email)+'</b><br><small>'+esc(m.email)+(m.moi?' (vous)':'')+'</small></td>'
           +'<td>'+(()=>{ const lst=PG_FONCTIONS[pgTypeKey(pj.type)]||[], cur=(memFn[pj.id]||{})[m.user_id]||''; if(!lst.length) return '<span class="pj-tag">—</span>'; return window.PILOTAGE_MEMBER_FN?'<select class="fn-sel" data-fn2="'+esc(pj.id)+'|'+m.user_id+'"><option value="">— à définir —</option>'+lst.map(f=>'<option'+(f===cur?' selected':'')+'>'+esc(f)+'</option>').join('')+'</select>':esc(cur||'—'); })()+'</td>'
           +'<td>'+(()=>{ const a=(memTypes[pj.id]||{})[m.user_id]; const t=(a&&a.length)?a:null; const lab=t?t.map(k=>PG_ACR[k]).join(' · '):'Tous'; const lt=(memLots[pj.id]||{})[m.user_id], ll=(lt&&lt.length)?lt.map(window.pgLotAbbr).join(', '):'Aucun lot'; return (PJ().global&&window.PILOTAGE_MEMBER_TYPES?'<button type="button" class="ty-btn" data-ty="'+esc(pj.id)+'|'+m.user_id+'">'+esc(lab)+' <i>▾</i></button>':'<span class="pj-tag">'+esc(lab)+'</span>')+(window.PILOTAGE_MEMBER_LOTS?'<br><button type="button" class="ty-btn" data-lt="'+esc(pj.id)+'|'+m.user_id+'" title="Lots gérés par cette personne">Lots : '+esc(ll)+' <i>▾</i></button>':''); })()+'</td>'
           +'<td><select data-role '+(m.moi?'disabled':'')+'>'+['admin','editeur','lecteur'].map(r=>'<option value="'+r+'"'+(r===m.role?' selected':'')+'>'+({admin:'Administrateur du projet',editeur:'Éditeur (saisit)',lecteur:'Lecteur (consulte)'})[r]+'</option>').join('')+'</select></td>'
+          +'<td><select data-tu><option value=""'+(!m.type_utilisateur?' selected':'')+'>— à classer —</option><option value="manager"'+(m.type_utilisateur==='manager'?' selected':'')+'>Manager</option><option value="collaborateur"'+(m.type_utilisateur==='collaborateur'?' selected':'')+'>Collaborateur</option></select></td>'
           +'<td>'+statut(m,today2)+(m.confirme===false?'<br><span class="warn">⏳ invitation envoyée, pas encore activée</span>':'')+(m.dernier_paiement?'<br><small>dernier paiement validé le '+fmt(String(m.dernier_paiement.valide_le).slice(0,10))+'</small>':'')+'</td>'
           +'<td><label class="sw"><input type="checkbox" data-act '+(m.actif?'checked':'')+' '+(m.moi?'disabled':'')+'><i></i></label></td>'
           +'<td>'+'<button data-fn>🎛 Gérer les fonctionnalités'+((m.fonctions&&m.fonctions._role)?' · '+esc(m.fonctions._role):'')+'</button> '+(m.confirme===false?'<button data-rs>Renvoyer l’invitation</button> ':'')+'<button data-rp>Prolonger</button> '+(m.moi?'':'<button data-pw title="Envoie à la personne un lien pour choisir un nouveau mot de passe">'+(PJ().global?'Réinitialiser le compte':'Demander la réinitialisation')+'</button> <button class="d" data-rm>Retirer</button>')+'</td></tr>'
-          +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="8">'+'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+(m.role==='admin'?'<div style="font-size:12.5px;opacity:.8;margin:4px 0 8px">Administrateur du projet : voit toujours tout. Ces réglages s’appliqueront si son droit d’accès change.</div>':'')+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button> <button type="button" data-fdef>Réglages par défaut des rôles</button>'+'</td></tr>'
-          +'<tr data-pp="'+m.user_id+'" hidden><td colspan="8"><div class="row"><button class="p" data-prolong="'+m.user_id+'">Prolonger 1 mois</button></div></td></tr>').join('')+'</tbody>'; }).join('');
-      body.push('<div class="card" style="overflow:auto"><table class="mtab"><thead><tr>'+th('pj','Projet')+th('u','Utilisateur')+th('fn','Rôle')+'<th>Types d’espace autorisés</th>'+th('role','Droit d’accès')+th('val','Validité')+th('act','Actif')+'<th>Actions</th></tr></thead>'+bodies+'</table></div>'); }
+          +'<tr data-fr="'+m.user_id+'" '+(openF===(pj.id+'|'+m.user_id)?'':'hidden')+'><td colspan="9">'+'<b>Fonctionnalités de '+esc(m.nom||m.email)+'</b>'+(m.role==='admin'?'<div style="font-size:12.5px;opacity:.8;margin:4px 0 8px">Administrateur du projet : voit toujours tout. Ces réglages s’appliqueront si son droit d’accès change.</div>':'')+matrix('e',m.fonctions||{})+'<button class="p" data-fsave>Enregistrer les fonctionnalités</button> <button type="button" data-fdef>Réglages par défaut des rôles</button>'+'</td></tr>'
+          +'<tr data-pp="'+m.user_id+'" hidden><td colspan="9"><div class="row"><button class="p" data-prolong="'+m.user_id+'">Prolonger 1 mois</button></div></td></tr>').join('')+'</tbody>'; }).join('');
+      body.push('<div class="card" style="overflow:auto"><table class="mtab"><thead><tr>'+th('pj','Projet')+th('u','Utilisateur')+th('fn','Rôle')+'<th>Types d’espace autorisés</th>'+th('role','Droit d’accès')+'<th>Manager / Collaborateur</th>'+th('val','Validité')+th('act','Actif')+'<th>Actions</th></tr></thead>'+bodies+'</table></div>'); }
     if(pgMode==='settings') body.push(window.pgNivHtml?pgNivHtml():'');
     if(pgMode==='host'){ const h=window.PILOTAGE_HOST_CFG||p.hebergement||null, PR=window.PILOTAGE_PROVIDERS||{};
       body.push('<h3>☁ Hébergement des données</h3><div class="card" id="pgHost"><div>Les données du projet sont enregistrées : <b>'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+' — '+esc(h.site||'')+' / '+esc(h.nom||'')+(h.compte?' <small>(compte '+esc(h.compte)+')</small>':''):'dans la base de l’outil (par défaut)')+'</b>.</div>'
@@ -16663,6 +16667,7 @@ const PG_FEATS=[
     sec.querySelectorAll('tr[data-u]').forEach(tr=>{ const id=tr.dataset.u, key=pj+'|'+id, fr=sec.querySelector('tr[data-fr="'+id+'"]'), pp=sec.querySelector('tr[data-pp="'+id+'"]');
       tr.querySelector('[data-role]').onchange=e=>run(async()=>{ await admP_({action:'p_update',user_id:id,role:e.target.value}); const m=(caches[pj]||{members:[]}).members.find(x=>x.user_id===id); if(pj===PJ().id) hostSync('role',m&&m.email,e.target.value); });
       tr.querySelector('[data-act]').onchange=e=>run(()=>admP_({action:'p_update',user_id:id,actif:e.target.checked}));
+      const tu=tr.querySelector('[data-tu]'); if(tu) tu.onchange=e=>run(()=>admP_({action:'p_update',user_id:id,type_utilisateur:e.target.value||null}));
       const fn=tr.querySelector('[data-fn]'); if(fn) fn.onclick=()=>{ openF=openF===key?null:key; fr.hidden=openF!==key; };
       const fd=fr.querySelector('[data-fdef]'); if(fd) fd.onclick=()=>openFeatMgr(); const fs=fr.querySelector('[data-fsave]'); if(fs) fs.onclick=()=>run(async()=>{ await admP_({action:'p_update',user_id:id,fonctions:readMatrix(fr)}); msg('Fonctionnalités enregistrées'); });
       const rs=tr.querySelector('[data-rs]'); if(rs) rs.onclick=()=>run(async()=>{ await admP_({action:'p_resend',user_id:id,redirectTo:location.origin+location.pathname}); msg('Invitation renvoyée'); });
@@ -16739,10 +16744,11 @@ const PG_FEATS=[
       +(p.projets&&p.projets.length>1?'<select id="pgProfSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')+'</div>'
       +(p.valide_jusqu?'<div class="pgp-s"><div class="pgp-l">Accès</div><div class="pgp-v">valable jusqu’au <b>'+p.valide_jusqu.split('-').reverse().join('/')+'</b></div></div>':'')
       +'<div class="pgp-s"><div class="pgp-l">Données</div><div class="pgp-v">'+(h?esc((PR[h.provider]&&PR[h.provider].label)||h.provider)+(h.compte?'<small>'+esc(h.compte)+'</small>':''):'Base de l’outil')+'</div></div>'
-      +'<div class="pgp-a">'+((p.global||p.role==='admin')?'<button type="button" id="pgProfMg">⚙ Gérer le projet et les accès</button>':'')+(p.global?'<button type="button" id="pgProfDash">📊 Tableau de bord utilisateurs</button>':'')+'<button type="button" id="pgProfOut">🚪 Se déconnecter</button></div>';
+      +'<div class="pgp-a">'+((p.global||p.role==='admin')?'<button type="button" id="pgProfMg">⚙ Gérer le projet et les accès</button>':'')+(p.global?'<button type="button" id="pgProfDash">📊 Tableau de bord utilisateurs</button>':'<button type="button" id="pgProfFact">💳 Mes devis &amp; factures</button>')+'<button type="button" id="pgProfOut">🚪 Se déconnecter</button></div>';
     document.body.appendChild(c);
     const sw=c.querySelector('#pgProfSw'); if(sw) sw.onchange=()=>window.pilotageSwitchProjet&&window.pilotageSwitchProjet(sw.value);
     const mg=c.querySelector('#pgProfMg'); if(mg) mg.onclick=()=>{ closeProfile(); showPage('projet'); }; const dsh=c.querySelector('#pgProfDash'); if(dsh) dsh.onclick=()=>{ closeProfile(); if(window.pjUsersDash) window.pjUsersDash(); };
+    const fct=c.querySelector('#pgProfFact'); if(fct) fct.onclick=()=>{ closeProfile(); if(window.pjMesFactures) window.pjMesFactures(); };
     c.querySelector('#pgProfOut').onclick=()=>{ closeProfile(); window.pilotageLogout&&window.pilotageLogout(); };
     setTimeout(()=>{ const off=e=>{ if(!c.contains(e.target)&&!e.target.closest('#pgWho,#tabLogout')){ closeProfile(); document.removeEventListener('click',off,true); } }; document.addEventListener('click',off,true); },0);
   }
@@ -21846,7 +21852,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
   };
   /* ===== tableau de bord de l'administrateur général : usage uniquement, jamais le contenu des projets ===== */
   (function(){
-    const css=document.createElement('style'); css.textContent='#dwWin .ud-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:0 0 14px}#dwWin .ud-kpi div{background:rgba(255,255,255,.06);border:1px solid rgba(255,196,0,.35);border-radius:14px;padding:10px 8px;text-align:center}#dwWin .ud-kpi b{display:block;font-size:20px;color:#FFC400}#dwWin .ud-kpi small{font-size:11px;opacity:.8}#dwWin .ud-w{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}#dwWin table.ud-t{border-collapse:collapse;width:100%;font-size:12.5px;min-width:440px}#dwWin .ud-t th{text-align:left;font-weight:600;opacity:.7;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.18);white-space:nowrap}#dwWin .ud-t td{padding:8px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}#dwWin .ud-t td.n{text-align:right;font-variant-numeric:tabular-nums}#dwWin .ud-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#777}#dwWin .ud-dot.on{background:#3DDC84}#dwWin .ud-dot.rec{background:#FFC400}#dwWin .ud-ini{font-size:22px;font-weight:700;color:#FFC400}#dwWin .ud-load{padding:30px;text-align:center;opacity:.8}';
+    const css=document.createElement('style'); css.textContent='#dwWin .ud-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:0 0 14px}#dwWin .ud-kpi div{background:rgba(255,255,255,.06);border:1px solid rgba(255,196,0,.35);border-radius:14px;padding:10px 8px;text-align:center}#dwWin .ud-kpi b{display:block;font-size:20px;color:#FFC400}#dwWin .ud-kpi small{font-size:11px;opacity:.8}#dwWin .ud-w{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}#dwWin table.ud-t{border-collapse:collapse;width:100%;font-size:12.5px;min-width:440px}#dwWin .ud-t th{text-align:left;font-weight:600;opacity:.7;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.18);white-space:nowrap}#dwWin .ud-t td{padding:8px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}#dwWin .ud-t td.n{text-align:right;font-variant-numeric:tabular-nums}#dwWin .ud-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#777}#dwWin .ud-dot.on{background:#3DDC84}#dwWin .ud-dot.rec{background:#FFC400}#dwWin .ud-ini{font-size:22px;font-weight:700;color:#FFC400}#dwWin .ud-load{padding:30px;text-align:center;opacity:.8}#dwWin .fact-card{border:1px solid rgba(255,196,0,.3);border-radius:14px;padding:10px 12px;margin:0 0 10px;position:relative}#dwWin .fact-act{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}#dwWin .pa-mini{background:rgba(255,196,0,.14);border:1px solid #FFC400;color:#FFC400;border-radius:10px;padding:6px 10px;font-size:12px}#dwWin .fact-cp{margin-top:6px;background:rgba(255,255,255,.06);border-radius:10px;padding:6px 8px}#dwWin .fact-stamp{position:absolute;right:10px;top:10px;color:#3DDC84;border:2px solid #3DDC84;border-radius:8px;padding:2px 8px;font-weight:700;font-size:11px;transform:rotate(-8deg)}#dwWin .fact-form label{display:block;font-size:12px;opacity:.8;margin:8px 0}#dwWin .fact-form input,#dwWin .fact-form select{width:100%;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:inherit;margin-top:2px}#dwWin .fact-ligne{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px}#dwWin .fl-del{background:none;border:none;color:#e66;font-size:14px}';
     document.head.appendChild(css);
     const dayMs=864e5, fmtH=s=>{ const h=s/3600; return h>=10?Math.round(h)+' h':(h>=1?h.toFixed(1)+' h':Math.round(s/60)+' min'); };
     const ago=iso=>{ if(!iso) return 'jamais'; const d=Date.now()-new Date(iso).getTime(); if(d<0||d<6e4) return 'à l’instant'; if(d<36e5) return 'il y a '+Math.round(d/6e4)+' min'; if(d<dayMs) return 'il y a '+Math.round(d/36e5)+' h'; const j=Math.round(d/dayMs); return 'il y a '+j+' j'; };
@@ -21856,6 +21862,14 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
       if(!(window.PILOTAGE_PROJET&&window.PILOTAGE_PROJET.global)||!window.PILOTAGE_ADM) return;
       let w=document.getElementById('dwWin'); if(!w){ w=document.createElement('div'); w.id='dwWin'; document.body.appendChild(w); }
       let D=null, view=['home'];
+      let FD=null, FDuid=null, FDraw=null;   // cache devis & factures (facturation) d'un client
+      const CATALOG=[ /* repris du catalogue « Facture Been11 » — valeurs par défaut, modifiables ligne par ligne */
+        {lib:'Déploiement (mise en route)',prix:99.99},{lib:'Paramétrage',prix:150},{lib:'Import de données',prix:150},{lib:'Formation (½ journée)',prix:300},
+        {lib:'Abonnement Basique (mensuel)',prix:20},{lib:'Abonnement Medium (mensuel, offre de lancement)',prix:28},{lib:'Crédit actif supplémentaire',prix:5},
+        {lib:'Stockage +50 Go',prix:5},{lib:'Support prioritaire (mensuel)',prix:30},{lib:'Entretien (par utilisateur)',prix:1},
+        {lib:'Formation à distance (heure)',prix:60},{lib:'Développement sur mesure (jour)',prix:500},{lib:'Accompagnement sur site (½ journée)',prix:300},{lib:'Ligne libre',prix:0},
+      ];
+      let NEWDEV={objet:'',periode_debut:'',periode_fin:'',programme_cible:'',tva_taux:0,lignes:[]};
       const cur=()=>view[view.length-1];
       function back(){ if(view.length<=1){ close(); return; } view.pop(); draw(); }
       w.addEventListener('pointerdown',e=>{ if(e.target===w){ e.preventDefault(); back(); } });
@@ -21863,6 +21877,49 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
       const uName=u=>u.nom||u.email||'—', pName=id=>((D.projets.find(p=>p.id===id)||{}).nom)||id;
       const KPI=(pairs)=>'<div class="ud-kpi">'+pairs.map(x=>'<div><b>'+x[0]+'</b><small>'+x[1]+'</small></div>').join('')+'</div>';
       const tile=(ic,lb,k)=>'<button type="button" class="pa-app" data-k="'+E(k)+'"><span class="pa-ic">'+ic+'</span><span class="pa-lb">'+E(lb)+'</span></button>';
+      const STAT_D={brouillon:'Brouillon',envoye:'Envoyé — en attente',contre_propose:'Contre-proposition reçue',valide:'Validé',facture:'Facturé',refuse:'Refusé'};
+      const STAT_F={emise:'Émise',payee:'Payée ✓'};
+      const ht2=(l)=>{ let h=0; (l||[]).forEach(x=>h+=(+x.qte||0)*(+x.prix||0)*(1-(+x.remise||0)/100)); return Math.round(h*100)/100; };
+      function loadFact(uid){
+        FD=null; FDuid=uid;
+        window.PILOTAGE_ADM({action:'devis_list',user_id:uid}).then(r=>{ FD=r; draw(); }).catch(e=>{ FD={error:e.message||String(e)}; draw(); });
+      }
+      function factBody(uid){
+        if(FDuid!==uid||!FD){ loadFact(uid); return '<div class="ud-load">Chargement…</div>'; }
+        if(FD.error) return '<p>Erreur : '+E(FD.error)+'</p>';
+        const prog=(FD.profile&&FD.profile.programme)||'basique', jusq=(FD.profile&&FD.profile.programme_valide_jusqu)||null;
+        let h=KPI([[prog,'forfait actuel'],[jusq||'—','valide jusqu’au']])
+          +'<div class="pa-grid">'+tile('＋','Créer un devis','fact-new:'+uid)+'</div>'
+          +'<h4 style="margin:16px 0 6px">Devis</h4>';
+        h+=(FD.devis&&FD.devis.length)?FD.devis.map(d=>{
+          const montant=ht2(d.lignes); let act='';
+          if(d.statut==='brouillon'||d.statut==='envoye') act+='<button type="button" class="pa-mini" data-act="devis_envoyer" data-id="'+E(d.id)+'">Envoyer</button>';
+          if(d.statut==='contre_propose') act+='<button type="button" class="pa-mini" data-act="devis_accepter" data-id="'+E(d.id)+'">Accepter la contre-proposition</button><button type="button" class="pa-mini" data-act="devis_rejeter" data-id="'+E(d.id)+'">Renvoyer en attente</button>';
+          if(d.statut==='envoye') act+='<button type="button" class="pa-mini" data-act="devis_valider_direct" data-id="'+E(d.id)+'">Valider sans réponse client</button>';
+          if(d.statut==='valide') act+='<button type="button" class="pa-mini" data-act="devis_facturer" data-id="'+E(d.id)+'">Facturer</button>';
+          return '<div class="fact-card"><b>'+E(d.numero)+'</b> — '+E(STAT_D[d.statut]||d.statut)+'<br><small>'+E(d.objet||'')+(d.periode_debut?' · '+E(d.periode_debut)+' → '+E(d.periode_fin||''):'')+'</small><br>'+montant.toFixed(2)+' € HT'
+            +(d.statut==='contre_propose'&&d.contre_proposition?'<div class="fact-cp"><small>Contre-proposition du client : '+ht2(d.contre_proposition.lignes).toFixed(2)+' € HT'+(d.contre_proposition.commentaire?' — « '+E(d.contre_proposition.commentaire)+' »':'')+'</small></div>':'')
+            +(act?'<div class="fact-act">'+act+'</div>':'')+'</div>';
+        }).join(''):'<p><small>Aucun devis</small></p>';
+        h+='<h4 style="margin:16px 0 6px">Factures</h4>';
+        h+=(FD.factures&&FD.factures.length)?FD.factures.map(f=>{
+          return '<div class="fact-card"><b>'+E(f.numero)+'</b> — '+E(STAT_F[f.statut]||f.statut)+'<br><small>'+(f.periode_debut?E(f.periode_debut)+' → '+E(f.periode_fin||''):'')+'</small><br>'+(+f.montant_ttc||0).toFixed(2)+' € TTC'
+            +(f.statut==='emise'?'<div class="fact-act"><button type="button" class="pa-mini" data-act="facture_payer" data-id="'+E(f.id)+'">Marquer payée — PAYÉ</button></div>':'<div class="fact-stamp">PAYÉ</div>')+'</div>';
+        }).join(''):'<p><small>Aucune facture</small></p>';
+        return h;
+      }
+      function factNewBody(uid){
+        let h='<div class="fact-form"><label>Objet<br><input type="text" id="fnObjet" value="'+E(NEWDEV.objet)+'"></label>'
+          +'<label>Période du<br><input type="date" id="fnDeb" value="'+E(NEWDEV.periode_debut)+'"></label>'
+          +'<label>au<br><input type="date" id="fnFin" value="'+E(NEWDEV.periode_fin)+'"></label>'
+          +'<label>Forfait cible<br><select id="fnProg"><option value="">—</option>'+['basique','medium','premium'].map(p=>'<option value="'+p+'"'+(NEWDEV.programme_cible===p?' selected':'')+'>'+p+'</option>').join('')+'</select></label>'
+          +'<label>TVA %<br><input type="number" id="fnTva" value="'+(NEWDEV.tva_taux||0)+'" step="0.1"></label>'
+          +'<h4>Lignes</h4><div id="fnLignes">'+NEWDEV.lignes.map((l,i)=>'<div class="fact-ligne" data-i="'+i+'"><input type="text" class="fl-lib" value="'+E(l.lib||'')+'" placeholder="Désignation"><input type="number" class="fl-qte" value="'+(l.qte??1)+'" placeholder="Qté"><input type="number" class="fl-prix" value="'+(l.prix??0)+'" placeholder="Prix unitaire"><input type="number" class="fl-remise" value="'+(l.remise??0)+'" placeholder="Remise %"><button type="button" class="fl-del" data-i="'+i+'">🗑</button></div>').join('')+'</div>'
+          +'<select id="fnCat"><option value="">＋ ajouter depuis le catalogue…</option>'+CATALOG.map((c,i)=>'<option value="'+i+'">'+E(c.lib)+' ('+c.prix+' €)</option>').join('')+'</select>'
+          +'<p><b>Total HT : '+ht2(NEWDEV.lignes).toFixed(2)+' €</b></p>'
+          +'<button type="button" class="pa-mini" id="fnSave">Créer le devis (brouillon)</button></div>';
+        return h;
+      }
       function draw(){
         let title='📊 Tableau de bord', body='';
         if(!D){ body='<div class="ud-load">Chargement…</div>'; }
@@ -21878,20 +21935,26 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
             /* Forfait (crédits de projets/missions actifs) et type d'utilisateur (tarif) : réglables
                uniquement ici, par le super-administrateur — invisibles de tout autre rôle. */
             const PROG_LBL={basique:'Basique (5)',medium:'Medium (15)',premium:'Premium (illimité)'};
-            const TYP_LBL={manager:'Manager',collaborateur:'Collaborateur'};
             const selHtml=(uid,name,opts,cur)=>'<select class="ud-sel" data-uid="'+E(uid)+'" data-k="'+name+'" onclick="event.stopPropagation()">'+Object.keys(opts).map(k=>'<option value="'+k+'"'+(k===cur?' selected':'')+'>'+E(opts[k])+'</option>').join('')+'</select>';
-            body='<div class="ud-w"><table class="ud-t"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Forfait</th><th>Type</th><th>Dernière connexion</th><th class="n">Durée 30 j</th><th class="n">Clics 30 j</th><th class="n">Jours actifs</th><th class="n">Workspaces</th></tr></thead><tbody>'
+            body='<div class="ud-w"><table class="ud-t"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Forfait</th><th>Valide jusqu’au</th><th>Dernière connexion</th><th class="n">Durée 30 j</th><th class="n">Clics 30 j</th><th class="n">Jours actifs</th><th class="n">Workspaces</th></tr></thead><tbody>'
               +D.users.map(u=>{ const t=agg(a=>a.user_id===u.id,30), np=D.membres.filter(m=>m.user_id===u.id).length;
                 return '<tr class="ud-r" data-k="u:'+E(u.id)+'"><td><span class="ud-ini-sm">'+E((uName(u)[0]||'?').toUpperCase())+'</span>'+E(uName(u))+'<span class="open">OUVRIR</span></td><td>'+E(RLu[u.role]||u.role||'')+(u.approuve===false?' <small style="opacity:.7">(non validé)</small>':'')+'</td>'
                   +'<td>'+(u.role==='admin'?'<small style="opacity:.7">illimité</small>':selHtml(u.id,'programme',PROG_LBL,u.programme||'basique'))+'</td>'
-                  +'<td>'+selHtml(u.id,'type_utilisateur',TYP_LBL,u.type_utilisateur||'manager')+'</td>'
+                  +'<td>'+E(u.programme_valide_jusqu||'—')+'</td>'
                   +'<td>'+dot(u.last_sign_in_at)+ago(u.last_sign_in_at)+'</td><td class="n">'+fmtH(t.sec)+'</td><td class="n">'+t.clics+'</td><td class="n">'+t.jours+'</td><td class="n">'+np+'</td></tr>'; }).join('')
               +'</tbody></table></div>';
           } else if(parts[0]==='u'){
             const u=D.users.find(x=>x.id===parts[1]); title='👤 '+E(u?uName(u):'');
             if(u){ const t=agg(a=>a.user_id===u.id,30), mem=D.membres.filter(m=>m.user_id===u.id);
               body=KPI([[ago(u.last_sign_in_at),'dernière connexion'],[fmtH(t.sec),'durée (30 j)'],[t.clics,'clics (30 j)'],[t.jours,'jours actifs (30 j)'],[t.sessions,'sessions (30 j)']])
+                +(u.role==='admin'?'':'<div class="pa-grid">'+tile('💳','Facturation','fact:'+u.id)+'</div>')
                 +'<div class="ud-w"><table class="ud-t"><thead><tr><th>Projet</th><th>Rôle</th><th>Dernière activité</th><th>Durée 30 j</th><th>Clics 30 j</th><th>Jours</th></tr></thead><tbody>'+(mem.length?mem.map(m=>{ const x=agg(a=>a.user_id===u.id&&a.projet_id===m.projet_id,30); return '<tr><td>'+E(pName(m.projet_id))+'</td><td>'+E(m.role||'')+(m.actif===false?' (inactif)':'')+'</td><td>'+dot(x.last)+ago(x.last)+'</td><td class="n">'+fmtH(x.sec)+'</td><td class="n">'+x.clics+'</td><td class="n">'+x.jours+'</td></tr>'; }).join(''):(u.role==='admin'?'<tr><td colspan="6">Administrateur général : accès à tous les projets</td></tr>':'<tr><td colspan="6">Aucun projet</td></tr>'))+'</tbody></table></div>'; }
+          } else if(parts[0]==='fact'){
+            const u=D.users.find(x=>x.id===parts[1])||{}; title='💳 Facturation — '+E(uName(u));
+            body=factBody(parts[1]);
+          } else if(parts[0]==='fact-new'){
+            const u=D.users.find(x=>x.id===parts[1])||{}; title='＋ Devis — '+E(uName(u));
+            body=factNewBody(parts[1]);
           } else if(v==='projets'){
             title='🗂 Workspace'; body='<div class="pa-grid">'+D.projets.map(p=>tile('🗂',p.nom||p.id,'p:'+p.id)).join('')+'</div>';
           } else if(parts[0]==='p'){
@@ -21914,9 +21977,72 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
           finally{ sel.disabled=false; sel.dataset.prev=sel.value; }
         });
         w.querySelectorAll('.ud-sel').forEach(sel=>sel.dataset.prev=sel.value);
+        /* ---- facturation : actions sur devis/factures ---- */
+        w.querySelectorAll('.pa-mini[data-act]').forEach(btn=>btn.onclick=async()=>{
+          const act=btn.dataset.act, id=btn.dataset.id; btn.disabled=true;
+          try{
+            if(act==='devis_envoyer') await window.PILOTAGE_ADM({action:'devis_envoyer',id});
+            else if(act==='devis_accepter') await window.PILOTAGE_ADM({action:'devis_contre_decision',id,accepter:true});
+            else if(act==='devis_rejeter') await window.PILOTAGE_ADM({action:'devis_contre_decision',id,accepter:false});
+            else if(act==='devis_valider_direct') await window.PILOTAGE_ADM({action:'devis_valider_direct',id});
+            else if(act==='devis_facturer') await window.PILOTAGE_ADM({action:'devis_facturer',id});
+            else if(act==='facture_payer') await window.PILOTAGE_ADM({action:'facture_payer',id});
+            loadFact(FDuid); draw();
+          }catch(e){ btn.disabled=false; try{ miniAlert(e.message||String(e)); }catch(_){} }
+        });
+        /* ---- création de devis : lignes, catalogue, enregistrement ---- */
+        if(v.indexOf('fact-new:')===0){
+          const uid=v.split(':')[1];
+          const sync=()=>{ NEWDEV.objet=(w.querySelector('#fnObjet')||{}).value||''; NEWDEV.periode_debut=(w.querySelector('#fnDeb')||{}).value||''; NEWDEV.periode_fin=(w.querySelector('#fnFin')||{}).value||''; NEWDEV.programme_cible=(w.querySelector('#fnProg')||{}).value||''; NEWDEV.tva_taux=+((w.querySelector('#fnTva')||{}).value)||0; w.querySelectorAll('.fact-ligne').forEach((row,i)=>{ NEWDEV.lignes[i]={lib:row.querySelector('.fl-lib').value,qte:+row.querySelector('.fl-qte').value||0,prix:+row.querySelector('.fl-prix').value||0,remise:+row.querySelector('.fl-remise').value||0}; }); };
+          w.querySelectorAll('#fnObjet,#fnDeb,#fnFin,#fnProg,#fnTva,.fl-lib,.fl-qte,.fl-prix,.fl-remise').forEach(el=>el.onchange=()=>{ sync(); draw(); });
+          w.querySelectorAll('.fl-del').forEach(b=>b.onclick=()=>{ sync(); NEWDEV.lignes.splice(+b.dataset.i,1); draw(); });
+          const catSel=w.querySelector('#fnCat'); if(catSel) catSel.onchange=()=>{ sync(); const i=+catSel.value; if(CATALOG[i]) NEWDEV.lignes.push({lib:CATALOG[i].lib,qte:1,prix:CATALOG[i].prix,remise:0}); draw(); };
+          const save=w.querySelector('#fnSave'); if(save) save.onclick=async()=>{ sync(); save.disabled=true;
+            try{ await window.PILOTAGE_ADM({action:'devis_create',user_id:uid,objet:NEWDEV.objet,periode_debut:NEWDEV.periode_debut||null,periode_fin:NEWDEV.periode_fin||null,programme_cible:NEWDEV.programme_cible||null,tva_taux:NEWDEV.tva_taux,lignes:NEWDEV.lignes});
+              NEWDEV={objet:'',periode_debut:'',periode_fin:'',programme_cible:'',tva_taux:0,lignes:[]}; loadFact(uid); view.pop(); draw(); }
+            catch(e){ save.disabled=false; try{ miniAlert(e.message||String(e)); }catch(_){} } };
+        }
       }
       draw();
       window.PILOTAGE_ADM({action:'stats'}).then(r=>{ D=r; D.users=D.users||[]; D.projets=D.projets||[]; D.membres=D.membres||[]; D.activite=D.activite||[]; D.ressources=D.ressources||[]; D.users.sort((a,b)=>String(b.last_sign_in_at||'').localeCompare(String(a.last_sign_in_at||''))); draw(); }).catch(e=>{ close(); try{ miniAlert('Chargement impossible : '+(e&&e.message||e)); }catch(_){} });
+    };
+  })();
+  /* ===== « Mes devis & factures » : espace du client payant connecté ===== */
+  (function(){
+    const STAT_D={brouillon:'Brouillon',envoye:'En attente de votre réponse',contre_propose:'Votre contre-proposition est en attente',valide:'Validé',facture:'Facturé',refuse:'Refusé'};
+    const STAT_F={emise:'À régler',payee:'Payée ✓'};
+    const ht2=l=>{ let h=0; (l||[]).forEach(x=>h+=(+x.qte||0)*(+x.prix||0)*(1-(+x.remise||0)/100)); return Math.round(h*100)/100; };
+    window.pjMesFactures=function(){
+      if(!window.PILOTAGE_ACC) return;
+      let w=document.getElementById('dwWin'); if(!w){ w=document.createElement('div'); w.id='dwWin'; document.body.appendChild(w); }
+      let F=null, cp=null;   // cp : devis en cours de contre-proposition {id,lignes,commentaire}
+      function close(){ w.remove(); }
+      w.addEventListener('pointerdown',e=>{ if(e.target===w) close(); });
+      function load(){ window.PILOTAGE_ACC({action:'devis_client_list'}).then(r=>{ F=r; draw(); }).catch(e=>{ F={error:e.message||String(e)}; draw(); }); }
+      function draw(){
+        let body;
+        if(!F) body='<div class="ud-load">Chargement…</div>';
+        else if(F.error) body='<p>'+E(F.error)+'</p>';
+        else {
+          body='<h4 style="margin:0 0 6px">Devis</h4>'+((F.devis||[]).length?F.devis.map(d=>{
+            const montant=ht2(d.lignes); let act='';
+            if(d.statut==='envoye') act='<div class="fact-act"><button type="button" class="pa-mini" data-ok="'+d.id+'">Valider ce devis</button><button type="button" class="pa-mini" data-cp="'+d.id+'">Faire une contre-proposition</button></div>';
+            const editing=cp&&cp.id===d.id;
+            return '<div class="fact-card"><b>'+E(d.numero)+'</b> — '+E(STAT_D[d.statut]||d.statut)+'<br><small>'+E(d.objet||'')+(d.periode_debut?' · '+E(d.periode_debut)+' → '+E(d.periode_fin||''):'')+'</small><br>'+montant.toFixed(2)+' € HT'+act
+              +(editing?'<div class="fact-form"><h4>Contre-proposition</h4><div id="cpLignes">'+cp.lignes.map((l,i)=>'<div class="fact-ligne" data-i="'+i+'"><input type="text" class="cl-lib" value="'+E(l.lib||'')+'" placeholder="Désignation"><input type="number" class="cl-qte" value="'+(l.qte??1)+'"><input type="number" class="cl-prix" value="'+(l.prix??0)+'"><input type="number" class="cl-remise" value="'+(l.remise??0)+'" placeholder="Remise %"><button type="button" class="fl-del" data-i="'+i+'">🗑</button></div>').join('')+'</div><button type="button" class="pa-mini" id="cpAdd">＋ Ajouter une ligne</button><label>Votre commentaire<br><textarea id="cpTxt" rows="2">'+E(cp.commentaire||'')+'</textarea></label><p><b>Total : '+ht2(cp.lignes).toFixed(2)+' € HT</b></p><button type="button" class="pa-mini" id="cpSend">Envoyer ma contre-proposition</button></div>':'')+'</div>'; }).join(''):'<p><small>Aucun devis</small></p>')
+            +'<h4 style="margin:16px 0 6px">Factures</h4>'+((F.factures||[]).length?F.factures.map(f=>'<div class="fact-card"><b>'+E(f.numero)+'</b> — '+E(STAT_F[f.statut]||f.statut)+'<br><small>'+(f.periode_debut?E(f.periode_debut)+' → '+E(f.periode_fin||''):'')+'</small><br>'+(+f.montant_ttc||0).toFixed(2)+' € TTC'+(f.statut==='payee'?'<div class="fact-stamp">PAYÉ</div>':'')+'</div>').join(''):'<p><small>Aucune facture</small></p>');
+        }
+        w.innerHTML='<div class="pa-card" role="dialog"><div class="pa-h"><b>💳 Mes devis &amp; factures</b><button type="button" id="dwX" aria-label="Fermer">×</button></div><div class="pa-b">'+body+'</div></div>';
+        w.querySelector('#dwX').onclick=close;
+        w.querySelectorAll('[data-ok]').forEach(b=>b.onclick=async()=>{ b.disabled=true; try{ await window.PILOTAGE_ACC({action:'devis_client_valider',id:b.dataset.ok}); load(); }catch(e){ b.disabled=false; try{ miniAlert(e.message||String(e)); }catch(_){} } });
+        w.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>{ const d=(F.devis||[]).find(x=>x.id===b.dataset.cp); cp={id:d.id,lignes:JSON.parse(JSON.stringify(d.lignes||[])),commentaire:''}; draw(); });
+        const sync=()=>{ if(!cp) return; cp.commentaire=(w.querySelector('#cpTxt')||{}).value||''; w.querySelectorAll('.fact-ligne').forEach((row,i)=>{ cp.lignes[i]={lib:row.querySelector('.cl-lib').value,qte:+row.querySelector('.cl-qte').value||0,prix:+row.querySelector('.cl-prix').value||0,remise:+row.querySelector('.cl-remise').value||0}; }); };
+        w.querySelectorAll('.cl-lib,.cl-qte,.cl-prix,.cl-remise,#cpTxt').forEach(el=>el.onchange=()=>{ sync(); draw(); });
+        w.querySelectorAll('.fl-del').forEach(b=>b.onclick=()=>{ sync(); cp.lignes.splice(+b.dataset.i,1); draw(); });
+        const add=w.querySelector('#cpAdd'); if(add) add.onclick=()=>{ sync(); cp.lignes.push({lib:'',qte:1,prix:0,remise:0}); draw(); };
+        const send=w.querySelector('#cpSend'); if(send) send.onclick=async()=>{ sync(); send.disabled=true; try{ await window.PILOTAGE_ACC({action:'devis_client_contre_proposer',id:cp.id,lignes:cp.lignes,commentaire:cp.commentaire}); cp=null; load(); }catch(e){ send.disabled=false; try{ miniAlert(e.message||String(e)); }catch(_){} } };
+      }
+      draw(); load();
     };
   })();
   window.pjViewFlow=function(apply){
@@ -21986,7 +22112,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v517';
+  const VER='v518';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
