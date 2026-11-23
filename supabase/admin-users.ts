@@ -7,6 +7,8 @@ const cors = {
 };
 const J = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const ROLES = ['admin', 'editeur', 'lecteur'];
+const PROGRAMMES = ['basique', 'medium', 'premium'];
+const TYPES_UTILISATEUR = ['manager', 'collaborateur'];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 function plusMonth(from: string): string { const d = new Date(from + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return iso(d); }
 
@@ -29,9 +31,9 @@ Deno.serve(async (req) => {
       if (b.action === 'list') {
         const { data: us, error } = await admin.auth.admin.listUsers({ perPage: 200 });
         if (error) throw error;
-        const { data: ps } = await admin.from('profiles').select('id,nom,role,approuve');
+        const { data: ps } = await admin.from('profiles').select('id,nom,role,approuve,programme,type_utilisateur');
         const pm = new Map((ps || []).map((p) => [p.id, p]));
-        return J({ users: us.users.map((u) => ({ id: u.id, email: u.email, nom: pm.get(u.id)?.nom || '', role: pm.get(u.id)?.role || 'editeur', approuve: !!pm.get(u.id)?.approuve, last_sign_in_at: u.last_sign_in_at, moi: u.id === user.id })) });
+        return J({ users: us.users.map((u) => ({ id: u.id, email: u.email, nom: pm.get(u.id)?.nom || '', role: pm.get(u.id)?.role || 'editeur', approuve: !!pm.get(u.id)?.approuve, programme: pm.get(u.id)?.programme || 'basique', type_utilisateur: pm.get(u.id)?.type_utilisateur || 'manager', last_sign_in_at: u.last_sign_in_at, moi: u.id === user.id })) });
       }
       if (b.action === 'update') {
         if (b.id === user.id && (b.role !== undefined || b.approuve === false)) return J({ error: 'Vous ne pouvez pas modifier votre propre rôle ou accès' }, 400);
@@ -39,6 +41,10 @@ Deno.serve(async (req) => {
         if (b.role !== undefined && ROLES.includes(b.role)) patch.role = b.role;
         if (b.approuve !== undefined) patch.approuve = !!b.approuve;
         if (b.nom !== undefined) patch.nom = String(b.nom);
+        /* forfait (crédits de projets/missions actifs) et type d'utilisateur (tarif) : réservés au
+           super-administrateur, invisibles des autres rôles — voir dimensionnement/architecture app */
+        if (b.programme !== undefined && PROGRAMMES.includes(b.programme)) patch.programme = b.programme;
+        if (b.type_utilisateur !== undefined && TYPES_UTILISATEUR.includes(b.type_utilisateur)) patch.type_utilisateur = b.type_utilisateur;
         const { error } = await admin.from('profiles').update(patch).eq('id', b.id);
         if (error) return J({ error: error.message }, 400);
         return J({ ok: true });
@@ -49,6 +55,25 @@ Deno.serve(async (req) => {
         if (error) return J({ error: error.message }, 400);
         return J({ ok: true });
       }
+      if (b.action === 'stats') {
+        const { data: us, error } = await admin.auth.admin.listUsers({ perPage: 500 });
+        if (error) throw error;
+        const { data: ps } = await admin.from('profiles').select('id,nom,role,approuve,programme,type_utilisateur');
+        const pm = new Map((ps || []).map((p) => [p.id, p]));
+        const users = us.users.map((u) => ({ id: u.id, email: u.email, nom: pm.get(u.id)?.nom || '', role: pm.get(u.id)?.role || 'editeur', approuve: !!pm.get(u.id)?.approuve, programme: pm.get(u.id)?.programme || 'basique', type_utilisateur: pm.get(u.id)?.type_utilisateur || 'manager', last_sign_in_at: u.last_sign_in_at, moi: u.id === user.id }));
+        const { data: projets } = await admin.from('projets').select('id,nom,cree_par,archive').order('created_at');
+        const { data: membres } = await admin.from('projet_membres').select('projet_id,user_id,role,actif');
+        const { data: activiteRaw } = await admin.from('pj_activite').select('user_id,projet_id,jour,clics,secondes,sessions,derniere');
+        const activite = (activiteRaw || []).map((a) => ({ user_id: a.user_id, projet_id: a.projet_id, jour: a.jour, clics: a.clics || 0, secondes: a.secondes || 0, sessions: a.sessions || 0, derniere: a.derniere }));
+        const { data: docsRaw } = await admin.from('docs').select('projet_id,data');
+        const { data: mediaRaw } = await admin.from('media').select('projet_id,data');
+        const rMap = new Map<string, { nb_docs: number; octets_donnees: number; nb_fichiers: number; octets_fichiers: number }>();
+        const getR = (pid: string) => { let r = rMap.get(pid); if (!r) { r = { nb_docs: 0, octets_donnees: 0, nb_fichiers: 0, octets_fichiers: 0 }; rMap.set(pid, r); } return r; };
+        (docsRaw || []).forEach((d) => { const r = getR(d.projet_id); r.nb_docs++; try { r.octets_donnees += JSON.stringify(d.data || {}).length; } catch (_e) { /* noop */ } });
+        (mediaRaw || []).forEach((m) => { const r = getR(m.projet_id); r.nb_fichiers++; r.octets_fichiers += (m.data || '').length; });
+        const ressources = Array.from(rMap.entries()).map(([projet_id, r]) => ({ projet_id, ...r }));
+        return J({ users, projets: projets || [], membres: membres || [], activite, ressources });
+      }
       return J({ error: 'Action inconnue' }, 400);
     }
 
@@ -58,6 +83,7 @@ Deno.serve(async (req) => {
     const { data: _ap } = await admin.from('profiles').select('nom').eq('id', user.id).maybeSingle();
     const { data: _pj } = await admin.from('projets').select('nom').eq('id', pid).maybeSingle();
     const invMeta = { app: 'Pilotage Chantier', projet: _pj?.nom || pid, invite_par: _ap?.nom || user.email || '', invite_par_email: user.email || '' };
+    const ROLE_LBL: Record<string, string> = { admin: 'Administrateur du workspace', editeur: 'Éditeur', lecteur: 'Lecteur' };
     if (b.action === 'p_projets') {
       if (isGlobal) { const { data } = await admin.from('projets').select('id,nom').order('created_at'); return J({ projets: data || [] }); }
       const { data } = await admin.from('projet_membres').select('projet_id,projets(id,nom)').eq('user_id', user.id).eq('actif', true);
@@ -102,7 +128,6 @@ Deno.serve(async (req) => {
       });
     }
     if (b.action === 'p_create') {
-      if (!b.paiement || b.paiement.valide !== true) return J({ error: 'Paiement non validé : l’accès ne peut pas être créé' }, 400);
       const email = String(b.email || '').trim().toLowerCase();
       if (!email) return J({ error: 'E-mail (identifiant) requis' }, 400);
       const role = ROLES.includes(b.role) ? b.role : 'editeur';
@@ -111,7 +136,7 @@ Deno.serve(async (req) => {
       const ex = us?.users.find((u) => (u.email || '').toLowerCase() === email);
       if (ex) { uid = ex.id; }
       else if (b.invite === true) {
-        const { data, error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: b.nom || email, ...invMeta } });
+        const { data, error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: b.nom || '', role, role_label: ROLE_LBL[role] || role, ...invMeta } });
         if (error) return J({ error: 'Invitation non envoyée : ' + error.message }, 400);
         uid = data.user!.id;
         await admin.from('profiles').upsert({ id: uid, nom: b.nom || email, role: 'editeur', approuve: true });
@@ -125,25 +150,26 @@ Deno.serve(async (req) => {
       const { data: dej } = await admin.from('projet_membres').select('user_id').eq('projet_id', pid).eq('user_id', uid).maybeSingle();
       if (dej) return J({ error: 'Cet utilisateur a déjà un accès à ce projet (utilisez « Prolonger »)' }, 400);
       const au = plusMonth(today);
-      const { error: e1 } = await admin.from('projet_membres').insert({ projet_id: pid, user_id: uid, role, fonctions: b.fonctions || {}, valide_jusqu: au, actif: true });
+      const fonctionTxt = (b.fonctions && b.fonctions._role) || null;
+      const { error: e1 } = await admin.from('projet_membres').insert({ projet_id: pid, user_id: uid, role, fonctions: b.fonctions || {}, fonction: fonctionTxt, valide_jusqu: au, actif: true });
       if (e1) return J({ error: e1.message }, 400);
-      await admin.from('projet_paiements').insert({ projet_id: pid, user_id: uid, valide_par: user.id, du: today, au, montant: b.paiement.montant ?? null, reference: b.paiement.reference ?? null });
+      await admin.from('projet_paiements').insert({ projet_id: pid, user_id: uid, valide_par: user.id, du: today, au, montant: b.paiement?.montant ?? null, reference: b.paiement?.reference ?? null });
       return J({ ok: true, id: uid, valide_jusqu: au, existant: !!ex, invitation: b.invite === true && !ex });
     }
     if (b.action === 'p_resend') {
-      const { data: m } = await admin.from('projet_membres').select('user_id').eq('projet_id', pid).eq('user_id', b.user_id).maybeSingle();
+      const { data: m } = await admin.from('projet_membres').select('user_id,role').eq('projet_id', pid).eq('user_id', b.user_id).maybeSingle();
       if (!m) return J({ error: 'Membre introuvable' }, 404);
       const { data: gu, error: ge } = await admin.auth.admin.getUserById(b.user_id);
       if (ge || !gu?.user?.email) return J({ error: 'Utilisateur introuvable' }, 404);
       if (gu.user.email_confirmed_at) return J({ error: 'Ce compte est déjà activé : utilisez « Réinitialiser le compte » pour que la personne choisisse un nouveau mot de passe.' }, 400);
-      const { error } = await admin.auth.admin.inviteUserByEmail(gu.user.email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: gu.user.user_metadata?.nom || gu.user.email, ...invMeta } });
-      if (error) return J({ error: 'Invitation non renvoyée : ' + error.message }, 400);
+      const { error } = await admin.auth.admin.inviteUserByEmail(gu.user.email, { redirectTo: b.redirectTo ? String(b.redirectTo) : undefined, data: { nom: gu.user.user_metadata?.nom || '', role: m.role, role_label: ROLE_LBL[m.role] || m.role, ...invMeta } });
+        if (error) return J({ error: 'Invitation non renvoyée : ' + error.message }, 400);
       return J({ ok: true });
     }
     if (b.action === 'p_update') {
       const patch: Record<string, unknown> = {};
       if (b.role !== undefined && ROLES.includes(b.role)) patch.role = b.role;
-      if (b.fonctions !== undefined) patch.fonctions = b.fonctions;
+      if (b.fonctions !== undefined) { patch.fonctions = b.fonctions; patch.fonction = b.fonctions._role || null; }
       if (b.actif !== undefined) patch.actif = !!b.actif;
       if (b.user_id === user.id && !isGlobal && (patch.role !== undefined || patch.actif === false)) return J({ error: 'Vous ne pouvez pas modifier votre propre rôle' }, 400);
       const { error } = await admin.from('projet_membres').update(patch).eq('projet_id', pid).eq('user_id', b.user_id);
@@ -151,13 +177,12 @@ Deno.serve(async (req) => {
       return J({ ok: true });
     }
     if (b.action === 'p_prolong') {
-      if (!b.paiement || b.paiement.valide !== true) return J({ error: 'Paiement non validé : l’accès n’est pas prolongé' }, 400);
       const { data: m } = await admin.from('projet_membres').select('valide_jusqu').eq('projet_id', pid).eq('user_id', b.user_id).maybeSingle();
       if (!m) return J({ error: 'Membre introuvable' }, 404);
       const du = m.valide_jusqu && m.valide_jusqu >= today ? m.valide_jusqu : today;
       const au = plusMonth(du);
       await admin.from('projet_membres').update({ valide_jusqu: au, actif: true }).eq('projet_id', pid).eq('user_id', b.user_id);
-      await admin.from('projet_paiements').insert({ projet_id: pid, user_id: b.user_id, valide_par: user.id, du, au, montant: b.paiement.montant ?? null, reference: b.paiement.reference ?? null });
+      await admin.from('projet_paiements').insert({ projet_id: pid, user_id: b.user_id, valide_par: user.id, du, au, montant: b.paiement?.montant ?? null, reference: b.paiement?.reference ?? null });
       await admin.from('projet_notifs').update({ traite: true, lu: true }).eq('projet_id', pid).eq('user_id', b.user_id);
       return J({ ok: true, valide_jusqu: au });
     }

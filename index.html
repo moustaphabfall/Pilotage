@@ -16530,7 +16530,7 @@ const PG_FEATS=[
     }
     const TT={settings:'⚙ Paramètres du workspace',invite:'➕ Inviter un membre',members:'👥 Gérer les membres',host:'☁ Hébergement des données'};
     const head='<h2>'+TT[pgMode]+(pgMode==='settings'?' « '+esc(p.nom)+' »':'')+'</h2>'
-      +(pgMode==='settings'?'<div class="row">'+(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')+(p.global?'<button id="pgNewP">➕ Nouveau workspace</button>':'')+(p.role==='admin'||p.global?'<button id="pgRen">✏️ Renommer</button>':'')+'</div>':'');
+      +(pgMode==='settings'?'<div class="row">'+(p.projets&&p.projets.length>1?'<select id="pgSw">'+p.projets.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.nom)+'</option>').join('')+'</select>':'')+((p.global||p.role==='admin')?'<button id="pgNewP">➕ Nouveau workspace/mission</button>':'')+(p.role==='admin'||p.global?'<button id="pgRen">✏️ Renommer</button>':'')+'</div>':'');
     if(p.role!=='admin'){
       const off=PG_FEATS.filter(f=>!pgCan(f.k)).map(f=>f.l).concat(PG_FEATS.flatMap(f=>f.subs).filter(s=>!pgCan(s.k)).map(s=>s.l));
       w.innerHTML=head+'<div class="card">Fonctionnalités désactivées pour vous : '+(off.length?off.map(esc).join(', '):'aucune')+'</div>';
@@ -16556,20 +16556,35 @@ const PG_FEATS=[
     const ty=w.querySelector('#pgTy'); if(ty) ty.onchange=async()=>{ try{ await window.PILOTAGE_SET_TYPE(PJ().id,ty.value); PJ().type=ty.value; location.reload(); }catch(e){ alert(e.message); } };
     const r=w.querySelector('#pgRen'); if(r) r.onclick=()=>{ miniPrompt('Nom du workspace :',PJ().nom,async v=>{ if(v===null||!String(v).trim()) return; v=String(v); try{ await adm({action:'p_projet_rename',nom:v.trim()}); PJ().nom=v.trim(); if(state.projet){ state.projet.nom=v.trim(); persist&&persist(); } render(); }catch(e){ miniAlert(e.message); } }); };
     const n=w.querySelector('#pgNewP'); if(n) n.onclick=()=>{
-      /* nouveau projet : un seul formulaire dans le style de l'outil (identifiant, nom, type en liste déroulante) */
+      const glob=!!p.global;
+      /* administrateur général : formulaire complet (identifiant, nom, type). Utilisateur non global
+         (chaque utilisateur paie son propre forfait) : formulaire réduit au nom, avec contrôle des
+         crédits du forfait (basique/medium/premium) côté serveur (action essai_projet_create). */
       const ks=Object.keys(PG_TYPES), ov=document.createElement('div'); ov.setAttribute('role','dialog'); ov.style.cssText='position:fixed;inset:0;z-index:99985;background:rgba(22,35,43,.5);display:flex;align-items:center;justify-content:center;padding:14px';
       const fld='width:100%;padding:10px 12px;border:1px solid #d6d6d6;border-radius:10px;font:inherit;background:#fff;margin-top:4px';
-      ov.innerHTML='<form style="background:#fff;border-top:6px solid #F2A900;border-radius:14px;padding:18px 20px;width:min(460px,100%);box-shadow:0 18px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:14px"><b style="font-size:17px">Nouveau workspace</b>'
-        +'<label style="font-size:13px;font-weight:600">Identifiant court<small style="font-weight:400;color:#666"> (lettres, chiffres)</small><input name="id" required autocomplete="off" style="'+fld+'"></label>'
-        +'<label style="font-size:13px;font-weight:600">Nom du workspace<input name="nom" autocomplete="off" style="'+fld+'"></label>'
-        +'<label style="font-size:13px;font-weight:600">Type d’espace de travail<select name="ty" style="'+fld+'">'+ks.map(k=>'<option value="'+k+'"'+(k==='entreprise_generale'?' selected':'')+'>'+PG_ACR[k]+' — '+PG_TYPES[k]+'</option>').join('')+'</select></label>'
+      ov.innerHTML='<form style="background:#fff;border-top:6px solid #F2A900;border-radius:14px;padding:18px 20px;width:min(460px,100%);box-shadow:0 18px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:14px"><b style="font-size:17px">Nouveau workspace/mission</b>'
+        +(glob?'<label style="font-size:13px;font-weight:600">Identifiant court<small style="font-weight:400;color:#666"> (lettres, chiffres)</small><input name="id" required autocomplete="off" style="'+fld+'"></label>':'')
+        +'<label style="font-size:13px;font-weight:600">Nom du workspace/de la mission<input name="nom" required autocomplete="off" style="'+fld+'"></label>'
+        +(glob?'<label style="font-size:13px;font-weight:600">Type d’espace de travail<select name="ty" style="'+fld+'">'+ks.map(k=>'<option value="'+k+'"'+(k==='entreprise_generale'?' selected':'')+'>'+PG_ACR[k]+' — '+PG_TYPES[k]+'</option>').join('')+'</select></label>':'')
         +'<div class="msg" style="color:#B4432D;font-size:13px;min-height:16px"></div>'
         +'<div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" data-x style="padding:10px 16px;border:1px solid #d6d6d6;border-radius:10px;background:#fff;cursor:pointer;font-weight:600">Annuler</button><button type="submit" style="padding:10px 18px;border:0;border-radius:10px;background:#F2A900;color:#16232B;cursor:pointer;font-weight:700">Créer</button></div></form>';
-      document.body.appendChild(ov); const f=ov.querySelector('form'); f.id.focus();
+      document.body.appendChild(ov); const f=ov.querySelector('form'); (glob?f.id:f.nom).focus();
       ov.querySelector('[data-x]').onclick=()=>ov.remove(); ov.addEventListener('pointerdown',e=>{ if(e.target===ov) ov.remove(); });
-      f.onsubmit=async e=>{ e.preventDefault(); const clean=f.id.value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,''); if(!clean){ f.querySelector('.msg').textContent='Identifiant requis (lettres ou chiffres).'; return; }
-        const nom=f.nom.value.trim()||f.id.value.trim(), ty=f.ty.value; const sb=f.querySelector('[type=submit]'); sb.disabled=true; sb.textContent='Création…';
-        try{ await window.PILOTAGE_ADM({action:'p_projet_create',id:f.id.value.trim(),nom}); if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(clean,ty); ov.remove(); window.pilotageSwitchProjet(clean); }catch(err){ sb.disabled=false; sb.textContent='Créer'; f.querySelector('.msg').textContent=err.message||String(err); } }; };
+      f.onsubmit=async e=>{ e.preventDefault(); const sb=f.querySelector('[type=submit]');
+        if(glob){
+          const clean=f.id.value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g,''); if(!clean){ f.querySelector('.msg').textContent='Identifiant requis (lettres ou chiffres).'; return; }
+          const nom=f.nom.value.trim()||f.id.value.trim(), ty=f.ty.value; sb.disabled=true; sb.textContent='Création…';
+          try{ await window.PILOTAGE_ADM({action:'p_projet_create',id:f.id.value.trim(),nom}); if(window.PILOTAGE_SET_TYPE) await window.PILOTAGE_SET_TYPE(clean,ty); ov.remove(); window.pilotageSwitchProjet(clean); }
+          catch(err){ sb.disabled=false; sb.textContent='Créer'; f.querySelector('.msg').textContent=err.message||String(err); }
+        } else {
+          const nom=f.nom.value.trim(); if(!nom){ f.querySelector('.msg').textContent='Nom requis.'; return; }
+          sb.disabled=true; sb.textContent='Création…';
+          try{
+            const r=await window.PILOTAGE_ACC({action:'essai_projet_create',nom});
+            (p.projets=p.projets||[]).push({id:r.id,nom});
+            ov.remove(); window.pilotageSwitchProjet(r.id);
+          }catch(err){ sb.disabled=false; sb.textContent='Créer'; f.querySelector('.msg').textContent=err.message||String(err); }
+        } }; };
   }
   function badge(){ const b=document.getElementById('pgBadge'); if(!b) return; const n=cache?cache.notifs.length:0; b.hidden=!n; b.textContent=n; }
 
@@ -21860,9 +21875,17 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
           } else if(v==='users'){
             title='👥 Utilisateurs';
             const RLu={admin:'Administrateur général',editeur:'Éditeur',lecteur:'Lecteur'};
-            body='<div class="ud-w"><table class="ud-t"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Dernière connexion</th><th class="n">Durée 30 j</th><th class="n">Clics 30 j</th><th class="n">Jours actifs</th><th class="n">Workspaces</th></tr></thead><tbody>'
+            /* Forfait (crédits de projets/missions actifs) et type d'utilisateur (tarif) : réglables
+               uniquement ici, par le super-administrateur — invisibles de tout autre rôle. */
+            const PROG_LBL={basique:'Basique (5)',medium:'Medium (15)',premium:'Premium (illimité)'};
+            const TYP_LBL={manager:'Manager',collaborateur:'Collaborateur'};
+            const selHtml=(uid,name,opts,cur)=>'<select class="ud-sel" data-uid="'+E(uid)+'" data-k="'+name+'" onclick="event.stopPropagation()">'+Object.keys(opts).map(k=>'<option value="'+k+'"'+(k===cur?' selected':'')+'>'+E(opts[k])+'</option>').join('')+'</select>';
+            body='<div class="ud-w"><table class="ud-t"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Forfait</th><th>Type</th><th>Dernière connexion</th><th class="n">Durée 30 j</th><th class="n">Clics 30 j</th><th class="n">Jours actifs</th><th class="n">Workspaces</th></tr></thead><tbody>'
               +D.users.map(u=>{ const t=agg(a=>a.user_id===u.id,30), np=D.membres.filter(m=>m.user_id===u.id).length;
-                return '<tr class="ud-r" data-k="u:'+E(u.id)+'"><td><span class="ud-ini-sm">'+E((uName(u)[0]||'?').toUpperCase())+'</span>'+E(uName(u))+'<span class="open">OUVRIR</span></td><td>'+E(RLu[u.role]||u.role||'')+(u.approuve===false?' <small style="opacity:.7">(non validé)</small>':'')+'</td><td>'+dot(u.last_sign_in_at)+ago(u.last_sign_in_at)+'</td><td class="n">'+fmtH(t.sec)+'</td><td class="n">'+t.clics+'</td><td class="n">'+t.jours+'</td><td class="n">'+np+'</td></tr>'; }).join('')
+                return '<tr class="ud-r" data-k="u:'+E(u.id)+'"><td><span class="ud-ini-sm">'+E((uName(u)[0]||'?').toUpperCase())+'</span>'+E(uName(u))+'<span class="open">OUVRIR</span></td><td>'+E(RLu[u.role]||u.role||'')+(u.approuve===false?' <small style="opacity:.7">(non validé)</small>':'')+'</td>'
+                  +'<td>'+(u.role==='admin'?'<small style="opacity:.7">illimité</small>':selHtml(u.id,'programme',PROG_LBL,u.programme||'basique'))+'</td>'
+                  +'<td>'+selHtml(u.id,'type_utilisateur',TYP_LBL,u.type_utilisateur||'manager')+'</td>'
+                  +'<td>'+dot(u.last_sign_in_at)+ago(u.last_sign_in_at)+'</td><td class="n">'+fmtH(t.sec)+'</td><td class="n">'+t.clics+'</td><td class="n">'+t.jours+'</td><td class="n">'+np+'</td></tr>'; }).join('')
               +'</tbody></table></div>';
           } else if(parts[0]==='u'){
             const u=D.users.find(x=>x.id===parts[1]); title='👤 '+E(u?uName(u):'');
@@ -21884,6 +21907,13 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
         w.querySelector('#dwBk').onclick=back; w.querySelector('#dwX').onclick=close;
         w.querySelectorAll('.pa-app[data-k]').forEach(b=>b.onclick=()=>{ view.push(b.dataset.k); draw(); });
         w.querySelectorAll('.ud-r[data-k]').forEach(b=>b.onclick=()=>{ view.push(b.dataset.k); draw(); });
+        w.querySelectorAll('.ud-sel').forEach(sel=>sel.onchange=async()=>{
+          const uid=sel.dataset.uid, k=sel.dataset.k, val=sel.value, prev=sel.dataset.prev||''; sel.disabled=true;
+          try{ await window.PILOTAGE_ADM({action:'update',id:uid,[k]:val}); const u=D.users.find(x=>x.id===uid); if(u) u[k]=val; }
+          catch(e){ sel.value=prev; try{ miniAlert(e.message||String(e)); }catch(_){} }
+          finally{ sel.disabled=false; sel.dataset.prev=sel.value; }
+        });
+        w.querySelectorAll('.ud-sel').forEach(sel=>sel.dataset.prev=sel.value);
       }
       draw();
       window.PILOTAGE_ADM({action:'stats'}).then(r=>{ D=r; D.users=D.users||[]; D.projets=D.projets||[]; D.membres=D.membres||[]; D.activite=D.activite||[]; D.ressources=D.ressources||[]; D.users.sort((a,b)=>String(b.last_sign_in_at||'').localeCompare(String(a.last_sign_in_at||''))); draw(); }).catch(e=>{ close(); try{ miniAlert('Chargement impossible : '+(e&&e.message||e)); }catch(_){} });
@@ -21956,7 +21986,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v516';
+  const VER='v517';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));

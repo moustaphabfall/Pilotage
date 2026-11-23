@@ -109,13 +109,22 @@ Deno.serve(async (req) => {
     const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
     const { data: { user } } = await admin.auth.getUser(token);
     if (!user) return J({ error: 'Non connecté' }, 401);
-    const { data: me } = await admin.from('profiles').select('role,approuve,nom,essai').eq('id', user.id).maybeSingle();
+    const { data: me } = await admin.from('profiles').select('role,approuve,nom,essai,programme').eq('id', user.id).maybeSingle();
     if (!me || !me.approuve) return J({ error: 'Compte non validé' }, 403);
     const isGlobal = me.role === 'admin';
 
+    /* crédits par forfait : nombre de projets/missions actifs en même temps (l'administrateur
+       général n'est jamais limité) — basique 5, medium 15, premium illimité */
+    const CREDITS: Record<string, number> = { basique: 5, medium: 15 };
     if (b.action === 'essai_projet_create') {
-      const { count } = await admin.from('projet_membres').select('user_id', { count: 'exact', head: true }).eq('user_id', user.id);
-      if (count && !isGlobal) return J({ error: 'Vous avez déjà un projet' }, 400);
+      if (!isGlobal) {
+        const programme = me.programme || 'basique';
+        if (programme !== 'premium') {
+          const { count: actifs } = await admin.from('projets').select('id', { count: 'exact', head: true }).eq('cree_par', user.id).eq('archive', false);
+          const max = CREDITS[programme] ?? 5;
+          if ((actifs || 0) >= max) return J({ error: 'Vous avez atteint la limite de ' + max + ' projets/missions actifs de votre forfait « ' + programme + ' ». Archivez un projet existant ou passez à une offre supérieure pour en créer un nouveau.', code: 'limite_credits', programme, max, actifs: actifs || 0 }, 403);
+        }
+      }
       const nom = clean(b.nom, 80); if (!nom) return J({ error: 'Nom du projet requis' }, 400);
       const base = nom.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'PROJET';
       let id = base;
