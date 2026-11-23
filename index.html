@@ -22112,7 +22112,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v518';
+  const VER='v519';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -25125,7 +25125,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
    return '<h5>4 · Chargement (ELU)</h5>'
     +'<p class="pcNote">Effort normal N et moments en tête/pied : à régler directement sur le schéma ci-dessus.</p>'
-    +'<p class="pcNote">1 t = 10 kN. Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2.</p>';
+    +'<p class="pcNote">1 t = 10 kN. Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2.</p>'
+    +'<button type="button" class="ghost pcBtnSm" data-pt-act="openDescente">📥 Descente de charges</button>'
+    +'<p class="pcNote">Calcule N à partir de l\'empilement des niveaux portés par ce poteau (dalles, poutres, poids propre, charges d\'exploitation avec dégression) puis le reporte ici.</p>';
   }
   function ptFormHtml(id,t){
    const dp=ptData(t);
@@ -25150,6 +25152,80 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<div class="pcDimBox"><b>Cadres</b><p class="pcNote">Φ'+res.phiCadre+' — espacement courant '+(res.sCourant_mm/10).toFixed(1)+' cm, réduit à '+(res.sExtrem_mm/10).toFixed(1)+' cm sur '+(res.hZoneExtrem_mm/10).toFixed(0)+' cm en tête/pied · longueur de recouvrement ≈ '+(res.lb_mm/10).toFixed(0)+' cm</p></div>'
     +'<button type="button" class="ghost pcBtnSm" data-pt-act="printNote">🖶 Voir la note</button>';
   }
+  /* ===================== Descente de charges (poteau) — classeur 152, H. Thonier =====================
+     Module complémentaire du moteur Poteau ci-dessus : calcule l'effort normal NEd cumulé niveau par
+     niveau (dalle + poutres //Ox/Oy + poteau + divers, poids propre automatique en volume×25 kN/m³,
+     charges d'exploitation q/q' avec dégression verticale an par niveau et majoration de continuité k
+     globale sur dalle/poutres), puis reporte le NEd du dernier niveau sur N_kN du poteau (ptData).
+     Formules vérifiées chiffre par chiffre sur l'exemple « Poteau B2 » du classeur source (23/11/2026) :
+     g' est un champ saisi mais NON utilisé dans ce calcul de référence (le classeur source ne l'emploie
+     pas non plus dans ses propres résultats — poids propre seul compte pour G), à signaler à l'ingénieur. */
+  function dcNivDefaut(i){
+   // Toutes les dimensions (b, h, L) sont en mètres, comme dans le classeur source 152 — jamais en cm,
+   // à la différence du reste du module Poteau (b_cm/h_cm) : ne pas mélanger les unités entre les deux.
+   return { nom:i===0?'terrasse':'niveau', an:1,
+    dalle:{b:0,h:0.18,L:0}, poutreOx:{b:0,h:0,L:0}, poutreOy:{b:0,h:0,L:0}, poteau:{b:0.3,h:0.3,L:3},
+    divers_kN:0, gprime:0, q:0, qprime:0 };
+  }
+  function dcDefaultData(){ return { k:1.15, niveaux:[dcNivDefaut(0)], resultats:null }; }
+  function dcData(t){ if(!t.dimDC) t.dimDC=dcDefaultData(); return t.dimDC; }
+  function dcVolDalle(n){ const aire=(+n.dalle.b||0)*(+n.dalle.L||0); return { aire, vol:aire*(+n.dalle.h||0) }; }
+  function dcVolPoutre(p,hdalle){ return (+p.b||0)*Math.max(0,(+p.h||0)-hdalle)*(+p.L||0); }
+  function dcVolPoteau(p,hdalle){ return (+p.b||0)*(+p.h||0)*Math.max(0,(+p.L||0)-hdalle); }
+  function dcCompute(dd){
+   const k=+dd.k||1; let Gcum=0,Qcum=0,Qdgcum=0; const lignes=[];
+   for(const n of dd.niveaux){
+    const hdalle=+n.dalle.h||0;
+    const {aire,vol:volDalle}=dcVolDalle(n);
+    const volOx=dcVolPoutre(n.poutreOx,hdalle), volOy=dcVolPoutre(n.poutreOy,hdalle), volPot=dcVolPoteau(n.poteau,hdalle);
+    const Gdalle=volDalle*25*k, Gox=volOx*25*k, Goy=volOy*25*k, Gpot=volPot*25, Gdiv=+n.divers_kN||0;
+    const Gniv=Gdalle+Gox+Goy+Gpot+Gdiv;
+    const an=(n.an===''||n.an==null)?1:+n.an, q=+n.q||0, qprime=+n.qprime||0;
+    const Qniv=(q+qprime)*aire*k, Qdgniv=(q*an+qprime)*aire*k;
+    Gcum+=Gniv; Qcum+=Qniv; Qdgcum+=Qdgniv;
+    const NEd=1.35*Gcum+1.5*Qdgcum;
+    const bpot_mm=(+n.poteau.b||0)*1000, hpot_mm=(+n.poteau.h||0)*1000; // b,h du poteau en mètres ici (cf. dcNivDefaut)
+    const sigma=(bpot_mm*hpot_mm>0)? NEd*1000/(bpot_mm*hpot_mm) : 0;
+    lignes.push({nom:n.nom,aire,Gniv,Qniv,Qdgniv,Gcum,Qcum,Qdgcum,NEd,sigma});
+   }
+   return {k,lignes};
+  }
+  function dcRowHtml(n,i){
+   const F=(f,v,w)=>'<input type="number" step="0.01" style="width:'+(w||50)+'px" data-dc-i="'+i+'" data-dc-f="'+f+'" value="'+(v??0)+'">';
+   return '<tr>'
+    +'<td><input type="text" style="width:80px" data-dc-i="'+i+'" data-dc-f="nom" value="'+esc(n.nom||'')+'"></td>'
+    +'<td>'+F('an',n.an,44)+'</td>'
+    +'<td>'+F('dalle.b',n.dalle.b)+'</td><td>'+F('dalle.h',n.dalle.h,44)+'</td><td>'+F('dalle.L',n.dalle.L)+'</td>'
+    +'<td>'+F('poutreOx.b',n.poutreOx.b,44)+'</td><td>'+F('poutreOx.h',n.poutreOx.h,44)+'</td><td>'+F('poutreOx.L',n.poutreOx.L,44)+'</td>'
+    +'<td>'+F('poutreOy.b',n.poutreOy.b,44)+'</td><td>'+F('poutreOy.h',n.poutreOy.h,44)+'</td><td>'+F('poutreOy.L',n.poutreOy.L,44)+'</td>'
+    +'<td>'+F('poteau.b',n.poteau.b,44)+'</td><td>'+F('poteau.h',n.poteau.h,44)+'</td><td>'+F('poteau.L',n.poteau.L,44)+'</td>'
+    +'<td>'+F('divers_kN',n.divers_kN,50)+'</td><td>'+F('gprime',n.gprime,44)+'</td><td>'+F('q',n.q,44)+'</td><td>'+F('qprime',n.qprime,44)+'</td>'
+    +'<td><button type="button" class="ghost pcBtnSm" data-dc-act="del" data-i="'+i+'" aria-label="Supprimer le niveau" title="Supprimer le niveau">🗑</button></td>'
+    +'</tr>';
+  }
+  function dcFormHtml(id,t){
+   const dd=dcData(t);
+   const head=['Niveau','an','Dalle b','h','L','Poutre Ox b','h','L','Poutre Oy b','h','L','Poteau b','h','L','Divers kN','g′','q','q′',''];
+   const tbl='<div style="overflow-x:auto"><table class="pcDcTbl" style="font-size:11px;border-collapse:collapse;width:100%"><thead><tr>'
+    +head.map(h=>'<th style="padding:3px 4px;text-align:left;color:var(--ink-soft,#888);white-space:nowrap">'+h+'</th>').join('')
+    +'</tr></thead><tbody>'+dd.niveaux.map((n,i)=>dcRowHtml(n,i)).join('')+'</tbody></table></div>';
+   let res='';
+   if(dd.resultats){
+    const rh=['Niveau','G niv. (kN)','G cum. (kN)','Q cum. (kN)','Qdg cum. (kN)','NEd,ELU (kN)','σc,pot (MPa)'];
+    res='<div class="pcDimBox" style="margin-top:10px"><b>Résultats (cumulés, du haut vers le bas)</b>'
+     +'<div style="overflow-x:auto"><table style="font-size:11px;border-collapse:collapse;width:100%"><thead><tr>'
+     +rh.map(h=>'<th style="padding:3px 4px;text-align:left;white-space:nowrap">'+h+'</th>').join('')+'</tr></thead><tbody>'
+     +dd.resultats.lignes.map(l=>'<tr><td>'+esc(l.nom)+'</td><td>'+l.Gniv.toFixed(2)+'</td><td>'+l.Gcum.toFixed(2)+'</td><td>'+l.Qcum.toFixed(2)+'</td><td>'+l.Qdgcum.toFixed(2)+'</td><td>'+l.NEd.toFixed(2)+'</td><td>'+l.sigma.toFixed(2)+'</td></tr>').join('')
+     +'</tbody></table></div>'
+     +'<button type="button" class="primary pcBtnSm" style="margin-top:8px" data-dc-act="report">↳ Reporter NEd (dernier niveau) sur ce poteau</button></div>';
+   }
+   return '<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📥 Descente de charges</h4></div>'
+    +'<p class="pcNote">Classeur 152 (H. Thonier) — un niveau par ligne, du haut (terrasse) vers le bas. Toutes les dimensions (b, h, L) sont en <b>mètres</b> ici, comme dans le classeur source (à la différence du reste du module Poteau, en cm). Poids propre de la dalle/poutres/poteau calculé automatiquement (volume × 25 kN/m³) ; dalle et poutres majorées par le coefficient k (continuité) ; poteau non majoré. g′ est saisi pour mémoire mais n\'intervient pas dans ce calcul de référence (vérifié ainsi sur l\'exemple source). an = coefficient de dégression verticale de q (à saisir par niveau) ; q′ (cloisons mobiles) n\'est jamais réduit par an.</p>'
+    +'<label>Coefficient de continuité k <select data-dc-k="1"><option value="1"'+(dd.k===1?' selected':'')+'>1,00 (aucune majoration)</option><option value="1.1"'+(dd.k===1.1?' selected':'')+'>1,10 (plus de 2 travées)</option><option value="1.15"'+(dd.k===1.15?' selected':'')+'>1,15 (2 travées)</option></select></label>'
+    +tbl
+    +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="ghost pcBtnSm" data-dc-act="add">＋ Niveau</button><button type="button" class="primary pcBtnSm" data-dc-act="calc">🤖 Calculer</button></div>'
+    +res;
+  }
   function pteState(id){ window._dimViewPT=window._dimViewPT||{}; if(!window._dimViewPT[id]) window._dimViewPT[id]={view:'form'}; return window._dimViewPT[id]; }
   function pteFiche(id){
    const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t) return;
@@ -25170,6 +25246,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pteRender(id){
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjPoteauRoot'); const t=taskById(id); if(!wrap||!t) return;
    const dp=ptData(t); const st=pteState(id);
+   if(st.view==='descente'){ wrap.innerHTML=dcFormHtml(id,t); return; }
    if(st.view==='note'){
     const res=dp.resultats;
     wrap.innerHTML='<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📄 Note de calcul</h4></div>'
@@ -25182,9 +25259,33 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ pteState(id).view='form'; pteRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
    const okBtn=e.target.closest('[data-pt-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
    const pn=e.target.closest('[data-pt-act="printNote"]'); if(pn){ pteState(id).view='note'; pteRender(id); return; }
+   const dcOpen=e.target.closest('[data-pt-act="openDescente"]'); if(dcOpen){ pteState(id).view='descente'; pteRender(id); return; }
+   const t2=taskById(id);
+   const dcAdd=e.target.closest('[data-dc-act="add"]'); if(dcAdd&&t2){ const dd=dcData(t2); dd.niveaux.push(dcNivDefaut(dd.niveaux.length)); try{persist();}catch(_){ } pteRender(id); return; }
+   const dcDel=e.target.closest('[data-dc-act="del"]'); if(dcDel&&t2){ const dd=dcData(t2); const i=+dcDel.dataset.i; if(dd.niveaux.length>1) dd.niveaux.splice(i,1); try{persist();}catch(_){ } pteRender(id); return; }
+   const dcCalc=e.target.closest('[data-dc-act="calc"]'); if(dcCalc&&t2){ const dd=dcData(t2); dd.resultats=dcCompute(dd); try{persist();}catch(_){ } pteRender(id); return; }
+   const dcRep=e.target.closest('[data-dc-act="report"]'); if(dcRep&&t2){
+    const dd=dcData(t2), dp2=ptData(t2);
+    if(dd.resultats&&dd.resultats.lignes.length){
+     const last=dd.resultats.lignes[dd.resultats.lignes.length-1];
+     dp2.N_kN=Math.round(last.NEd*100)/100;
+     try{persist();}catch(_){ } try{clipToast('✓ N = '+dp2.N_kN+' kN reporté sur ce poteau — relancer « 🤖 Dimensionner » pour recalculer le ferraillage.');}catch(_){ }
+     pteState(id).view='form'; pteRender(id);
+    }
+    return;
+   }
   }
   function pteChange(e,id){
-   const t=taskById(id); if(!t) return; const dp=ptData(t); const el=e.target;
+   const t=taskById(id); if(!t) return; const el=e.target;
+   if(el.dataset.dcK!=null){ dcData(t).k=+el.value||1; return; }
+   if(el.dataset.dcI!=null&&el.dataset.dcF){
+    const dd=dcData(t); const n=dd.niveaux[+el.dataset.dcI]; if(!n) return;
+    const f=el.dataset.dcF; const path=f.split('.');
+    const val=(f==='nom')?el.value:(el.value===''?0:+el.value);
+    if(path.length===2) n[path[0]][path[1]]=val; else n[f]=val;
+    return;
+   }
+   const dp=ptData(t);
    if(el.matches('[data-pt="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
    const key=el.dataset.pt; if(key){
     if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
