@@ -6420,6 +6420,37 @@ function miniAsk(msg, yesLbl, noLbl, yesCb, noCb){
   document.getElementById('miniPromptCancelBtn').textContent=noLbl;
 }
 
+/* ===================== Statut d'ouvrage (à calculer / calculé) — commun à tous les modules de
+   dimensionnement (Poutre continue, Poteau, Dalle, Semelle, Pieu, Mur de soutènement...).
+   dp.statut vaut 'a_calculer' (par défaut, données modifiables, bouton « ✓ Valider ») ou 'calcule'
+   (données grisées, bouton « ↻ Recalculer l'ouvrage »). Demandé par Moustapha le 23/11/2026. */
+function dimStatut(dp){ return dp.statut||(dp.resultats?'calcule':'a_calculer'); }
+function dimLockedClass(dp){ return dimStatut(dp)==='calcule' ? ' dimLocked' : ''; }
+function dimValiderBtnHtml(dp,prefix){
+ return dimStatut(dp)==='calcule'
+  ? '<button type="button" class="primary" data-'+prefix+'-act="validerForm">↻ Recalculer l\'ouvrage</button>'
+  : '<button type="button" class="primary" data-'+prefix+'-act="validerForm">✓ Valider</button>';
+}
+function dimStatutBadgeHtml(dp){
+ return dimStatut(dp)==='calcule'
+  ? '<span class="pcNote" style="display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--line,#ccc);margin-left:6px">🔒 Calculé</span>'
+  : '<span class="pcNote" style="display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--line,#ccc);margin-left:6px">À calculer</span>';
+}
+/* Gère le clic sur le bouton Valider/Recalculer selon le statut. onEditYes : rouvre les champs
+   (dp.statut repassé à 'a_calculer') et redessine la fiche. onRecalcNow : relance le calcul avec
+   les données actuelles (sans les modifier) et redessine. onFirstValider : comportement d'origine
+   (persist + toast) quand l'ouvrage n'a encore jamais été calculé. */
+function dimValiderClick(dp,onEditYes,onRecalcNow,onFirstValider){
+ if(dimStatut(dp)==='calcule'){
+  miniAsk('Vous relancez le calcul de l\'ouvrage. Voulez-vous modifier les données ?','Oui','Non',
+   ()=>{ dp.statut='a_calculer'; try{persist();}catch(_){ } onEditYes&&onEditYes(); },
+   ()=>{ miniAsk('Voulez-vous quand même relancer le calcul ?','Oui','Non', ()=>{ onRecalcNow&&onRecalcNow(); }, ()=>{ }); }
+  );
+  return;
+ }
+ onFirstValider&&onFirstValider();
+}
+
 function niveauOptions(sel){ return state.niveaux.map(n=>`<option value="${esc(n)}" ${n===sel?'selected':''}>${esc(n)}</option>`).join('')+`<option value="__autre__">+ Autre…</option>`; }
 function zoneOptions(sel){ return state.zones.map(z=>`<option value="${esc(z)}" ${z===sel?'selected':''}>${esc(z)}</option>`).join('')+`<option value="__autre__">+ Autre…</option>`; }
 function handleNiveauChange(sel){
@@ -19611,6 +19642,8 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcModHead{display:flex;align-items:center;justify-content:center;gap:7px;margin:0 0 6px}
 .pcModIco{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1.5px solid var(--ds-line);border-radius:var(--ds-r-card);font-size:var(--ds-fs-lg)}
 .pcModName{font:700 var(--ds-fs-lg) var(--ds-font-title);color:var(--ds-ink)}
+.dimLocked{position:relative;opacity:.6}
+.dimLocked input,.dimLocked select,.dimLocked textarea,.dimLocked button:not(.dimLockExempt){pointer-events:none!important}
 .pcDraw{border:1.5px dashed var(--blueprint-dark,#8a8a8a);border-radius:12px;padding:10px 4px;margin-bottom:10px;background:var(--panel);display:flex;justify-content:center;overflow:hidden;position:relative;touch-action:none}
 .pcDraw{cursor:grab}
 .pcDraw.pcDrawGrab{cursor:grabbing}
@@ -22112,7 +22145,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v519';
+  const VER='v520';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -24113,7 +24146,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
    const printN=e.target.closest('[data-pc-act="printNote"]'); if(printN){ try{ window.print(); }catch(_){ } return; }
-   const okBtn=e.target.closest('[data-pc-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const okBtn=e.target.closest('[data-pc-act="validerForm"]'); if(okBtn){
+    const t=taskById(id); if(!t) return; const dp=pcData(t);
+    dimValiderClick(dp,
+     ()=>{ beamRender(id); },
+     ()=>{ try{ dp.resultats=pcCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } beamRender(id); },
+     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+    );
+    return;
+   }
    const chatSend=e.target.closest('[data-pc-chat-send]'); if(chatSend){ pcChatSend(id); return; }
    const chatMic=e.target.closest('[data-pc-chat-mic]'); if(chatMic){ pcChatMic(id); return; }
    const mod=e.target.closest('[data-beam-mod]'); if(mod){ const m=beamModulesFlat()[+mod.dataset.beamMod]; if(!m) return;
@@ -24381,12 +24422,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=pcData(t);
    const body=[1,2,3,4].map(n=>pcStepHtml(n,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">➖</span><span class="pcModName">Poutre continue (RDM)</span></div>'
+    +'<div class="pcModHead"><span class="pcModIco">➖</span><span class="pcModName">Poutre continue (RDM)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+pcBeamSvg(dp,4)+'</div>'
     +'</div>'
-    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
-    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pc-act="validerForm">✓ Valider</button></div>'
+    +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
+    +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pc')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner uniquement les données nécessaires au calcul (géométrie, matériau, appuis, chargement). « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
   }
   /* ===== Chat IA de remplissage (Poutre continue) : appelle l'edge function Supabase
@@ -24913,6 +24954,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(!geomOk||(!hasChg&&!hasConvoi)){ incomplets.push(id); continue; }
     try{
      dp.resultats=pcCompute(t);
+     dp.statut='calcule';
      await pcCreerDocumentsDimensionnement(t,dp);
      okN++; lastOkT=t;
     }catch(err){ console.error(err); errN++; }
@@ -25136,13 +25178,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=ptData(t);
    const body=[1,2,3,4].map(nn=>ptStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">🏛️</span><span class="pcModName">Poteau (EC2)</span></div>'
+    +'<div class="pcModHead"><span class="pcModIco">🏛️</span><span class="pcModName">Poteau (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pt="nom" value="'+esc(dp.nom||t.nom||'Poteau')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+ptSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">Poteau — élévation et section</p>'
     +'</div>'
-    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
-    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pt-act="validerForm">✓ Valider</button></div>'
+    +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
+    +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pt')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, conditions d\'appui et chargement ELU (N, M). « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
   }
   function ptResultatsHtml(res,dp){
@@ -25261,7 +25303,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function pteClick(e,id){
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ pteState(id).view='form'; pteRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
-   const okBtn=e.target.closest('[data-pt-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const okBtn=e.target.closest('[data-pt-act="validerForm"]'); if(okBtn){
+    const t=taskById(id); if(!t) return; const dp=ptData(t);
+    dimValiderClick(dp,
+     ()=>{ pteRender(id); },
+     ()=>{ try{ dp.resultats=ptCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } pteRender(id); },
+     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+    );
+    return;
+   }
    const pn=e.target.closest('[data-pt-act="printNote"]'); if(pn){ pteState(id).view='note'; pteRender(id); return; }
    const dcOpen=e.target.closest('[data-pt-act="openDescente"]'); if(dcOpen){ pteState(id).view='descente'; pteRender(id); return; }
    const t2=taskById(id);
@@ -25396,7 +25446,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const geomOk=(dp.forme==='circ'?(+dp.D_cm>0):((+dp.b_cm>0)&&(+dp.h_cm>0)))&&(+dp.L_m>0);
     const hasCharge=(+dp.N_kN>0);
     if(!geomOk||!hasCharge){ incomplets.push(id); continue; }
-    try{ dp.resultats=ptCompute(t); await ptCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    try{ dp.resultats=ptCompute(t); dp.statut='calcule'; await ptCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
     catch(err){ console.error(err); errN++; }
    }
    try{ persist(); }catch(_){ }
@@ -25672,13 +25722,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=dlData(t);
    const body=[1,2,3,4].map(nn=>dlStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">🔲</span><span class="pcModName">Dalle (EC2)</span></div>'
+    +'<div class="pcModHead"><span class="pcModIco">🔲</span><span class="pcModName">Dalle (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-dl="nom" value="'+esc(dp.nom||t.nom||'Dalle')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+dlSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">'+(dp.sens==='deux'?'Dalle — vue en plan (deux sens de portée)':'Dalle — coupe (un sens de portée, épaisseur non à l\'échelle)')+'</p>'
     +'</div>'
-    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
-    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-dl-act="validerForm">✓ Valider</button></div>'
+    +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
+    +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'dl')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, continuité/charges et poinçonnement si besoin. « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
   }
   function dlResultatsHtml(res,dp){
@@ -25725,7 +25775,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function dleClick(e,id){
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ dleState(id).view='form'; dleRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
-   const okBtn=e.target.closest('[data-dl-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const okBtn=e.target.closest('[data-dl-act="validerForm"]'); if(okBtn){
+    const t=taskById(id); if(!t) return; const dp=dlData(t);
+    dimValiderClick(dp,
+     ()=>{ dleRender(id); },
+     ()=>{ try{ dp.resultats=dlCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } dleRender(id); },
+     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+    );
+    return;
+   }
    const pn=e.target.closest('[data-dl-act="printNote"]'); if(pn){ dleState(id).view='note'; dleRender(id); return; }
   }
   function dleChange(e,id){
@@ -25838,7 +25896,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const geomOk=(+dp.lx_m>0)&&(dp.sens!=='deux'||(+dp.ly_m>0))&&(+dp.h_cm>0);
     const hasCharge=(+dp.G_kNm2>0)||(+dp.Q_kNm2>0);
     if(!geomOk||!hasCharge){ incomplets.push(id); continue; }
-    try{ dp.resultats=dlCompute(t); await dlCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    try{ dp.resultats=dlCompute(t); dp.statut='calcule'; await dlCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
     catch(err){ console.error(err); errN++; }
    }
    try{ persist(); }catch(_){ }
@@ -26024,13 +26082,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=smData(t);
    const body=[1,2,3].map(nn=>smStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">🦶</span><span class="pcModName">Semelle (EC2/BAEL)</span></div>'
+    +'<div class="pcModHead"><span class="pcModIco">🦶</span><span class="pcModName">Semelle (EC2/BAEL)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-sm="nom" value="'+esc(dp.nom||t.nom||'Semelle')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+smSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">'+(dp.sens!=='filante'?'Semelle isolée — vue en plan':'Semelle filante — coupe')+'</p>'
     +'</div>'
-    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
-    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-sm-act="validerForm">✓ Valider</button></div>'
+    +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
+    +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'sm')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner type, géométrie, matériau/sol et chargement. « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
   }
   function smResultatsHtml(res,dp){
@@ -26081,7 +26139,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function smeClick(e,id){
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ smeState(id).view='form'; smeRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
-   const okBtn=e.target.closest('[data-sm-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const okBtn=e.target.closest('[data-sm-act="validerForm"]'); if(okBtn){
+    const t=taskById(id); if(!t) return; const dp=smData(t);
+    dimValiderClick(dp,
+     ()=>{ smeRender(id); },
+     ()=>{ try{ dp.resultats=smCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } smeRender(id); },
+     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+    );
+    return;
+   }
    const pn=e.target.closest('[data-sm-act="printNote"]'); if(pn){ smeState(id).view='note'; smeRender(id); return; }
   }
   function smeChange(e,id){
@@ -26208,7 +26274,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const geomOk=dp.sens==='filante'?(+dp.b_cm>0):((+dp.a_cm>0)&&(+dp.b_cm>0));
     const hasData=(+dp.qsol_MPa>0)&&((+dp.G_kN>0)||(+dp.Q_kN>0));
     if(!geomOk||!hasData){ incomplets.push(id); continue; }
-    try{ dp.resultats=smCompute(t); await smCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    try{ dp.resultats=smCompute(t); dp.statut='calcule'; await smCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
     catch(err){ console.error(err); errN++; }
    }
    try{ persist(); }catch(_){ }
@@ -26405,13 +26471,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=puData(t);
    const body=[1,2,3].map(nn=>puStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">⚓</span><span class="pcModName">Tête de pieux (CCBA68)</span></div>'
+    +'<div class="pcModHead"><span class="pcModIco">⚓</span><span class="pcModName">Tête de pieux (CCBA68)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pu="nom" value="'+esc(dp.nom||t.nom||'Pieu')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+puSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[dp.config||'simple']+' · vue en plan</p>'
     +'</div>'
-    +'<div class="pcPanel pcFormPanel">'+body+'</div>'
-    +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pu-act="validerForm">✓ Valider</button></div>'
+    +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
+    +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pu')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner configuration, matériau et chargement. « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
   }
   function puResultatsHtml(res,dp){
@@ -26466,7 +26532,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function pueClick(e,id){
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ pueState(id).view='form'; pueRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
-   const okBtn=e.target.closest('[data-pu-act="validerForm"]'); if(okBtn){ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } return; }
+   const okBtn=e.target.closest('[data-pu-act="validerForm"]'); if(okBtn){
+    const t=taskById(id); if(!t) return; const dp=puData(t);
+    dimValiderClick(dp,
+     ()=>{ pueRender(id); },
+     ()=>{ try{ dp.resultats=puCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } pueRender(id); },
+     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+    );
+    return;
+   }
    const pn=e.target.closest('[data-pu-act="printNote"]'); if(pn){ pueState(id).view='note'; pueRender(id); return; }
   }
   function pueChange(e,id){
@@ -26580,7 +26654,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const geomOk=(+dp.a_cm>0)&&(+dp.b_cm>0)&&(+dp.F_cm>0);
     const hasData=((+dp.G_kN>0)||(+dp.Q_kN>0));
     if(!geomOk||!hasData){ incomplets.push(id); continue; }
-    try{ dp.resultats=puCompute(t); await puCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    try{ dp.resultats=puCompute(t); dp.statut='calcule'; await puCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
     catch(err){ console.error(err); errN++; }
    }
    try{ persist(); }catch(_){ }
@@ -26935,7 +27009,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      const dp=muData(t);
      const geomOk=(+dp.H_m>0)&&(+dp.ep_cm>0)&&(+dp.hs_cm>0);
      if(!geomOk){ incomplets.push(id); continue; }
-     try{ dp.resultats=muCompute(t); await muCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+     try{ dp.resultats=muCompute(t); dp.statut='calcule'; await muCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
      catch(err){ console.error(err); errN++; }
     }
     try{ persist(); }catch(_){ }
@@ -27122,7 +27196,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const del=e.target.closest('[data-pc-act="delChg"]'); if(del){ dp.charges.splice(+del.dataset.pcIdx,1); beamRender(id); return; }
    const addA=e.target.closest('[data-pc-act="addAxle"]'); if(addA){ dp.convoi=dp.convoi||[]; const lastDx=dp.convoi.length?Math.max(...dp.convoi.map(a=>+a.dx||0)):0; dp.convoi.push({dx:+(lastDx+1.5).toFixed(2),P:50}); beamRender(id); return; }
    const delA=e.target.closest('[data-pc-act="delAxle"]'); if(delA){ dp.convoi.splice(+delA.dataset.pcIdx,1); beamRender(id); return; }
-   const run=e.target.closest('[data-pc-act="run"]'); if(run){ try{ dp.resultats=pcCompute(t); dp._maxStep=Math.max(dp._maxStep||1,PC_NSTEPS); beamState(id).step=PC_NSTEPS; beamRender(id); try{persist();}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } return; }
+   const run=e.target.closest('[data-pc-act="run"]'); if(run){ try{ dp.resultats=pcCompute(t); dp.statut='calcule'; dp._maxStep=Math.max(dp._maxStep||1,PC_NSTEPS); beamState(id).step=PC_NSTEPS; beamRender(id); try{persist();}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } return; }
    const vue=e.target.closest('[data-pc-act="vue"]'); if(vue){ dp.vueCombo=vue.dataset.pcVue; beamRender(id); return; }
    const addSp=e.target.closest('[data-pc-act="addSpan"]'); if(addSp){ pcAddSpan(dp,addSp.dataset.pcSide); beamRender(id); return; }
    const rmSp=e.target.closest('[data-pc-act="removeSpan"]'); if(rmSp){ const ok=pcRemoveSpan(dp,rmSp.dataset.pcSide); if(!ok){ try{clipToast('Il doit rester au moins une travée.');}catch(_){ } return; } beamRender(id); return; }
