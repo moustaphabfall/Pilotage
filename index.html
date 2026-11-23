@@ -28751,8 +28751,13 @@ const LOGS=(window._ficheIaLog=window._ficheIaLog||{});
 let fab=null, box=null, busy=false, rec=null, recStop=false, recBase='';
 const $=(sel,el)=>(el||document).querySelector(sel);
 function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+/* OPTION : l'assistant est facultatif. Activé par défaut ; désactivable par l'utilisateur (bouton « Masquer »
+   dans la fenêtre, mémorisé sur l'appareil) ou par l'appli : window.ficheIaSetEnabled(false|true), par exemple
+   selon le choix « calcul par IA » / « module embarqué ». window.ficheIaEnabled() renvoie l'état. */
+window.ficheIaEnabled=function(){ try{ if(window.PILOTAGE_IA_OFF===true) return false; return localStorage.getItem('fiche_ia_off')!=='1'; }catch(_){ return true; } };
+window.ficheIaSetEnabled=function(on){ try{ localStorage.setItem('fiche_ia_off',on?'0':'1'); }catch(_){ } kick(); };
 function ficheOpen(){ const ov=document.getElementById('overlay'), mb=document.getElementById('modalBody');
- return !!(ov&&ov.classList.contains('open')&&mb&&mb.querySelector(ROOTS)); }
+ return !!(window.ficheIaEnabled()&&ov&&ov.classList.contains('open')&&mb&&mb.querySelector(ROOTS)); }
 function curId(){ return window._ficheIaId||null; }
 function isBeam(){ const id=curId(); try{ return !!(document.querySelector('#modalBody .pjBeamRoot')&&window.pcIsBeamForm&&window.pcIsBeamForm(id)); }catch(_){ return false; } }
 function ficheTitle(){ const mb=document.getElementById('modalBody'); if(!mb) return '';
@@ -28843,13 +28848,14 @@ function build(){
  fab=document.createElement('button'); fab.type='button'; fab.id='ficheIaFab'; fab.hidden=true;
  fab.setAttribute('aria-label','Assistant IA de la fiche'); fab.title='Assistant IA — dicter ou écrire pour remplir la fiche'; fab.innerHTML='<span aria-hidden="true">🤖</span>';
  box=document.createElement('div'); box.id='ficheIaBox'; box.hidden=true; box.setAttribute('role','dialog'); box.setAttribute('aria-label','Assistant IA de la fiche');
- box.innerHTML='<div class="fia-h"><span class="fia-ico">🤖</span><b class="fia-ttl"></b><button type="button" class="fia-x" aria-label="Fermer l\'assistant">✕</button></div>'
+ box.innerHTML='<div class="fia-h"><span class="fia-ico">🤖</span><b class="fia-ttl"></b><button type="button" class="fia-off" title="Masquer l\'assistant IA (réactivable depuis le profil ou par l\'option IA)">Masquer</button><button type="button" class="fia-x" aria-label="Fermer l\'assistant">✕</button></div>'
   +'<div class="fia-log" aria-live="polite"></div>'
   +'<div class="fia-f"><textarea class="fia-in" rows="2" aria-label="Votre message" placeholder="Votre message…"></textarea>'
   +'<button type="button" class="fia-mic" title="Dicter" aria-label="Dicter">🎤</button><button type="button" class="primary fia-send">Envoyer</button></div>';
  document.body.appendChild(fab); document.body.appendChild(box);
  fab.onclick=()=>{ box.hidden=!box.hidden; fab.classList.toggle('on',!box.hidden); if(!box.hidden){ renderLog(); $('.fia-in',box).focus(); } };
  $('.fia-x',box).onclick=()=>{ box.hidden=true; fab.classList.remove('on'); };
+ $('.fia-off',box).onclick=()=>{ box.hidden=true; window.ficheIaSetEnabled(false); try{ clipToast('Assistant IA masqué. Pour le réactiver : profil ou option « calcul par IA ».'); }catch(_){ } };
  $('.fia-send',box).onclick=()=>send($('.fia-in',box).value);
  $('.fia-mic',box).onclick=mic;
  $('.fia-in',box).addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(e.target.value); } });
@@ -28875,7 +28881,7 @@ function build(){
   +'.fia-f{display:flex;gap:6px;align-items:flex-end;padding:8px;border-top:1px solid var(--ds-line,#DAD8D1)}'
   +'.fia-in{flex:1;resize:none;background:transparent;color:inherit;border:none;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:var(--ds-fs-md,13px);padding:6px 2px}.fia-in:focus{outline:none;border-bottom-color:var(--ds-accent,#FFC400)}'
   +'.fia-mic{min-width:44px;min-height:44px;border-radius:50%;border:1.5px solid var(--ds-line,#DAD8D1);background:transparent;font-size:18px;cursor:pointer}.fia-mic.on{background:var(--ds-danger,#B4432D);color:#fff;border-color:transparent}'
-  +'.fia-send{min-height:44px}'
+  +'.fia-send{min-height:44px}.fia-off{min-height:44px;background:transparent;border:none;color:var(--ds-ink-soft,#5f6a66);font-size:var(--ds-fs-sm,12px);cursor:pointer}'
   +'@media (max-width:600px){#ficheIaBox{right:8px;left:8px;width:auto;bottom:80px;height:55vh}}';
  document.head.appendChild(st);
 }
@@ -28884,9 +28890,16 @@ function sync(){ if(!fab) build(); const on=ficheOpen();
  if(!on){ box.hidden=true; fab.classList.remove('on'); if(rec){ recStop=false; try{ rec.stop(); }catch(_){ } } }
  else if(!box.hidden) renderLog();
 }
-let raf=0; const kick=()=>{ if(!raf) raf=requestAnimationFrame(()=>{ raf=0; try{ sync(); }catch(e){ console.error(e); } }); };
+let raf=0; function kick(){ if(!raf) raf=requestAnimationFrame(()=>{ raf=0; try{ sync(); }catch(e){ console.error(e); } }); }
 try{ new MutationObserver(kick).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']}); }catch(_){ }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',kick); else kick();
+/* option dans le profil, sous « Apparence » : Assistant IA activé / masqué */
+setInterval(()=>{ const pv=document.getElementById('sbProfView'); if(!pv||pv.querySelector('.pv-ia-w')) return; const anchor=pv.querySelector('.pv-th-w')||pv.querySelector('#pvData'); if(!anchor) return;
+ const w=document.createElement('div'); w.className='pv-ia-w pv-th-w'; w.innerHTML='<div class="pv-l" style="margin-top:8px">Assistant IA des fiches</div><div class="pv-th"><button type="button" data-ia="1">🤖 Activé</button><button type="button" data-ia="0">Masqué</button></div>';
+ anchor.parentNode.insertBefore(w,anchor.nextSibling);
+ const mark=()=>{ const on=window.ficheIaEnabled(); w.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.dataset.ia==='1')===on)); }; mark();
+ w.onclick=e=>{ const b=e.target.closest('button[data-ia]'); if(!b) return; window.ficheIaSetEnabled(b.dataset.ia==='1'); mark(); };
+},700);
 })();</script>
 
 </body></html>
