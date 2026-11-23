@@ -8166,7 +8166,7 @@ async function ficheExportPdf(id, mode){
   await saveFile(filename, blob);
   try{ clipToast(mode==='sms'?'PDF prêt : dans le menu de partage, choisissez « Messages »':'PDF prêt : dans le menu de partage, choisissez « Mail »'); }catch(e){}
 }
-function openTaskDetail(id){ openTaskDetail0(id); try{ const mb=document.getElementById('modalBody'); if(mb && !mb.querySelector('.fiche-exp-bar')){ const bar=document.createElement('div'); bar.className='fiche-exp-bar'; bar.innerHTML=`<button type="button" class="tf-exp" onclick="ficheExportAsk('${String(id).replace(/'/g,'')}')" title="Exporter la fiche" aria-label="Exporter la fiche">📤</button>`; const x=mb.querySelector('.close-x'); if(x && x.nextSibling) mb.insertBefore(bar, x.nextSibling); else mb.prepend(bar); const br=mb.querySelector('h3 .td-brush[onclick^="brushOpen"]'); if(br){ br.classList.add('td-brush-bar'); bar.appendChild(br); } } }catch(e){ console.error(e); } { const bd=document.querySelector('#modalBody .modal-date-etat'); if(bd) bd.remove(); } setTimeout(()=>{ const q=document.getElementById("e-quoi"); if(q) bibAttach(q); try{ tpRender(id); }catch(e){ console.error(e); } },0); }
+function openTaskDetail(id){ window._ficheIaId=id; openTaskDetail0(id); try{ const mb=document.getElementById('modalBody'); if(mb && !mb.querySelector('.fiche-exp-bar')){ const bar=document.createElement('div'); bar.className='fiche-exp-bar'; bar.innerHTML=`<button type="button" class="tf-exp" onclick="ficheExportAsk('${String(id).replace(/'/g,'')}')" title="Exporter la fiche" aria-label="Exporter la fiche">📤</button>`; const x=mb.querySelector('.close-x'); if(x && x.nextSibling) mb.insertBefore(bar, x.nextSibling); else mb.prepend(bar); const br=mb.querySelector('h3 .td-brush[onclick^="brushOpen"]'); if(br){ br.classList.add('td-brush-bar'); bar.appendChild(br); } } }catch(e){ console.error(e); } { const bd=document.querySelector('#modalBody .modal-date-etat'); if(bd) bd.remove(); } setTimeout(()=>{ const q=document.getElementById("e-quoi"); if(q) bibAttach(q); try{ tpRender(id); }catch(e){ console.error(e); } },0); }
 /* ===== Mini-plan dans la fiche : seule la pastille de l’ouvrage, à placer ou déplacer ===== */
 var tpZoom = 1, tpPlanSel = {};
 function tpPinShape(t){ const p=t.pos||{}, f=p.forme, z=p.sz; if(!f||f==='rond'||f==='libre') return ''; const c=tpColor(t); const base='margin:0;transform:translate(-50%,-50%);'; if(f==='cercle'&&z) return base+'background:transparent !important;border:3px solid '+c+';width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='rect'&&z) return base+'border-radius:3px;width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='ligne'&&z) return base+'border-radius:2px;height:5px;width:'+z.w*100+'%;'; if(f==='tri') return base+'border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%);'; return ''; }
@@ -24082,6 +24082,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   const _od_beam=window.openTaskDetail; if(typeof _od_beam==='function'){ window.openTaskDetail=function(id){ const r=_od_beam.apply(this,arguments); setTimeout(()=>{ try{ beamFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
 
   function beamRender(id){
+   window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjBeamRoot'); const t=taskById(id); if(!wrap||!t) return;
    const st=beamState(id);
    wrap.innerHTML = st.view==='grid' ? beamGridHtml() : st.view==='note' ? pcNoteViewHtml(t) : st.view==='wizard' ? pcWizardHtml(id,t,st.step) : pcFormHtml(id,t);
@@ -24383,7 +24384,6 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<div class="pcModHead"><span class="pcModIco">➖</span><span class="pcModName">Poutre continue (RDM)</span></div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+pcBeamSvg(dp,4)+'</div>'
-    +pcAiChatHtml(id)
     +'</div>'
     +'<div class="pcPanel pcFormPanel">'+body+'</div>'
     +'<div class="pcNav pcFormNav"><button type="button" class="primary" data-pc-act="validerForm">✓ Valider</button></div>'
@@ -24409,10 +24409,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcChatNote">Appel à un modèle IA externe (connexion réseau requise) — vérifier les données avant « 🤖 Dimensionner ».</p>'
     +'</div>';
   }
-  async function pcChatSend(id){
+  async function pcChatSend(id,msgOpt){
    const t=taskById(id); if(!t) return; const dp=pcData(t);
-   const root=document.getElementById('modalBody'); const ta=root&&root.querySelector('[data-pc-chat-in]'); if(!ta) return;
-   const msg=(ta.value||'').trim(); if(!msg) return;
+   const root=document.getElementById('modalBody'); const ta=root&&root.querySelector('[data-pc-chat-in]');
+   const msg=String(msgOpt!=null?msgOpt:(ta?ta.value:'')).trim(); if(!msg) return;
    const cs=pcChatState(id); if(cs.busy) return;
    cs.log.push({role:'user',text:msg}); cs.busy=true; beamRender(id);
    try{
@@ -24434,6 +24434,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     cs.busy=false; beamRender(id);
    }
   }
+  /* assistant IA flottant : la fiche Poutre garde son remplissage structuré (travées, appuis, charges) */
+  window.pcChatSendExt=(id,msg)=>pcChatSend(id,msg);
+  window.pcIsBeamForm=id=>{ const st=beamState(id); return !!(taskById(id)&&st&&st.view!=='grid'&&st.view!=='note'&&st.view!=='wizard'); };
   function pcChatMic(id){
    const root=document.getElementById('modalBody'); const ta=root&&root.querySelector('[data-pc-chat-in]'); const b=root&&root.querySelector('[data-pc-chat-mic]'); if(!ta||!b) return;
    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -25244,6 +25247,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   const _od_poteau=window.openTaskDetail; if(typeof _od_poteau==='function'){ window.openTaskDetail=function(id){ const r=_od_poteau.apply(this,arguments); setTimeout(()=>{ try{ pteFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
   function pteRender(id){
+   window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjPoteauRoot'); const t=taskById(id); if(!wrap||!t) return;
    const dp=ptData(t); const st=pteState(id);
    if(st.view==='descente'){ wrap.innerHTML=dcFormHtml(id,t); return; }
@@ -25708,6 +25712,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   const _od_dalle=window.openTaskDetail; if(typeof _od_dalle==='function'){ window.openTaskDetail=function(id){ const r=_od_dalle.apply(this,arguments); setTimeout(()=>{ try{ dleFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
   function dleRender(id){
+   window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjDalleRoot'); const t=taskById(id); if(!wrap||!t) return;
    const dp=dlData(t); const st=dleState(id);
    if(st.view==='note'){
@@ -26063,6 +26068,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   const _od_semelle=window.openTaskDetail; if(typeof _od_semelle==='function'){ window.openTaskDetail=function(id){ const r=_od_semelle.apply(this,arguments); setTimeout(()=>{ try{ smeFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
   function smeRender(id){
+   window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjSemelleRoot'); const t=taskById(id); if(!wrap||!t) return;
    const dp=smData(t); const st=smeState(id);
    if(st.view==='note'){
@@ -26447,6 +26453,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   const _od_pieu=window.openTaskDetail; if(typeof _od_pieu==='function'){ window.openTaskDetail=function(id){ const r=_od_pieu.apply(this,arguments); setTimeout(()=>{ try{ pueFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
   function pueRender(id){
+   window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjPieuRoot'); const t=taskById(id); if(!wrap||!t) return;
    const dp=puData(t); const st=pueState(id);
    if(st.view==='note'){
@@ -26879,6 +26886,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'</div>';
   }
   function mueRender(id){
+   window._ficheIaId=id;
    const mb=document.querySelector('[data-mu-id="'+id+'"]'); if(!mb) return;
    const s=mueState(id); if(!s) return;
    const resEl=mb.querySelector('[data-mu-res]');
@@ -28652,6 +28660,159 @@ st.textContent='.dimCote line{stroke:var(--ds-ink-soft,#8a8a8a);stroke-width:1;f
  +'.pcSchemaCap{text-align:center;font-size:var(--ds-fs-sm,12px);color:var(--ds-ink-soft,#777);margin:var(--ds-sp-1,4px) 0 0}'
  +'.pcDimWrap{white-space:nowrap}';
 document.head.appendChild(st);
+})();</script>
+
+<script id="ficheIaJs">(function(){
+/* ===================== Assistant IA flottant des fiches d'ouvrage =====================
+   Bouton 🤖 flottant sur TOUTE fiche d'ouvrage ouverte (fiche classique et fiches de dimensionnement :
+   poutre, poteau, dalle, semelle, pieux, soutènement… et les modules à venir). Un appui ouvre un chat
+   flottant : dicter (🎤, second appui = arrêt + envoi) ou taper. L'IA remplit les champs de la fiche ;
+   elle ne calcule rien (le calcul reste « 🤖 Dimensionner »).
+   - Fiche Poutre continue : remplissage structuré existant (edge function « dimensionnement-ia-poutre »).
+   - Autres fiches : edge function générique « fiche-ia » (supabase/fiche-ia.ts) qui reçoit les champs
+     visibles de la fiche (clé, nom, unité, valeur) et renvoie les valeurs à écrire. */
+const ROOTS='.fiche-exp-bar,.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,[data-mu-id],[data-dim-fiche]';
+const KEYS=['data-pc-i','data-pc','data-pt','data-dl','data-sm','data-pu','data-mu','data-tf','name','id'];
+const LOGS=(window._ficheIaLog=window._ficheIaLog||{});
+let fab=null, box=null, busy=false, rec=null, recStop=false, recBase='';
+const $=(sel,el)=>(el||document).querySelector(sel);
+function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ficheOpen(){ const ov=document.getElementById('overlay'), mb=document.getElementById('modalBody');
+ return !!(ov&&ov.classList.contains('open')&&mb&&mb.querySelector(ROOTS)); }
+function curId(){ return window._ficheIaId||null; }
+function isBeam(){ const id=curId(); try{ return !!(document.querySelector('#modalBody .pjBeamRoot')&&window.pcIsBeamForm&&window.pcIsBeamForm(id)); }catch(_){ return false; } }
+function ficheTitle(){ const mb=document.getElementById('modalBody'); if(!mb) return '';
+ const i=mb.querySelector('.pjBeam-ttl-in,.pjBeam-ttl,input[data-pc="nom"]'); if(i) return (i.value||i.textContent||'').trim();
+ const h=mb.querySelector('h2,h3'); return h?h.textContent.trim().slice(0,60):''; }
+function ficheType(){ const m=document.querySelector('#modalBody .pcModName'); return m?m.textContent.trim():'Fiche d\'ouvrage'; }
+/* ---- champs visibles de la fiche ---- */
+function keyOf(el,i){ for(const k of KEYS){ const v=el.getAttribute(k); if(v) return {cle:k+'='+v, sel:'['+k+'="'+CSS.escape(v)+'"]'}; } return {cle:'champ'+i, sel:null}; }
+function labelOf(el){
+ const a=el.getAttribute('aria-label')||el.getAttribute('title'); if(a) return a;
+ const w=el.closest('label'); if(w){ const t=w.cloneNode(true); t.querySelectorAll('input,select,textarea,button').forEach(x=>x.remove()); const s=t.textContent.trim(); if(s) return s; }
+ if(el.id){ const l=document.querySelector('label[for="'+CSS.escape(el.id)+'"]'); if(l) return l.textContent.trim(); }
+ const box=el.closest('.pcDimWrap,.pcFld'); const nm=box&&box.querySelector('.dimNm,.pcFldLbl'); if(nm) return nm.textContent.replace('=','').trim();
+ return el.getAttribute('placeholder')||'';
+}
+function unitOf(el){ const box=el.closest('.pcDimWrap,.pcFld'); const u=box&&box.querySelector('.pcUnit'); return u?u.textContent.trim():''; }
+function collect(){
+ const mb=document.getElementById('modalBody'); const map={}; const champs=[]; if(!mb) return {champs,map};
+ [...mb.querySelectorAll('input,select,textarea')].forEach((el,i)=>{
+  if(el.closest('#ficheIaBox')||el.disabled||el.readOnly) return;
+  const ty=(el.type||'').toLowerCase(); if(['hidden','file','button','submit','password','search','color','range'].includes(ty)) return;
+  if(!el.getClientRects().length) return;
+  const {cle,sel}=keyOf(el,i); if(map[cle]) return;
+  const nom=labelOf(el); if(!nom&&!sel) return;
+  const c={cle, nom:nom.slice(0,80), unite:unitOf(el), type: el.tagName==='SELECT'?'liste':(ty==='checkbox'?'case':(ty==='number'?'nombre':'texte'))};
+  if(el.tagName==='SELECT') c.options=[...el.options].map(o=>o.text.trim()).slice(0,40);
+  c.valeur= ty==='checkbox' ? el.checked : (el.tagName==='SELECT' ? ((el.options[el.selectedIndex]||{}).text||'') : el.value);
+  champs.push(c); map[cle]={sel, el};
+ });
+ return {champs:champs.slice(0,120), map};
+}
+function setVal(el,v){
+ const ty=(el.type||'').toLowerCase();
+ if(ty==='checkbox'){ el.checked=(v===true||v==='true'||v==='oui'||v===1); }
+ else if(el.tagName==='SELECT'){ const sv=String(v).trim().toLowerCase(); const o=[...el.options].find(o=>o.text.trim().toLowerCase()===sv||o.value.toLowerCase()===sv)||[...el.options].find(o=>o.text.trim().toLowerCase().includes(sv)); if(!o) return false; el.value=o.value; }
+ else { el.value=(ty==='number'&&typeof v==='string')?v.replace(',','.'):v; }
+ el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return true;
+}
+async function apply(vals,map){ let n=0;
+ for(const v of (vals||[])){ const m=map[v.cle]; if(!m) continue;
+  const el=(m.sel&&document.querySelector('#modalBody '+m.sel))||(m.el&&m.el.isConnected?m.el:null); if(!el) continue;
+  if(setVal(el,v.valeur)) n++;
+  await new Promise(r=>requestAnimationFrame(()=>r()));   /* la fiche peut se redessiner après chaque champ */
+ } return n; }
+/* ---- interface ---- */
+function log(){ const id=curId()||'_'; return (LOGS[id]=LOGS[id]||[]); }
+function renderLog(){ if(!box) return; const l=$('.fia-log',box); const id=curId();
+ let L=log();
+ if(isBeam()&&window._pcChat&&window._pcChat[id]) L=window._pcChat[id].log.map(h=>({role:h.role,text:h.text}));
+ l.innerHTML=L.length?L.map(h=>'<div class="fia-m fia-'+h.role+'">'+esc(h.text)+'</div>').join('')
+  :'<p class="fia-empty">Décrivez l\'ouvrage, au micro ou au clavier : « portée 6 m, section 25 × 50, G = 18 kN/m »…</p>';
+ l.scrollTop=l.scrollHeight;
+ $('.fia-ttl',box).textContent=(ficheTitle()||'Ouvrage');
+ $('.fia-send',box).disabled=busy; $('.fia-send',box).textContent=busy?'…':'Envoyer';
+}
+async function send(txt){
+ txt=String(txt||'').trim(); if(!txt||busy) return; const ta=$('.fia-in',box); ta.value='';
+ const id=curId(); busy=true;
+ if(isBeam()&&window.pcChatSendExt){ renderLog(); try{ await window.pcChatSendExt(id,txt); }catch(e){ } busy=false; renderLog(); return; }
+ const L=log(); L.push({role:'user',text:txt}); renderLog();
+ try{
+  const {champs,map}=collect(); if(!champs.length) throw new Error('Aucun champ à remplir sur cette fiche.');
+  const resp=await fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({message:txt,contexte:{titre:ficheTitle(),type:ficheType()},champs,historique:L.slice(-7,-1)})});
+  if(resp.status===404) throw new Error('Assistant pas encore activé pour cette fiche : la fonction serveur « fiche-ia » doit être déployée.');
+  const j=await resp.json().catch(()=>null);
+  if(!resp.ok||!j||j.error||!j.data) throw new Error((j&&j.error)||('Erreur réseau ('+resp.status+')'));
+  const n=await apply(j.data.valeurs,map);
+  let m=(j.data.resume||'Fiche mise à jour.')+(n?'':' (aucun champ modifié)');
+  if(Array.isArray(j.data.manquant)&&j.data.manquant.length) m+=' Encore à préciser : '+j.data.manquant.join(', ')+'.';
+  L.push({role:'bot',text:m}); try{ persist(); }catch(_){ }
+ }catch(e){ L.push({role:'err',text:'⚠ '+(e&&e.message||String(e))}); }
+ busy=false; renderLog();
+}
+function mic(){
+ const b=$('.fia-mic',box), ta=$('.fia-in',box);
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){ try{ clipToast('Dictée intégrée non disponible sur ce navigateur. Utilisez la dictée du clavier : touche 🎤 (iPhone / Android), Windows + H (PC) ou Fn deux fois (Mac).'); }catch(_){ } ta.focus(); return; }
+ if(rec){ recStop=true; try{ rec.stop(); }catch(_){ } return; }
+ const r=new SR(); r.lang='fr-FR'; r.interimResults=true; r.continuous=true; rec=r; recStop=false; recBase=ta.value?ta.value+' ':'';
+ b.classList.add('on'); b.textContent='⏹'; b.title='Arrêter et envoyer'; fab&&fab.classList.add('rec');
+ r.onresult=e=>{ let t=''; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript; ta.value=recBase+t; };
+ r.onerror=e=>{ const c=e&&e.error; try{ clipToast((c==='not-allowed'||c==='service-not-allowed')?'Micro bloqué par le navigateur : autorisez le micro ou utilisez la dictée du clavier.':c==='no-speech'?'Aucune voix détectée.':c==='audio-capture'?'Aucun micro détecté.':'Dictée indisponible ('+(c||'erreur')+').'); }catch(_){ } };
+ r.onend=()=>{ const go=recStop; rec=null; recStop=false; b.classList.remove('on'); b.textContent='🎤'; b.title='Dicter'; fab&&fab.classList.remove('rec'); if(go&&ta.value.trim()) send(ta.value); };
+ try{ r.start(); }catch(_){ rec=null; b.classList.remove('on'); b.textContent='🎤'; }
+}
+function build(){
+ fab=document.createElement('button'); fab.type='button'; fab.id='ficheIaFab'; fab.hidden=true;
+ fab.setAttribute('aria-label','Assistant IA de la fiche'); fab.title='Assistant IA — dicter ou écrire pour remplir la fiche'; fab.innerHTML='<span aria-hidden="true">🤖</span>';
+ box=document.createElement('div'); box.id='ficheIaBox'; box.hidden=true; box.setAttribute('role','dialog'); box.setAttribute('aria-label','Assistant IA de la fiche');
+ box.innerHTML='<div class="fia-h"><span class="fia-ico">🤖</span><b class="fia-ttl"></b><button type="button" class="fia-x" aria-label="Fermer l\'assistant">✕</button></div>'
+  +'<div class="fia-log" aria-live="polite"></div>'
+  +'<div class="fia-f"><textarea class="fia-in" rows="2" aria-label="Votre message" placeholder="Votre message…"></textarea>'
+  +'<button type="button" class="fia-mic" title="Dicter" aria-label="Dicter">🎤</button><button type="button" class="primary fia-send">Envoyer</button></div>';
+ document.body.appendChild(fab); document.body.appendChild(box);
+ fab.onclick=()=>{ box.hidden=!box.hidden; fab.classList.toggle('on',!box.hidden); if(!box.hidden){ renderLog(); $('.fia-in',box).focus(); } };
+ $('.fia-x',box).onclick=()=>{ box.hidden=true; fab.classList.remove('on'); };
+ $('.fia-send',box).onclick=()=>send($('.fia-in',box).value);
+ $('.fia-mic',box).onclick=mic;
+ $('.fia-in',box).addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(e.target.value); } });
+ /* fenêtre déplaçable par son en-tête */
+ const h=$('.fia-h',box); let dx=0,dy=0,drag=false;
+ h.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; drag=true; const r=box.getBoundingClientRect(); dx=e.clientX-r.left; dy=e.clientY-r.top; h.setPointerCapture(e.pointerId); });
+ h.addEventListener('pointermove',e=>{ if(!drag) return; box.style.left=Math.max(4,Math.min(innerWidth-box.offsetWidth-4,e.clientX-dx))+'px'; box.style.top=Math.max(4,Math.min(innerHeight-60,e.clientY-dy))+'px'; box.style.right='auto'; box.style.bottom='auto'; });
+ h.addEventListener('pointerup',()=>{ drag=false; });
+ const st=document.createElement('style'); st.id='ficheIaCss';
+ st.textContent='#ficheIaFab{position:fixed;right:18px;bottom:18px;z-index:100020;width:56px;height:56px;border-radius:50%;padding:0;font-size:26px;display:flex;align-items:center;justify-content:center;background:var(--ds-accent,#FFC400);color:var(--ds-on-accent,#000);border:none;box-shadow:0 6px 18px rgba(0,0,0,.28);cursor:pointer}'
+  +'#ficheIaFab[hidden]{display:none}#ficheIaFab.on{outline:3px solid var(--ds-focus,#16232B);outline-offset:2px}'
+  +'#ficheIaFab.rec{animation:fiaPulse 1.2s infinite}@keyframes fiaPulse{0%,100%{box-shadow:0 0 0 0 rgba(217,87,74,.6)}50%{box-shadow:0 0 0 12px rgba(217,87,74,0)}}'
+  +'#ficheIaBox{position:fixed;right:18px;bottom:86px;z-index:100020;width:min(380px,calc(100vw - 24px));height:min(60vh,480px);display:flex;flex-direction:column;background:var(--ds-bg,#fff);color:var(--ds-ink,#16232B);border:1.5px solid var(--ds-accent,#FFC400);border-radius:var(--ds-r-win,12px);box-shadow:0 14px 40px rgba(0,0,0,.3);overflow:hidden}'
+  +'#ficheIaBox[hidden]{display:none}'
+  +'.fia-h{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--ds-line,#DAD8D1);cursor:move;touch-action:none}'
+  +'.fia-ttl{flex:1;font-size:var(--ds-fs-lg,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  +'.fia-x{min-width:44px;min-height:44px;background:transparent;border:none;color:inherit;font-size:18px;cursor:pointer}'
+  +'.fia-log{flex:1;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}'
+  +'.fia-m{max-width:88%;padding:8px 11px;border-radius:10px;font-size:var(--ds-fs-md,13px);line-height:1.4;white-space:pre-wrap}'
+  +'.fia-user{align-self:flex-end;background:var(--ds-accent,#FFC400);color:var(--ds-on-accent,#000)}'
+  +'.fia-bot{align-self:flex-start;border:1px solid var(--ds-line,#DAD8D1)}.fia-err{align-self:flex-start;color:var(--ds-danger,#B4432D);border:1px solid var(--ds-danger,#B4432D)}'
+  +'.fia-empty{font-size:var(--ds-fs-sm,12px);color:var(--ds-ink-soft,#5f6a66);margin:0}'
+  +'.fia-f{display:flex;gap:6px;align-items:flex-end;padding:8px;border-top:1px solid var(--ds-line,#DAD8D1)}'
+  +'.fia-in{flex:1;resize:none;background:transparent;color:inherit;border:none;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:var(--ds-fs-md,13px);padding:6px 2px}.fia-in:focus{outline:none;border-bottom-color:var(--ds-accent,#FFC400)}'
+  +'.fia-mic{min-width:44px;min-height:44px;border-radius:50%;border:1.5px solid var(--ds-line,#DAD8D1);background:transparent;font-size:18px;cursor:pointer}.fia-mic.on{background:var(--ds-danger,#B4432D);color:#fff;border-color:transparent}'
+  +'.fia-send{min-height:44px}'
+  +'@media (max-width:600px){#ficheIaBox{right:8px;left:8px;width:auto;bottom:80px;height:55vh}}';
+ document.head.appendChild(st);
+}
+function sync(){ if(!fab) build(); const on=ficheOpen();
+ fab.hidden=!on; const cf=document.getElementById('chatFab'); fab.style.bottom=(cf&&!cf.hidden&&cf.offsetParent)?'84px':'18px';
+ if(!on){ box.hidden=true; fab.classList.remove('on'); if(rec){ recStop=false; try{ rec.stop(); }catch(_){ } } }
+ else if(!box.hidden) renderLog();
+}
+let raf=0; const kick=()=>{ if(!raf) raf=requestAnimationFrame(()=>{ raf=0; try{ sync(); }catch(e){ console.error(e); } }); };
+try{ new MutationObserver(kick).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']}); }catch(_){ }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',kick); else kick();
 })();</script>
 
 </body></html>
