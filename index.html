@@ -26398,8 +26398,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return {l0_cm:f*L,f,desc:'portique contreventé, k1 = '+(isFinite(k1)?String(k1).replace('.',','):'∞')+', k2 = '+(isFinite(k2)?String(k2).replace('.',','):'∞')+' (éq. 5.15, livre p.155)'};
    }
    const kk=(isFinite(k1)&&isFinite(k2))?k1*k2/(k1+k2):(isFinite(k1)?k1:(isFinite(k2)?k2:Infinity));
+   /* CHOIX DE SÉCURITÉ : 1 + 10·k1·k2/(k1+k2) SANS racine carrée, donc l0 plus grand que l'éq. 5.16 de Maîtrise p.77 (qui met le 1er terme sous une racine) : k1 = k2 = 0,1 → 1,50·l au lieu de 1,225·l ; décision de l'utilisateur (côté sécurité), à confirmer par l'ingénieur. */
    const t1=1+10*kk, g2=k=>isFinite(k)?1+k/(1+k):2, t2=g2(k1)*g2(k2); const f=Math.max(t1,t2);
-   return {l0_cm:f*L,f,desc:'portique non contreventé, k1 = '+(isFinite(k1)?String(k1).replace('.',','):'∞')+', k2 = '+(isFinite(k2)?String(k2).replace('.',','):'∞')+' (éq. 5.16, livre p.155)'};
+   return {l0_cm:f*L,f,desc:'portique non contreventé, k1 = '+(isFinite(k1)?String(k1).replace('.',','):'∞')+', k2 = '+(isFinite(k2)?String(k2).replace('.',','):'∞')+' (éq. 5.16 sans racine : choix de sécurité, l0 supérieur à la formule de Maîtrise p.77)',secu:true};
   }
   /* Modèle de section pour l'interaction N-M : y mesuré depuis la fibre la plus comprimée (mm), N > 0 en compression. */
   function ptSecModel(geom,d1,As){
@@ -26493,13 +26494,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const second=!centree&&((M02a<1e-6)?lambdaMax>lambdaLim:lambda>lambdaLim);
    const eiMM=l0_mm/400, De0mm=Math.max(20,prof_mm/30);
    const Mei=NEd_N*eiMM/1e6, MDe=NEd_N*De0mm/1e6;                          // kN·m
-   let M0e=0, M2mom=0, MEd=0;
+   let M0e=0, M2mom=0, MEd=0, dCour=null;
    if(!centree){
     if(!second){ M0e=M02a; MEd=M02a+Mei+MDe; }
     else {
      const M02p=M02a+Mei, M01p=M01s+Mei; M0e=Math.max(0.6*M02p+0.4*M01p,0.4*M02p);
      const beta=Math.max(0,0.35+fck/200-lambda/150), phief=2, Kphi=Math.max(1,1+beta*phief), Kr=1;
-     const invr=Kr*Kphi*(fyd/Es)/(0.45*Math.max(10,prof_mm-geom.d1*10));
+     /* d de 1/r0 (Maîtrise p.107, éq. 5.35) : d = h/2 + i_s (i_s = rayon de giration des armatures) ; rectangle à deux nappes : i_s = h/2 − d1 donc d = h − d1 ; cercle : barres sur un cercle de rayon R_s, i_s = R_s/√2 */
+     dCour=geom.rect?(prof_mm-geom.d1*10):(prof_mm/2+(prof_mm/2-geom.d1*10)/Math.SQRT2);
+     const invr=Kr*Kphi*(fyd/Es)/(0.45*Math.max(10,dCour));
      M2mom=NEd_N*invr*(l0_mm*l0_mm)/10/1e6;
      MEd=M0e+M2mom+MDe;
     }
@@ -26528,7 +26531,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const lOverH=Lm*100/geom.hmax, domOk=lOverH>=3&&(!rect||geom.hmax<4*geom.hmin);
    const enrNom=pcEnrobageNom(dp), enrSaisi=(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3;
    return { fck,fcd,fyk,fyd,geom,l0_cm,l0f:L0.f,l0desc:L0.desc,lambda,lambdaOther,lambdaLim,second,centree,n,A,B:Bn,C,rm,rmCas,M0e,M2mom,MEd,
-    ei_mm:eiMM,De0_mm:De0mm,Mei,MDe,pp_kN:ppKN,sigmaC,FsC:FsC/1000,
+    ei_mm:eiMM,De0_mm:De0mm,Mei,MDe,pp_kN:ppKN,sigmaC,FsC:FsC/1000,l0secu:!!L0.secu,dCour_mm:dCour,
     inter, AsMin_cm2:AsMin_mm2/100, AsMax_cm2:AsMax_mm2/100, AsTotal_cm2:AsTotal_mm2/100,
     AsReelle_cm2:AsReelle_mm2/100, depasse, barFace, nBars:barFace.n*2, espOk:bars.espOk, aLibre_mm:bars.free, aMin_mm:bars.aMin, pitch_mm:bars.pitch, nEpingles:bars.nEpingles,
     phiCadre, sCourant_mm, sExtrem_mm, hZoneExtrem_mm, lb_mm, lbrqd_mm, sigmaSd,
@@ -26968,10 +26971,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="ncPt" data-bad="0">Valeurs retenues par défaut : α_cc = 1,0 et γ_c = 1,5 (livre p.159) ; A = 0,7 (φ_ef inconnu), B = 1,1 si ω inconnu ; Ø des barres et des cadres choisis dans la gamme commerciale ; d_g = 20 mm pour l\'espacement libre. Le validateur doit les confirmer.</p>'
     +(res.second?'<p class="ncPt" data-bad="0">second ordre calculé par la méthode de la courbure nominale (EC2 §5.8.8) avec K_r = 1 et φ_ef = 2 par défaut : méthode non vérifiable dans les livres fournis, à confirmer par un ingénieur.</p>':'')
     +(res.lambdaOther>res.lambdaLim&&!res.centree&&g.rect?'<p class="ncPt" data-bad="0">l\'élancement dans l\'autre plan ('+fC(res.lambdaOther,1)+') dépasse λlim ('+fC(res.lambdaLim,1)+') : second ordre et flexion biaxiale (EC2 §5.8.9) non traités, à confirmer.</p>':'')
-    +(dp.mode_l0==='portique_non_contreve'?'<p class="ncPt" data-bad="0">poteau non contreventé : imperfection prise comme e_i = l₀/400 (cas des éléments isolés contreventés, livre p.445) ; l\'inclinaison θ_i de la structure n\'est pas traitée, à confirmer.</p>':'')
+    +(dp.mode_l0==='portique_non_contreve'?'<p class="ncPt" data-bad="0">longueur efficace d\'un portique non contreventé retenue plus grande que la formule 5.16 de Maîtrise (p.77) : choix de sécurité, à confirmer par l\'ingénieur. Imperfection prise comme e_i = l₀/400 (valeur sûre : θ_i·l₀/2 avec α_h ≤ 1, Maîtrise p.24-25).</p>':'')
     +(res.enrSaisi+1e-9<res.enrNom.cnomCm?'<p class="ncPt" data-bad="0">enrobage saisi '+fC(res.enrSaisi,1)+' cm inférieur à l\'enrobage nominal minimal '+fC(res.enrNom.cnomCm,1)+' cm (classe '+res.enrNom.classe+') : à corriger ou à justifier.</p>':'')
     +'<p class="ncPt" data-bad="0">ELS non vérifiés ; en classes XD/XF/XS vérifier les contraintes (σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk ; livre p.190, 214) ; effort tranchant du poteau, flexion biaxiale et résistance au feu non calculés.</p>'
-    +(g.rect?'':'<p class="ncPt" data-bad="0">section circulaire : interaction N-M par intégration du diagramme parabole-rectangle avec 8 barres équivalentes sur le cercle des armatures ; à confirmer par un ingénieur.</p>');
+    +(g.rect?'':'<p class="ncPt" data-bad="0">section circulaire : interaction N-M par intégration du diagramme parabole-rectangle avec 8 barres équivalentes sur le cercle des armatures ; à confirmer par un ingénieur.'+(res.second&&res.dCour_mm?' Second ordre : hauteur utile de la courbure d = h/2 + i_s = '+fC(res.dCour_mm/10,1)+' cm (Maîtrise p.107, rayon de giration i_s des armatures), plus petite que h − d1 : M2 plus grand, côté sécurité.':'')+'</p>');
    const eN=res.enrNom;
    const hypRows=[
     ['Béton',esc(dp.classeGlobale)+' · f<sub>ck</sub> = '+res.fck+' MPa · f<sub>cd</sub> = α<sub>cc</sub>·f<sub>ck</sub>/γ<sub>C</sub> = '+fC(res.fcd)+' MPa','Saisie · α<sub>cc</sub> = 1,0 et γ<sub>C</sub> = 1,5 par défaut (livre p.159)'],
@@ -26979,8 +26982,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     ['Exposition / enrobage','Classe '+eN.classe+' · c<sub>min,dur</sub> = '+eN.cminDur+' mm · c<sub>nom</sub> minimal = '+fC(eN.cnomCm*10,0)+' mm · enrobage retenu '+fC(res.enrSaisi,1)+' cm','Saisie (enrobage mesuré au cadre, livre p.77-79)'],
     ['Combinaison','N et M saisis : valeurs ELU (1,35 G + 1,5 Q)','Saisie'],
     ['Poids propre',res.pp_kN>0?'Ajouté à N : 1,35 × 25 kN/m³ × '+fC(g.Ac/1e4,4)+' m² × '+fC(dp.L_m,2)+' m = '+fC(res.pp_kN)+' kN':'Déjà inclus dans N saisi','Choix du formulaire'],
-    ['Longueur efficace',esc(res.l0desc)+' → l<sub>0</sub> = '+(isFinite(res.l0_cm)?fC(res.l0_cm/100):'∞')+' m','Saisie des liaisons (livre p.154-156)'],
+    ['Longueur efficace',esc(res.l0desc)+' → l<sub>0</sub> = '+(isFinite(res.l0_cm)?fC(res.l0_cm/100):'∞')+' m',res.l0secu?'Choix sécuritaire (plus grand que la formule 5.16, Maîtrise p.77)':'Saisie des liaisons (livre p.154-156)'],
     ['Élancement limite','A = 0,7 · B = '+fC(res.B)+(res.omega!=null&&res.B>1.1?' (ω = '+fC(res.omega,3)+')':' (ω inconnu)')+' · C = 1,7 − r<sub>m</sub> = '+fC(res.C)+' ('+esc(res.rmCas)+')','Valeurs par défaut (livre p.152)'],
+    ...(res.second&&!g.rect&&res.dCour_mm?[['Courbure 1/r<sub>0</sub>','ε<sub>yd</sub>/(0,45·d) avec d = h/2 + i<sub>s</sub> = '+fC(res.dCour_mm/10,1)+' cm','Section circulaire (Maîtrise p.107)']]:[]),
     ['Excentricités','e<sub>i</sub> = l<sub>0</sub>/400 = '+fC(res.ei_mm,1)+' mm · Δe<sub>0</sub> = max(20 mm ; h/30) = '+fC(res.De0_mm,1)+' mm (armatures symétriques)','EC2 5.2, livre p.445-446']];
    const hypo='<h4>Hypothèses</h4><table class="pcNCt"><thead><tr><th>Paramètre</th><th>Valeur retenue</th><th>Origine</th></tr></thead><tbody>'+hypRows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('')+'</tbody></table>';
    const dr=(S,lab,cap)=>'<div class="pcDraw">'+fplSceneSvg(S,{label:lab})+'</div><p class="pcSchemaCap">'+esc(cap)+'</p>';
