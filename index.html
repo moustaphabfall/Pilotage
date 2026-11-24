@@ -23707,6 +23707,32 @@ window.createInterloc=function(returnTaskId){
 </script>
 <style id="beCss">
 .be-mt{max-width:900px;margin:0 auto;padding:calc(56px + env(safe-area-inset-top,0px)) 16px 90px;}
+/* Tableau de bord de l'espace Bureau d'études : missions, formation, planification, finance (brouillons) */
+.be-mode #page-dashboard > #dgBar,.be-mode #page-dashboard > #dashGrid{display:none!important}
+.bed{max-width:960px;margin:0 auto;padding:calc(56px + env(safe-area-inset-top,0px)) 16px 90px;display:grid;gap:var(--ds-sp-6,24px)}
+.bed h2{margin:0;font-size:var(--ds-fs-2xl,24px)}
+.bed-sec h3{margin:0 0 10px;font-size:var(--ds-fs-lg,17px);display:flex;align-items:center;gap:8px}
+.bed-sec h3 button{margin-left:auto;min-height:var(--ds-tap,44px);padding:0 12px;border:1px solid var(--ds-line);border-radius:10px;background:transparent;color:var(--ds-ink);font:inherit;font-size:var(--ds-fs-sm,13px);cursor:pointer}
+.bed-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:600px){.bed-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.bed-k{border:1px solid var(--ds-line);border-radius:14px;padding:12px;min-height:var(--ds-tap,44px);display:flex;flex-direction:column;gap:2px;background:transparent;color:var(--ds-ink);font:inherit;text-align:left}
+.bed-k b{font-size:26px;line-height:1.1}
+.bed-k small{font-size:var(--ds-fs-sm,13px);color:var(--ds-ink-soft)}
+.bed-k.on{border-color:var(--ds-accent)}
+.bed-l{margin-top:10px}
+.bed-l .be-row small{display:block;color:var(--ds-ink-soft);font-size:var(--ds-fs-xs,11px)}
+.bed-bar{width:110px;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:var(--ds-fs-xs,11px);color:var(--ds-ink-soft)}
+.bed-bar i{display:block;width:100%;height:6px;border-radius:3px;background:var(--ds-line);overflow:hidden}
+.bed-bar i span{display:block;height:100%;background:var(--ds-accent)}
+.bed-ag{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.bed-d{min-height:64px;border:1px solid var(--ds-line);border-radius:12px;background:transparent;color:var(--ds-ink);font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px}
+.bed-d small{font-size:var(--ds-fs-xs,11px);color:var(--ds-ink-soft)}
+.bed-d b{font-size:var(--ds-fs-lg,17px)}
+.bed-d em{font-style:normal;font-size:var(--ds-fs-xs,11px)}
+.bed-d.on{border-color:var(--ds-accent);border-width:2px}
+.bed-d.today small{color:var(--ds-ink);font-weight:700}
+.bed-g{font-size:var(--ds-fs-sm,13px);font-weight:700;margin:12px 0 2px;color:var(--ds-ink-soft)}
+:root[data-theme="sombre"] .bed-k b,:root[data-theme="sombre"] .bed-d b{color:var(--ds-accent)}
 .be-mt-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
 .be-mt-top h2{margin:0;flex:1;font-size:20px;}
 .be-list{display:flex;flex-direction:column;}
@@ -27908,6 +27934,73 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   (function(){ if(typeof renderRefac==='function' && !window._beRefacWrapped){ window._beRefacWrapped=true; const r1=renderRefac; renderRefac=function(){ r1.apply(this,arguments); try{ beMountFinance(); }catch(e){} }; } })();
   (function(){ if(typeof renderCautions==='function' && !window._beCautionsWrapped){ window._beCautionsWrapped=true; const c1=renderCautions; renderCautions=function(){ if(window.pilotageType && pilotageType()==='bureau_etudes'){ const b=document.getElementById('cauWrap'); if(b) b.remove(); return; } return c1.apply(this,arguments); }; } })();
 
+  /* ================= TABLEAU DE BORD BE ================= */
+  function bedIso(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+  function bedAdd(iso,n){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return bedIso(d); }
+  function bedDays(a,b){ return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000); }
+  /* État d'une mission d'après ses dates : à venir / en cours / réalisée */
+  function bedMisEtat(m,today){ const d=(m.dateDebut||'').slice(0,10), f=(m.dateFin||'').slice(0,10);
+    if(d&&d>today) return 'avenir'; if(f&&f<today) return 'realisee'; return (d||f)?'encours':'nondate'; }
+  let bedSel={mis:'encours', day:null};
+  window.beDashRender=function(){
+    if(window.pilotageType && pilotageType()!=='bureau_etudes') return;
+    const page=document.getElementById('page-dashboard'); if(!page) return;
+    let host=document.getElementById('beDashHost');
+    if(!host){ host=document.createElement('div'); host.id='beDashHost'; page.insertBefore(host,page.firstChild); }
+    const today=bedIso(new Date()), m0=today.slice(0,7)+'-01', mEnd=bedAdd(bedIso(new Date(+today.slice(0,4),+today.slice(5,7),1)),-1);
+    /* --- Missions --- */
+    const M=L_missions().map(m=>({m,e:bedMisEtat(m,today),d:(m.dateDebut||'').slice(0,10),f:(m.dateFin||'').slice(0,10)}));
+    const enCours=M.filter(x=>x.e==='encours');
+    const G={
+      encours:{lab:'En cours',L:enCours},
+      realisees:{lab:'Réalisées ce mois',L:M.filter(x=>x.e==='realisee'&&x.f>=m0&&x.f<=mEnd)},
+      encoursMois:{lab:'En cours ce mois',L:enCours.filter(x=>!x.d||x.d>=m0||!x.f||x.f<=mEnd)},
+      avenir:{lab:'À venir ce mois',L:M.filter(x=>x.e==='avenir'&&x.d<=mEnd)}
+    };
+    G.encoursMois.L=M.filter(x=>x.e==='encours'&&(!x.d||x.d<=mEnd)&&(!x.f||x.f>=m0));
+    const ETL={encours:['En cours','bst-va'],realisee:['Réalisée','bst-ar'],avenir:['À venir','bst-av'],nondate:['Sans dates','']};
+    const misRow=x=>{ const m=x.m; let bar='';
+      if(x.d&&x.f){ const tot=Math.max(1,bedDays(x.d,x.f)+1); const ec=Math.min(tot,Math.max(0,bedDays(x.d,today)+1));
+        bar='<span class="bed-bar">'+(x.e==='encours'?'J'+ec+' / '+tot+' j':x.e==='avenir'?'Dans '+bedDays(today,x.d)+' j · '+tot+' j':tot+' j')+'<i><span style="width:'+Math.round(100*(x.e==='realisee'?1:x.e==='avenir'?0:ec/tot))+'%"></span></i></span>'; }
+      else if(x.d){ const ec=bedDays(x.d,today)+1; bar='<span class="bed-bar">'+(ec>0?'J'+ec:'Dans '+(-ec+1)+' j')+'</span>'; }
+      return '<div class="be-row" data-mis="'+esc(m.id)+'"><span class="be-row-m"><b>'+esc(m.client||'(Sans nom)')+'</b> <span class="be-st '+ETL[x.e][1]+'">'+ETL[x.e][0]+'</span><small>'+(m.projet?esc(m.projet)+' · ':'')+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(x.d?' · '+esc(fmtDate(x.d)):'')+(x.f?' → '+esc(fmtDate(x.f)):'')+'</small></span>'+bar+'</div>'; };
+    const gs=G[bedSel.mis]||G.encours;
+    const misHtml='<section class="bed-sec"><h3>📋 Missions<button type="button" data-go="missions">Tout voir</button></h3><div class="bed-kpi">'
+      +Object.keys(G).map(k=>'<button type="button" class="bed-k'+(k===bedSel.mis?' on':'')+'" data-mk="'+k+'"><b>'+G[k].L.length+'</b><small>'+G[k].lab+'</small></button>').join('')+'</div>'
+      +'<div class="bed-l">'+(gs.L.length?gs.L.map(misRow).join(''):'<p class="be-empty">Aucune mission « '+esc(gs.lab.toLowerCase())+' ».</p>')+'</div></section>';
+    /* --- Formation --- */
+    let ouvertes=0; try{ ouvertes=L_sessions().filter(s=>{ const e=beSessionEtat(s); return e&&e.txt==='Ouverte'; }).length; }catch(_){}
+    const forHtml='<section class="bed-sec"><h3>🎓 Formation<button type="button" data-go="formation">Ouvrir</button></h3><div class="bed-kpi"><button type="button" class="bed-k" data-go="formation"><b>'+ouvertes+'</b><small>Session'+(ouvertes>1?'s':'')+' ouverte'+(ouvertes>1?'s':'')+'</small></button></div></section>';
+    /* --- Planification : agenda 7 jours + tâches du jour / demain / semaine / mois --- */
+    const T=(state.tasks||[]).filter(t=>t.etat!=='fait'&&t.quand).map(t=>({t,d:String(t.quand).slice(0,10),f:String(t.dateFin||t.quand).slice(0,10)}));
+    const on=(x,day)=>x.d<=day&&x.f>=day;
+    const dow=new Date(today+'T12:00:00').getDay(), sunday=bedAdd(today,(7-dow)%7), tom=bedAdd(today,1);
+    const used=new Set();
+    const take=f=>T.filter(x=>!used.has(x.t.id)&&f(x)).map(x=>{ used.add(x.t.id); return x; });
+    const B=[['Aujourd’hui',take(x=>on(x,today)||(x.d<today&&x.f<today))],['Demain',take(x=>on(x,tom))],['Dans la semaine',take(x=>x.d>tom&&x.d<=sunday)],['Dans le mois',take(x=>x.d>sunday&&x.d<=mEnd)]];
+    const JOURS=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+    const days=[...Array(7)].map((_,i)=>bedAdd(today,i));
+    const tRow=x=>'<div class="be-row" data-tid="'+esc(x.t.id)+'"><span class="be-row-m"><b>'+esc(x.t.quoi||'(Sans libellé)')+'</b><small>'+(x.t.niveau?esc(x.t.niveau)+' · ':'')+esc(fmtDate(x.d))+(x.f&&x.f!==x.d?' → '+esc(fmtDate(x.f)):'')+(x.f<today?' · en retard':'')+'</small></span><span class="be-st '+(x.t.etat==='encours'?'bst-va':'bst-av')+'">'+(x.t.etat==='encours'?'En cours':'À faire')+'</span></div>';
+    const daySel=bedSel.day&&days.includes(bedSel.day)?bedSel.day:null;
+    const ag='<div class="bed-ag">'+days.map(dd=>{ const n=T.filter(x=>on(x,dd)).length; const dt=new Date(dd+'T12:00:00');
+      return '<button type="button" class="bed-d'+(dd===today?' today':'')+(dd===daySel?' on':'')+'" data-day="'+dd+'" aria-label="'+esc(fmtDate(dd))+' : '+n+' tâche(s)"><small>'+(dd===today?'Auj.':JOURS[dt.getDay()])+'</small><b>'+dt.getDate()+'</b><em>'+(n?n+' tâche'+(n>1?'s':''):'—')+'</em></button>'; }).join('')+'</div>';
+    const listHtml=daySel?('<div class="bed-g">'+esc(fmtDate(daySel))+'</div>'+(T.filter(x=>on(x,daySel)).map(tRow).join('')||'<p class="be-empty">Aucune tâche ce jour.</p>'))
+      :B.map(b=>'<div class="bed-g">'+b[0]+' ('+b[1].length+')</div>'+(b[1].length?b[1].map(tRow).join(''):'<p class="be-empty" style="padding:8px">Aucune tâche.</p>')).join('');
+    const plaHtml='<section class="bed-sec"><h3>🗓️ Planification<button type="button" data-go="planif">Ouvrir</button></h3>'+ag+'<div class="bed-l">'+listHtml+'</div></section>';
+    /* --- Finance : seulement les éléments en brouillon (pas encore validés) --- */
+    const br=L=>L.filter(x=>x.statut&&x.statut!=='validee'&&x.statut!=='refusee'&&(beAdmin()||x.auteurId===beMeId()));
+    const F=[['🧾','Notes de frais',br(L_frais())],['🚗','Notes de kilomètres',br(L_km())],['🏢','Frais entreprise',br(L_ent())]];
+    const nbF=F.reduce((a,x)=>a+x[2].length,0);
+    const finHtml='<section class="bed-sec"><h3>💶 Finance · brouillons<button type="button" data-go="refac">Ouvrir</button></h3>'
+      +(nbF?'<div class="bed-kpi">'+F.filter(x=>x[2].length).map(x=>'<button type="button" class="bed-k" data-go="refac"><b>'+x[2].length+'</b><small>'+x[0]+' '+x[1]+'</small></button>').join('')+'</div>':'<p class="be-empty">Aucun élément en brouillon.</p>')+'</section>';
+    host.innerHTML='<div class="bed"><h2>📋 Tableau de bord</h2>'+misHtml+plaHtml+forHtml+finHtml+'</div>';
+    host.querySelectorAll('[data-mk]').forEach(b=>b.onclick=()=>{ bedSel.mis=b.dataset.mk; beDashRender(); });
+    host.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{ bedSel.day=(bedSel.day===b.dataset.day?null:b.dataset.day); beDashRender(); });
+    host.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{ const g=b.dataset.go; try{ (g==='missions'||g==='formation')&&typeof tabHome==='function'?tabHome(g):showPage(g); }catch(_){ showPage(g); } });
+    host.querySelectorAll('[data-mis]').forEach(r=>r.onclick=()=>{ const m=L_missions().find(x=>x.id===r.dataset.mis); if(m){ if(beAdmin()) beMissionOpen(m); else showPage('missions'); } });
+    host.querySelectorAll('[data-tid]').forEach(r=>r.onclick=()=>{ try{ openTaskDetail(r.dataset.tid); }catch(_){} });
+  };
+
   let beDone=false;
   function beSetup(){
     if(beDone) return; beDone=true;
@@ -27946,12 +28039,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
        if(!unlocked) p='dashboard';
       }
       const args=[p].concat(Array.prototype.slice.call(arguments,1));
-      const r=sp0.apply(this,args); if(p==='missions') beMissionsRender(); if(p==='refac') beMountFinance(); if(p==='formation') beFormationRender(); return r;
+      const r=sp0.apply(this,args); if(p==='missions') beMissionsRender(); if(p==='dashboard') beDashRender(); if(p==='refac') beMountFinance(); if(p==='formation') beFormationRender(); return r;
      };
      g.__beWrapped=true; window.showPage=g;
     }
     beSeedData();
     beSeedFinDocsDemo();
+    setTimeout(()=>{ try{ beDashRender(); }catch(e){ console.warn('beDash',e); } },0);
     if(beIsEleve()){
       document.body.classList.add('be-eleve-mode');
       const ft=document.getElementById('beFormationTab'); if(ft) ft.textContent='🎓 Mes sessions';
