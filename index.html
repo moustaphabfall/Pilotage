@@ -6481,6 +6481,22 @@ function dimValiderBtnHtml(dp,prefix){
   ? '<button type="button" class="primary" data-'+prefix+'-act="validerForm">↻ Recalculer l\'ouvrage</button>'
   : '<button type="button" class="primary" data-'+prefix+'-act="validerForm">✓ Calculer</button>';
 }
+/* Désignation de l'ouvrage (nom donné par l'utilisateur) pour nommer note de calcul / plan / PDF : nom saisi dans le module,
+   sinon intitulé « Quoi ? » de l'ouvrage, sinon repli explicite. */
+function dimOuvrageNom(t,dp){ return String((dp&&dp.nom)||(t&&t.nom)||(t&&t.quoi)||'').trim()||'Ouvrage sans nom'; }
+/* Migration douce : les anciens documents générés nommés avec un mot générique (« Note de calcul P-auto », « Plan de ferraillage Poutre »…)
+   prennent la désignation de l'ouvrage ; rien n'est supprimé, le fichier PDF joint garde son nom jusqu'au prochain calcul. */
+function dimMigrerNomsDocs(){
+ try{
+  const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L||typeof state==='undefined') return;
+  const GEN=/^(Note de calcul|Plan de ferraillage)\s*(P-auto|Poutre|Poteau|Dalle|Semelle|Pieu|Mur|Géotechnique|Ouvrage)?\s*$/i; let ch=0;
+  L.forEach(d=>{ if(!d||!d.ouvrageTaskId||(d.docType!=='Note de calcul'&&d.docType!=='Plan de ferraillage')) return;
+   const t=(state.tasks||[]).find(x=>x.id===d.ouvrageTaskId); if(!t) return; const nom=String(t.quoi||t.nom||'').trim(); if(!nom) return;
+   if(GEN.test(String(d.nom||'').trim())&&!String(d.nom||'').endsWith(' '+nom)){ d.nom=d.docType+' '+nom; d.ouvrage=nom; ch++; } });
+  if(ch){ try{persist();}catch(_){ } try{ if(window.pjDbRefresh) window.pjDbRefresh(); }catch(_){ } }
+ }catch(e){ console.warn('dimMigrerNomsDocs',e); }
+}
+setTimeout(dimMigrerNomsDocs,3500);
 function dimStatutBadgeHtml(dp){
  return dimStatut(dp)==='calcule'
   ? '<span class="pcNote" style="display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--line,#ccc);margin-left:6px">🔒 Calculé</span>'
@@ -19801,6 +19817,19 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .dimCalcBox b{font:700 14.5px var(--ds-font-title,'Space Grotesk',system-ui,sans-serif)}
 .dimCalcBox p{font:400 13px var(--ds-font-body,'IBM Plex Sans',system-ui,sans-serif);color:var(--ds-ink-soft,#5f6a66)}
 .dimCalcBox button{min-height:var(--ds-tap,44px);width:100%;border-radius:var(--ds-r-ctl,6px)}
+.pjDocV{position:fixed;inset:0;z-index:100010;background:rgba(14,14,14,.6);display:flex;align-items:center;justify-content:center;padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))}
+.pjDocV-box{background:var(--ds-bg,var(--panel,#fff));color:var(--ds-ink,var(--ink,#16232B));border:1px solid var(--ds-line,var(--line,#DAD8D1));border-radius:var(--ds-r-win,12px);width:min(1100px,100%);height:min(92vh,100%);display:flex;flex-direction:column;overflow:hidden}
+.pjDocV-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ds-line,var(--line,#DAD8D1));flex-wrap:wrap}
+.pjDocV-t{flex:1 1 200px;min-width:0;font:700 16px var(--ds-font-title,system-ui,sans-serif);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pjDocV-acts{display:flex;gap:8px;flex-wrap:wrap}
+.pjDocV-b{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 16px;border:1px solid var(--ds-line,var(--line,#DAD8D1));border-radius:10px;background:transparent;color:inherit;font:600 14px var(--ds-font-body,system-ui,sans-serif);text-decoration:none;cursor:pointer;box-sizing:border-box}
+.pjDocV-b[aria-disabled="true"]{opacity:.4;pointer-events:none}
+.pjDocV-x,.pjDocV-go{background:var(--ds-accent,#FFC400);color:var(--ds-on-accent,#000);border-color:var(--ds-accent,#FFC400)}
+.pjDocV-body{flex:1;min-height:0;display:flex}
+.pjDocV-f{flex:1;width:100%;height:100%;border:0;background:#fff}
+.pjDocV-msg{margin:auto;padding:24px;text-align:center;max-width:420px;display:flex;flex-direction:column;gap:12px;align-items:center}
+.pjDocV-msg p{margin:0;font:600 16px/1.4 var(--ds-font-body,system-ui,sans-serif)}
+.pjDocV-msg .pjDocV-sub{font-weight:400;font-size:14px;color:var(--ds-ink-soft,#5f6a66)}
 .dimCalcBox button[data-dim-doc]{display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .pjDocActs{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .pjDocActs>button{flex:1 1 180px;box-sizing:border-box;min-height:44px;padding:0 16px;border-radius:var(--ds-r-ctl,6px);font:600 14px var(--ds-font-body,'IBM Plex Sans',system-ui,sans-serif);line-height:1.2;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
@@ -21319,7 +21348,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   window.__pjRows={}; R.forEach(r=>{ window.__pjRows[r.id]={n:(r._subs||[]).length}; });
   const chips=[]; if(FL.bat.length) chips.push(['bat','Bâtiment',sumTxt('bat')]); if(FL.niv.length) chips.push(['niv','Niveau',sumTxt('niv')]); if(FL.coord.length) chips.push(['coord','Corps d’état',sumTxt('coord')]); if(FL.lot.length) chips.push(['lot','Lot',sumTxt('lot')]);
   const cell=(r,k)=>{ let v=r[k]; if(k==='typeStructure'&&r.typeStructureId&&window.tsMiniHtml&&v) return window.tsMiniHtml(r.typeStructureId)+esc(v); if(k==='date') v=frDate(v); else if(k==='etat') v=DET[visaK(v)]; else if(k==='liens') return linkChips(r.liens); else if(k==='indice'){ const n=(r._subs||[]).length; return esc(v||'')+(n?'<span class="pjd-chev" data-chev="1" title="Voir les indices précédents">'+(EXP.has(r.id)?'▾':'▸')+' '+n+'</span>':''); } else if(k==='nature') v=natLab(v); else if(k==='fichier') v=v?(v+(r.taille?' · '+fsz(r.taille):'')):'Aucune pièce jointe'; if(k==='nom'&&r.ged){ let src=''; try{ src=gedPlanSrc(r._g)||''; }catch(_){} return esc(v||'')+'<span class="pjd-open" data-dopen="1">OUVRIR</span><span class="pjd-open" data-dupd="1" title="Charger une nouvelle version (nouvel indice)">METTRE À JOUR</span>'; } if(k==='fichier'&&!r.fichier) return '<span class="pjd-add">⬆ Déposer</span>'; return esc(v||'')+(k==='nom'?'<span class="pjd-open" data-dopen="1">OUVRIR</span><span class="pjd-open" data-dupd="1" title="Charger une nouvelle version (nouvel indice)">METTRE À JOUR</span>':''); };
-  const attr=(k,r)=>k==='nom'&&r.contenuHtml?' data-dopen="1" title="Cliquer pour afficher le document · appui long pour le renommer"':k==='liens'?' data-dlink="1" title="Lier d’autres documents"':k==='indice'?' data-dind="1" title="Voir les indices précédents"':k==='fichier'?' data-dfile="1" title="Déposer la pièce jointe de cette ligne (montée d’indice si elle existe déjà)"':k==='etat'||k==='niveau'||k==='docType'||(k==='nature'&&!r.ged)?' data-dsel="'+k+'" title="Choisir"':(DTXT.includes(k)||k==='date'?' data-ded="'+k+'" title="Cliquer pour modifier"':'');
+  const attr=(k,r)=>k==='nom'&&r.contenuHtml?' data-dopen="1" title="Cliquer pour afficher le document · appui long pour le renommer"':k==='liens'?' data-dlink="1" title="Lier d’autres documents"':k==='indice'?' data-dind="1" title="Voir les indices précédents"':k==='fichier'?' data-dfile="1" title="'+(r.contenuHtml&&!r.ged?'Consulter le PDF (pour le remplacer : fiche du document › Mettre à jour)':'Déposer la pièce jointe de cette ligne (montée d’indice si elle existe déjà)')+'"':k==='etat'||k==='niveau'||k==='docType'||(k==='nature'&&!r.ged)?' data-dsel="'+k+'" title="Choisir"':(DTXT.includes(k)||k==='date'?' data-ded="'+k+'" title="Cliquer pour modifier"':'');
   if(!d._pd){ d._pd=1; d.addEventListener('pointerdown',e=>{ rowDrag(e); colDragStart(e); dopenLong(e); }); }
   if(!d._q){ d._q=1; d.addEventListener('input',e=>{ const i=e.target.closest('.pjd-q'); if(!i) return; FL.q=i.value; const p=i.selectionStart; dbRenderDocs(d); const n=d.querySelector('.pjd-q'); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(_){} } }); }
   d.innerHTML='<div class="pjd-in"><div class="pjd-head">'+modeSw()+'<h1>Documents du projet</h1><div class="pjd-sub">'+esc(pn)+' · '+R.length+' document'+(R.length>1?'s':'')+'</div>'
@@ -21371,6 +21400,38 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const b=document.querySelector('#modalBody [data-charger]'); if(b) b.onclick=()=>bumpFile(id); const lb=document.querySelector('#modalBody [data-links]'); if(lb) lb.onclick=()=>openLinks(id); }
  const showHist=openIndices;
  const openFor=id=>{ const o=findRow(id); if(!o) return; if(o.ged) openIndices(id); else openDocFiche(id); };
+
+ /* Visionneuse de la pièce jointe (PDF généré note / plan) : cadre dans l'application, sans quitter l'étude. Stockage : fichierRef = {id,…} (PILOTAGE_BLOBS) ou
+    {data:dataURL} -> Blob URL locale. Repli (iOS / Safari / tablette, ou lecteur PDF intégré absent) : nouvel onglet + téléchargement avec message clair. */
+ async function pjDocViewer(id){
+  const o=DOCS().find(x=>x.id===id); if(!o) return;
+  const ov=document.createElement('div'); ov.className='pjDocV'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label',o.nom||'Document');
+  const title=o.nom||'Document'; const fname=(o.fichier||(title+'.pdf'));
+  ov.innerHTML='<div class="pjDocV-box"><div class="pjDocV-bar"><b class="pjDocV-t"></b><span class="pjDocV-acts"><a class="pjDocV-b" data-dv="dl" role="button" aria-disabled="true">Télécharger</a><button type="button" class="pjDocV-b" data-dv="fs" aria-label="Plein écran">Plein écran</button><button type="button" class="pjDocV-b pjDocV-x" data-dv="x" aria-label="Fermer">Fermer</button></span></div><div class="pjDocV-body" aria-live="polite"></div></div>';
+  ov.querySelector('.pjDocV-t').textContent=title; document.body.appendChild(ov);
+  const body=ov.querySelector('.pjDocV-body'), dl=ov.querySelector('[data-dv="dl"]'), box=ov.querySelector('.pjDocV-box'); let url=null, closed=false; const prevFocus=document.activeElement;
+  const close=()=>{ closed=true; try{ if(url) URL.revokeObjectURL(url); }catch(_){ } ov.remove(); try{ if(prevFocus&&prevFocus.focus) prevFocus.focus(); }catch(_){ } };
+  const msg=(t,sub)=>{ body.innerHTML='<div class="pjDocV-msg"><p></p>'+(sub?'<p class="pjDocV-sub"></p>':'')+'</div>'; body.querySelector('p').textContent=t; if(sub) body.querySelector('.pjDocV-sub').textContent=sub; };
+  ov.addEventListener('click',e=>{ if(e.target===ov){ close(); return; } const b=e.target.closest('[data-dv]'); if(!b) return; const k=b.dataset.dv; if(k==='x') close(); else if(k==='fs'){ try{ if(document.fullscreenElement) document.exitFullscreen(); else if(box.requestFullscreen) box.requestFullscreen(); else clipToast('Plein écran non disponible sur cet appareil.'); }catch(_){ } } });
+  ov.addEventListener('keydown',e=>{ if(e.key==='Escape') close(); });
+  try{ ov.querySelector('.pjDocV-x').focus(); }catch(_){ }
+  /* génération en cours : attente (jusqu'à ~40 s) */
+  if(window.pjPdfPending&&window.pjPdfPending.has(id)){ msg('Génération des PDF…','Le fichier s\'affichera dès qu\'il est prêt.'); for(let i=0;i<50&&!closed&&window.pjPdfPending&&window.pjPdfPending.has(id);i++) await new Promise(r=>setTimeout(r,800)); if(closed) return; if(window.pjPdfPending&&window.pjPdfPending.has(id)){ msg('La génération du PDF prend plus de temps que prévu.','Fermer puis rouvrir dans un instant, ou relancer le calcul de l\'ouvrage.'); return; } }
+  const d=DOCS().find(x=>x.id===id)||o, ref=d.fichierRef;
+  if(!ref||(!ref.data&&!ref.id)){ msg('Aucun PDF n\'est joint à ce document.','Relancer le calcul de l\'ouvrage pour le générer, ou le déposer depuis la fiche du document.'); return; }
+  let blob=null;
+  try{ if(ref.data){ blob=await (await fetch(ref.data)).blob(); } else { const r=await window.PILOTAGE_BLOBS.fetch(ref.id); if(!r||!r.ok){ msg('Fichier introuvable.','Le PDF n\'est plus disponible sur le stockage. Relancer le calcul de l\'ouvrage pour le régénérer.'); return; } blob=await r.blob(); } }
+  catch(e){ console.error(e); msg('Impossible de lire le fichier.','Vérifier la connexion puis réessayer.'); return; }
+  if(closed) return;
+  if(!blob||blob.size<200){ msg('Le PDF est vide ou illisible.','Relancer le calcul de l\'ouvrage pour le régénérer.'); return; }
+  url=URL.createObjectURL(new Blob([blob],{type:'application/pdf'}));
+  dl.href=url; dl.download=fname; dl.removeAttribute('aria-disabled');
+  const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const can=!ios&&navigator.pdfViewerEnabled!==false;
+  if(can){ body.innerHTML=''; const f=document.createElement('iframe'); f.className='pjDocV-f'; f.title=title; f.src=url+'#toolbar=1&navpanes=0&view=FitH'; body.appendChild(f); }
+  else { body.innerHTML='<div class="pjDocV-msg"><p>Ce navigateur n\'affiche pas les PDF dans l\'application.</p><p class="pjDocV-sub">Ouvrir le PDF dans un nouvel onglet ou le télécharger.</p><a class="pjDocV-b pjDocV-go" target="_blank" rel="noopener" role="button">Ouvrir dans un nouvel onglet</a></div>'; body.querySelector('.pjDocV-go').href=url; }
+ }
+ window.pjDocViewer=pjDocViewer;
  function bumpFile(id){ const f=document.createElement('input'); f.type='file';
   f.onchange=async()=>{ const file=(f.files||[])[0]; if(!file) return; try{ const ref=await storeFile(file); const t=(typeof todayISO==='function'?todayISO():''); let o=findRow(id); if(!o) return;
     if(!o.ged&&isPlanFile(file,o.docType)){ adoptAsGed(DOCS().find(x=>x.id===id)); o=findRow(id); }
@@ -21435,7 +21496,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   const gl=e.target.closest('td[data-dlink]'); if(gl){ e.stopPropagation(); openLinks(gl.closest('tr[data-did]').dataset.did); return true; }
   const gu=e.target.closest('[data-dupd]'); if(gu){ e.stopPropagation(); bumpFile(gu.closest('tr[data-did]').dataset.did); return true; }
   const gs=e.target.closest('tr[data-sub]'); if(gs){ const sid=gs.dataset.sub; if(isGed(sid)){ try{ gedAnnotOpen(sid,'plan'); }catch(_){} } else openDocFiche(sid); return true; }
-  const gf=e.target.closest('td[data-dfile]'); if(gf){ e.stopPropagation(); const rid=gf.closest('tr[data-did]').dataset.did, o=findRow(rid); if(o&&hasFile(o)) miniConfirm('Un document existe déjà sur cette ligne. Monter en indice ('+(o.indice||'—')+' → '+nextInd(o.indice)+') ?',()=>bumpFile(rid)); else dropFiles(rid); return true; }
+  const gf=e.target.closest('td[data-dfile]'); if(gf){ e.stopPropagation(); const rid=gf.closest('tr[data-did]').dataset.did, o=findRow(rid); if(o&&o.contenuHtml&&!o.ged&&(hasFile(o)||(window.pjPdfPending&&window.pjPdfPending.has(rid)))&&window.pjDocViewer) window.pjDocViewer(rid); else if(o&&hasFile(o)) miniConfirm('Un document existe déjà sur cette ligne. Monter en indice ('+(o.indice||'—')+' → '+nextInd(o.indice)+') ?',()=>bumpFile(rid)); else dropFiles(rid); return true; }
   const go=e.target.closest('[data-gopen]'); if(go){ e.stopPropagation(); try{ gedAnnotOpen(go.closest('tr[data-did]').dataset.did,'plan'); }catch(_){} return true; }
   const se=e.target.closest('td[data-dsel]'); if(se){ e.stopPropagation(); if(!(window.paIsAdmin&&window.paIsAdmin())){ try{ clipToast('Modification réservée aux administrateurs'); }catch(_){} return true; } const doc=getDoc(se.closest('tr[data-did]').dataset.did); if(!doc) return true; const k=se.dataset.dsel; let items=[];
    if(k==='etat') items=Object.keys(DET).map(v=>[v,DET[v]]);
@@ -26014,13 +26075,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function pcCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
-   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Poutre');
+   const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
    if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
    pcDocVersion(doc,dp);
    let html; try{ html=fplHtml(t,dp,res); }catch(err){ console.error(err); html='<div class="pcNC ncDoc"><h3 class="ncH1">Plan de ferraillage non disponible</h3><p class="pcNote">Erreur lors de la génération du plan. Relancer le calcul de la poutre.</p></div>'; }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poutre'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ }
    return doc;
@@ -26097,14 +26158,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      try{ const blob=await fn(t,dp,res); if(pcPdfJobs[doc.id]!==job) continue; const ok=await pcAttacherPdf(doc,blob,doc.nom); if(!ok) failed.push(doc.docType); }
      catch(err){ console.error(err); failed.push(doc.docType); }
     }
-   } finally { pcPdfBusy=Math.max(0,pcPdfBusy-1); if(!pcPdfBusy) pcPdfPill(false); }
+   } finally { pcPdfBusy=Math.max(0,pcPdfBusy-1); if(!pcPdfBusy) pcPdfPill(false); [docNote,docPlan].forEach(d=>{ if(d&&window.pjPdfPending) window.pjPdfPending.delete(d.id); }); }
    if(failed.length){ try{ clipToast('PDF non généré ('+failed.join(', ')+') : le document reste dans l\'étude, relancer le calcul pour réessayer.'); }catch(_){ } }
   }
   async function pcCreerDocumentsDimensionnement(t,dp){
    const res=dp.resultats;
    const docNote=pcCreerNoteCalcul(t,dp);
    const docPlan=pcCreerPlanFerraillage(t,dp);
-   if(res&&(docNote||docPlan)) pcPdfEnArriere(t,dp,res,docNote,docPlan).catch(err=>console.error(err));
+   if(res&&(docNote||docPlan)){ window.pjPdfPending=window.pjPdfPending||new Set(); [docNote,docPlan].forEach(d=>{ if(d) window.pjPdfPending.add(d.id); }); pcPdfEnArriere(t,dp,res,docNote,docPlan).catch(err=>console.error(err)); }
    return {docNote,docPlan};
   }
   /* Outil « IA de dimensionnement » en masse : l'utilisateur sélectionne des ouvrages dans le tableau
@@ -26606,11 +26667,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function ptCreerNoteCalcul(t,dp){
    const html=ptNoteCalculHtml(t,dp,dp.resultats);
-   const nom='Note de calcul '+(dp.nom||t.nom||'Poteau');
+   const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poteau'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -26620,11 +26681,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Coupe courante · '+todayStr()+'</p>'+ptPlanFerraillageSvg(dp,res)
     +ptPlanFerraillageNomenclature(dp,res)
     +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (coupe courante, méthode EC2 simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (élévation, zones de renfort tête/pied non représentées).</p></div>';
-   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Poteau');
+   const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
    if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poteau'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -27074,11 +27135,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function dlCreerNoteCalcul(t,dp){
    const html=dlNoteCalculHtml(t,dp,dp.resultats);
-   const nom='Note de calcul '+(dp.nom||t.nom||'Dalle');
+   const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Dalle'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -27088,11 +27149,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Vue en plan (travée courante) · '+todayStr()+'</p>'+dlPlanFerraillageSvg(dp,res)
     +dlPlanFerraillageNomenclature(dp,res)
     +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (méthode EC2/BAEL simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, zones de renfort au poinçonnement non représentées).</p></div>';
-   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Dalle');
+   const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
    if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Dalle'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -27469,11 +27530,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function smCreerNoteCalcul(t,dp){
    const html=smNoteCalculHtml(t,dp,dp.resultats);
-   const nom='Note de calcul '+(dp.nom||t.nom||'Semelle');
+   const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Semelle'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -27483,11 +27544,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Vue en plan · '+todayStr()+'</p>'+smPlanFerraillageSvg(dp,res)
     +smPlanFerraillageNomenclature(dp,res)
     +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, attentes de poteau non représentées).</p></div>';
-   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Semelle');
+   const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
    if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Semelle'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -27882,11 +27943,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function puCreerNoteCalcul(t,dp){
    const html=puNoteCalculHtml(t,dp,dp.resultats);
-   const nom='Note de calcul '+(dp.nom||t.nom||'Pieu');
+   const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Pieu'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -27896,11 +27957,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Vue en plan · '+todayStr()+'</p>'+puPlanFerraillageSvg(dp,res)
     +puPlanFerraillageNomenclature(dp,res)
     +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution.</p></div>';
-   const nom='Plan de ferraillage '+(dp.nom||t.nom||'Pieu');
+   const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
    if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Pieu'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -28186,7 +28247,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
 
   function muCreerNoteCalcul(t,dp){
    if(!window.pjDocsList||typeof window.pjCreerDoc!=='function') return null;
-   const nom='Note de calcul '+(t.nom||'');
+   const nom='Note de calcul '+dimOuvrageNom(t,null);
    let doc=(window.pjDocsList()||[]).find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
    const html=muNoteCalculHtml(t,dp,dp.resultats);
    if(doc){ doc.contenuHtml=html; } else { doc=window.pjCreerDoc({nom,docType:'Note de calcul',ouvrageTaskId:t.id,contenuHtml:html}); }
@@ -28194,7 +28255,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function muCreerPlanFerraillage(t,dp){
    if(!window.pjDocsList||typeof window.pjCreerDoc!=='function') return null;
-   const nom='Plan de ferraillage '+(t.nom||'');
+   const nom='Plan de ferraillage '+dimOuvrageNom(t,null);
    let doc=(window.pjDocsList()||[]).find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
    const svg=muPlanFerraillageSvg(dp,dp.resultats);
    if(doc){ doc.contenuHtml=svg; } else { doc=window.pjCreerDoc({nom,docType:'Plan de ferraillage',ouvrageTaskId:t.id,contenuHtml:svg}); }
@@ -28610,11 +28671,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return h+'<p class="pcNote">⚠ Note de calcul générée automatiquement à partir des données saisies. À vérifier et valider par un ingénieur géotechnicien avant exécution.</p></div>';
    }
    function gtCreerNoteCalcul(t,dp){
-    const html=gtNoteCalculHtml(t,dp,dp.resultats), nom='Note de calcul '+(dp.nom||t.nom||'Géotechnique');
+    const html=gtNoteCalculHtml(t,dp,dp.resultats), nom='Note de calcul '+dimOuvrageNom(t,dp);
     const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
     let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
     if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-    doc.nom=nom; doc.ouvrage=dp.nom||t.nom||''; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+    doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
     doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
     try{ persist(); }catch(_){ } return doc;
    }
@@ -29239,13 +29300,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Crée (ou met à jour) le document « Note de calcul <ouvrage> » dans la base Études, rattaché à
      cet ouvrage, et en garde le contenu complet (sections 1 à 6) pour affichage/impression. */
   function pcCreerNoteCalcul(t,dp){
-   const nom='Note de calcul '+(dp.nom||t.nom||'Poutre');
+   const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
    pcDocVersion(doc,dp);
    const html=pcNoteCalculHtml(t,dp,dp.resultats);
-   doc.nom=nom; doc.ouvrage=dp.nom||t.nom||'Poutre'; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ }
    return doc;
