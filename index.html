@@ -27037,10 +27037,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   /* Dalle portant dans les deux sens (coefficients approchés type Pigeaud/Czerny, voir skill
      dimensionnement-beton-arme §3 — à défaut d'une table officielle dans ce contexte). */
+  /* Espacements maximaux des armatures de dalle (Maîtrise p.39, § 5.5.1.3), h en cm, résultats en mm :
+     zone de moment maximal ou charges concentrées : x ≤ min(2h ; 25 cm), y ≤ min(3h ; 40 cm) ; autres zones : x ≤ min(3h ; 40 cm), y ≤ min(3,5h ; 45 cm). */
+  function dlEspacementsMax(h_cm){
+   const h=h_cm*10;
+   return {zoneMax:{x:Math.min(2*h,250),y:Math.min(3*h,400)},autres:{x:Math.min(3*h,400),y:Math.min(3.5*h,450)}};
+  }
   function dlDeuxSens(dp,pEd){
    const lx=Math.min(+dp.lx_m||5,+dp.ly_m||5), ly=Math.max(+dp.lx_m||5,+dp.ly_m||5);
    const a=ly>1e-6?lx/ly:1;
-   if(a<0.4) return {deux:false,a,lx,ly};
+   if(a<0.5) return {deux:false,a,lx,ly}; // α = lx/ly < 0,5 : la dalle porte dans un seul sens (Maîtrise p.37)
    const mux=1/(8*(1+2.4*Math.pow(a,3)));
    const muy=a*a*(1.9-0.9*a);
    const Mx=mux*pEd*lx*lx, My=muy*Mx;
@@ -27147,7 +27153,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const AsTravX_mm2=Math.max(fTrav.As_mm2||0,AsMinX_mm2);
    const AsAppW_mm2=Math.max(fAppW.As_mm2||0,forf.Mw>0?AsMinX_mm2:0);
    const AsAppE_mm2=Math.max(fAppE.As_mm2||0,forf.Me>0?AsMinX_mm2:0);
-   const sMaxCourant_mm=Math.min(3*h_cm*10,400);
+   const espMax=dlEspacementsMax(h_cm); // p.39 : travée et appuis = zones de moment maximal (x : min(2h ; 25 cm)) ; sens y de travée : min(3h ; 40 cm)
+   const sMaxCourant_mm=espMax.zoneMax.x, sMaxY_mm=espMax.zoneMax.y;
    const barTravX=dlChooseBars(AsTravX_mm2,sMaxCourant_mm);
    const barAppW=forf.Mw>0?dlChooseBars(AsAppW_mm2,sMaxCourant_mm):null;
    const barAppE=forf.Me>0?dlChooseBars(AsAppE_mm2,sMaxCourant_mm):null;
@@ -27157,7 +27164,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     AsMinY_mm2=dlAsMin_mm2(fctm,fyk,d_y_cm*10,h_cm*10); AsMaxY_mm2=dlAsMax_mm2(h_cm*10);
     fTravY=dlFlexion(deuxSens.My,d_y_cm,fcd,fyd);
     AsTravY_mm2=Math.max(fTravY.As_mm2||0,AsMinY_mm2);
-    barTravY=dlChooseBars(AsTravY_mm2,sMaxCourant_mm);
+    barTravY=dlChooseBars(AsTravY_mm2,sMaxY_mm);
     depasseY=AsTravY_mm2>AsMaxY_mm2;
    }
    /* épaisseur insuffisante : K > K' = 0,21 dans au moins une zone → pas de ferraillage affiché, épaisseur minimale proposée */
@@ -27182,7 +27189,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     AsTravX_cm2:AsTravX_mm2/100,AsAppW_cm2:AsAppW_mm2/100,AsAppE_cm2:AsAppE_mm2/100,
     barTravX,barAppW,barAppE,depasseX,
     AsMinY_cm2:AsMinY_mm2/100,AsMaxY_cm2:AsMaxY_mm2/100,AsTravY_cm2:AsTravY_mm2/100,barTravY,depasseY,
-    fleche,K,AsAppui_mm2perm,AsSupY_mm2perm,insuffisant,hMinCm,koZones:koZ};
+    espMax,fleche,K,AsAppui_mm2perm,AsSupY_mm2perm,insuffisant,hMinCm,koZones:koZ};
    res.poincon=dlPoinconnement(dp,res);
    return res;
   }
@@ -27372,7 +27379,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
   }
   /* Tableau des vérifications de la dalle (même présentation que la poutre) : ok / ko / nf = non vérifié. La flèche ne passe jamais « conforme » :
-     la formule 7.16 n'est pas dans le livre fourni → « à confirmer par un ingénieur ». Poinçonnement : formules non vérifiées au livre (β, u1, v_Rd,max). */
+     formules 7.16a/b : Maîtrise p.218 ; tableau AN p.221-224. Poinçonnement : Maîtrise p.254, 262-263, ex. p.269-275. */
   function dlVerifs(res,dp){
    const f2=(x,n)=>(+x).toFixed(n==null?2:n).replace('.',','), V=[];
    const flex=(zone,M,k,ok)=>V.push({zone,nom:'Flexion (b = 1 m)',formule:'K = M_Ed/(b·d²·f_ck) ≤ K\'',calcul:'M_Ed = '+f2(M,2)+' kN·m/m ; K = '+f2(k,3),limite:'K\' = 0,21',etat:ok?'ok':'ko'});
@@ -27392,7 +27399,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(res.poincon){ const pc=res.poincon; V.push({zone:'Poteau',nom:'Poinçonnement — u0',formule:'v_Ed(u0) ≤ v_Rd,max',calcul:'v_Ed = '+f2(pc.vEd0)+' MPa',limite:'v_Rd,max = '+f2(pc.vRdmax)+' MPa',etat:pc.ok_max?'ok':'ko'});
     V.push({zone:'Poteau',nom:'Poinçonnement — u1 (2d)',formule:'v_Ed(u1) ≤ v_Rd,c',calcul:'v_Ed = '+f2(pc.vEd1)+' MPa',limite:'v_Rd,c = '+f2(pc.vRdc)+' MPa',etat:pc.ok_c?'ok':'ko'});
     V.push({zone:'Poteau',nom:'Poinçonnement — hypothèses',formule:'β = 1,15 (poteau intérieur), ρl, v_Rd,max, bords libres, armatures de poinçonnement',calcul:'—',limite:'—',etat:'nf'}); }
-   [['Armatures de répartition (secondaires)','EC2 9.3.1.1(2) : ≥ 20 % de A_s principal'],['ELS fissuration','EC2 7.3'],['ELS contraintes (XD/XF/XS)','σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk (livre p.190, 214)'],['Charges localisées','Pigeaud / Westergaard']].forEach(a=>V.push({zone:'Dalle',nom:a[0],formule:a[1],calcul:'—',limite:'—',etat:'nf'}));
+   [['Armatures de répartition (secondaires)','EC2 9.3.1.1(2) : ≥ 20 % de A_s principal (confirmé, Maîtrise p.39)'],['ELS fissuration','EC2 7.3'],['ELS contraintes (XD/XF/XS)','σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk (livre p.190, 214)'],['Charges localisées','Pigeaud / Westergaard']].forEach(a=>V.push({zone:'Dalle',nom:a[0],formule:a[1],calcul:'—',limite:'—',etat:'nf'}));
    return V;
   }
   /* Données géométriques et charges (modèle de note : tableau, origine de chaque valeur) */
@@ -27437,7 +27444,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +(res.sensDeux?('<br>Sens ly — travée (sans réduction appuis, continuité non prise en compte dans ce sens) : As='+res.AsTravY_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinY_cm2.toFixed(2)+') → Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm.'+(res.depasseY?' ⚠ As,max dépassé sens ly.':'')):'')+'</p>');
    VF.filter(v=>v.etat==='ko'&&/tranchant|bielle|Méthode forfaitaire/.test(v.nom)).forEach(v=>{ h+='<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>'; });
    h+='<p class="ncPt" data-bad="0">ELS non vérifiés (flèche, fissuration) ; flèche à faire confirmer par un ingénieur structure (formule 7.16 non vérifiée) ; en XD/XF/XS vérifier aussi les contraintes (livre p.190, 214).</p>'
-    +'<p class="ncPt" data-bad="0">non couverts : armatures de répartition (secondaires), charges localisées, poinçonnement hors poteau intérieur courant (β, ρl, v_Rd,max, bords libres), conditions de la méthode forfaitaire autres que Q ≤ max(2G ; 5), coefficients μx/μy approchés.</p>'
+    +'<p class="ncPt" data-bad="0">non couverts : armatures de répartition (secondaires), charges localisées, poinçonnement hors poteau intérieur courant (β calculé, bords libres), conditions de la méthode forfaitaire autres que Q ≤ max(2G ; 5), coefficients μx/μy approchés.</p>'
     +(al?'<p class="ncPt" data-bad="0">enrobage saisi '+fC(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+fC(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier.</p>':'')
     +(res.poidsPropre?'':'<p class="ncPt" data-bad="0">poids propre de la dalle exclu du calcul (25·h = '+fC(25*res.h_cm/100)+' kN/m² non ajouté) : à ajouter si non compris dans G.</p>');
    h+=dlJsonPlanHtml(res,dp);
@@ -27449,7 +27456,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      Mêmes primitives de scène (fplL, fplR, fplHD…) que le plan de poutre : un seul jeu de données dlPlan(res,dp) alimente le rendu SVG (écran ; plein écran et
      impression de vue via .fplDoc .fplDraw) ET le PDF jsPDF (A4 à A0 paysage). EC2 : décalage a_l = d sans armatures d'effort tranchant (livre p.312, 435),
      ancrage l_bd = α·l_b,rqd avec f_bd = 2,25·η1·η2·f_ctd, η1 = 1 (h ≤ 250 mm, p.84), α3 = 1 (ΣA_st,min = 0 en dalle, p.89), l_b,min = max(0,3 l_b,rqd ; 10Ø ; 100 mm) (p.90).
-     Armatures de répartition ≥ 20 % de la section principale : EC2 9.3.1.1(2), NON LU au livre → « à confirmer par un ingénieur ». */
+     Armatures de répartition ≥ 20 % de la section principale : EC2 9.3.1.1(2), confirmé (Maîtrise p.39, dalles portant dans un seul sens). Espacements maximaux : Maîtrise p.39. */
   function dlPlan(res,dp){
    if(!res||res.insuffisant||!res.barTravX) return null;
    const fyd=res.fyd, fctd=0.7*res.fctm/1.5, fbd=2.25*fctd; // α_ct = 1 (AN France), η1 = η2 = 1
@@ -27473,8 +27480,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     nom.push({rep:repR,designation:'Nappe inférieure — sens ly (calculée)',nb:nbAlong(bR.s),diam:bR.phi,s:bR.s,AsReel:bR.As/100,AsReq:res.AsTravY_cm2,longueur:r2(LR),faconnage:'Droit, ancrage '+r2(laR,0)+' mm de chaque côté',poids:0,zone:'inf'});
     verifs.push({zone:'Travée ly — inférieur',barres:'HA'+bR.phi+' e='+bR.s+' mm ('+repR+')',reel:bR.As/100,req:res.AsTravY_cm2}); }
    else { const asSec=Math.max(0.2*b1.As,res.AsMinX_cm2*100); bR=dlChooseBars(asSec,Math.min(3.5*hmm,450)); LR=Math.max(0.3,W-2*c/1000); repR=nr();
-    nom.push({rep:repR,designation:'Armatures de répartition inférieures (≥ 20 % de la principale — à confirmer)',nb:nbAlong(bR.s)+1,diam:bR.phi,s:bR.s,AsReel:bR.As/100,AsReq:asSec/100,longueur:r2(LR),faconnage:'Droit',poids:0,zone:'inf'});
-    verifs.push({zone:'Répartition inférieure (à confirmer)',barres:'HA'+bR.phi+' e='+bR.s+' mm ('+repR+')',reel:bR.As/100,req:asSec/100}); }
+    nom.push({rep:repR,designation:'Armatures de répartition inférieures (≥ 20 % de la principale — confirmé, Maîtrise p.39)',nb:nbAlong(bR.s)+1,diam:bR.phi,s:bR.s,AsReel:bR.As/100,AsReq:asSec/100,longueur:r2(LR),faconnage:'Droit',poids:0,zone:'inf'});
+    verifs.push({zone:'Répartition inférieure (confirmé, Maîtrise p.39)',barres:'HA'+bR.phi+' e='+bR.s+' mm ('+repR+')',reel:bR.As/100,req:asSec/100}); }
    /* chapeaux sur appuis : a_l = d (livre p.312, 435), puis ancrage l_bd au-delà du point de moment nul décalé */
    const pE=res.pEd, xHog=(Ms,Mo)=>{ const B=pE*Lm/2+(Ms-Mo)/Lm, disc=B*B-2*pE*Ms; return disc<=0?Lm/2:Math.min(Lm/2,(B-Math.sqrt(disc))/pE); };
    const chap=[]; const endW=(dp.position==='rive'&&(+dp.nTravees||1)>1);
@@ -27487,8 +27494,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     verifs.push({zone:'Appui '+nm+' — supérieur',barres:'HA'+bar.phi+' e='+bar.s+' mm ('+rp+')',reel:bar.As/100,req:asReq}); });
    let bRs=null, repRs=null;
    if(chap.length){ const asSup=0.2*Math.max(...chap.map(q=>q.bar.As)); bRs=dlChooseBars(asSup,Math.min(3.5*hmm,450)); repRs=nr(); const zone=chap.reduce((s,q)=>s+(q.rive?q.xs:2*q.xs),0);
-    nom.push({rep:repRs,designation:'Armatures de répartition supérieures (≥ 20 % des chapeaux — à confirmer)',nb:Math.ceil(zone*1000/bRs.s)+chap.length,diam:bRs.phi,s:bRs.s,AsReel:bRs.As/100,AsReq:asSup/100,longueur:r2(Math.max(0.3,W-2*c/1000)),faconnage:'Droit',poids:0,zone:'sup'});
-    verifs.push({zone:'Répartition supérieure (à confirmer)',barres:'HA'+bRs.phi+' e='+bRs.s+' mm ('+repRs+')',reel:bRs.As/100,req:asSup/100}); }
+    nom.push({rep:repRs,designation:'Armatures de répartition supérieures (≥ 20 % des chapeaux — confirmé, Maîtrise p.39)',nb:Math.ceil(zone*1000/bRs.s)+chap.length,diam:bRs.phi,s:bRs.s,AsReel:bRs.As/100,AsReq:asSup/100,longueur:r2(Math.max(0.3,W-2*c/1000)),faconnage:'Droit',poids:0,zone:'sup'});
+    verifs.push({zone:'Répartition supérieure (confirmé, Maîtrise p.39)',barres:'HA'+bRs.phi+' e='+bRs.s+' mm ('+repRs+')',reel:bRs.As/100,req:asSup/100}); }
    nom.forEach(r=>{ r.poids=r2(r.nb*wkg(r.diam,r.longueur),1); }); const poidsTotal=r2(nom.reduce((s,r)=>s+r.poids,0),1);
    if(res.shear&&!res.shear.ok) warn.push('Effort tranchant : V_Ed0 = '+r2(res.shear.VEd0,1)+' kN/m > V_Rd,c = '+r2(res.shear.VRdc,1)+' kN/m — armatures d\'effort tranchant non couvertes, augmenter l\'épaisseur.');
    if(res.poincon&&!(res.poincon.ok_c&&res.poincon.ok_max)) warn.push('Poinçonnement non satisfait : armatures de poinçonnement ou renfort local non étudiés ici.');
@@ -27496,7 +27503,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    hyp.push('Chapeaux : épure des moments (forfaitaire) décalée de a_l = d = '+r2(d,0)+' mm (EC2 §9.2.1.3, dalle sans armatures d\'effort tranchant ; livre p.312, 435), puis prolongement de l_bd au-delà du point de moment nul décalé (au lieu du forfait l/4).');
    hyp.push('Ancrage des barres inférieures sur appui : force à ancrer F_E = V_Ed·a_l/z (a_l = d, z = 0,9d), σ_sd = F_E/A_s (livre p.333-334, AN France β2 = 0) ; toutes les barres inférieures sont prolongées jusqu\'aux appuis (pas de réduction à 50 %).');
    hyp.push('Ancrages : l_bd = α2·l_b,rqd ≥ max(0,3 l_b,rqd ; 10Ø ; 100 mm), f_bd = 2,25·η1·η2·f_ctd, η1 = 1 (h ≤ 250 mm), α1 = α3 = α4 = α5 = 1 (dalle, ΣA_st,min = 0 ; livre p.84-91).');
-   hyp.push('À confirmer par un ingénieur : armatures de répartition ≥ 20 % de la section principale (EC2 9.3.1.1(2), non lu au livre) ; espacements maximaux ; flèche et fissuration non vérifiées (ELS) ; appuis de dalle (EC2 9.3.1.2).');
+   hyp.push('À confirmer par un ingénieur : flèche et fissuration non vérifiées (ELS) ; appuis de dalle (EC2 9.3.1.2).');
    hyp.push('Non dessiné : treillis soudés, trémies et renforts, armatures de poinçonnement, recouvrements, cales d\'enrobage, détail aux appuis. Poids = Ø²/162,2 kg/m sur longueurs développées, chutes non comptées.');
    return {lx:res.lx,L:Lm,W,sensDeux:res.sensDeux,hmm,c,d,aApp,b1,la1,L1,rep1,bR,repR,LR,bRs,repRs,chap,nomenclature:nom,poidsTotal,verifs,avertissements:[...new Set(warn)],hypotheses:hyp,
     parametres:{fck:res.fck,fyk:res.fyk,h:res.h_cm,enrobage:res.enr,appui:aApp/10,aL:r2(d,0),lx:res.lx,ly:W,sens:res.sensDeux?'deux':'un'}};
@@ -27560,7 +27567,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const P=dlPlan(res,dp), info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp);
    if(!P) return '<div class="pcNC ncDoc"><h3 class="ncH1">Plan de ferraillage non disponible</h3><p class="pcNote">Le plan de la dalle n\'a pas pu être calculé (résultat absent, ou épaisseur insuffisante : ferraillage non calculé).</p></div>';
    const nW=P.avertissements.length, date=todayStr(), par=P.parametres;
-   const constat=info.nomO+' : '+fplF(P.poidsTotal,1)+' kg d\'acier, '+P.nomenclature.length+' repères'+(nW?' — '+nW+' point'+(nW>1?'s':'')+' à reprendre':', chapeaux décalés de a_l = d, ancrages cotés')+' — répartition à confirmer';
+   const constat=info.nomO+' : '+fplF(P.poidsTotal,1)+' kg d\'acier, '+P.nomenclature.length+' repères'+(nW?' — '+nW+' point'+(nW>1?'s':'')+' à reprendre':', chapeaux décalés de a_l = d, ancrages cotés')+' — répartition confirmée (Maîtrise p.39)';
    const subL=[info.projet,info.bat,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' · ');
    const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(info.projet||'—')+'</td><td><b>Ouvrage</b>'+esc(info.nomO)+(info.typ?' · '+esc(info.typ):'')+'</td><td><b>Document</b>Plan de ferraillage '+esc(info.nomO)+'</td></tr>'
     +'<tr><td><b>Norme</b>'+esc(info.norme)+'</td><td><b>Béton / acier</b>'+esc(info.beton)+' · '+esc(info.acier)+'</td><td><b>Indice · date</b>'+esc(info.indice)+(info.indice==='0'?' (première émission)':'')+' · '+esc(date)+'</td></tr>'
