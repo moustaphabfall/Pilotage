@@ -26769,12 +26769,29 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Effort normal N et moments en tête/pied : à régler directement sur le schéma ci-dessus.</p>'
     +'<label>Poids propre du poteau <select data-pt="poidsPropre"><option value="ajoute"'+(dp.poidsPropre!=='inclus'?' selected':'')+'>Ajouté à N (1,35 × 25 kN/m³ × Ac × L)</option><option value="inclus"'+(dp.poidsPropre==='inclus'?' selected':'')+'>Déjà inclus dans N saisi</option></select></label>'
     +'<label>Effort tranchant V<sub>Ed</sub> (kN, facultatif) <input type="number" step="any" min="0" data-pt="V_kN" value="'+(dp.V_kN??'')+'" placeholder="déduit"></label>'
-    +'<label>N<sub>ser</sub> (kN, facultatif) <input type="number" step="any" data-pt="N_ser_kN" value="'+(dp.N_ser_kN??'')+'" placeholder="N_Ed/1,4"></label>'
-    +'<label>M<sub>ser</sub> (kN·m, facultatif) <input type="number" step="any" data-pt="M_ser_kNm" value="'+(dp.M_ser_kNm??'')+'" placeholder="M_Ed/1,4"></label>'
-    +'<p class="pcNote">V<sub>Ed</sub> vide : déduit des moments d\'extrémité, V<sub>Ed</sub> = (M<sub>02</sub> − M<sub>01</sub>)/l. N<sub>ser</sub> et M<sub>ser</sub> vides : N<sub>Ed</sub>/1,4 et M<sub>Ed</sub>/1,4 (rapport ELU/ELS courant, livre p.491 : 1,41 à 1,43) ; utilisés seulement en classe XD (contraintes ELS).</p>'
+    +'<p class="pcNote">V<sub>Ed</sub> vide : déduit des moments d\'extrémité, V<sub>Ed</sub> = (M<sub>02</sub> − M<sub>01</sub>)/l (livre p.309-319).</p>'
+    +ptElsBlockHtml(dp,t.id)
     +'<p class="pcNote">1 t = 10 kN. N et M saisis = valeurs ELU (1,35·G + 1,5·Q). Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2 ; excentricités e_i = l₀/400 et Δe₀ = max(20 mm ; h/30) ajoutées (livre p.445-446).</p>'
     +'<button type="button" class="ghost pcBtnSm" data-pt-act="openDescente">📥 Descente de charges</button>'
     +'<p class="pcNote">Calcule N à partir de l\'empilement des niveaux portés par ce poteau (dalles, poutres, poids propre, charges d\'exploitation avec dégression) puis le reporte ici.</p>';
+  }
+  /* Paramètres avancés ELS du poteau : N_ser et M_ser (même présentation que la poutre et la dalle : repliable, valeur par défaut visible, « par défaut / saisi »).
+     Vérification σ_c ≤ 0,6·f_ck et σ_s ≤ 0,8·f_yk seulement en classes XD, XF, XS (EC2 7.2 ; Pratique p.190, 449-478, 497-498). */
+  function ptElsDefaults(dp){
+   const res=dp.resultats, g=ptGeom(dp), Ned=res&&res.NEd_kN!=null?res.NEd_kN:((+dp.N_kN||0)+(dp.poidsPropre==='inclus'?0:1.35*25*(g.Ac/1e4)*(+dp.L_m||3)));
+   const Med=res&&res.MEd!=null?(res.centree?0:Math.abs(res.MEd)):Math.max(Math.abs(+dp.M_pied_kNm||0),Math.abs(+dp.M_tete_kNm||0));
+   return {N:Math.round(Ned/1.4*10)/10,M:Math.round(Med/1.4*10)/10};
+  }
+  function ptElsBlockHtml(dp,id){
+   const D=ptElsDefaults(dp), cls=pcEnrobageNom(dp).classe, req=/^XD/.test(cls);
+   const specs=[
+    {k:'N_ser_kN',lbl:'N_ser — effort normal de service',t:'num',def:D.N,min:0,max:1e6,step:1,unit:'kN',aide:'ELS : N_ser = G + Q de la descente de charges. Par défaut N_Ed/1,4 (coefficient moyen G-Q entre 1,35 et 1,5 ; livre p.491 : 1,42). Servent aux contraintes ELS en XD, XF, XS (livre p.449-478, 497).'},
+    {k:'M_ser_kNm',lbl:'M_ser — moment de service',t:'num',def:D.M,min:0,max:1e6,step:0.1,unit:'kN·m',aide:'ELS : M_ser = M_G + M_Q. Par défaut M_Ed/1,4 (M_Ed du calcul : e_i, Δe0 et second ordre inclus, côté sécurité ; avant calcul : moment saisi/1,4). Remplacer par la valeur ELS de la descente de charges.'}];
+   const err=(window._elsErr||{})[id];
+   return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="pt"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés ELS</summary><div class="pcElsBody">'
+    +'<p class="pcNote">'+(req?'Classe '+cls+' : contraintes ELS vérifiées (σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk).':'Classe '+cls+' : contraintes ELS non requises (requises en XD, XF, XS) ; ces valeurs ne servent alors à rien.')+' Valeurs par défaut affichées dans les champs, reprises dans la note de calcul.</p>'
+    +specs.map(sp=>elsFieldHtml(sp,dp,err)).join('')
+    +'<button type="button" class="ghost" data-els-reset="1">Rétablir les valeurs par défaut</button></div></details>';
   }
   function ptFormHtml(id,t){
    const dp=ptData(t);
@@ -26986,6 +27003,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
    const dp=ptData(t);
+   if(el.dataset.els){ const sp=el.dataset.els; if(sp==='N_ser_kN'||sp==='M_ser_kNm'){ window._elsErr=window._elsErr||{}; delete window._elsErr[id]; if(el.value===''){ delete dp[sp]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<0){ window._elsErr[id]={key:sp,msg:'Valeur positive attendue.'}; } else dp[sp]=x; } try{persist();}catch(_){ } pteRender(id); } return; }
    if(el.matches('[data-pt="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
    const key=el.dataset.pt; if(key){
     if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
@@ -27105,7 +27123,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +(res.shear.etat==='nf'?'<p class="ncPt" data-bad="0">effort tranchant : '+esc(res.shear.motif)+' ; à confirmer par un ingénieur.</p>':'')
     +(res.shear.reduit?'<p class="ncPt" data-bad="0">espacement des cadres réduit à '+fC(res.shear.sRet/10,1)+' cm (au lieu de '+fC(res.shear.sCour0/10,1)+' cm) pour reprendre l\'effort tranchant V_Ed = '+fC(res.shear.VEd,1)+' kN.</p>':'')
     +(res.shear.src&&res.shear.etat!=='na'&&!(dp.V_kN!=null&&dp.V_kN!=='')?'<p class="ncPt" data-bad="0">effort tranchant V_Ed déduit des moments d\'extrémité ELU : V_Ed = (M02 − M01)/l ; en présence de charges horizontales le saisir.</p>':'')
-    +(res.els.requis?'<p class="ncPt" data-bad="0">contraintes ELS : N_ser et M_ser '+((res.els.saiN&&res.els.saiM)?'saisis':'pris égaux à N_Ed/1,4 et M_Ed/1,4 (rapport ELU/ELS courant, livre p.491 : 1,41 à 1,43)')+', section fissurée élastique avec α_e = 15 (convention du livre p.497) : à confirmer par un ingénieur. Fissuration et flèche non vérifiées.</p>':'<p class="ncPt" data-bad="0">classe '+res.els.classe+' : contraintes ELS non requises (requises en XD, XF, XS) ; fissuration et flèche non vérifiées.</p>')
+    +(res.els.requis?'<p class="ncPt" data-bad="0">contraintes ELS : '+((res.els.saiN&&res.els.saiM)?'N_ser et M_ser saisis':'N_ser et M_ser estimés à N_Ed/1,4 et M_Ed/1,4 (rapport ELU/ELS courant, livre p.491 : 1,41 à 1,43) : à remplacer par les valeurs ELS de la descente de charges')+' ; section fissurée élastique avec α_e = 15 (convention du livre p.497), à confirmer par un ingénieur. Fissuration et flèche non vérifiées.</p>':'<p class="ncPt" data-bad="0">classe '+res.els.classe+' : contraintes ELS non requises (requises en XD, XF, XS) ; fissuration et flèche non vérifiées.</p>')
     +'<p class="ncPt" data-bad="0">flexion biaxiale et résistance au feu non calculées.</p>'
     +(g.rect?'':'<p class="ncPt" data-bad="0">section circulaire : interaction N-M par intégration du diagramme parabole-rectangle avec 8 barres équivalentes sur le cercle des armatures ; à confirmer par un ingénieur.'+(res.second&&res.dCour_mm?' Second ordre : hauteur utile de la courbure d = h/2 + i_s = '+fC(res.dCour_mm/10,1)+' cm (Maîtrise p.107, rayon de giration i_s des armatures), plus petite que h − d1 : M2 plus grand, côté sécurité.':'')+'</p>');
    const eN=res.enrNom;
@@ -27116,7 +27134,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     ['Combinaison','N et M saisis : valeurs ELU (1,35 G + 1,5 Q)','Saisie'],
     ['Poids propre',res.pp_kN>0?'Ajouté à N : 1,35 × 25 kN/m³ × '+fC(g.Ac/1e4,4)+' m² × '+fC(dp.L_m,2)+' m = '+fC(res.pp_kN)+' kN':'Déjà inclus dans N saisi','Choix du formulaire'],
     ['Effort tranchant',res.shear.etat==='na'?'V<sub>Ed</sub> = 0':(res.shear.etat==='nf'?'Non vérifié (section circulaire)':'V<sub>Ed</sub> = '+fC(res.shear.VEd,1)+' kN ('+esc(res.shear.src)+') · V<sub>Rd,c</sub> avec k<sub>1</sub>·σ<sub>cp</sub> (k<sub>1</sub> = 0,15, σ<sub>cp</sub> = '+fC(res.shear.sigcp)+' MPa) · cotθ = '+fC(res.shear.cot,2)+' · ρ<sub>w,min</sub> = 0,08√f<sub>ck</sub>/f<sub>yk</sub>'),'Livre p.309-319 (ch.8)'],
-    ['Contraintes ELS',res.els.requis?'N<sub>ser</sub> = '+fC(res.els.Nser,0)+' kN · M<sub>ser</sub> = '+fC(res.els.Mser,1)+' kN·m · α<sub>e</sub> = 15 · σ<sub>c</sub> ≤ 0,6·f<sub>ck</sub> · σ<sub>s</sub> ≤ 0,8·f<sub>yk</sub>':'Non requises en classe '+res.els.classe,(res.els.requis&&!(res.els.saiN&&res.els.saiM))?'Choix : N<sub>Ed</sub>/1,4 et M<sub>Ed</sub>/1,4 (livre p.491)':'Saisie / EC2 7.2, livre p.449-498'],
+    ['Contraintes ELS',res.els.requis?'N<sub>ser</sub> = '+fC(res.els.Nser,0)+' kN · M<sub>ser</sub> = '+fC(res.els.Mser,1)+' kN·m · α<sub>e</sub> = 15 · σ<sub>c</sub> ≤ 0,6·f<sub>ck</sub> · σ<sub>s</sub> ≤ 0,8·f<sub>yk</sub>':'Non requises en classe '+res.els.classe,(res.els.requis?((res.els.saiN?'N<sub>ser</sub> saisi':'N<sub>ser</sub> par défaut')+' · '+(res.els.saiM?'M<sub>ser</sub> saisi':'M<sub>ser</sub> par défaut (N<sub>Ed</sub>/1,4 et M<sub>Ed</sub>/1,4, livre p.491)')):'EC2 7.2, livre p.449-498')],
     ['Longueur efficace',esc(res.l0desc)+' → l<sub>0</sub> = '+(isFinite(res.l0_cm)?fC(res.l0_cm/100):'∞')+' m',res.l0secu?'Choix sécuritaire (plus grand que la formule 5.16, Maîtrise p.77)':'Saisie des liaisons (livre p.154-156)'],
     ['Élancement limite','A = 0,7 · B = '+fC(res.B)+(res.omega!=null&&res.B>1.1?' (ω = '+fC(res.omega,3)+')':' (ω inconnu)')+' · C = 1,7 − r<sub>m</sub> = '+fC(res.C)+' ('+esc(res.rmCas)+')','Valeurs par défaut (livre p.152)'],
     ...(res.second&&!g.rect&&res.dCour_mm?[['Courbure 1/r<sub>0</sub>','ε<sub>yd</sub>/(0,45·d) avec d = h/2 + i<sub>s</sub> = '+fC(res.dCour_mm/10,1)+' cm','Section circulaire (Maîtrise p.107)']]:[]),
@@ -27526,8 +27544,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    else dp[k]=(typeof sp.def==='number')?+el.value:el.value;
    redraw();
   }
-  document.addEventListener('toggle',ev=>{ const d=ev.target; if(!d||!d.matches||!d.matches('details.pcEls')) return; const t=taskById(d.dataset.elsId); if(!t) return; const dp=d.dataset.elsKind==='pc'?t.dimPC:t.dimDL; if(dp&&dp._elsOpen!==d.open){ dp._elsOpen=d.open; try{persist();}catch(_){ } } },true);
-  document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('[data-els-reset]'); if(!b) return; const d=b.closest('details.pcEls'); if(!d) return; const id=d.dataset.elsId, kind=d.dataset.elsKind, t=taskById(id); if(!t) return; const dp=kind==='pc'?t.dimPC:t.dimDL; if(!dp) return;
+  document.addEventListener('toggle',ev=>{ const d=ev.target; if(!d||!d.matches||!d.matches('details.pcEls')) return; const t=taskById(d.dataset.elsId); if(!t) return; const dp=d.dataset.elsKind==='pc'?t.dimPC:(d.dataset.elsKind==='pt'?t.dimPT:t.dimDL); if(dp&&dp._elsOpen!==d.open){ dp._elsOpen=d.open; try{persist();}catch(_){ } } },true);
+  document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('[data-els-reset]'); if(!b) return; const d=b.closest('details.pcEls'); if(!d) return; const id=d.dataset.elsId, kind=d.dataset.elsKind, t=taskById(id); if(!t) return; const dp=kind==='pc'?t.dimPC:(kind==='pt'?t.dimPT:t.dimDL); if(!dp) return;
+   if(kind==='pt'){ delete dp.N_ser_kN; delete dp.M_ser_kNm; dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
    ELS_SPEC.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } if(kind==='pc') beamRender(id); else dleRender(id); });
   function dlChooseBars(AsReq_mm2perm,sMax_mm){
    let best=null;
