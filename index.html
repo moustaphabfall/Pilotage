@@ -19924,9 +19924,18 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 /* ===== Fiche d'ouvrage (modules de dimensionnement) : échelle typographique et zones tactiles =====
    Titre de fiche (nom de l'ouvrage) > titre d'étape > libellé de champ > aide ; partagé par les modules qui utilisent .pcModHead / .pjBeam-ttl-in / .pcPanel. */
 :root{--ds-fs-h1:clamp(22px,1.1vw + 17px,28px);--ds-fs-h2:clamp(18px,.5vw + 15px,21px);--ds-fs-label:14px;--ds-fs-help:13px;--ds-fs-input:16px}
-.pjBeamRoot .pcModHead{margin:0 0 4px;gap:10px}
-.pjBeamRoot .pcModIco .illu-svg{width:40px;height:40px}
-.pjBeamRoot .pcModName{font:600 var(--ds-fs-lg)/1.3 var(--ds-font-title);color:var(--ds-ink-soft)}
+.pjBeamRoot .pcModHead{margin:0 0 6px;gap:10px;justify-content:flex-start;flex-wrap:wrap}
+.pjBeamRoot .pcModIco .illu-svg{width:34px;height:34px}
+.pjBeamRoot .pcModName{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--ds-line);border-radius:999px;background:transparent;font:600 var(--ds-fs-md,14px)/1.2 var(--ds-font-title);color:var(--ds-ink);cursor:pointer}
+.pjBeamRoot .pcModName:hover{background:var(--line)}
+.pjBeamRoot .pcModCaret{font-size:11px;opacity:.7}
+.pjBeamRoot .pjBeam-ttl-in{text-align:left}
+.dimModBox{max-width:360px;align-items:stretch;text-align:left}
+.dimModList{display:flex;flex-direction:column;gap:8px;width:100%}
+.dimModList button{display:flex;align-items:center;gap:10px;justify-content:flex-start;text-align:left}
+.dimModList button.on{border-color:var(--ds-accent);opacity:.8}
+.dimModIc{flex:0 0 auto;width:28px;text-align:center;font-size:18px}
+#modalBody:has(.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot) #tfViewBtn{display:none!important}
 .pjBeamRoot .pcModHead .pcNote{font-size:var(--ds-fs-help);opacity:1;padding:3px 10px!important;color:var(--ds-ink-soft)}
 .pjBeamRoot .pjBeam-top{min-height:56px;margin-bottom:6px;gap:8px}
 .pjBeamRoot .pjBeam-ttl-in{font:700 var(--ds-fs-h1)/1.2 var(--ds-font-title);letter-spacing:-.01em;min-height:48px;padding:6px 10px;border-radius:10px}
@@ -24582,6 +24591,47 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   const _od_beam=window.openTaskDetail; if(typeof _od_beam==='function'){ window.openTaskDetail=function(id){ const r=_od_beam.apply(this,arguments); setTimeout(()=>{ try{ beamFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
 
+  /* Désignation de l'ouvrage : source unique = t.quoi (« Quoi ? » de la fiche, liste des ouvrages), recopiée dans dp.nom
+     et dans les documents générés (note, plan). */
+  function dimSetDesignation(t,dp,el){
+   const v=String(el.value||'').trim();
+   if(!v){ const prev=dp.nom||t.quoi||''; el.value=prev; if(prev){ try{clipToast('Une désignation est nécessaire : l\'ancienne est conservée.');}catch(_){ } } return; }
+   t.quoi=v; t.nom=v; dp.nom=v;
+   try{ const q=document.getElementById('e-quoi'); if(q) q.value=v; const ti=document.getElementById('e-titre'); if(ti&&!ti.querySelector('input')) ti.textContent=v; }catch(_){ }
+   try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; L.forEach(d=>{ if(d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage')){ d.nom=d.docType+' '+v; d.ouvrage=v; } }); }catch(_){ }
+   try{persist();}catch(_){ }
+   try{ if(window.pjDbRefresh) window.pjDbRefresh(); }catch(_){ }
+  }
+  /* Changement de module : le module est déterminé par le type structural de l'ouvrage (typeStructureId). Chaque module garde
+     ses propres données (t.dimPC, t.dimPT…) : rien n'est supprimé ; le nouveau module démarre avec les siennes. */
+  function dimModuleSwitch(id){
+   const t=taskById(id); if(!t) return;
+   const cur=beTypeStructureNom(t.typeStructureId), list=L_typesStructure().filter(x=>TS_DEV.has(x.nom));
+   const ov=document.createElement('div'); ov.className='dimCalcOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Changer le module de l\'ouvrage');
+   ov.innerHTML='<div class="dimCalcBox dimModBox"><b>Changer le module</b><p>Choisir le type d\'ouvrage à dimensionner.</p><div class="dimModList">'
+    +list.map(x=>'<button type="button" class="ghost'+(x.nom===cur?' on':'')+'" data-mod-type="'+esc(x.id)+'"'+(x.nom===cur?' disabled aria-current="true"':'')+'><span class="dimModIc" aria-hidden="true">'+esc(x.icone||'')+'</span><span>'+esc(x.nom)+(x.nom===cur?' (actuel)':'')+'</span></button>').join('')
+    +'</div><button type="button" class="ghost" data-mod-type="">Annuler</button></div>';
+   document.body.appendChild(ov);
+   const first=ov.querySelector('button:not([disabled])'); if(first) try{ first.focus(); }catch(_){ }
+   ov.addEventListener('keydown',e=>{ if(e.key==='Escape'){ ov.remove(); } });
+   ov.addEventListener('click',e=>{
+    if(e.target===ov){ ov.remove(); return; }
+    const b=e.target.closest('[data-mod-type]'); if(!b) return;
+    const nid=b.dataset.modType; ov.remove(); if(!nid) return;
+    const nv=list.find(x=>x.id===nid); if(!nv) return;
+    const nom=(t.quoi||'Ouvrage sans nom');
+    const msg='Changer le module de « '+nom+' » ?\n\n« '+(cur||'—')+' » → « '+nv.nom+' »\n\n• Conservés : désignation, projet, bâtiment, niveau.\n• Les données saisies dans le module actuel restent enregistrées sur l\'ouvrage mais ne sont pas reprises : le nouveau module démarre avec ses propres champs.\n• La note de calcul et le plan déjà générés seront remplacés au prochain calcul.';
+    miniAsk(msg,'Confirmer','Annuler',()=>{
+     const tk=taskById(id); if(!tk) return; tk.typeStructureId=nv.id; try{ delete (window._dimView||{})[id]; }catch(_){ }
+     try{persist();}catch(_){ } try{ if(window.pjDbRefresh) window.pjDbRefresh(); }catch(_){ }
+     try{ closeModal(); }catch(_){ } setTimeout(()=>{ try{ openTaskDetail(id); }catch(err){ console.error(err); } },60);
+     try{clipToast('Module changé : '+nv.nom+'.');}catch(_){ }
+    },()=>{});
+    try{ const m=document.getElementById('miniPromptMsg'); if(m) m.style.whiteSpace='pre-line'; }catch(_){ }
+   });
+  }
+  window.dimModuleSwitch=dimModuleSwitch;
+  document.addEventListener('click',e=>{ const b=e.target&&e.target.closest&&e.target.closest('[data-mod-switch]'); if(!b) return; e.preventDefault(); e.stopPropagation(); dimModuleSwitch(window._ficheIaId); },true);
   function beamRender(id){
    window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjBeamRoot'); const t=taskById(id); if(!wrap||!t) return;
@@ -24868,7 +24918,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcEnrobageNom(dp){ const k=PC_EXPO[dp&&dp.classeExposition]?dp.classeExposition:'XC1'; const cmin=Math.max(PC_EXPO[k],10); return {classe:k,cminDur:cmin,cnom:cmin+PC_EXPO_DEV,cnomCm:(cmin+PC_EXPO_DEV)/10}; }
   function pcEnrobageAlerte(dp){ const e=pcEnrobageNom(dp); const sai=(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3; return sai+1e-9<e.cnomCm?Object.assign({saisi:sai},e):null; }
   const pcF1=v=>String(Math.round(v*10)/10).replace('.',',');
-  function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); if(!PC_EXPO[t.dimPC.classeExposition]) t.dimPC.classeExposition='XC1'; t.dimPC.enrobageNomMin_cm=pcEnrobageNom(t.dimPC).cnomCm; if(!t.dimPC._maxStep) t.dimPC._maxStep=(t.dimPC.resultats?PC_NSTEPS:1); return t.dimPC; }
+  function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); if(t.quoi&&String(t.quoi).trim()&&t.dimPC.nom!==t.quoi) t.dimPC.nom=t.quoi; if(!PC_EXPO[t.dimPC.classeExposition]) t.dimPC.classeExposition='XC1'; t.dimPC.enrobageNomMin_cm=pcEnrobageNom(t.dimPC).cnomCm; if(!t.dimPC._maxStep) t.dimPC._maxStep=(t.dimPC.resultats?PC_NSTEPS:1); return t.dimPC; }
   function pcSyncAppuis(dp){ const need=dp.travees.length+1; while(dp.appuis.length<need) dp.appuis.push({raideur_kN_m:null,blocage_rotation:false}); while(dp.appuis.length>need) dp.appuis.pop(); }
   function pcStepValid(dp,step){
    if(step===1){ if(!dp.travees.length||dp.travees.some(tr=>!(+tr.portee_m>0))||!(+dp.b_cm>0)||!(+dp.h_cm>0)) return {ok:false,msg:'Les données de « Géométrie » n\'ont pas été saisies (travées, portées ou section manquantes).'}; return {ok:true}; }
@@ -24887,8 +24937,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return '<span class="pcDotWrap"><button type="button" class="'+cls+'" '+(dis?'disabled':'data-pc-step="'+n+'"')+' title="'+esc(nm)+(dis?' — à venir':'')+'">'+n+'</button>'
      +(showName?'<span class="pcDotName'+(cur?' cur':'')+'">'+esc(nm)+'</span>':'')+'</span>';
    }).join('');
-   return '<div class="pcModHead"><span class="pcModIco">'+illuSvg('poutre','ts-mini')+'</span><span class="pcModName">Poutre continue (RDM)'+(step>=4?' — '+esc(pcChooseEngine(dp).label):'')+'</span></div>'
-    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="grid" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+   return '<div class="pcModHead"><span class="pcModIco">'+illuSvg('poutre','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Poutre continue (RDM)'+(step>=4?' — '+esc(pcChooseEngine(dp).label):'')+'<span class="pcModCaret" aria-hidden="true">▾</span></button></div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="grid" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDots">'+dots+'</div>'
     +'<div class="pcDraw pcBeamDraw">'+pcBeamSvg(dp,step)+'</div>'
     +'<div class="pcPanel">'+pcStepHtml(step,dp,t)+'</div>'
@@ -24904,8 +24954,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=pcData(t);
    const body=[1,2,3,4].map(n=>pcStepHtml(n,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('poutre','ts-mini')+'</span><span class="pcModName">Poutre continue (RDM)</span>'+dimStatutBadgeHtml(dp)+'</div>'
-    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('poutre','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Poutre continue (RDM)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw pcBeamDraw">'+pcBeamSvg(dp,4)+'</div>'
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
@@ -26351,8 +26401,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=ptData(t);
    const body=[1,2,3,4].map(nn=>ptStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('poteau','ts-mini')+'</span><span class="pcModName">Poteau (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
-    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pt="nom" value="'+esc(dp.nom||t.nom||'Poteau')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('poteau','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Poteau (EC2)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pt="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+ptSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">Poteau — élévation et section</p>'
     +'</div>'
@@ -26955,8 +27005,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=dlData(t);
    const body=[1,2,3,4].map(nn=>dlStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('dalle','ts-mini')+'</span><span class="pcModName">Dalle (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
-    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-dl="nom" value="'+esc(dp.nom||t.nom||'Dalle')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('dalle','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Dalle (EC2)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-dl="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+dlSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">'+(dp.sens==='deux'?'Dalle — vue en plan (deux sens de portée)':'Dalle — coupe (un sens de portée, épaisseur non à l\'échelle)')+'</p>'
     +'</div>'
@@ -27331,8 +27381,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=smData(t);
    const body=[1,2,3].map(nn=>smStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('semelle','ts-mini')+'</span><span class="pcModName">Semelle (EC2/BAEL)</span>'+dimStatutBadgeHtml(dp)+'</div>'
-    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-sm="nom" value="'+esc(dp.nom||t.nom||'Semelle')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('semelle','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Semelle (EC2/BAEL)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-sm="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+smSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">'+(dp.sens!=='filante'?'Semelle isolée — vue en plan':'Semelle filante — coupe')+'</p>'
     +'</div>'
@@ -27739,8 +27789,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=puData(t);
    const body=[1,2,3].map(nn=>puStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('pieu','ts-mini')+'</span><span class="pcModName">Tête de pieux (CCBA68)</span>'+dimStatutBadgeHtml(dp)+'</div>'
-    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pu="nom" value="'+esc(dp.nom||t.nom||'Pieu')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('pieu','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Tête de pieux (CCBA68)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pu="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+puSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[dp.config||'simple']+' · vue en plan</p>'
     +'</div>'
@@ -28623,8 +28673,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    function gtFormHtml(id,t){
     const dp=gtData(t); const body=[1,2,3].map(n=>gtStepHtml(n,dp)).filter(Boolean).join('<hr class="pcFormSep">');
     const cap={menard:'Semelle — coupe (tranches de B/2, hauteur non à l\'échelle)',radier:'Radier — coupe et diffusion (hauteur non à l\'échelle)',boussinesq:'Vue en plan — semelles S et points étudiés P',pdl:'Profil de résistance dynamique de pointe',battage:'Pieu battu — schéma'}[dp.methode];
-    return '<div class="pcFormSticky"><div class="pcModHead"><span class="pcModIco">'+illuSvg('geotech','ts-mini')+'</span><span class="pcModName">Tassements &amp; géotechnique</span>'+dimStatutBadgeHtml(dp)+'</div>'
-     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-gt="nom" name="gt-nom" value="'+esc(dp.nom||t.nom||'Ouvrage')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+    return '<div class="pcFormSticky"><div class="pcModHead"><span class="pcModIco">'+illuSvg('geotech','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Tassements &amp; géotechnique<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
+     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-gt="nom" name="gt-nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
      +'<div class="pcDraw">'+gtSvg(dp)+'</div><p class="pcSchemaCap">'+cap+'</p></div>'
      +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
      +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'gt')+'</div>';
@@ -29163,7 +29213,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcChange(e,id){
    const t=taskById(id); if(!t) return; const dp=pcData(t);
    const el=e.target;
-   if(el.matches('[data-pc="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
+   if(el.matches('[data-pc="nom"]')){ dimSetDesignation(t,dp,el); return; }
    if(el.matches('[data-pc="classeGlobale"]')){ dp.classeGlobale=el.value; beamRender(id); return; }
    if(el.matches('[data-pc="termeGlobal"]')){ dp.termeGlobal=el.value; beamRender(id); return; }
    if(el.matches('[data-pc="classeAcier"]')){ dp.classeAcier=el.value; beamRender(id); return; }
