@@ -22328,7 +22328,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v523';
+  const VER='v524';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -25099,6 +25099,21 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      chapeaux sur appuis, cadres indiqués par des traits verticaux — pièce graphique séparée de la
      note de calcul, à la demande explicite de l'utilisateur (« on sépare note de calcul et plan de
      ferraillage, comme dans l'usage classique »). */
+  const PC_BARDIAMS=[8,10,12,14,16,20,25,32];
+  function pcBarArea(phi){ return Math.PI/4*phi*phi; } // mm²
+  function pcChooseBar(AsReq_cm2){
+   const AsReq_mm2=Math.max(0,AsReq_cm2)*100; let best=null;
+   for(const phi of PC_BARDIAMS){ const a=pcBarArea(phi); const n=Math.max(2,Math.ceil(AsReq_mm2/a));
+    if(n>=2&&n<=8){ const cand={phi,n,As:n*a/100}; if(!best||cand.As<best.As) best=cand; } }
+   if(!best){ const phi=PC_BARDIAMS[PC_BARDIAMS.length-1]; const n=Math.min(10,Math.max(2,Math.ceil(AsReq_mm2/pcBarArea(phi)))); best={phi,n,As:n*pcBarArea(phi)/100}; }
+   return best; // {phi mm, n, As cm²}
+  }
+  function pcChooseCadre(AswS_cm2_m,b_cm){
+   const phi=b_cm>35?10:8; const aswUn_cm2=2*Math.PI/4*(phi/10)*(phi/10);
+   let s_cm=aswUn_cm2*100/Math.max(AswS_cm2_m,0.01);
+   s_cm=Math.max(7.5,Math.min(30,Math.floor(s_cm/2.5)*2.5));
+   return {phi,s_mm:Math.round(s_cm*10)};
+  }
   function pcPlanFerraillageSvg(dp,res){
    const fr=res.ferraillage; if(!fr) return '<p class="pcNote">Ferraillage non calculé.</p>';
    const portees=dp.travees.map(tr=>Math.max(0.5,+tr.portee_m||0)); const n=portees.length;
@@ -25107,40 +25122,64 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const nodeX=[]; let acc=0; for(let i=0;i<=n;i++){ nodeX.push(M+acc*scale); if(i<n) acc+=portees[i]; }
    const asTxt=f=>f.As==null?'insuff.':f.As.toFixed(2)+' cm²';
    let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, Arial, sans-serif">';
-   svg+='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#fff"/>';
-   // fibre neutre / contour de la poutre
-   svg+='<rect x="'+M+'" y="'+by+'" width="'+(W-2*M)+'" height="'+bh+'" fill="none" stroke="#37352F" stroke-width="1.5"/>';
-   // appuis (triangles) + chapeaux sur appuis
+   // contour de la poutre (béton, trait fort)
+   svg+='<rect x="'+M+'" y="'+by+'" width="'+(W-2*M)+'" height="'+bh+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2.4"/>';
+   // appuis (triangles) + chapeaux sur appuis (aciers supérieurs, jaune plein)
    nodeX.forEach((x,i)=>{
-    svg+='<polygon points="'+(x-9)+','+(by+bh+14)+' '+(x+9)+','+(by+bh+14)+' '+x+','+(by+bh)+'" fill="none" stroke="#37352F" stroke-width="1.3"/>';
+    svg+='<polygon points="'+(x-9)+','+(by+bh+14)+' '+(x+9)+','+(by+bh+14)+' '+x+','+(by+bh)+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="1.6"/>';
     const ap=fr.appuis[i]; const half=14+Math.min(portees[i-1]||portees[0]||1,portees[i]||portees[n-1]||1)*scale*0.16;
-    svg+='<line x1="'+(x-half)+'" y1="'+(by+5)+'" x2="'+(x+half)+'" y2="'+(by+5)+'" stroke="#C0392B" stroke-width="3"/>';
-    svg+='<text x="'+x+'" y="'+(by-8)+'" text-anchor="middle" font-size="10.5" fill="#C0392B">'+esc(asTxt(ap.ferrSup))+'</text>';
-    svg+='<text x="'+x+'" y="'+(by+bh+28)+'" text-anchor="middle" font-size="10" fill="#6b6b6b">Appui '+i+'</text>';
+    svg+='<line x1="'+(x-half)+'" y1="'+(by+5)+'" x2="'+(x+half)+'" y2="'+(by+5)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="2"/>';
+    svg+='<text x="'+x+'" y="'+(by-8)+'" text-anchor="middle" font-size="10.5" fill="var(--ds-ink,#37352F)">'+esc(asTxt(ap.ferrSup))+'</text>';
+    svg+='<text x="'+x+'" y="'+(by+bh+28)+'" text-anchor="middle" font-size="10" fill="var(--ds-ink-soft,#6b6b6b)">Appui '+i+'</text>';
    });
-   // lits inférieurs en travée + cadres (traits verticaux) + repères de portée
+   // lits inférieurs en travée (jaune plein) + cadres (jaune tireté) + repères de portée
    for(let e=0;e<n;e++){
     const x0=nodeX[e]+16, x1=nodeX[e+1]-16;
-    svg+='<line x1="'+x0+'" y1="'+(by+bh-5)+'" x2="'+x1+'" y2="'+(by+bh-5)+'" stroke="#1F6FEB" stroke-width="3"/>';
-    svg+='<text x="'+((x0+x1)/2)+'" y="'+(by+bh+14)+'" text-anchor="middle" font-size="10.5" fill="#1F6FEB">'+esc(asTxt(fr.travees[e].ferrInf))+'</text>';
+    svg+='<line x1="'+x0+'" y1="'+(by+bh-5)+'" x2="'+x1+'" y2="'+(by+bh-5)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="2"/>';
+    svg+='<text x="'+((x0+x1)/2)+'" y="'+(by+bh+14)+'" text-anchor="middle" font-size="10.5" fill="var(--ds-ink,#37352F)">'+esc(asTxt(fr.travees[e].ferrInf))+'</text>';
     const nCad=Math.max(4,Math.round((x1-x0)/26));
-    for(let k=0;k<=nCad;k++){ const xc=x0+(x1-x0)*k/nCad; svg+='<line x1="'+xc+'" y1="'+by+'" x2="'+xc+'" y2="'+(by+bh)+'" stroke="#37352F" stroke-width="0.8" opacity="0.55"/>'; }
+    for(let k=0;k<=nCad;k++){ const xc=x0+(x1-x0)*k/nCad; svg+='<line x1="'+xc+'" y1="'+by+'" x2="'+xc+'" y2="'+(by+bh)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1" stroke-dasharray="3 2" opacity="0.85"/>'; }
     const cad=fr.cadres[e];
-    svg+='<text x="'+((x0+x1)/2)+'" y="'+(by+bh+42)+'" text-anchor="middle" font-size="9.5" fill="#6b6b6b">cadres : A_sw/s = '+cad.AswS.toFixed(2)+' cm²/m'+(cad.besoin?'':' (mini)')+'</text>';
-    svg+='<text x="'+((nodeX[e]+nodeX[e+1])/2)+'" y="'+(by-24)+'" text-anchor="middle" font-size="10" fill="#37352F">Travée '+(e+1)+' — '+portees[e].toFixed(2)+' m</text>';
+    svg+='<text x="'+((x0+x1)/2)+'" y="'+(by+bh+42)+'" text-anchor="middle" font-size="9.5" fill="var(--ds-ink-soft,#6b6b6b)">cadres : A_sw/s = '+cad.AswS.toFixed(2)+' cm²/m'+(cad.besoin?'':' (mini)')+'</text>';
+    svg+='<text x="'+((nodeX[e]+nodeX[e+1])/2)+'" y="'+(by-24)+'" text-anchor="middle" font-size="10" fill="var(--ds-ink,#37352F)">Travée '+(e+1)+' — '+portees[e].toFixed(2)+' m</text>';
    }
    svg+='</svg>';
-   return '<div class="pcPFsvg">'+svg
-    +'<p class="pcNote" style="margin-top:6px">Lits inférieurs (bleu) en travée, chapeaux (rouge) sur appuis — sections d\'acier A_s indiquées à titre indicatif. A_s,min = '+fr.AsMin.toFixed(2)+' cm². Cadres schématiques (espacement réel à définir par le dessinateur).</p></div>';
+   return '<div class="pcDraw">'+svg+'</div>'
+    +'<p class="pcSchemaCap">Lits inférieurs et chapeaux en jaune plein (longitudinaux), cadres en jaune tireté — sections d\'acier A_s indiquées à titre indicatif. A_s,min = '+fr.AsMin.toFixed(2)+' cm². Espacement réel des cadres à confirmer par le dessinateur.</p>';
+  }
+  function pcPlanFerraillageNomenclature(dp,res){
+   const fr=res.ferraillage; if(!fr) return '';
+   const d_cm=(fr.materiaux&&fr.materiaux.d*100)||((+dp.h_cm||50)-(+dp.enrobage_cm||3)-1);
+   const rows=[];
+   fr.travees.forEach((tr,e)=>{ const As=tr.ferrInf&&tr.ferrInf.As; const Lm=(dp.travees[e].portee_m*1.1);
+    if(As==null){ rows.push({rep:'Li'+(e+1),desi:'Lit inférieur travée '+(e+1)+' — ⚠ section insuffisante',nb:'—',as:'—',long:'—',facon:'—',poids:0}); return; }
+    const b=pcChooseBar(As); const poids=b.n*Lm*b.phi*b.phi/162;
+    rows.push({rep:'Li'+(e+1),desi:'Lit inférieur travée '+(e+1),nb:b.n+'×Ø'+b.phi,as:b.As.toFixed(2)+' / '+As.toFixed(2)+' cm²',long:Lm.toFixed(2)+' m',facon:'Droit',poids}); });
+   fr.appuis.forEach((ap,i)=>{ const As=ap.ferrSup&&ap.ferrSup.As;
+    if(As==null){ rows.push({rep:'Ch'+i,desi:'Chapeau appui '+i+' — ⚠ section insuffisante',nb:'—',as:'—',long:'—',facon:'—',poids:0}); return; }
+    const gauche=dp.travees[i-1]?dp.travees[i-1].portee_m:(dp.travees[0]?dp.travees[0].portee_m:1);
+    const droite=dp.travees[i]?dp.travees[i].portee_m:(dp.travees[dp.travees.length-1]?dp.travees[dp.travees.length-1].portee_m:1);
+    const Lm=(gauche+droite)/3; const b=pcChooseBar(As); const poids=b.n*Lm*b.phi*b.phi/162;
+    rows.push({rep:'Ch'+i,desi:'Chapeau appui '+i,nb:b.n+'×Ø'+b.phi,as:b.As.toFixed(2)+' / '+As.toFixed(2)+' cm²',long:Lm.toFixed(2)+' m',facon:'Équerre',poids}); });
+   const b_cm=+dp.b_cm||20, h_cm=+dp.h_cm||50;
+   fr.cadres.forEach((c,e)=>{ const ch=pcChooseCadre(c.AswS,b_cm); const Lm=dp.travees[e].portee_m;
+    const nb=Math.max(2,Math.round((Lm*1000)/ch.s_mm)); const perim_m=2*((b_cm-6)+(h_cm-6))/100; const poids=nb*perim_m*ch.phi*ch.phi/162;
+    rows.push({rep:'Ca'+(e+1),desi:'Cadres travée '+(e+1),nb:nb+'×Ø'+ch.phi+' (e='+ch.s_mm+' mm)',as:'—',long:perim_m.toFixed(2)+' m/u',facon:'Cadre',poids}); });
+   const poidsTotal=rows.reduce((a,r)=>a+(r.poids||0),0);
+   return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb×Ø</th><th>A_s réel / requis</th><th>Longueur</th><th>Façonnage</th><th>Poids</th></tr>'
+    +rows.map(r=>'<tr><td>'+r.rep+'</td><td>'+esc(r.desi)+'</td><td>'+r.nb+'</td><td>'+r.as+'</td><td>'+r.long+'</td><td>'+r.facon+'</td><td>'+(r.poids?r.poids.toFixed(1)+' kg':'—')+'</td></tr>').join('')
+    +'<tr><td colspan="6" style="text-align:right"><b>Poids total</b></td><td><b>'+poidsTotal.toFixed(1)+' kg</b></td></tr>'
+    +'<tr><td colspan="7" style="font-size:11.5px;opacity:.75">Enrobage = '+(dp.enrobage_cm||3)+' cm · l_bd ≈ 40Ø (forfaitaire, à vérifier EC2 §8.4) · espacement cadres indiqué ci-dessus (à confirmer ≤ 0,75d = '+(d_cm*0.75).toFixed(1)+' cm) · coefficient par défaut cotθ = 2.</td></tr></table>';
   }
   /* Crée (ou met à jour) le document « Plan de ferraillage <ouvrage> » — pièce graphique, séparée de
      la note de calcul (pièce écrite), comme dans l'usage classique d'un bureau d'études. */
   function pcCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res||!res.ferraillage) return null;
-   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Poutre')+'</h3>'
+   const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Poutre')+'</h3>'
     +'<p class="pcNote">Module '+esc(res._engineLabel||'Poutre continue')+' · '+todayStr()+'</p>'
     +pcPlanFerraillageSvg(dp,res)
-    +'<p class="pcNote">⚠ Schéma généré automatiquement (ferraillage EC2 simplifié). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (enrobages, recouvrements, ancrages, réservations non représentés).</p></div>';
+    +pcPlanFerraillageNomenclature(dp,res)
+    +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (ferraillage EC2 simplifié). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, ancrages, réservations non représentés).</p></div>';
    const nom='Plan de ferraillage '+(dp.nom||t.nom||'Poutre');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
@@ -25727,12 +25766,25 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const rw=g.b*sk, rh=g.h*sk, rx=(W-rw)/2, ry=(H-rh)/2; const r=Math.max(3,Math.min(6,rw/14));
    const nFace=res.barFace.n; const pts=[];
    for(let i=0;i<nFace;i++){ const t2=nFace>1?i/(nFace-1):0.5; pts.push([rx+6+t2*(rw-12), ry+6]); pts.push([rx+6+t2*(rw-12), ry+rh-6]); }
-   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="220" class="pcSvg">'
-    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>'
-    +'<rect x="'+(rx+4)+'" y="'+(ry+4)+'" width="'+(rw-8)+'" height="'+(rh-8)+'" fill="none" stroke="var(--rust,#c0392b)" stroke-width="1.2" stroke-dasharray="4 3"/>'
-    +pts.map(p=>'<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+r+'" fill="var(--rust,#c0392b)"/>').join('')
-    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">'+(nFace*2)+' Φ'+res.barFace.phi+' + cadres Φ'+res.phiCadre+'</text>'
+   const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="220" class="pcSvg">'
+    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2.4"/>'
+    +'<rect x="'+(rx+4)+'" y="'+(ry+4)+'" width="'+(rw-8)+'" height="'+(rh-8)+'" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="1.4" stroke-dasharray="4 3"/>'
+    +pts.map(p=>'<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+r+'" fill="var(--ds-accent,#FFC400)"/>').join('')
+    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="10" text-anchor="middle" fill="var(--ds-ink-soft,#999)">'+(nFace*2)+' Φ'+res.barFace.phi+' + cadres Φ'+res.phiCadre+'</text>'
     +'</svg>';
+   return '<div class="pcDraw">'+svg+'</div>'
+    +'<p class="pcSchemaCap">Barres longitudinales en jaune plein, cadre en jaune tireté, contour béton en trait fort — coupe courante, hors zones de recouvrement.</p>';
+  }
+  function ptPlanFerraillageNomenclature(dp,res){
+   const n2=res.barFace.n*2;
+   const poidsLong=(n2*(+dp.L_m||3)*res.barFace.phi*res.barFace.phi/162);
+   const sCourant_m=res.sCourant_mm/1000, nCad=Math.max(2,Math.round((+dp.L_m||3)/sCourant_m));
+   const perim_cm=2*(((+dp.b_cm||30)-6)+((+dp.h_cm||30)-6)); const poidsCad=(nCad*(perim_cm/100)*res.phiCadre*res.phiCadre/162);
+   return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb×Ø</th><th>A_s réel / requis</th><th>Longueur</th><th>Façonnage</th><th>Poids</th></tr>'
+    +'<tr><td>Lo1</td><td>Aciers longitudinaux</td><td>'+n2+'×Ø'+res.barFace.phi+'</td><td>'+res.AsReelle_cm2.toFixed(2)+' / '+(res.inter&&res.inter.As!=null?(res.inter.As/100).toFixed(2):'—')+' cm²</td><td>'+(+dp.L_m||3).toFixed(2)+' m</td><td>Droit</td><td>'+poidsLong.toFixed(1)+' kg</td></tr>'
+    +'<tr><td>Ca1</td><td>Cadres (e='+(res.sCourant_mm/10).toFixed(1)+' cm courant, '+(res.sExtrem_mm/10).toFixed(1)+' cm en tête/pied)</td><td>'+nCad+'×Ø'+res.phiCadre+'</td><td>—</td><td>'+(perim_cm/100).toFixed(2)+' m/u</td><td>Cadre</td><td>'+poidsCad.toFixed(1)+' kg</td></tr>'
+    +'<tr><td colspan="6" style="text-align:right"><b>Poids total</b></td><td><b>'+(poidsLong+poidsCad).toFixed(1)+' kg</b></td></tr>'
+    +'<tr><td colspan="7" style="font-size:11.5px;opacity:.75">Enrobage = '+(dp.enrobage_cm||3)+' cm · recouvrement l_0 ≈ '+(res.lb_mm/10).toFixed(0)+' cm (α6=1,5) · espacement cadres courant/extrémité ci-dessus · coefficients par défaut φ_ef=2, K_r=1, A=0,7, B=1,1.</td></tr></table>';
   }
   function ptCreerNoteCalcul(t,dp){
    const html=ptNoteCalculHtml(t,dp,dp.resultats);
@@ -25746,9 +25798,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function ptCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
-   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Poteau')+'</h3>'
+   const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Poteau')+'</h3>'
     +'<p class="pcNote">Coupe courante · '+todayStr()+'</p>'+ptPlanFerraillageSvg(dp,res)
-    +'<p class="pcNote">⚠ Schéma généré automatiquement (coupe courante, méthode EC2 simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (élévation, recouvrements, zones de renfort tête/pied non représentés).</p></div>';
+    +ptPlanFerraillageNomenclature(dp,res)
+    +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (coupe courante, méthode EC2 simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (élévation, zones de renfort tête/pied non représentées).</p></div>';
    const nom='Plan de ferraillage '+(dp.nom||t.nom||'Poteau');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
@@ -26178,12 +26231,25 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const sk=Math.min((W-60)/Math.max(lx,1),(H-60)/Math.max(ly,1));
    const rw=lx*sk, rh=ly*sk, rx=(W-rw)/2, ry=(H-rh)/2;
    const nb=Math.max(2,Math.round(rw/14)); const lines=[];
-   for(let i=0;i<=nb;i++){ const x=rx+i*(rw/nb); lines.push('<line x1="'+x+'" y1="'+ry+'" x2="'+x+'" y2="'+(ry+rh)+'" stroke="var(--rust,#c0392b)" stroke-width="0.9"/>'); }
-   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
-    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint,#2e6ea6)" stroke-width="2"/>'
+   for(let i=0;i<=nb;i++){ const x=rx+i*(rw/nb); lines.push('<line x1="'+x+'" y1="'+ry+'" x2="'+x+'" y2="'+(ry+rh)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1.1"/>'); }
+   const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
+    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2.4"/>'
     +lines.join('')
-    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="10" text-anchor="middle" fill="var(--ink-soft,#999)">Travée lx : Φ'+res.barTravX.phi+' e='+res.barTravX.s+'mm</text>'
+    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="10" text-anchor="middle" fill="var(--ds-ink-soft,#999)">Travée lx : Φ'+res.barTravX.phi+' e='+res.barTravX.s+'mm</text>'
     +'</svg>';
+   return '<div class="pcDraw">'+svg+'</div>'
+    +'<p class="pcSchemaCap">Nappe inférieure sens lx en jaune plein — vue en plan, travée courante (chapeaux d\'appuis non représentés sur ce schéma).</p>';
+  }
+  function dlPlanFerraillageNomenclature(dp,res){
+   const poidsLin=(phi,s_mm,L_m)=>{ const nb=Math.max(1,Math.round(1000/s_mm)); return nb*L_m*phi*phi/162; };
+   const rows=[];
+   if(res.barTravX) rows.push(['Tx1','Nappe inférieure travée, sens lx','Φ'+res.barTravX.phi+' e='+res.barTravX.s+'mm',(res.barTravX.As/100).toFixed(2)+' / '+res.AsTravX_cm2.toFixed(2)+' cm²/m',res.lx.toFixed(2)+' m','Droit',poidsLin(res.barTravX.phi,res.barTravX.s,res.lx).toFixed(1)+' kg/m²']);
+   if(res.sensDeux&&res.barTravY) rows.push(['Ty1','Nappe inférieure travée, sens ly','Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm',(res.barTravY.As/100).toFixed(2)+' / '+res.AsTravY_cm2.toFixed(2)+' cm²/m',res.ly.toFixed(2)+' m','Droit',poidsLin(res.barTravY.phi,res.barTravY.s,res.ly).toFixed(1)+' kg/m²']);
+   if(res.barAppW) rows.push(['Aw1','Chapeau appui ouest','Φ'+res.barAppW.phi+' e='+res.barAppW.s+'mm',(res.barAppW.As/100).toFixed(2)+' cm²/m','l/4 (forfaitaire)','Équerre','—']);
+   if(res.barAppE) rows.push(['Ae1','Chapeau appui est','Φ'+res.barAppE.phi+' e='+res.barAppE.s+'mm',(res.barAppE.As/100).toFixed(2)+' cm²/m','l/4 (forfaitaire)','Équerre','—']);
+   return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb×Ø</th><th>A_s réel / requis</th><th>Longueur</th><th>Façonnage</th><th>Poids</th></tr>'
+    +rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td><td>'+r[6]+'</td></tr>').join('')
+    +'<tr><td colspan="7" style="font-size:11.5px;opacity:.75">Enrobage = '+(dp.enrobage_cm||3)+' cm · espacements indiqués ci-dessus (à confirmer ≤ 1,5·h) · poinçonnement β=1,15 forfaitaire si applicable · coefficient de flèche K='+(res.K||'—')+'.</td></tr></table>';
   }
   function dlCreerNoteCalcul(t,dp){
    const html=dlNoteCalculHtml(t,dp,dp.resultats);
@@ -26197,9 +26263,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function dlCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
-   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Dalle')+'</h3>'
+   const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Dalle')+'</h3>'
     +'<p class="pcNote">Vue en plan (travée courante) · '+todayStr()+'</p>'+dlPlanFerraillageSvg(dp,res)
-    +'<p class="pcNote">⚠ Schéma généré automatiquement (méthode EC2/BAEL simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (chapeaux d\'appuis, recouvrements, zones de renfort au poinçonnement non représentés).</p></div>';
+    +dlPlanFerraillageNomenclature(dp,res)
+    +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (méthode EC2/BAEL simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, zones de renfort au poinçonnement non représentées).</p></div>';
    const nom='Plan de ferraillage '+(dp.nom||t.nom||'Dalle');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
@@ -26547,20 +26614,37 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const rw=res.B*sk, rh=res.A*sk, rx=(W-rw)/2, ry=(H-rh)/2;
     const nx=Math.max(2,res.barX.n), ny=Math.max(2,res.barY.n);
     let lines='';
-    for(let i=0;i<=nx;i++){ const x=rx+i*(rw/nx); lines+='<line x1="'+x+'" y1="'+ry+'" x2="'+x+'" y2="'+(ry+rh)+'" stroke="var(--rust,#c0392b)" stroke-width="0.8"/>'; }
-    for(let i=0;i<=ny;i++){ const y=ry+i*(rh/ny); lines+='<line x1="'+rx+'" y1="'+y+'" x2="'+(rx+rw)+'" y2="'+y+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="0.8"/>'; }
-    return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
-     +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="2"/>'+lines
-     +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ink-soft,#999)">'+res.barX.n+'Φ'+res.barX.phi+' //b · '+res.barY.n+'Φ'+res.barY.phi+' //a</text>'
+    for(let i=0;i<=nx;i++){ const x=rx+i*(rw/nx); lines+='<line x1="'+x+'" y1="'+ry+'" x2="'+x+'" y2="'+(ry+rh)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1"/>'; }
+    for(let i=0;i<=ny;i++){ const y=ry+i*(rh/ny); lines+='<line x1="'+rx+'" y1="'+y+'" x2="'+(rx+rw)+'" y2="'+y+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1" stroke-dasharray="3 2"/>'; }
+    const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
+     +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2.4"/>'+lines
+     +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ds-ink-soft,#999)">'+res.barX.n+'Φ'+res.barX.phi+' //b · '+res.barY.n+'Φ'+res.barY.phi+' //a</text>'
      +'</svg>';
+    return '<div class="pcDraw">'+svg+'</div>'
+     +'<p class="pcSchemaCap">Deux nappes croisées en jaune — nappe //b pleine, nappe //a tiretée, vue en plan (attentes du poteau non représentées).</p>';
    }
    const rw=160, rh=40, rx=(W-rw)/2, ry=H/2-rh/2;
-   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
-    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="2"/>'
-    +'<line x1="'+rx+'" y1="'+(ry+8)+'" x2="'+(rx+rw)+'" y2="'+(ry+8)+'" stroke="var(--blueprint,#2e6ea6)" stroke-width="1.2"/>'
-    +'<line x1="'+rx+'" y1="'+(ry+rh-8)+'" x2="'+(rx+rw)+'" y2="'+(ry+rh-8)+'" stroke="var(--rust,#c0392b)" stroke-width="1.2"/>'
-    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ink-soft,#999)">Φ'+(res.barAy?res.barAy.phi:res.barAx.phi)+' (coupe, semelle filante)</text>'
+   const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
+    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2.4"/>'
+    +'<line x1="'+rx+'" y1="'+(ry+8)+'" x2="'+(rx+rw)+'" y2="'+(ry+8)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6" stroke-dasharray="4 3"/>'
+    +'<line x1="'+rx+'" y1="'+(ry+rh-8)+'" x2="'+(rx+rw)+'" y2="'+(ry+rh-8)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6"/>'
+    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ds-ink-soft,#999)">Φ'+(res.barAy?res.barAy.phi:res.barAx.phi)+' (coupe, semelle filante)</text>'
     +'</svg>';
+   return '<div class="pcDraw">'+svg+'</div>'
+    +'<p class="pcSchemaCap">Nappe supérieure (jaune tireté) et nappe inférieure/chaînage (jaune plein) — coupe transversale, semelle filante.</p>';
+  }
+  function smPlanFerraillageNomenclature(dp,res){
+   const rows=[];
+   if(res.isolee){
+    if(res.barX) rows.push(['Nx1','Nappe inférieure //b','Ø'+res.barX.phi+' × '+res.barX.n,(res.barX.As/100).toFixed(2)+' / '+res.Ax_cm2.toFixed(2)+' cm²',(+res.A||0).toFixed(2)+' m','Droit',(res.barX.n*(+res.A||0)*res.barX.phi*res.barX.phi/162).toFixed(1)+' kg']);
+    if(res.barY) rows.push(['Ny1','Nappe supérieure //a','Ø'+res.barY.phi+' × '+res.barY.n,(res.barY.As/100).toFixed(2)+' / '+res.Ay_cm2.toFixed(2)+' cm²',(+res.B||0).toFixed(2)+' m','Droit',(res.barY.n*(+res.B||0)*res.barY.phi*res.barY.phi/162).toFixed(1)+' kg']);
+   } else {
+    if(!res.petite&&res.barAy) rows.push(['Ay1','Nappe supérieure','Ø'+res.barAy.phi+' e='+res.barAy.s+'mm',res.Ay_cm2.toFixed(2)+' cm²/ml','filant','Droit','—']);
+    if(res.barAx) rows.push(['Ax1','Nappe inférieure / chaînage','Ø'+res.barAx.phi+' e='+res.barAx.s+'mm',res.Ax_cm2.toFixed(2)+' cm²/ml','filant','Droit','—']);
+   }
+   return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb×Ø</th><th>A_s réel / requis</th><th>Longueur</th><th>Façonnage</th><th>Poids</th></tr>'
+    +rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td><td>'+r[6]+'</td></tr>').join('')
+    +'<tr><td colspan="7" style="font-size:11.5px;opacity:.75">Enrobage = '+(dp.enrobage_cm||3)+' cm (majoré, contact sol/béton de propreté) · ancrage à vérifier (droit si longueur disponible suffisante, sinon crochets à 90°) · recouvrement avec attentes du poteau à prévoir.</td></tr></table>';
   }
   function smCreerNoteCalcul(t,dp){
    const html=smNoteCalculHtml(t,dp,dp.resultats);
@@ -26574,9 +26658,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function smCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
-   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Semelle')+'</h3>'
+   const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Semelle')+'</h3>'
     +'<p class="pcNote">Vue en plan · '+todayStr()+'</p>'+smPlanFerraillageSvg(dp,res)
-    +'<p class="pcNote">⚠ Schéma généré automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, attentes de poteau non représentées).</p></div>';
+    +smPlanFerraillageNomenclature(dp,res)
+    +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, attentes de poteau non représentées).</p></div>';
    const nom='Plan de ferraillage '+(dp.nom||t.nom||'Semelle');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
@@ -26940,16 +27025,39 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function puPlanFerraillageSvg(dp,res){
    const W=220,H=190,cx=W/2,cy=H/2-10;
    const sk=0.5, aPrime=(res.aPrime||res.F*2.5)*sk, r=Math.max(10,(res.F||50)*sk*0.5);
-   let piles='';
-   const addPile=(x,y)=>{ piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="none" stroke="var(--blueprint-dark,#8a8a8a)" stroke-width="1.6"/>'; };
-   if(res.config==='simple') addPile(cx,cy);
-   else if(res.config==='double'){ addPile(cx,cy-aPrime/2); addPile(cx,cy+aPrime/2); }
-   else if(res.config==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; addPile(cx+R*Math.cos(ang),cy+R*Math.sin(ang)); } }
-   else { addPile(cx-aPrime/2,cy-aPrime/2); addPile(cx+aPrime/2,cy-aPrime/2); addPile(cx-aPrime/2,cy+aPrime/2); addPile(cx+aPrime/2,cy+aPrime/2); }
+   let piles='', ties=''; const pos=[];
+   const addPile=(x,y)=>{ pos.push([x,y]); piles+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2"/>'; };
+   if(res.config==='simple'){ addPile(cx,cy); }
+   else if(res.config==='double'){ addPile(cx,cy-aPrime/2); addPile(cx,cy+aPrime/2);
+    ties+='<line x1="'+cx+'" y1="'+(cy-aPrime/2)+'" x2="'+cx+'" y2="'+(cy+aPrime/2)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="2"/>'; }
+   else if(res.config==='triple'){ const R=aPrime/Math.sqrt(3); for(let k=0;k<3;k++){ const ang=-Math.PI/2+k*2*Math.PI/3; addPile(cx+R*Math.cos(ang),cy+R*Math.sin(ang)); }
+    ties+='<polygon points="'+pos.map(p=>p[0]+','+p[1]).join(' ')+'" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="2"/>'; }
+   else { addPile(cx-aPrime/2,cy-aPrime/2); addPile(cx+aPrime/2,cy-aPrime/2); addPile(cx-aPrime/2,cy+aPrime/2); addPile(cx+aPrime/2,cy+aPrime/2);
+    ties+='<polygon points="'+[pos[0],pos[1],pos[3],pos[2]].map(p=>p[0]+','+p[1]).join(' ')+'" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="2"/>'
+     +'<line x1="'+pos[0][0]+'" y1="'+pos[0][1]+'" x2="'+pos[3][0]+'" y2="'+pos[3][1]+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1" stroke-dasharray="3 2"/>'
+     +'<line x1="'+pos[1][0]+'" y1="'+pos[1][1]+'" x2="'+pos[2][0]+'" y2="'+pos[2][1]+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1" stroke-dasharray="3 2"/>'; }
    const barLbl=res.config==='simple'?(res.barInf.n+'Φ'+res.barInf.phi):(res.barAi?(res.barAi.n+'Φ'+res.barAi.phi):(res.barCerces.n+'Φ'+res.barCerces.phi));
-   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'+piles
-    +'<text x="'+cx+'" y="'+(cy+aPrime/2+30)+'" font-size="9.5" text-anchor="middle" fill="var(--ink-soft,#999)">'+esc(barLbl)+' (ferraillage de la semelle sur pieux)</text>'
+   const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'+ties+piles
+    +'<text x="'+cx+'" y="'+(cy+aPrime/2+30)+'" font-size="9.5" text-anchor="middle" fill="var(--ds-ink-soft,#999)">'+esc(barLbl)+' (ferraillage de la tête de pieux)</text>'
     +'</svg>';
+   return '<div class="pcDraw">'+svg+'</div>'
+    +'<p class="pcSchemaCap">Contour des pieux en trait fort (béton), bielles/tirants en jaune — schéma de principe, hors armatures de répartition et recouvrements.</p>';
+  }
+  function puPlanFerraillageNomenclature(dp,res){
+   const rows=[];
+   if(res.config==='simple'){
+    if(res.barInf) rows.push(['Ai1','Nappe inférieure (semelle)','Ø'+res.barInf.phi+' × '+res.barInf.n,(res.barInf.As/100).toFixed(2)+' / '+res.Ainf.toFixed(2)+' cm²','—','Droit','—']);
+    if(res.barSup) rows.push(['As1','Nappe supérieure (semelle)','Ø'+res.barSup.phi+' × '+res.barSup.n,(res.barSup.As/100).toFixed(2)+' / '+res.Asup.toFixed(2)+' cm²','—','Droit','—']);
+   } else if(res.config==='double'){
+    if(res.barAi) rows.push(['Ti1','Tirant inférieur (bielles-tirant)','Ø'+res.barAi.phi+' × '+res.barAi.n,(res.barAi.As/100).toFixed(2)+' / '+res.Ai.toFixed(2)+' cm²','—','Droit','—']);
+    if(res.barAs) rows.push(['As1','Nappe supérieure','Ø'+res.barAs.phi+' × '+res.barAs.n,(res.barAs.As/100).toFixed(2)+' / '+res.As.toFixed(2)+' cm²','—','Droit','—']);
+   } else {
+    if(res.barCerces) rows.push(['Ce1','Cerces (tirant périphérique)'+(res.approche?' ⚠ par analogie — à revérifier (4 pieux)':''),'Ø'+res.barCerces.phi+' × '+res.barCerces.n,(res.barCerces.As/100).toFixed(2)+' / '+res.AacTotal.toFixed(2)+' cm²','—','Cerce','—']);
+    if(res.barQuad) rows.push(['Qu1','Quadrillage complémentaire','Ø'+res.barQuad.phi+' × '+res.barQuad.n,(res.barQuad.As/100).toFixed(2)+' / '+(res.quadrillageMin||0).toFixed(2)+' cm²','—','Grille','—']);
+   }
+   return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb×Ø</th><th>A_s réel / requis</th><th>Longueur</th><th>Façonnage</th><th>Poids</th></tr>'
+    +rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td><td>'+r[6]+'</td></tr>').join('')
+    +'<tr><td colspan="7" style="font-size:11.5px;opacity:.75">Angle de bielle plafonné à 55° · coefficient limSigma selon nombre de pieux (0,6 / 0,75 / 0,9 pour 2 / 3 / 4 pieux) · cas 4 pieux : ferraillage par analogie non validée, à recalculer intégralement.</td></tr></table>';
   }
   function puCreerNoteCalcul(t,dp){
    const html=puNoteCalculHtml(t,dp,dp.resultats);
@@ -26963,9 +27071,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function puCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
-   const html='<div class="pcNC"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Pieu')+'</h3>'
+   const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Pieu')+'</h3>'
     +'<p class="pcNote">Vue en plan · '+todayStr()+'</p>'+puPlanFerraillageSvg(dp,res)
-    +'<p class="pcNote">⚠ Schéma généré automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution.</p></div>';
+    +puPlanFerraillageNomenclature(dp,res)
+    +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution.</p></div>';
    const nom='Plan de ferraillage '+(dp.nom||t.nom||'Pieu');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
