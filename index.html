@@ -24444,10 +24444,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      K.push({v:ncF(res.NEd_kN,0)+' kN',l:'Effort normal N_Ed'});
      fer=(res.barFace.n*2)+' Φ'+res.barFace.phi;
     } else if(kind==='dalle'){
-     if(res.fleche) K.push({v:ncF(res.fleche.ldReel,1)+(res.fleche.ok?' ≤ ':' > ')+ncF(res.fleche.ratio,1),l:'l/d réel / l/d limite (flèche)',bad:!res.fleche.ok});
-     if(res.barTravX) K.push({v:'Φ'+res.barTravX.phi+' e='+res.barTravX.s,l:'Travée x · '+ncF(res.barTravX.As/100)+' cm²/m',bad:!!res.depasseX});
+     if(res.fleche&&!res.fleche.nonCalculee) K.push({v:ncF(res.fleche.ldReel,1)+(res.fleche.ok?' ≤ ':' > ')+ncF(res.fleche.ratio,1),l:'l/d réel / l/d limite (flèche)',bad:!res.fleche.ok});
+     if(res.insuffisant) K.push({v:'h ≥ '+res.hMinCm+' cm',l:'Épaisseur insuffisante (K > K\'= 0,21) : ferraillage non calculé',bad:true});
+     else if(res.barTravX) K.push({v:'Φ'+res.barTravX.phi+' e='+res.barTravX.s,l:'Travée x · '+ncF(res.barTravX.As/100)+' cm²/m',bad:!!res.depasseX});
      if(res.poincon) K.push({v:ncF(res.poincon.vEd1/res.poincon.vRdc*100,0)+' %',l:'Poinçonnement v_Ed(u1) / v_Rd,c',bad:!(res.poincon.ok_c&&res.poincon.ok_max)});
-     if(res.barTravX) fer='Φ'+res.barTravX.phi+' e = '+res.barTravX.s+' mm';
+     if(res.barTravX&&!res.insuffisant) fer='Φ'+res.barTravX.phi+' e = '+res.barTravX.s+' mm';
     } else if(kind==='semelle'){
      K.push({v:ncF(res.qp*1000,0)+' / '+ncF(res.qsol*1000,0)+' kPa',l:'Contrainte appliquée / admissible du sol',bad:!res.ok});
      K.push({v:ncF(res.A)+' × '+ncF(res.B)+' m',l:'Dimensions A × B'});
@@ -26731,13 +26732,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Ferraillage en flexion simple, par mètre de largeur (b=1000mm), même procédure que pour les
      poutres (μcu → z → As), EC2 §3.1.7 / Annexe National française. */
   function dlFlexion(M_kNm_par_m,d_cm,fcd,fyd){
-   const d_mm=Math.max(1,d_cm*10), b_mm=1000, MNmm=Math.max(0,M_kNm_par_m)*1e6;
-   const mucu=MNmm/(b_mm*d_mm*d_mm*(fcd*1.5)); /* K = M/(b·d²·fck), fck=fcd·γc : 1,134 intègre γc (skill §3.9) */
-   let z_mm,As_mm2,ok=true;
-   if(mucu<=0.21){ z_mm=Math.min(0.95*d_mm,d_mm*(0.5+Math.sqrt(Math.max(0,0.25-mucu/1.134)))); }
-   else { ok=false; z_mm=0.8*d_mm; }
-   As_mm2=MNmm/(Math.max(z_mm,1)*fyd);
-   return {mucu,z_mm,As_mm2,ok};
+   /* K = M/(b·d²·f_ck), z = d(0,5+√(0,25−K/1,333)) ≤ 0,95d (αcc = 1, livre p.159, 188-189). Au-delà de K' = 0,21 : AUCUNE section d'acier
+      (armatures comprimées non couvertes) ; on renvoie l'épaisseur utile minimale d_min = √(M/(b·f_ck·K')) pour K = K'. */
+   const d_mm=Math.max(1,d_cm*10), b_mm=1000, MNmm=Math.max(0,M_kNm_par_m)*1e6, fck=fcd*1.5;
+   const mucu=MNmm/(b_mm*d_mm*d_mm*fck);
+   if(mucu<=0.21){ const z_mm=Math.min(0.95*d_mm,d_mm*(0.5+Math.sqrt(Math.max(0,0.25-mucu/1.3333)))); return {mucu,z_mm,As_mm2:MNmm/(Math.max(z_mm,1)*fyd),ok:true}; }
+   return {mucu,z_mm:null,As_mm2:null,ok:false,dMin_mm:Math.sqrt(MNmm/(b_mm*fck*0.21))};
   }
   function dlAsMin_mm2(fctm,fyk,d_mm){ return Math.max(0.26*(fctm/fyk)*1000*d_mm, 0.0013*1000*d_mm); }
   function dlAsMax_mm2(h_mm){ return 0.04*1000*h_mm; }
@@ -26796,9 +26796,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const fAppW=dlFlexion(forf.Mw,d_x_cm,fcd,fyd);
    const fAppE=dlFlexion(forf.Me,d_x_cm,fcd,fyd);
    const AsMinX_mm2=dlAsMin_mm2(fctm,fyk,d_x_cm*10), AsMaxX_mm2=dlAsMax_mm2(h_cm*10);
-   const AsTravX_mm2=Math.max(fTrav.As_mm2,AsMinX_mm2);
-   const AsAppW_mm2=Math.max(fAppW.As_mm2,forf.Mw>0?AsMinX_mm2:0);
-   const AsAppE_mm2=Math.max(fAppE.As_mm2,forf.Me>0?AsMinX_mm2:0);
+   const AsTravX_mm2=Math.max(fTrav.As_mm2||0,AsMinX_mm2);
+   const AsAppW_mm2=Math.max(fAppW.As_mm2||0,forf.Mw>0?AsMinX_mm2:0);
+   const AsAppE_mm2=Math.max(fAppE.As_mm2||0,forf.Me>0?AsMinX_mm2:0);
    const sMaxCourant_mm=Math.min(3*h_cm*10,400);
    const barTravX=dlChooseBars(AsTravX_mm2,sMaxCourant_mm);
    const barAppW=forf.Mw>0?dlChooseBars(AsAppW_mm2,sMaxCourant_mm):null;
@@ -26808,12 +26808,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(sensDeux){
     AsMinY_mm2=dlAsMin_mm2(fctm,fyk,d_y_cm*10); AsMaxY_mm2=dlAsMax_mm2(h_cm*10);
     fTravY=dlFlexion(deuxSens.My,d_y_cm,fcd,fyd);
-    AsTravY_mm2=Math.max(fTravY.As_mm2,AsMinY_mm2);
+    AsTravY_mm2=Math.max(fTravY.As_mm2||0,AsMinY_mm2);
     barTravY=dlChooseBars(AsTravY_mm2,sMaxCourant_mm);
     depasseY=AsTravY_mm2>AsMaxY_mm2;
    }
+   /* épaisseur insuffisante : K > K' = 0,21 dans au moins une zone → pas de ferraillage affiché, épaisseur minimale proposée */
+   const koZ=[]; [[fTrav,'Travée lx',0.6],[fAppW,'Appui gauche',0.6],[fAppE,'Appui droit',0.6],[fTravY,'Travée ly',1.6]].forEach(a=>{ if(a[0]&&!a[0].ok) koZ.push({nom:a[1],K:a[0].mucu,hMin_cm:a[0].dMin_mm/10+enr+a[2]}); });
+   const insuffisant=koZ.length>0, hMinCm=insuffisant?Math.ceil(Math.max(...koZ.map(k=>k.hMin_cm))):null;
    const K=(+dp.nTravees||1)<=1?1.0:(dp.position==='rive'?1.3:1.5);
-   const fleche=dlFlecheCheck(sensDeux?deuxSens.lx:lx,d_x_cm,barTravX.As,fck,K);
+   const fleche=insuffisant?{ldReel:((sensDeux?deuxSens.lx:lx)*100)/d_x_cm,ratio:0,ok:false,nonCalculee:true}:dlFlecheCheck(sensDeux?deuxSens.lx:lx,d_x_cm,barTravX.As,fck,K); // sans ferraillage calculé, pas de flèche trompeuse
    const AsAppui_mm2perm=(AsAppW_mm2+AsAppE_mm2)>0?(AsAppW_mm2+AsAppE_mm2)/((forf.Mw>0?1:0)+(forf.Me>0?1:0)):AsMinX_mm2;
    const res={fck,fcd,fyk,fyd,fctm,h_cm,enr,d_x_cm,d_y_cm,G,Q,pEd,alphaQ,lx,ly,
     sensDeux,deuxSens,Mo_x,forf,
@@ -26821,7 +26824,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     AsTravX_cm2:AsTravX_mm2/100,AsAppW_cm2:AsAppW_mm2/100,AsAppE_cm2:AsAppE_mm2/100,
     barTravX,barAppW,barAppE,depasseX,
     AsMinY_cm2:AsMinY_mm2/100,AsMaxY_cm2:AsMaxY_mm2/100,AsTravY_cm2:AsTravY_mm2/100,barTravY,depasseY,
-    fleche,K,AsAppui_mm2perm};
+    fleche,K,AsAppui_mm2perm,insuffisant,hMinCm,koZones:koZ};
    res.poincon=dlPoinconnement(dp,res);
    return res;
   }
@@ -26936,15 +26939,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'dl')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, continuité/charges et poinçonnement si besoin. « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
+  function dlInsuffHtml(res){ return '<div class="pcDimBox"><b>Ferraillage : non calculé</b><p class="pcNote">⚠ Épaisseur insuffisante : K = M/(b·d²·f_ck) &gt; K\' = 0,21 en '+res.koZones.map(k=>esc(k.nom)+' (K = '+k.K.toFixed(3)+')').join(', ')+' — armatures comprimées non couvertes par ce calcul. Épaisseur minimale proposée : h ≥ <b>'+res.hMinCm+' cm</b> (au lieu de '+res.h_cm+' cm).</p></div>'; }
   function dlResultatsHtml(res,dp){
    let h='<h5>Résultats</h5>'
     +'<div class="pcDimBox"><b>Moments (sens lx, méthode forfaitaire)</b><p class="pcNote">Mo = '+res.Mo_x.toFixed(2)+' kN·m/m · α=Q/(G+Q)='+res.alphaQ.toFixed(2)+'<br>Mt='+res.forf.Mt.toFixed(2)+' · Mw='+res.forf.Mw.toFixed(2)+' · Me='+res.forf.Me.toFixed(2)+' kN·m/m'+(res.forf.ok?'':' ⚠ règle des moments non vérifiée')+'</p></div>'
-    +'<div class="pcDimBox"><b>Ferraillage sens lx</b><p class="pcNote">Travée : As='+res.AsTravX_cm2.toFixed(2)+' cm²/m → <b>Φ'+res.barTravX.phi+' e='+res.barTravX.s+'mm</b> ('+(res.barTravX.As/100).toFixed(2)+' cm²/m)</p>'
+    +(res.insuffisant?dlInsuffHtml(res):'<div class="pcDimBox"><b>Ferraillage sens lx</b><p class="pcNote">Travée : As='+res.AsTravX_cm2.toFixed(2)+' cm²/m → <b>Φ'+res.barTravX.phi+' e='+res.barTravX.s+'mm</b> ('+(res.barTravX.As/100).toFixed(2)+' cm²/m)</p>'
     +(res.forf.Mw>0?('<p class="pcNote">Appui gauche : As='+res.AsAppW_cm2.toFixed(2)+' cm²/m → <b>Φ'+res.barAppW.phi+' e='+res.barAppW.s+'mm</b></p>'):'')
     +(res.forf.Me>0?('<p class="pcNote">Appui droit : As='+res.AsAppE_cm2.toFixed(2)+' cm²/m → <b>Φ'+res.barAppE.phi+' e='+res.barAppE.s+'mm</b></p>'):'')
-    +(res.depasseX?'<p class="pcNote">⚠ As,max dépassé — revoir l\'épaisseur</p>':'')+'</div>';
-   if(res.sensDeux) h+='<div class="pcDimBox"><b>Ferraillage sens ly</b><p class="pcNote">My='+res.deuxSens.My.toFixed(2)+' kN·m/m (sans réduction appuis) · As='+res.AsTravY_cm2.toFixed(2)+' cm²/m → <b>Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm</b>'+(res.depasseY?' ⚠ As,max dépassé':'')+'</p></div>';
-   h+='<div class="pcDimBox"><b>Flèche</b><p class="pcNote">l/d réel='+res.fleche.ldReel.toFixed(1)+' ≤ l/d limite='+res.fleche.ratio.toFixed(1)+' → '+(res.fleche.ok?'✓ vérifiée':'⚠ non vérifiée')+'</p></div>';
+    +(res.depasseX?'<p class="pcNote">⚠ As,max dépassé — revoir l\'épaisseur</p>':'')+'</div>');
+   if(res.sensDeux&&!res.insuffisant) h+='<div class="pcDimBox"><b>Ferraillage sens ly</b><p class="pcNote">My='+res.deuxSens.My.toFixed(2)+' kN·m/m (sans réduction appuis) · As='+res.AsTravY_cm2.toFixed(2)+' cm²/m → <b>Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm</b>'+(res.depasseY?' ⚠ As,max dépassé':'')+'</p></div>';
+   h+='<div class="pcDimBox"><b>Flèche</b><p class="pcNote">'+(res.fleche.nonCalculee?'non vérifiable : ferraillage non calculé (épaisseur insuffisante)':'l/d réel='+res.fleche.ldReel.toFixed(1)+' ≤ l/d limite='+res.fleche.ratio.toFixed(1)+' → '+(res.fleche.ok?'✓ vérifiée':'⚠ non vérifiée'))+'</p></div>';
    if(res.poincon) h+='<div class="pcDimBox"><b>Poinçonnement</b><p class="pcNote">vEd(u0)='+res.poincon.vEd0.toFixed(2)+' ≤ vRd,max='+res.poincon.vRdmax.toFixed(2)+' MPa → '+(res.poincon.ok_max?'✓':'⚠')+'<br>vEd(u1)='+res.poincon.vEd1.toFixed(2)+' ≤ vRd,c='+res.poincon.vRdc.toFixed(2)+' MPa → '+(res.poincon.ok_c?'✓ sans armature de poinçonnement':'⚠ armatures de poinçonnement nécessaires')+'</p></div>';
    h+='<button type="button" class="ghost pcBtnSm" data-dl-act="printNote">🖶 Voir la note</button>';
    return h;
@@ -27007,12 +27011,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Dalle (Eurocode 2 — EN 1992-1-1, Annexe Nationale française ; méthode forfaitaire BAEL91 Annexe E.1 pour la répartition travée/appuis) · '+todayStr()+'</p>'
     +'<h5>Hypothèses</h5><p class="pcNote">Épaisseur h='+res.h_cm+' cm · enrobage='+res.enr+' cm · d(x)='+res.d_x_cm.toFixed(1)+' cm'+(res.sensDeux?(' · d(y)='+res.d_y_cm.toFixed(1)+' cm'):'')+' · béton '+esc(dp.classeGlobale)+' (fck='+res.fck+' MPa) · acier '+esc(dp.classeAcier)+' (fyk='+res.fyk+' MPa) · G='+res.G+' kN/m² · Q='+res.Q+' kN/m² · pEd=1,35G+1,5Q='+res.pEd.toFixed(2)+' kN/m².</p>'
     +'<h5>Moments (sens lx)</h5><p class="pcNote">'+(res.sensDeux?('Dalle portant dans les deux sens (α=lx/ly='+res.deuxSens.a.toFixed(2)+', coefficients approchés μx='+res.deuxSens.mux.toFixed(4)+', μy='+res.deuxSens.muy.toFixed(4)+' — à recouper avec une table officielle). Mx=μx·pEd·lx²='+res.Mo_x.toFixed(2)+' kN·m/m retenu comme moment de référence pour la répartition travée/appuis.'):('Dalle continue 1 sens : Mo=pEd·lx²/8='+res.Mo_x.toFixed(2)+' kN·m/m.'))+'<br>Méthode forfaitaire (α=Q/(G+Q)='+res.alphaQ.toFixed(2)+') : Mt='+res.forf.Mt.toFixed(2)+' · Mw='+res.forf.Mw.toFixed(2)+' · Me='+res.forf.Me.toFixed(2)+' kN·m/m. Règle des moments Mt+(Mw+Me)/2 ≥ '+res.forf.coefMin.toFixed(2)+'·Mo : '+res.forf.sum.toFixed(2)+' ≥ '+res.forf.req.toFixed(2)+' → '+(res.forf.ok?'vérifiée':'⚠ non vérifiée')+'.</p>'
-    +'<h5>Ferraillage (μcu→z→As, EC2 §3.1.7, b=1 m)</h5><p class="pcNote">Sens lx — travée : As='+res.AsTravX_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinX_cm2.toFixed(2)+', As,max='+res.AsMaxX_cm2.toFixed(2)+') → '+res.barTravX.phi+'mm e='+res.barTravX.s+'mm ('+(res.barTravX.As/100).toFixed(2)+' cm²/m).'
+    +(res.insuffisant?'<h5>Ferraillage</h5><p class="pcNote">⚠ Épaisseur insuffisante : K = M/(b·d²·f_ck) > K\' = 0,21 en '+res.koZones.map(k=>esc(k.nom)+' (K = '+k.K.toFixed(3).replace('.',',')+')').join(', ')+' — armatures comprimées non couvertes, aucune section d\'acier calculée. Épaisseur minimale proposée : h ≥ '+res.hMinCm+' cm (au lieu de '+res.h_cm+' cm).</p>':'<h5>Ferraillage (μcu→z→As, EC2 §3.1.7, b=1 m)</h5><p class="pcNote">Sens lx — travée : As='+res.AsTravX_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinX_cm2.toFixed(2)+', As,max='+res.AsMaxX_cm2.toFixed(2)+') → '+res.barTravX.phi+'mm e='+res.barTravX.s+'mm ('+(res.barTravX.As/100).toFixed(2)+' cm²/m).'
     +(res.forf.Mw>0?('<br>Appui gauche : As='+res.AsAppW_cm2.toFixed(2)+' cm²/m → Φ'+res.barAppW.phi+' e='+res.barAppW.s+'mm.'):'')
     +(res.forf.Me>0?('<br>Appui droit : As='+res.AsAppE_cm2.toFixed(2)+' cm²/m → Φ'+res.barAppE.phi+' e='+res.barAppE.s+'mm.'):'')
     +(res.depasseX?' ⚠ As,max dépassé sens lx — revoir l\'épaisseur ou le béton.':'')
-    +(res.sensDeux?('<br>Sens ly — travée (sans réduction appuis, continuité non prise en compte dans ce sens) : As='+res.AsTravY_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinY_cm2.toFixed(2)+') → Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm.'+(res.depasseY?' ⚠ As,max dépassé sens ly.':'')):'')+'</p>'
-    +'<h5>Flèche (EC2 §7.4.2, ratio l/d)</h5><p class="pcNote">K='+res.K+' (position '+(dp.position==='rive'?'de rive':'intermédiaire')+') · l/d réel='+res.fleche.ldReel.toFixed(1)+' ≤ l/d limite='+res.fleche.ratio.toFixed(1)+' → '+(res.fleche.ok?'vérifiée':'⚠ non vérifiée — épaisseur à revoir ou calcul fin de flèche nécessaire')+'.</p>';
+    +(res.sensDeux?('<br>Sens ly — travée (sans réduction appuis, continuité non prise en compte dans ce sens) : As='+res.AsTravY_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinY_cm2.toFixed(2)+') → Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm.'+(res.depasseY?' ⚠ As,max dépassé sens ly.':'')):'')+'</p>')
+    +'<h5>Flèche (EC2 §7.4.2, ratio l/d)</h5><p class="pcNote">'+(res.fleche.nonCalculee?'Non vérifiable : ferraillage non calculé (épaisseur insuffisante).':'K='+res.K+' (position '+(dp.position==='rive'?'de rive':'intermédiaire')+') · l/d réel='+res.fleche.ldReel.toFixed(1)+' ≤ l/d limite='+res.fleche.ratio.toFixed(1)+' → '+(res.fleche.ok?'vérifiée':'⚠ non vérifiée — épaisseur à revoir ou calcul fin de flèche nécessaire'))+'. Flèche à faire confirmer par un ingénieur structure (méthode simplifiée l/d).</p>';
    if(res.poincon) h+='<h5>Poinçonnement (EC2 §6.4)</h5><p class="pcNote">β forfaitaire=1,15 (poteau intérieur courant, simplification — le calcul détaillé du moment transmis n\'est pas repris ici). u0='+(res.poincon.u0_mm/10).toFixed(1)+' cm, u1='+(res.poincon.u1_mm/10).toFixed(1)+' cm.<br>vEd(u0)='+res.poincon.vEd0.toFixed(2)+' MPa ≤ vRd,max='+res.poincon.vRdmax.toFixed(2)+' MPa → '+(res.poincon.ok_max?'vérifiée':'⚠ non vérifiée (bielle de compression) — épaisseur à revoir')+'.<br>vEd(u1)='+res.poincon.vEd1.toFixed(2)+' MPa ≤ vRd,c='+res.poincon.vRdc.toFixed(2)+' MPa → '+(res.poincon.ok_c?'vérifiée sans armature de poinçonnement':'⚠ armatures de poinçonnement nécessaires (calcul détaillé hors périmètre de ce module) ou élargissement local')+'.</p>';
    h+='<p class="pcNote">⚠ Cette note de calcul est générée automatiquement à partir des données saisies et de la méthode Eurocode 2 (EN 1992-1-1, Annexe Nationale française) / BAEL91 pour la répartition forfaitaire. Elle doit être vérifiée et validée par un ingénieur structure (bureau d\'études béton armé) avant toute utilisation pour l\'exécution. Elle ne remplace pas une étude signée par un bureau d\'études qualifié. Les coefficients de dalle 2 sens et le β de poinçonnement sont des valeurs approchées/forfaitaires, à recaler par le validateur.</p>'
     +'</div>';
@@ -27054,7 +27058,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    try{persist();}catch(_){ } return doc;
   }
   function dlCreerPlanFerraillage(t,dp){
-   const res=dp.resultats; if(!res) return null;
+   const res=dp.resultats; if(!res||res.insuffisant) return null; // épaisseur insuffisante : pas de plan trompeur
    const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Dalle')+'</h3>'
     +'<p class="pcNote">Vue en plan (travée courante) · '+todayStr()+'</p>'+dlPlanFerraillageSvg(dp,res)
     +dlPlanFerraillageNomenclature(dp,res)
@@ -27074,9 +27078,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const lines=[
     'h='+res.h_cm+' cm - beton '+dp.classeGlobale+' - acier '+dp.classeAcier+' - G='+res.G+' kN/m2, Q='+res.Q+' kN/m2',
     'Mo='+res.Mo_x.toFixed(2)+' kN.m/m, Mt='+res.forf.Mt.toFixed(2)+', Mw='+res.forf.Mw.toFixed(2)+', Me='+res.forf.Me.toFixed(2)+' kN.m/m',
-    'Sens lx - travee As='+res.AsTravX_cm2.toFixed(2)+' cm2/m -> phi'+res.barTravX.phi+' e='+res.barTravX.s+'mm',
-    (res.sensDeux?('Sens ly - travee As='+res.AsTravY_cm2.toFixed(2)+' cm2/m -> phi'+res.barTravY.phi+' e='+res.barTravY.s+'mm'):'Dalle portant dans un seul sens (lx)'),
-    'Fleche : l/d reel='+res.fleche.ldReel.toFixed(1)+' <= limite='+res.fleche.ratio.toFixed(1)+' -> '+(res.fleche.ok?'OK':'NON VERIFIEE'),
+    (res.insuffisant?('EPAISSEUR INSUFFISANTE (K > 0,21) : ferraillage non calcule - h minimale proposee '+res.hMinCm+' cm'):'Sens lx - travee As='+res.AsTravX_cm2.toFixed(2)+' cm2/m -> phi'+res.barTravX.phi+' e='+res.barTravX.s+'mm'),
+    (res.insuffisant?'':res.sensDeux?('Sens ly - travee As='+res.AsTravY_cm2.toFixed(2)+' cm2/m -> phi'+res.barTravY.phi+' e='+res.barTravY.s+'mm'):'Dalle portant dans un seul sens (lx)'),
+    (res.fleche.nonCalculee?'Fleche : non verifiable (ferraillage non calcule) - a faire confirmer par un ingenieur':'Fleche : l/d reel='+res.fleche.ldReel.toFixed(1)+' <= limite='+res.fleche.ratio.toFixed(1)+' -> '+(res.fleche.ok?'OK':'NON VERIFIEE')+' - a faire confirmer par un ingenieur'),
    ];
    if(res.poincon) lines.push('Poinconnement : vEd(u1)='+res.poincon.vEd1.toFixed(2)+' MPa, vRd,c='+res.poincon.vRdc.toFixed(2)+' MPa -> '+(res.poincon.ok_c?'OK sans armature':'ARMATURES NECESSAIRES'));
    lines.forEach(l=>{ pdoc.text(pdfTxt(l),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M}); y+=7; });
@@ -27956,10 +27960,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* flexion simple, section 1 m de large (b=1000mm) — méthode μ/z (skill dimensionnement-beton-arme §3.9) */
   function muAsFlexion(M_kNm,d_cm,fck,fyk){
    if(!(M_kNm>1e-6)||!(d_cm>0)) return {As_cm2:0,mu:0,ok:true};
-   const fcd=fck/1.5, fyd=fyk/1.15, b_mm=1000, d_mm=d_cm*10;
-   const mu=(M_kNm*1e6)/(b_mm*d_mm*d_mm*fck); /* K = M/(b·d²·fck), 1,134 intègre γc (skill §3.9) */
-   if(mu>0.21) return {As_cm2:null,mu,ok:false};
-   let z_mm=d_mm*(0.5+Math.sqrt(Math.max(0,0.25-mu/1.134))); z_mm=Math.min(z_mm,0.95*d_mm);
+   const fyd=fyk/1.15, b_mm=1000, d_mm=d_cm*10;
+   const mu=(M_kNm*1e6)/(b_mm*d_mm*d_mm*fck); /* K = M/(b·d²·f_ck), constante 1,333 = 2·αcc/γc, αcc = 1 (livre p.159, 188-189) */
+   if(mu>0.21) return {As_cm2:null,mu,ok:false,dMin_cm:Math.sqrt((M_kNm*1e6)/(b_mm*fck*0.21))/10};
+   let z_mm=d_mm*(0.5+Math.sqrt(Math.max(0,0.25-mu/1.3333))); z_mm=Math.min(z_mm,0.95*d_mm);
    const As_mm2=(M_kNm*1e6)/(z_mm*fyd);
    return {As_cm2:As_mm2/100, mu, ok:true};
   }
@@ -28123,7 +28127,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const badge=ok=>'<span class="pcDimBadge '+(ok?'ok':'ko')+'">'+(ok?'OK':'À revoir')+'</span>';
    const ferrLine=(nom,f,bar)=>f.ok
     ? nom+' : A<sub>s</sub> = '+fmt(f.As_cm2,2)+' cm²/m → '+(bar?bar.n?bar.n+'HA'+bar.phi:'HA'+bar.phi+' / '+bar.s+' mm':'—')
-    : nom+' : section insuffisante (K > 0,21) — revoir la géométrie';
+    : nom+' : section insuffisante (K = '+fmt(f.mu,3)+' > 0,21) — aucune section d\'acier calculée ; épaisseur utile minimale d ≥ '+fmt(f.dMin_cm,0)+' cm';
    return '<div class="pcDimBox"><h4>Stabilité</h4>'
     +'<p>Glissement — ELS : F<sub>s</sub> = '+fmt(res.ELS.fsGliss,2)+' (seuil '+res.seuilGliss_ELS+') '+badge(okGliss_ELS)+'</p>'
     +'<p>Glissement — ELU : F<sub>s</sub> = '+fmt(res.ELU.fsGliss,2)+' (seuil '+res.seuilGliss_ELU+') '+badge(okGliss_ELU)+'</p>'
