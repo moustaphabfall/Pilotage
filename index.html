@@ -20040,7 +20040,9 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pjBeamRoot .pcElsCtl input,.pjDalleRoot .pcElsCtl input{width:140px;flex:0 0 auto}
 .pjBeamRoot .pcUnitEls,.pjDalleRoot .pcUnitEls{font-size:var(--ds-fs-help);color:var(--ds-ink-soft);white-space:nowrap;font-weight:400}
 .pjBeamRoot .pcEls .pcElsLbl,.pjDalleRoot .pcEls .pcElsLbl{flex:1 1 100%}
-@media (min-width:601px){.pjDalleRoot .pcEls label,.pjBeamRoot .pcEls label{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px) 88px;gap:6px 12px;align-items:center}.pjBeamRoot .pcEls .pcElsLbl,.pjDalleRoot .pcEls .pcElsLbl{flex:none}}
+@media (min-width:601px){.pjDalleRoot .pcEls label,.pjBeamRoot .pcEls label,.pjDalleRoot .pcPanel>.pcElsGrp>label{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px) 88px;gap:6px 12px;align-items:center}.pjBeamRoot .pcEls .pcElsLbl,.pjDalleRoot .pcEls .pcElsLbl,.pjDalleRoot .pcElsGrp .pcElsLbl{flex:none}}
+.pjDalleRoot .pcElsGrp .pcNote{margin:-6px 0 14px}
+.pjDalleRoot .pcElsGrp .pcElsLbl{flex:1 1 100%}
 
 /* Fiche poteau : même échelle typographique et mêmes zones tactiles que la poutre */
 .pjPoteauRoot .pcModHead{margin:0 0 6px;gap:10px;justify-content:flex-start;flex-wrap:wrap}
@@ -27394,15 +27396,20 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {k:'AsComp_cm2',lbl:'Armatures comprimées (flèche)',t:'num',def:0,min:0,max:200,step:0.1,unit:'cm²',aide:'Section A_s2 de la face comprimée prise en compte dans la flèche (ρ\' de la formule 7.16b et courbure fissurée) ; 0 = négligée, sécuritaire (Maîtrise p.218, 230). Dalle : cm² par mètre.'}
   ];
   const ELS_DALLE_POINCON=[
-   {k:'AsSupY_cm2',lbl:'Armature supérieure du sens y sous le poteau',t:'num',def:null,min:0,max:200,step:0.1,unit:'cm²/m',aide:'Section d\'acier tendu supérieure du sens y, moyennée sur c + 6d, pour ρl = √(ρlx·ρly) (Maîtrise p.254). Vide : hypothèse max(20 % de l\'armature d\'appui ; A_s,min).'},
-   {k:'poteauPos',lbl:'Position du poteau',t:'sel',def:'int',opts:[['int','Intérieur'],['rive','De rive'],['angle','D\'angle']],aide:'Seul le poteau intérieur est géré (β = 1,15). Rive et angle : β et u1 réduit à reprendre par l\'ingénieur, poinçonnement non calculé (Maîtrise p.261-263).'}
+   {k:'poteauPos',lbl:'Position du poteau',t:'sel',def:'int',opts:[['int','Intérieur'],['rive','De rive'],['angle','D\'angle']],aide:'Rive ou angle : contour de contrôle réduit par le(s) bord(s) libre(s), u0 et β propres au type (Maîtrise p.249, 260-264). Rive : c1 = côté perpendiculaire au bord libre, c2 = côté parallèle ; angle : c1 selon x, c2 selon y (à régler sur le schéma). Poteau circulaire de rive ou d\'angle non traité.'},
+   {k:'bordA_cm',lbl:'Distance au bord libre (A)',t:'num',def:0,min:0,max:300,step:1,unit:'cm',cond:dp=>dp.poteauPos==='rive'||dp.poteauPos==='angle',aide:'Distance du nu du poteau au bord libre : perpendiculaire à c1 (rive et angle) ; 0 = poteau au droit du bord (Maîtrise p.249).'},
+   {k:'bordB_cm',lbl:'Distance au bord libre (B)',t:'num',def:0,min:0,max:300,step:1,unit:'cm',cond:dp=>dp.poteauPos==='angle',aide:'Poteau d\'angle : distance du nu du poteau au second bord libre, perpendiculaire à c2.'},
+   {k:'betaMode',lbl:'Calcul de β',t:'sel',def:'simple',opts:[['simple','Simplifié (1,4 rive, 1,5 angle)'],['detail','Détaillé (u1*, moment transmis)']],cond:dp=>dp.poteauPos==='rive'||dp.poteauPos==='angle',aide:'Simplifié : seulement si structure contreventée et portées voisines entre 0,8 et 1,25 (p.262-263). Détaillé : β = u1/u1* (+ k·u1/W1·e_par en rive), poteau au droit du bord libre (distance 0), p.260-262 ; sinon retour au simplifié.'},
+   {k:'epar_cm',lbl:'Excentricité parallèle au bord (e_par)',t:'num',def:0,min:0,max:200,step:1,unit:'cm',cond:dp=>dp.poteauPos==='rive'&&dp.betaMode==='detail',aide:'e_par = M_Ed/V_Ed du moment d\'axe perpendiculaire au bord libre ; 0 si aucun moment (formule 6.44, W1 de 6.45, p.261).'},
+   {k:'eperSens',lbl:'Excentricité perpendiculaire au bord',t:'sel',def:'int',opts:[['int','Vers l\'intérieur ou nulle'],['ext','Vers l\'extérieur']],cond:dp=>(dp.poteauPos==='rive'||dp.poteauPos==='angle')&&dp.betaMode==='detail',aide:'Vers l\'intérieur ou nulle : effort réparti sur u1* (6.44, 6.46). Vers l\'extérieur : W1 non donné au livre, cas non géré (p.261-262).'},
+   {k:'AsSupY_cm2',lbl:'Armature supérieure du sens y sous le poteau',t:'num',def:null,min:0,max:200,step:0.1,unit:'cm²/m',aide:'Section d\'acier tendu supérieure du sens y, moyennée sur c + 6d, pour ρl = √(ρlx·ρly) (Maîtrise p.254). Vide : hypothèse max(20 % de l\'armature d\'appui ; A_s,min).'}
   ];
   function elsSaisi(dp,k){ return dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''; }
   function elsVal(dp,sp){ const v=dp[sp.k]; if(sp.k==='beff_cm') return elsSaisi(dp,sp.k)?+v:Math.round((+dp.b_cm||20)*3); if(sp.k==='hf_cm') return elsSaisi(dp,sp.k)?+v:Math.round((+dp.h_cm||50)*0.2*10)/10; return elsSaisi(dp,sp.k)?v:sp.def; }
   function elsFmt(sp,v){ if(v==null) return ''; if(sp.t==='bool') return v?'oui':'non'; if(sp.t==='sel'){ const o=sp.opts.find(x=>String(x[0])===String(v)); return o?o[1]:String(v); } const x=sp.scale?v*sp.scale:v; return String(+(+x).toFixed(3)).replace('.',',')+(sp.unit?' '+sp.unit:''); }
   /* Lignes du tableau « Hypothèses » : valeur et origine (saisi / par défaut) de chaque paramètre ELS */
   function elsRowsHyp(dp,kind){
-   const specs=ELS_SPEC.concat(kind==='dl'?ELS_DALLE_POINCON:[]).filter(sp=>(!sp.only||sp.only===kind)&&(!sp.needT||dp.sectionT===true)&&!((kind==='dl')&&(sp.k==='AsSupY_cm2'||sp.k==='poteauPos')&&!dp.poincon));
+   const specs=ELS_SPEC.concat(kind==='dl'?ELS_DALLE_POINCON:[]).filter(sp=>(!sp.only||sp.only===kind)&&(!sp.needT||dp.sectionT===true)&&!(ELS_DALLE_POINCON.includes(sp)&&(!dp.poincon||(sp.cond&&!sp.cond(dp)))));
    return specs.map(sp=>{ const sa=elsSaisi(dp,sp.k); return [sp.lbl.replace(/ — .*/,''),sp.k==='AsSupY_cm2'&&!sa?'hypothèse max(20 % de l\'armature d\'appui ; A_s,min)':elsFmt(sp,elsVal(dp,sp)),sa?'saisi':'par défaut']; });
   }
   function elsFieldHtml(sp,dp,err){
@@ -27442,6 +27449,37 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   document.addEventListener('toggle',ev=>{ const d=ev.target; if(!d||!d.matches||!d.matches('details.pcEls')) return; const t=taskById(d.dataset.elsId); if(!t) return; const dp=d.dataset.elsKind==='pc'?t.dimPC:t.dimDL; if(dp&&dp._elsOpen!==d.open){ dp._elsOpen=d.open; try{persist();}catch(_){ } } },true);
   document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('[data-els-reset]'); if(!b) return; const d=b.closest('details.pcEls'); if(!d) return; const id=d.dataset.elsId, kind=d.dataset.elsKind, t=taskById(id); if(!t) return; const dp=kind==='pc'?t.dimPC:t.dimDL; if(!dp) return;
    ELS_SPEC.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } if(kind==='pc') beamRender(id); else dleRender(id); });
+  /* ===== Poinçonnement : contours de contrôle, u0, β des poteaux intérieur, de rive et d'angle (Maîtrise p.246-266) — fonction PURE, mm ===== */
+  /* P={type:'int'|'rive'|'angle', forme:'rect'|'circ', c1,c2 (mm), D, aA,aB (mm : distance du nu du poteau au(x) bord(s) libre(s)), d, mode:'simple'|'detail', epar (mm), eperExt (bool)}
+     Rive : c1 = côté perpendiculaire au bord libre, c2 = côté parallèle. Angle : c1 selon x (perpendiculaire au bord A), c2 selon y (perpendiculaire au bord B).
+     u(a) = périmètre du contour à la distance a du nu du poteau ; u1 = u(2d). Contour réduit par le bord libre retenu s'il est plus petit que le contour complet (p.249, § 1.4). */
+  function fcPoinconGeom(P){
+   const d=P.d, t=P.type||'int', c1=P.c1, c2=P.c2, aA=Math.max(0,P.aA||0), aB=Math.max(0,P.aB||0);
+   if(t==='int'){
+    if(P.forme==='circ'){ const D=P.D; return {type:t,u0:Math.PI*D,u1:Math.PI*(D+4*d),uOf:a=>Math.PI*(D+2*a),reduit:false}; }
+    return {type:t,u0:2*(c1+c2),u1:2*(c1+c2)+4*Math.PI*d,uOf:a=>2*(c1+c2)+2*Math.PI*a,reduit:false};
+   }
+   const full=a=>2*(c1+c2)+2*Math.PI*a;
+   if(t==='rive'){
+    const red=a=>2*(aA+c1)+c2+Math.PI*a, useRed=red(2*d)<full(2*d), uOf=useRed?red:full;
+    return {type:t,u0:Math.min(c2+3*d,c2+2*c1),u1:uOf(2*d),u1full:full(2*d),u1red:red(2*d),reduit:useRed,uOf,
+     u1star:c2+2*Math.min(1.5*d,0.5*c1)+2*Math.PI*d, uStarValide:aA<=1e-9};
+   }
+   const red=a=>(aA+c1)+(aB+c2)+Math.PI*a/2, useRed=red(2*d)<full(2*d), uOf=useRed?red:full;
+   return {type:t,u0:Math.min(3*d,c1+c2),u1:uOf(2*d),u1full:full(2*d),u1red:red(2*d),reduit:useRed,uOf,
+    u1star:Math.min(1.5*d,0.5*c1)+Math.min(1.5*d,0.5*c2)+Math.PI*d, uStarValide:aA<=1e-9&&aB<=1e-9};
+  }
+  /* β : simplifié 1,15 / 1,4 / 1,5 (structure contreventée, portées voisines 0,8 à 1,25, p.262-263) ou formule détaillée (6.44)/(6.46) avec u1* ; k du tableau p.258, W1 de (6.45). */
+  function fcPoinconBeta(P,G){
+   if(P.type==='int') return {beta:1.15,methode:'simplifiée (poteau intérieur, p.262-263)',ok:true};
+   if(P.mode==='detail'&&G.uStarValide){
+    if(P.eperExt) return {ok:false,message:'Excentricité perpendiculaire au bord dirigée vers l\'extérieur : formules (6.39) avec W1 mesuré depuis l\'axe du contour, non données au livre pour ce cas — β à reprendre par l\'ingénieur.'};
+    let beta=G.u1/G.u1star;
+    if(P.type==='rive'&&P.epar){ const c1=P.c1,c2=P.c2,d=P.d, r=c1/(2*c2), k=r<=0.5?0.45:(r<=1?0.45+0.15*(r-0.5)/0.5:(r<=2?0.60+0.10*(r-1):(r<=3?0.70+0.10*(r-2):0.80))), W1=c2*c2/4+c1*c2+4*c1*d+8*d*d+Math.PI*d*c2; beta+=k*G.u1/W1*Math.abs(P.epar); }
+    return {beta,methode:'formule détaillée (6.44)/(6.46) avec u1* = '+(G.u1star/10).toFixed(1)+' cm',ok:true,detail:true};
+   }
+   return {beta:P.type==='rive'?1.4:1.5,methode:'simplifiée ('+(P.type==='rive'?'1,4 poteau de rive':'1,5 poteau d\'angle')+', p.262-263)'+((P.mode==='detail'&&!G.uStarValide)?' — formule détaillée non applicable : u1* défini pour un poteau au droit du bord libre (distance 0)':''),ok:true};
+  }
   function dlChooseBars(AsReq_mm2perm,sMax_mm){
    let best=null;
    for(const phi of DL_BARDIAMS){
@@ -27552,36 +27590,69 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Poinçonnement (EC2 §6.4), activé en option sous appui ponctuel. β forfaitaire = 1,15 (poteau
      intérieur courant, pas de calcul détaillé du moment transmis — simplification signalée dans la
      note), validée sur l'allure du classeur 089. */
+  /* Textes du poinçonnement (écran, note) : type de poteau, contours, β retenu, armatures de poinçonnement dimensionnées (Maîtrise p.255-266, 275-277) */
+  function dlPoinconTypeTxt(pc){
+   const f=x=>(x/10).toFixed(1).replace('.',',');
+   if(pc.position==='rive') return 'poteau de RIVE (c1 = '+f(pc.c1_mm)+' cm perpendiculaire au bord libre, c2 = '+f(pc.c2_mm)+' cm parallèle ; distance du nu au bord libre '+f(pc.bordA_mm)+' cm)';
+   if(pc.position==='angle') return 'poteau d\'ANGLE (c1 = '+f(pc.c1_mm)+' cm, c2 = '+f(pc.c2_mm)+' cm ; distances du nu aux bords libres : '+f(pc.bordA_mm)+' et '+f(pc.bordB_mm)+' cm)';
+   return 'poteau intérieur';
+  }
+  function dlPoinconAswTxt(pc){
+   if(!pc.asw) return '';
+   const a=pc.asw, n=(x,k)=>(+x).toFixed(k==null?2:k).replace('.',',');
+   return 'armatures de poinçonnement requises (v_Ed(u1) > v_Rd,c) : A_sw/s_r ≥ '+n(a.AswSr_mm2_par_mm,2)+' mm²/mm (α = 90°, f_ywd,ef = '+n(a.fywdef,0)+' MPa), soit A_sw ≥ '+n(a.Asw_cours_mm2,0)+' mm² par cours pour s_r = 0,75·d = '+n(a.sr_mm,0)+' mm ; zone armée jusqu\'à u_out,ef = '+n(a.uOut_mm/10,1)+' cm (environ '+n(a.aOut_mm/10,1)+' cm du nu du poteau, dernier cours à 1,5·d au plus à l\'intérieur) ; espacement tangentiel, A_sw,min (9.11) et dessin non traités';
+  }
+  function dlPoinconNoteHtml(pc){
+   const f=(x,k)=>(+x).toFixed(k==null?2:k).replace('.',',');
+   if(pc.nonGere) return '<h5>Poinçonnement (EC2 §6.4)</h5><p class="pcNote">⚠ '+pc.message+'</p>';
+   return '<h5>Poinçonnement (EC2 §6.4)</h5><p class="pcNote">'+dlPoinconTypeTxt(pc)+'. Contours : u0 = '+f(pc.u0_mm/10,1)+' cm'+(pc.position==='rive'?' = min(c2 + 3d ; c2 + 2c1) (p.264)':(pc.position==='angle'?' = min(3d ; c1 + c2) (p.264)':''))+', u1 = '+f(pc.u1_mm/10,1)+' cm'+(pc.position!=='int'?(pc.reduit?' (contour de référence réduit par le(s) bord(s) libre(s), p.249 ; contour complet '+f(pc.u1full_mm/10,1)+' cm)':' (contour complet : le bord libre est trop loin pour le réduire)')+(pc.u1star_mm?', u1* = '+f(pc.u1star_mm/10,1)+' cm':''):'')+'.<br>'
+    +'β = '+f(pc.beta)+' — '+pc.betaMethode+'. '+(pc.betaDetail?'Moment transmis pris en compte par l\'excentricité parallèle au bord saisie ; excentricité perpendiculaire dirigée vers l\'intérieur ou nulle.':'Moment transmis non pris en compte : β forfaitaire valable seulement si la structure est contreventée (stabilité latérale indépendante du portique dalles-poteaux) et si les portées voisines sont dans le rapport 0,8 à 1,25 (Maîtrise p.262-263).')
+    +' ρl=√(ρlx·ρly)='+f(pc.rhoL*100)+' % (armatures supérieures des deux sens, moyenne sur c+6d, uniforme par mètre y compris au bord libre, Maîtrise p.254).<br>'
+    +'vEd(u0)='+f(pc.vEd0)+' MPa ≤ vRd,max='+f(pc.vRdmax)+' MPa → '+(pc.ok_max?'vérifiée':'⚠ non vérifiée (bielle de compression) — épaisseur à revoir')+'.<br>'
+    +'vEd(u1)='+f(pc.vEd1)+' MPa ≤ vRd,c='+f(pc.vRdc)+' MPa → '+(pc.ok_c?'vérifiée sans armature de poinçonnement':'⚠ '+(pc.asw?dlPoinconAswTxt(pc):'armatures de poinçonnement nécessaires'))+'.</p>';
+  }
   function dlPoinconnement(dp,res){
    if(!dp.poincon) return null;
-   if(dp.poteauPos==='rive'||dp.poteauPos==='angle') return {nonGere:true,position:dp.poteauPos,message:'Poteau de '+(dp.poteauPos==='rive'?'rive':'d\'angle')+' : cas non géré par le module (contour u1 réduit, β différent) — β et u1 à reprendre par l\'ingénieur ; poinçonnement non calculé.'};
-   const fck=res.fck,fcd=res.fcd;
-   const d_mm=((res.d_x_cm+res.d_y_cm)/2)*10;
+   const pos=dp.poteauPos==='rive'||dp.poteauPos==='angle'?dp.poteauPos:'int';
    const rect=dp.poteauForme!=='circ';
-   const c1=Math.max(+dp.c1_cm||40,+dp.c2_cm||40), c2=Math.min(+dp.c1_cm||40,+dp.c2_cm||40);
+   if(pos!=='int'&&!rect) return {nonGere:true,position:pos,message:'Poteau circulaire '+(pos==='rive'?'de rive':'d\'angle')+' : cas non traité (le livre ne donne les contours u0 et u1* de rive et d\'angle que pour un poteau rectangulaire, p.264 et 260-262) — à reprendre par l\'ingénieur ; poinçonnement non calculé.'};
+   const fck=res.fck,fcd=res.fcd,fyk=res.fyk||500;
+   const d_mm=((res.d_x_cm+res.d_y_cm)/2)*10;
    const D=+dp.D_cm||40;
-   const u0_mm=rect?2*(c1+c2)*10:Math.PI*D*10;
-   const u1_mm=rect?(2*(c1+c2)*10+2*Math.PI*2*d_mm):(Math.PI*(D*10+4*d_mm));
+   // rive / angle : c1 = côté perpendiculaire au bord libre (rive) ou selon x (angle), saisi tel quel ; intérieur : c1 ≥ c2 sans importance
+   const c1cm=pos==='int'?Math.max(+dp.c1_cm||40,+dp.c2_cm||40):(+dp.c1_cm||40), c2cm=pos==='int'?Math.min(+dp.c1_cm||40,+dp.c2_cm||40):(+dp.c2_cm||40);
+   const Pg={type:pos,forme:rect?'rect':'circ',c1:c1cm*10,c2:c2cm*10,D:D*10,aA:(+dp.bordA_cm||0)*10,aB:(+dp.bordB_cm||0)*10,d:d_mm,mode:dp.betaMode==='detail'?'detail':'simple',epar:(+dp.epar_cm||0)*10,eperExt:dp.eperSens==='ext'};
+   const G=fcPoinconGeom(Pg), B=fcPoinconBeta(Pg,G);
+   if(!B.ok) return {nonGere:true,position:pos,message:B.message};
+   const u0_mm=G.u0, u1_mm=G.u1;
    const VEd_N=Math.max(0,(+dp.N_poincon_kN||0)*1000);
-   const beta=1.15;
+   const beta=B.beta;
    const vEd0=u0_mm>0?beta*VEd_N/(u0_mm*d_mm):0;
    const nu=0.6*(1-fck/250);
    const vRdmax=0.5*nu*fcd;
    const CRdc=0.18/1.5;
    const k=Math.min(2,1+Math.sqrt(200/d_mm));
    /* ρl = min(√(ρlx·ρly) ; 0,02), armatures tendues (supérieures) des DEUX sens, valeurs moyennes sur la largeur du poteau + 3d de chaque côté (Maîtrise p.254, éq. 6.47 ; ex. p.271 et p.274).
-      Armature supposée uniforme par mètre : la moyenne sur c+6d vaut alors la valeur par mètre. */
+      Armature supposée uniforme par mètre : la moyenne sur c+6d vaut alors la valeur par mètre (au bord libre, la largeur disponible est plus petite : non modélisée). */
    const dxm=res.d_x_cm*10, dym=res.d_y_cm*10;
    const rhoLx=Math.max(0,(res.AsAppui_mm2perm||0)/(1000*dxm)), rhoLy=Math.max(0,(res.AsSupY_mm2perm||0)/(1000*dym));
    const rhoL=Math.min(0.02,Math.sqrt(rhoLx*rhoLy));
-   const bandeX_mm=(rect?c1*10:D*10)+6*d_mm, bandeY_mm=(rect?c2*10:D*10)+6*d_mm; // largeur moyennée c + 3d de chaque côté (p.254)
+   const bandeX_mm=(rect?c1cm*10:D*10)+6*d_mm, bandeY_mm=(rect?c2cm*10:D*10)+6*d_mm; // largeur moyennée c + 3d de chaque côté (p.254)
    const vmin=0.035*Math.pow(k,1.5)*Math.sqrt(fck);
    const vRdc=Math.max(CRdc*k*Math.pow(Math.max(1e-6,100*rhoL*fck),1/3),vmin);
    const vEd1=u1_mm>0?beta*VEd_N/(u1_mm*d_mm):0;
+   /* armatures de poinçonnement (Maîtrise p.255-256, 265-266, ex. p.275-277) : A_sw/s_r ≥ (v_Ed − 0,75 v_Rd,c)·u1/(1,5·f_ywd,ef) (α = 90°, d se simplifie), f_ywd,ef = min(250 + 0,25 d ; f_yd) ;
+      contour au-delà duquel elles ne sont plus exigées : u_out,ef = β·V_Ed/(v_Rd,c·d) (6.54), distance a_out du nu du poteau déduite de la forme du contour (même réduction par le bord libre que u1) */
+   let asw=null;
+   if(vEd1>vRdc&&VEd_N>0){
+    const fywdef=Math.min(250+0.25*d_mm,fyk/1.15), AswSr=(vEd1-0.75*vRdc)*u1_mm/(1.5*fywdef), srMax=0.75*d_mm;
+    const uOut=beta*VEd_N/(vRdc*d_mm), aOut=(uOut-G.uOf(0))/(G.uOf(1)-G.uOf(0)); // u(a) est affine en a : u(0) + a·(u(1) − u(0))
+    asw={fywdef,AswSr_mm2_par_mm:AswSr,sr_mm:srMax,Asw_cours_mm2:AswSr*srMax,uOut_mm:uOut,aOut_mm:aOut,aOutEstSup:aOut>2*d_mm};
+   }
    /* β : 1,15 poteau intérieur (1,4 rive, 1,5 angle) valable seulement si structure contreventée (stabilité latérale indépendante du portique dalle-poteaux)
-      ET portées voisines telles que 0,8 ≤ l_i/l_(i+1) ≤ 1,25 (Maîtrise p.262-263, § 2.2.1.6) ; sinon calcul détaillé du moment transmis (6.38 à 6.46) */
+      ET portées voisines telles que 0,8 ≤ l_i/l_(i+1) ≤ 1,25 (Maîtrise p.262-263, § 2.2.1.6) ; sinon formule détaillée (6.38 à 6.46) */
    const betaConditions='β = 1,15 (poteau intérieur ; 1,4 de rive, 1,5 d\'angle) valable seulement si la structure est contreventée (stabilité latérale indépendante du fonctionnement en portique dalles-poteaux) et si les portées voisines vérifient 0,8 ≤ l_i/l_i+1 ≤ 1,25 (Maîtrise p.262-263). Sinon : calcul détaillé du moment transmis.';
-   return {u0_mm,u1_mm,VEd_N,beta,vEd0,vRdmax,ok_max:vEd0<=vRdmax,vRdc,vEd1,ok_c:vEd1<=vRdc,k,rhoL,rhoLx,rhoLy,bandeX_mm,bandeY_mm,betaConditions};
+   return {position:pos,u0_mm,u1_mm,u1star_mm:G.u1star||null,reduit:G.reduit,u1full_mm:G.u1full||G.u1,VEd_N,beta,betaMethode:B.methode,betaDetail:!!B.detail,vEd0,vRdmax,ok_max:vEd0<=vRdmax,vRdc,vEd1,ok_c:vEd1<=vRdc,k,rhoL,rhoLx,rhoLy,bandeX_mm,bandeY_mm,betaConditions,asw,bordA_mm:Pg.aA,bordB_mm:Pg.aB,c1_mm:Pg.c1,c2_mm:Pg.c2};
   }
   function dlCompute(t){
    const dp=dlData(t);
@@ -27770,7 +27841,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<label>Dalle sur appui ponctuel (poteau) <select data-dl="poincon"><option value=""'+(!dp.poincon?' selected':'')+'>Non</option><option value="1"'+(dp.poincon?' selected':'')+'>Oui</option></select></label>'
     +(dp.poincon?(
       '<label>Forme du poteau <select data-dl="poteauForme"><option value="rect"'+(dp.poteauForme!=='circ'?' selected':'')+'>Rectangulaire</option><option value="circ"'+(dp.poteauForme==='circ'?' selected':'')+'>Circulaire</option></select></label>'
-      +ELS_DALLE_POINCON.slice().reverse().map(sp=>elsFieldHtml(sp,dp,(window._elsErr||{})[t.id])).join('')
+      +'<div class="pcElsGrp">'+ELS_DALLE_POINCON.filter(sp=>!sp.cond||sp.cond(dp)).map(sp=>elsFieldHtml(sp,dp,(window._elsErr||{})[t.id])).join('')+'</div>'
       +'<p class="pcNote">Côté(s) du poteau et effort transmis NEd : à régler directement sur le schéma ci-dessus. Vérification EC2 §6.4, β forfaitaire = 1,15 (poteau intérieur courant), valable seulement si structure contreventée et portées voisines entre 0,8 et 1,25 (Maîtrise p.262-263).</p>'
      ):'');
   }
@@ -27798,7 +27869,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(res.sensDeux&&!res.insuffisant) h+='<div class="pcDimBox"><b>Ferraillage sens ly</b><p class="pcNote">My='+res.deuxSens.My.toFixed(2)+' kN·m/m (sans réduction appuis) · As='+res.AsTravY_cm2.toFixed(2)+' cm²/m → <b>Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm</b>'+(res.depasseY?' ⚠ As,max dépassé':'')+'</p></div>';
    h+='<div class="pcDimBox"><b>Flèche</b><p class="pcNote">'+(res.fleche.nonCalculee?'non vérifiable : ferraillage non calculé (épaisseur insuffisante)':'l/d réel='+res.fleche.ldReel.toFixed(1)+' ≤ l/d limite='+res.fleche.ratio.toFixed(1)+' → '+(res.fleche.ok?'✓ vérifiée':'⚠ non vérifiée')+(res.fleche.ratioAN!=null?' (tableau AN interpolé : '+res.fleche.ratioAN.toFixed(1)+')':''))+'</p></div>';
    if(res.poincon&&res.poincon.nonGere) h+='<div class="pcDimBox"><b>Poinçonnement</b><p class="pcNote" role="status" style="color:#D9574A;font-weight:600">⚠ '+res.poincon.message+'</p></div>';
-   else if(res.poincon) h+='<div class="pcDimBox"><b>Poinçonnement</b><p class="pcNote">vEd(u0)='+res.poincon.vEd0.toFixed(2)+' ≤ vRd,max='+res.poincon.vRdmax.toFixed(2)+' MPa → '+(res.poincon.ok_max?'✓':'⚠')+'<br>vEd(u1)='+res.poincon.vEd1.toFixed(2)+' ≤ vRd,c='+res.poincon.vRdc.toFixed(2)+' MPa → '+(res.poincon.ok_c?'✓ sans armature de poinçonnement':'⚠ armatures de poinçonnement nécessaires')+'</p></div>';
+   else if(res.poincon) h+='<div class="pcDimBox"><b>Poinçonnement — '+dlPoinconTypeTxt(res.poincon)+'</b><p class="pcNote">vEd(u0)='+res.poincon.vEd0.toFixed(2)+' ≤ vRd,max='+res.poincon.vRdmax.toFixed(2)+' MPa → '+(res.poincon.ok_max?'✓':'⚠')+'<br>vEd(u1)='+res.poincon.vEd1.toFixed(2)+' ≤ vRd,c='+res.poincon.vRdc.toFixed(2)+' MPa → '+(res.poincon.ok_c?'✓ sans armature de poinçonnement':'⚠ '+(res.poincon.asw?dlPoinconAswTxt(res.poincon):'armatures de poinçonnement nécessaires'))+'</p></div>';
    h+='<button type="button" class="ghost pcBtnSm" data-dl-act="printNote">🖶 Voir la note</button>';
    return h;
   }
@@ -27881,8 +27952,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    else V.push({zone:'Dalle',nom:'ELS fissuration',formule:'EC2 7.3',calcul:'non calculable (ferraillage non calculé)',limite:'—',etat:'nf'});
    if(res.poincon&&res.poincon.nonGere) V.push({zone:'Poteau',nom:'Poinçonnement',formule:'EC2 6.4 (Maîtrise p.245-280)',calcul:res.poincon.message,limite:'—',etat:'nf'});
    else if(res.poincon){ const pc=res.poincon; V.push({zone:'Poteau',nom:'Poinçonnement — u0',formule:'v_Ed(u0) ≤ v_Rd,max',calcul:'v_Ed = '+f2(pc.vEd0)+' MPa',limite:'v_Rd,max = '+f2(pc.vRdmax)+' MPa',etat:pc.ok_max?'ok':'ko'});
-    V.push({zone:'Poteau',nom:'Poinçonnement — u1 (2d)',formule:'v_Ed(u1) ≤ v_Rd,c',calcul:'v_Ed = '+f2(pc.vEd1)+' MPa',limite:'v_Rd,c = '+f2(pc.vRdc)+' MPa',etat:pc.ok_c?'ok':'ko'});
-    V.push({zone:'Poteau',nom:'Poinçonnement — hypothèses',formule:'β = 1,15 (poteau intérieur), ρl, v_Rd,max, bords libres, armatures de poinçonnement',calcul:'—',limite:'—',etat:'nf'}); }
+    V.push({zone:'Poteau',nom:'Poinçonnement — u1 (2d)',formule:'v_Ed(u1) ≤ v_Rd,c ('+dlPoinconTypeTxt(pc).replace(/ \(.*$/,'')+', β = '+f2(pc.beta)+')',calcul:'v_Ed = '+f2(pc.vEd1)+' MPa ; u1 = '+f2(pc.u1_mm/1000)+' m',limite:'v_Rd,c = '+f2(pc.vRdc)+' MPa',etat:pc.ok_c?'ok':(pc.asw?'cad':'ko')});
+    if(pc.asw) V.push({zone:'Poteau',nom:'Poinçonnement — armatures',formule:'A_sw/s_r ≥ (v_Ed − 0,75·v_Rd,c)·u1/(1,5·f_ywd,ef) ; u_out,ef = β·V_Ed/(v_Rd,c·d) (Maîtrise p.255-256, 265-266)',calcul:'A_sw/s_r ≥ '+f2(pc.asw.AswSr_mm2_par_mm)+' mm²/mm ; A_sw ≥ '+f2(pc.asw.Asw_cours_mm2,0)+' mm² par cours (s_r = 0,75 d) ; u_out,ef = '+f2(pc.asw.uOut_mm/1000)+' m',limite:'dernier cours à ≤ 1,5·d de u_out,ef ; s_r ≤ 0,75·d',etat:'cad'});
+    V.push({zone:'Poteau',nom:'Poinçonnement — hypothèses',formule:'β '+(pc.betaDetail?'détaillé (6.44/6.46)':'forfaitaire (1,15 intérieur, 1,4 rive, 1,5 angle ; structure contreventée, portées voisines 0,8 à 1,25)'),calcul:'moment transmis '+(pc.betaDetail?'pris par e_par':'non pris en compte')+' ; ρl uniforme par mètre ; armatures de poinçonnement non dessinées',limite:'—',etat:'nf'}); }
    [['Armatures de répartition (secondaires)','EC2 9.3.1.1(2) : ≥ 20 % de A_s principal (confirmé, Maîtrise p.39)'],['ELS contraintes (XD/XF/XS)','σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk (livre p.190, 214)'],['Charges localisées','Pigeaud / Westergaard']].forEach(a=>V.push({zone:'Dalle',nom:a[0],formule:a[1],calcul:'—',limite:'—',etat:'nf'}));
    return V;
   }
@@ -27892,6 +27964,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const L=[];
    if(res.poincon&&res.poincon.nonGere){
     L.push({ligne:false,nom:'Position du poteau',valeur:res.poincon.position,origine:'saisi',texte:'Poinçonnement : '+res.poincon.message});
+   } else if(res.poincon&&res.poincon.position!=='int'){
+    const pc=res.poincon;
+    L.push({ligne:false,nom:'Poteau de '+(pc.position==='rive'?'rive':'angle')+' (bord libre, β)',valeur:dlPoinconTypeTxt(pc),origine:'saisi',
+     texte:'Poinçonnement : '+dlPoinconTypeTxt(pc)+' ; contour de contrôle réduit par le bord libre s\'il est plus court que le contour complet (Maîtrise p.249), u0 = '+(pc.position==='rive'?'min(c2 + 3d ; c2 + 2c1)':'min(3d ; c1 + c2)')+' (p.264, formule donnée par le livre pour les semelles de poteau et appliquée ici à la dalle). β = '+pc.beta.toFixed(2).replace('.',',')+' ('+pc.betaMethode+'). '+(pc.betaDetail?'Moment transmis : seule l\'excentricité parallèle au bord est prise ; l\'excentricité perpendiculaire est supposée vers l\'intérieur ou nulle (vers l\'extérieur : non géré).':'Moment transmis non pris en compte : β forfaitaire, valable seulement si la structure est contreventée et si les portées voisines sont dans le rapport 0,8 à 1,25 (p.262-263).')+' Armatures de poinçonnement dimensionnées (A_sw/s_r, u_out,ef), mais non dessinées et sans espacement tangentiel ni A_sw,min. Armatures de rive particulières si la charge est à moins de d du bord (p.249) : non étudiées. Poteau circulaire de rive ou d\'angle : non traité.'});
+    if(!res.AsSupYSaisie) L.push({ligne:false,nom:'Armature supérieure sens y sous poteau (ρl)',valeur:'hypothèse',origine:'par défaut',
+     texte:'Poinçonnement : l\'armature supérieure du sens y sous le poteau n\'est pas saisie ; elle est prise égale à max(20 % de l\'armature d\'appui ; A_s,min en deux sens), uniforme par mètre (au bord libre la largeur disponible est plus petite : non modélisée). À remplacer par l\'armature réellement posée.'});
    } else if(res.poincon){
     if(!res.AsSupYSaisie) L.push({ligne:false,nom:'Armature supérieure sens y sous poteau (ρl)',valeur:'hypothèse',origine:'par défaut',
      texte:'Poinçonnement : l\'armature supérieure du sens y sous le poteau n\'est pas saisie (« Armature supérieure du sens y sous le poteau », étape 4) ; elle est prise égale à max(20 % de l\'armature d\'appui ; A_s,min en deux sens), supposée uniforme par mètre. ρl = √(ρlx·ρly) en est plus bas et le résultat plus sévère. À remplacer par l\'armature réellement posée au droit du poteau.'});
@@ -27943,8 +28021,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<h5>Données géométriques et charges</h5>'+dlDonneesHtml(res,dp)
     +'<h5>Sollicitations — moments (sens lx)</h5><p class="pcNote">'+(res.sensDeux?('Dalle portant dans les deux sens (α=lx/ly='+res.deuxSens.a.toFixed(2)+', coefficients approchés μx='+res.deuxSens.mux.toFixed(4)+', μy='+res.deuxSens.muy.toFixed(4)+' — à recouper avec une table officielle). Mx=μx·pEd·lx²='+res.Mo_x.toFixed(2)+' kN·m/m retenu comme moment de référence pour la répartition travée/appuis.'):('Dalle continue 1 sens : Mo=pEd·lx²/8='+res.Mo_x.toFixed(2)+' kN·m/m.'))+'<br>Méthode forfaitaire (α=Q/(G+Q)='+res.alphaQ.toFixed(2)+') : Mt='+res.forf.Mt.toFixed(2)+' · Mw='+res.forf.Mw.toFixed(2)+' · Me='+res.forf.Me.toFixed(2)+' kN·m/m. Règle des moments Mt+(Mw+Me)/2 ≥ '+res.forf.coefMin.toFixed(2)+'·Mo : '+res.forf.sum.toFixed(2)+' ≥ '+res.forf.req.toFixed(2)+' → '+(res.forf.ok?'vérifiée':'⚠ non vérifiée')+'.</p>'
     +'<h5>Flèche (EC2 §7.4.2, ratio l/d)</h5><p class="pcNote">'+(res.fleche.nonCalculee?'Non vérifiable : ferraillage non calculé (épaisseur insuffisante).':'K='+res.K+' (position '+(dp.position==='rive'?'de rive':'intermédiaire')+') · l/d réel='+res.fleche.ldReel.toFixed(1)+' ≤ l/d limite='+res.fleche.ratio.toFixed(1)+' (formules 7.16, ρ='+(res.fleche.rho*100).toFixed(2)+' %'+(res.fleche.ratioAN!=null?' ; tableau de l\'Annexe nationale interpolé : '+res.fleche.ratioAN.toFixed(1):'')+') → '+(res.fleche.ok?'vérifiée':'⚠ non vérifiée — épaisseur à revoir ou calcul fin de flèche nécessaire'))+'. Flèche à faire confirmer par un ingénieur structure (méthode simplifiée l/d).'+(res.flecheCourb?'<br><b>Vérification par la courbure</b> (EC2 §7.4.3, Maîtrise p.207-209, 225-227) : charges quasi permanentes G + '+res.flecheCourb.psi2.toFixed(2).replace('.',',')+'·Q = '+res.flecheCourb.pQP.toFixed(2).replace('.',',')+' kN/m², E<sub>c,eff</sub> = E<sub>cm</sub>/(1+φ) = '+res.flecheCourb.Eceff.toFixed(0)+' MPa (φ = '+res.flecheCourb.phi+'), retrait ε<sub>cs</sub> = '+(res.flecheCourb.epsCs*1e4).toFixed(1).replace('.',',')+'·10⁻⁴, ζ à mi-portée = '+res.flecheCourb.zeta.toFixed(2).replace('.',',')+', σ<sub>s</sub> = '+res.flecheCourb.sigS.toFixed(0)+' MPa → f = '+res.flecheCourb.f_mm.toFixed(1).replace('.',',')+' mm '+(res.flecheCourb.f_mm<=res.flecheCourb.l250?'≤':'>')+' l/250 = '+res.flecheCourb.l250.toFixed(1).replace('.',',')+' mm'+(res.flecheCourb.cloisons?' (l/500 = '+res.flecheCourb.l500.toFixed(1).replace('.',',')+' mm)':'')+(res.flecheCourb.note?' — '+res.flecheCourb.note:'')+'.':'')+'</p>';
-   if(res.poincon&&res.poincon.nonGere) h+='<h5>Poinçonnement (EC2 §6.4)</h5><p class="pcNote">⚠ '+res.poincon.message+'</p>';
-   else if(res.poincon) h+='<h5>Poinçonnement (EC2 §6.4)</h5><p class="pcNote">β forfaitaire=1,15 (poteau intérieur courant, simplification — le calcul détaillé du moment transmis n\'est pas repris ici) : valable seulement si la structure est contreventée et si les portées voisines sont dans le rapport 0,8 à 1,25 (Maîtrise p.262-263 ; 1,4 de rive, 1,5 d\'angle sous les mêmes conditions, non traités). ρl=√(ρlx·ρly)='+(res.poincon.rhoL*100).toFixed(2)+' % (armatures supérieures des deux sens, moyenne sur c+6d, Maîtrise p.254). u0='+(res.poincon.u0_mm/10).toFixed(1)+' cm, u1='+(res.poincon.u1_mm/10).toFixed(1)+' cm.<br>vEd(u0)='+res.poincon.vEd0.toFixed(2)+' MPa ≤ vRd,max='+res.poincon.vRdmax.toFixed(2)+' MPa → '+(res.poincon.ok_max?'vérifiée':'⚠ non vérifiée (bielle de compression) — épaisseur à revoir')+'.<br>vEd(u1)='+res.poincon.vEd1.toFixed(2)+' MPa ≤ vRd,c='+res.poincon.vRdc.toFixed(2)+' MPa → '+(res.poincon.ok_c?'vérifiée sans armature de poinçonnement':'⚠ armatures de poinçonnement nécessaires (calcul détaillé hors périmètre de ce module) ou élargissement local')+'.</p>';
+   if(res.poincon) h+=dlPoinconNoteHtml(res.poincon);
    h+='<h5>Vérifications réglementaires</h5>'+ncVerifsTable(VF);
    h+=(res.insuffisant?'<h5>Ferraillage retenu</h5><p class="pcNote">⚠ Épaisseur insuffisante : K = M/(b·d²·f_ck) > K\' = 0,21 en '+res.koZones.map(k=>esc(k.nom)+' (K = '+k.K.toFixed(3).replace('.',',')+')').join(', ')+' — armatures comprimées non couvertes, aucune section d\'acier calculée. Épaisseur minimale proposée : h ≥ '+res.hMinCm+' cm (au lieu de '+res.h_cm+' cm).</p>':'<h5>Ferraillage retenu (μcu→z→As, EC2 §3.1.7, b=1 m)</h5><p class="pcNote">Sens lx — travée : As='+res.AsTravX_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinX_cm2.toFixed(2)+', As,max='+res.AsMaxX_cm2.toFixed(2)+') → '+res.barTravX.phi+'mm e='+res.barTravX.s+'mm ('+(res.barTravX.As/100).toFixed(2)+' cm²/m).'
     +(res.forf.Mw>0?('<br>Appui gauche : As='+res.AsAppW_cm2.toFixed(2)+' cm²/m → Φ'+res.barAppW.phi+' e='+res.barAppW.s+'mm.'):'')
@@ -27954,7 +28031,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    VF.filter(v=>v.etat==='ko'&&/tranchant|bielle|Méthode forfaitaire/.test(v.nom)).forEach(v=>{ h+='<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>'; });
    dlChoixAValider(res,dp).forEach(c=>{ h+='<p class="ncPt" data-bad="0">'+esc(c.texte)+'</p>'; });
    h+='<p class="ncPt" data-bad="0">Contraintes ELS en XD/XF/XS à vérifier en plus (livre p.190, 214).</p>'
-    +'<p class="ncPt" data-bad="0">non couverts : armatures de répartition (secondaires), charges localisées, poinçonnement hors poteau intérieur courant (β calculé, bords libres), conditions de la méthode forfaitaire autres que Q ≤ max(2G ; 5), coefficients μx/μy approchés.</p>'
+    +'<p class="ncPt" data-bad="0">non couverts : armatures de répartition (secondaires), charges localisées, poinçonnement : poteau circulaire de rive ou d\'angle, excentricité perpendiculaire vers l\'extérieur, dessin et dispositions des armatures de poinçonnement, conditions de la méthode forfaitaire autres que Q ≤ max(2G ; 5), coefficients μx/μy approchés.</p>'
     +(al?'<p class="ncPt" data-bad="0">enrobage saisi '+fC(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+fC(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier.</p>':'')
     +(res.poidsPropre?'':'<p class="ncPt" data-bad="0">poids propre de la dalle exclu du calcul (25·h = '+fC(25*res.h_cm/100)+' kN/m² non ajouté) : à ajouter si non compris dans G.</p>');
    h+=dlJsonPlanHtml(res,dp);
@@ -28008,8 +28085,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     verifs.push({zone:'Répartition supérieure (confirmé, Maîtrise p.39)',barres:'HA'+bRs.phi+' e='+bRs.s+' mm ('+repRs+')',reel:bRs.As/100,req:asSup/100}); }
    nom.forEach(r=>{ r.poids=r2(r.nb*wkg(r.diam,r.longueur),1); }); const poidsTotal=r2(nom.reduce((s,r)=>s+r.poids,0),1);
    if(res.shear&&!res.shear.ok) warn.push('Effort tranchant : V_Ed0 = '+r2(res.shear.VEd0,1)+' kN/m > V_Rd,c = '+r2(res.shear.VRdc,1)+' kN/m — armatures d\'effort tranchant non couvertes, augmenter l\'épaisseur.');
-   if(res.poincon&&res.poincon.nonGere) warn.push('Poinçonnement non calculé : poteau de '+(res.poincon.position==='rive'?'rive':'d\'angle')+' non géré (β et u1 à reprendre par l\'ingénieur).');
-   else if(res.poincon&&!(res.poincon.ok_c&&res.poincon.ok_max)) warn.push('Poinçonnement non satisfait : armatures de poinçonnement ou renfort local non étudiés ici.');
+   if(res.poincon&&res.poincon.nonGere) warn.push('Poinçonnement non calculé : '+res.poincon.message);
+   else if(res.poincon&&!res.poincon.ok_max) warn.push('Poinçonnement : bielle de compression non vérifiée (v_Ed(u0) > v_Rd,max) — épaisseur, béton ou aire chargée à revoir.');
+   else if(res.poincon&&!res.poincon.ok_c) warn.push('Poinçonnement : armatures de poinçonnement requises, '+(res.poincon.asw?'A_sw/s_r ≥ '+res.poincon.asw.AswSr_mm2_par_mm.toFixed(2).replace('.',',')+' mm²/mm jusqu\'à u_out,ef = '+(res.poincon.asw.uOut_mm/10).toFixed(1).replace('.',',')+' cm':'à dimensionner')+' (voir la note de calcul) — non dessinées ici.');
    hyp.push('Norme : Eurocode 2 (EN 1992-1-1 + AN France), béton '+(dp.classeGlobale||'C25/30')+', acier fyk = '+res.fyk+' MPa, γc = 1,5, γs = 1,15, α_cc = 1,0 ; enrobage nominal c = '+r2(res.enr,1)+' cm (barres extérieures), entre-barres libres ≥ max(Ø ; 20 mm ; d_g + 5 mm).');
    hyp.push('Chapeaux : épure des moments (forfaitaire) décalée de a_l = d = '+r2(d,0)+' mm (EC2 §9.2.1.3, dalle sans armatures d\'effort tranchant ; livre p.312, 435), puis prolongement de l_bd au-delà du point de moment nul décalé (au lieu du forfait l/4).');
    hyp.push('Ancrage des barres inférieures sur appui : force à ancrer F_E = V_Ed·a_l/z (a_l = d, z = 0,9d), σ_sd = F_E/A_s (livre p.333-334, AN France β2 = 0) ; toutes les barres inférieures sont prolongées jusqu\'aux appuis (pas de réduction à 50 %).');
