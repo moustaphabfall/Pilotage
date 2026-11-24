@@ -25055,7 +25055,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    // boutons ＋/－ de travée : collés à la poutre, taille ≈ le tiers de la hauteur de section à l'écran
    const btnSz=Math.max(9,Math.round(rectH/3));
    const apOpen=dp._uiApOpen;
-   const apBtnY=botY+triH+11, dimY=apBtnY+44, totY=dimY+48, apPanelY=totY+28;
+   const apBtnY=botY+triH+11, dimY=apBtnY+44;
+   // cotation des portées : champ SUR la ligne de cote si la travée est assez large, sinon sous la ligne (rangées sans chevauchement)
+   const dimFw=spans.map((L,i)=>window.dimFieldW?window.dimFieldW('L'+(i+1),L,'m'):110), dimMid=[], dimShort=spans.map((L,i)=>L*sx<dimFw[i]+24);
+   { let xx=padL; spans.forEach(L=>{ dimMid.push(xx+L*sx/2); xx+=L*sx; }); }
+   const dimRowOcc=[[]], dimRow=spans.map(()=>-1);
+   spans.forEach((L,i)=>{ if(!dimShort[i]) dimRowOcc[0].push([dimMid[i]-28-18,dimMid[i]+28+18]); });
+   spans.forEach((L,i)=>{ if(!dimShort[i]) return; const hw=Math.max(dimFw[i]+4,52)/2, a0=dimMid[i]-hw-18, b0=dimMid[i]+hw+18;
+    for(let r=0;;r++){ const occ=dimRowOcc[r]||(dimRowOcc[r]=[]); if(!occ.some(q=>!(b0<=q[0]||a0>=q[1]))){ occ.push([a0,b0]); dimRow[i]=r; break; } } });
+   const dimRows=dimRow.some(r=>r>=0)?Math.max(...dimRow)+1:0;
+   const totY=dimY+(dimRows?dimRows*82+32:64), apPanelY=totY+28;
    const H = apOpen!=null ? apPanelY+72 : totY+36;
    const defl=(step===6)?pcDeflSamples(dp):null;
    const sameGeom=defl && defl.maxAbs>1e-6 && defl.spans.length===spans.length && defl.spans.every((L,i)=>Math.abs(L-spans[i])<1e-6);
@@ -25142,20 +25151,17 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +sb(xEnd,'removeSpan','right','－','Retirer la travée de droite')
     +sb(xEnd+HB+2,'addSpan','right','＋','Ajouter une travée à droite');
    // dimension row per span : ligne cotée avec flèches aux extrémités (plus de traits perpendiculaires)
-   x=padL; const dimHtml=spans.map((L,i)=>{
-    const w=L*sx; const cx0=x, cx1=x+w; x+=w;
-    const fo='<foreignObject x="'+(cx0+2)+'" y="'+(dimY-17)+'" width="'+Math.max(w-4,44)+'" height="34"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">L'+(i+1)+' =</span><input type="number" min="0.1" step="any" class="pcDimIn" style="width:'+pcChW(L,3)+'" data-pc-i="travees.'+i+'.portee_m" value="'+(L||'')+'" title="Portée travée '+(i+1)+' (m)" aria-label="Portée travée '+(i+1)+' (m)"><i class="pcUnit">m</i></div></foreignObject>';
-    // le trait de cote s'arrête de part et d'autre du champ (jamais sous le champ) : deux segments avec un vide central
-    const midX=(cx0+cx1)/2, gap=24, lx2=Math.min(midX-gap,cx1-7), rx1=Math.max(midX+gap,cx0+7);
-    const segL=(lx2>cx0+7)?'<line x1="'+(cx0+7)+'" y1="'+dimY+'" x2="'+lx2+'" y2="'+dimY+'" stroke="var(--ink-soft,#777)" stroke-width="1.2" marker-start="url(#pcArr)"/>':'';
-    const segR=(rx1<cx1-7)?'<line x1="'+rx1+'" y1="'+dimY+'" x2="'+(cx1-7)+'" y2="'+dimY+'" stroke="var(--ink-soft,#777)" stroke-width="1.2" marker-end="url(#pcArr)"/>':'';
-    return segL+segR
-     +fo+'<text x="'+((cx0+cx1)/2)+'" y="'+(dimY+30)+'" text-anchor="middle" font-size="11" fill="var(--ink-soft,#777)">Travée '+(i+1)+'</text>';
-   }).join('');
-   const totDim='<line x1="'+padL+'" y1="'+(totY-8)+'" x2="'+padL+'" y2="'+(totY+8)+'" stroke="var(--ink-soft,#777)" stroke-width="1"/>'
-    +'<line x1="'+(padL+beamW)+'" y1="'+(totY-8)+'" x2="'+(padL+beamW)+'" y2="'+(totY+8)+'" stroke="var(--ink-soft,#777)" stroke-width="1"/>'
-    +'<line x1="'+padL+'" y1="'+totY+'" x2="'+(padL+beamW)+'" y2="'+totY+'" stroke="var(--ink-soft,#777)" stroke-width="1"/>'
-    +'<text x="'+(padL+beamW/2)+'" y="'+(totY+16)+'" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink-soft,#777)">Portée totale = '+total.toFixed(2)+' m</text>';
+   const supX=[padL]; spans.forEach(L=>supX.push(supX[supX.length-1]+L*sx)); const attY=apBtnY+26;
+   const dimHtml='<g class="dimCote">'+supX.map(xs=>'<line class="dimAtt" x1="'+xs+'" y1="'+attY+'" x2="'+xs+'" y2="'+(dimY+4)+'"/>').join('')
+    +spans.map((L,i)=>{ const a=supX[i], b=supX[i+1];
+     const fy=dimShort[i]?dimY+34+dimRow[i]*82:dimY-14, ty=dimShort[i]?fy+61:dimY+47;
+     const fld=window.dimField?window.dimField({x:dimMid[i]-dimFw[i]/2,y:fy,label:'L'+(i+1),val:L||'',unit:'m',attr:'min="0.1" data-pc-i="travees.'+i+'.portee_m"',title:'Portée travée '+(i+1)+' (m)'}).svg:'';
+     return '<line class="dimLn" x1="'+a+'" y1="'+dimY+'" x2="'+b+'" y2="'+dimY+'"/><line class="dimTk" x1="'+(a-4)+'" y1="'+(dimY+4)+'" x2="'+(a+4)+'" y2="'+(dimY-4)+'"/><line class="dimTk" x1="'+(b-4)+'" y1="'+(dimY+4)+'" x2="'+(b+4)+'" y2="'+(dimY-4)+'"/>'
+      +fld+'<text x="'+dimMid[i]+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="var(--ink-soft,#777)">Travée '+(i+1)+'</text>'; }).join('')+'</g>';
+   const xTot=padL+beamW;
+   const totDim='<g class="dimCote"><line class="dimAtt" x1="'+padL+'" y1="'+attY+'" x2="'+padL+'" y2="'+(totY+4)+'"/><line class="dimAtt" x1="'+xTot+'" y1="'+attY+'" x2="'+xTot+'" y2="'+(totY+4)+'"/>'
+    +'<line class="dimLn" x1="'+padL+'" y1="'+totY+'" x2="'+xTot+'" y2="'+totY+'"/><line class="dimTk" x1="'+(padL-4)+'" y1="'+(totY+4)+'" x2="'+(padL+4)+'" y2="'+(totY-4)+'"/><line class="dimTk" x1="'+(xTot-4)+'" y1="'+(totY+4)+'" x2="'+(xTot+4)+'" y2="'+(totY-4)+'"/>'
+    +'<text x="'+(padL+beamW/2)+'" y="'+(totY+17)+'" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink-soft,#777)">Portée totale = '+total.toFixed(2)+' m</text></g>';
    // appui panel (expanded)
    let apPanel='';
    if(apOpen!=null && dp.appuis[apOpen]){
