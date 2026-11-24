@@ -24516,7 +24516,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       K.push({v:warn?'Non calculé':ncF(As)+' cm²',l:warn?'A_s requis : section insuffisante (K > K\')':'A_s requis max en travée',bad:warn}); fer='A_s travée '+ncF(As)+' cm²'; }
     } else if(kind==='poteau'){
      const req=res.inter.As/100, reel=ncBarAs(res.barFace.n*2,res.barFace.phi);
-     K.push({v:'×'+ncF(reel/Math.max(req,res.AsMin_cm2||0,1e-9)),l:'A_s adoptée '+ncF(reel)+' cm² / requise '+ncF(Math.max(req,res.AsMin_cm2||0))+' cm²',bad:!!res.depasse});
+     K.push({v:'×'+ncF(reel/Math.max(req,res.AsMin_cm2||0,1e-9)),l:'A_s adoptée '+ncF(reel)+' cm² / requise '+ncF(Math.max(req,res.AsMin_cm2||0))+' cm²',bad:!!res.depasse||!(res.inter&&res.inter.ok)});
      K.push({v:ncF(res.lambda,1)+(res.second?' > ':' ≤ ')+ncF(res.lambdaLim,1),l:'Élancement λ / λ_lim'+(res.second?' (second ordre)':'')});
      K.push({v:ncF(res.NEd_kN,0)+' kN',l:'Effort normal N_Ed'});
      fer=(res.barFace.n*2)+' Φ'+res.barFace.phi;
@@ -26312,123 +26312,225 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      biaxiale), et cadres/recouvrements repris du classeur 096 (dossier 02, feuille « Attentes »).
      Méthode validée numériquement (monotonie N(x), M(As), cas limites) avant mise en production. */
   const POTEAU_TYPE_NOM='Poteaux & structures verticales';
-  const PT_BARDIAMS=[12,14,16,20,25,32]; // mm, diamètres commerciaux courants
+  const PT_BARDIAMS=[12,14,16,20,25,32]; // mm, diamètres commerciaux courants (φ_min EC2 = 8 mm : livre p.160)
+  const PT_PHICAD=[6,8,10,12,14,16];     // mm, diamètres commerciaux de cadres
+  const PT_DG=20;                        // mm, granulat supposé : espacement libre mini = max(Ø ; 20 ; d_g + 5) (livre p.80)
+  const PT_EC2=0.002, PT_ECU=0.0035;     // ε_c2, ε_cu2 (béton ≤ C50)
   function ptBarArea(phi){ return Math.PI/4*phi*phi; } // mm²
-  function ptChooseBar(AsFace_mm2){
-   // choisit, pour les aciers d'UNE face, un diamètre et un nombre de barres (2 à 6) qui couvrent
-   // AsFace ; à défaut d'un choix dans la plage usuelle, retient le plus proche.
-   let best=null;
-   for(const phi of PT_BARDIAMS){
-    const a=ptBarArea(phi); let n=Math.max(2,Math.ceil(AsFace_mm2/a));
-    const cand={phi,n,As:n*a};
-    if(n>=2&&n<=6){ if(!best||cand.As<best.As) best=cand; }
-   }
-   if(!best){ const phi=PT_BARDIAMS[PT_BARDIAMS.length-1]; const n=Math.min(8,Math.max(2,Math.ceil(AsFace_mm2/ptBarArea(phi)))); best={phi,n,As:n*ptBarArea(phi)}; }
-   return best;
-  }
   function ptDefaultData(t){
-   return { nom:t.nom||'', forme:'rect', b_cm:30, h_cm:30, D_cm:30,
-    L_m:3, appuiBas:'encastre', appuiHaut:'encastre',
-    classeGlobale:'C25/30', classeAcier:'B500', enrobage_cm:3,
+   return { nom:t.nom||'', forme:'rect', b_cm:30, h_cm:30, D_cm:30, planFlexion:'h',
+    L_m:3, appuiBas:'encastre', appuiHaut:'encastre', mode_l0:'portique_contreve', k_bas:0.1, k_haut:0.1,
+    classeGlobale:'C25/30', classeAcier:'B500', classeExposition:'XC1', enrobage_cm:3, poidsPropre:'ajoute',
     N_kN:500, M_tete_kNm:0, M_pied_kNm:0, resultats:null };
   }
-  function ptData(t){ if(!t.dimPT) t.dimPT=ptDefaultData(t); return t.dimPT; }
+  function ptData(t){
+   if(!t.dimPT) t.dimPT=ptDefaultData(t); const d=t.dimPT;
+   if(!PC_EXPO[d.classeExposition]) d.classeExposition='XC1';
+   if(d.mode_l0===undefined) d.mode_l0='isole';          // anciens ouvrages : table d'élément isolé conservée
+   if(!d.planFlexion) d.planFlexion='h';
+   if(!d.poidsPropre) d.poidsPropre='ajoute';
+   if(d.k_bas==null) d.k_bas=0.1; if(d.k_haut==null) d.k_haut=0.1;
+   return d;
+  }
+  /* Géométrie. Rectangle : plan de flexion « parallèle à h » (profondeur = h, largeur = b) ou « parallèle à b » ;
+     λ vérifié dans les deux plans (livre p.157 [6.4]). Cercle : A_c = π·D²/4, i = D/4 (livre p.158 [6.5]). */
   function ptGeom(dp){
    const rect=dp.forme!=='circ';
-   const b=rect?(+dp.b_cm||30):(+dp.D_cm||30), h=rect?(+dp.h_cm||30):(+dp.D_cm||30);
-   const Ac=rect? b*h : Math.PI*h*h/4; // cm²
-   const hmin=Math.min(b,h);
-   const i=rect? hmin/Math.sqrt(12) : h/4; // cm, rayon de giration (axe faible)
+   const bC=+dp.b_cm||30, hC=+dp.h_cm||30, D=+dp.D_cm||30;
+   const planH=dp.planFlexion!=='b';
+   const prof=rect?(planH?hC:bC):D, larg=rect?(planH?bC:hC):D;
+   const b=rect?bC:D, h=rect?hC:D;
+   const Ac=rect?bC*hC:Math.PI*D*D/4; // cm²
+   const hmin=rect?Math.min(bC,hC):D, hmax=rect?Math.max(bC,hC):D;
+   const iBend=rect?prof/Math.sqrt(12):D/4, iOther=rect?larg/Math.sqrt(12):D/4;
    const enr=+dp.enrobage_cm||3;
-   const d1=enr+1.2, d2=hmin-d1; // cm, centre des lits (≈ enrobage + 1,2 cm pour cadre+demi-diamètre)
-   return {rect,b,h,Ac,hmin,i,enr,d1,d2};
+   const phi0=20, d1=enr+0.8+phi0/20, d2=prof-d1; // cm, valeurs provisoires (recalculées avec les barres retenues)
+   return {rect,b,h,D,Ac,hmin,hmax,prof,larg,i:Math.min(iBend,iOther),iBend,iOther,enr,d1,d2,planH};
   }
-  function ptL0_cm(dp){
-   const L=(+dp.L_m||3)*100;
-   const key=(dp.appuiBas==='encastre'?'E':'A')+(dp.appuiHaut==='encastre'?'E':'A');
-   const k={EE:0.5,EA:0.7,AE:0.7,AA:1.0}[key]??1.0;
-   return L*k;
+  /* Longueur efficace (livre p.154-156) : élément isolé (2l, l, 0,7l, 0,5l) ou élément de portique contreventé
+     (éq. 5.15, avec racine : l0 = 0,5·l·√[(1+k1/(0,45+k1))(1+k2/(0,45+k2))], vérifié par l0 = 0,59 l pour k = 0,1, p.167)
+     ou non contreventé (éq. 5.16). k ≥ 0,1 (l'encastrement parfait n'existe pas, p.156) ; articulé : k infini. */
+  function ptKside(dp,side){ const a=side==='bas'?dp.appuiBas:dp.appuiHaut; return a==='articule'?Infinity:Math.max(0.1,+(side==='bas'?dp.k_bas:dp.k_haut)||0.1); }
+  function ptL0(dp){
+   const L=(+dp.L_m||3)*100, mode=dp.mode_l0||'isole', aB=dp.appuiBas, aH=dp.appuiHaut;
+   const libre=(aB==='libre'||aH==='libre');
+   if(mode==='isole'||libre){
+    const enc=[aB,aH].filter(x=>x==='encastre').length;
+    const f=libre?(enc>=1?2:Infinity):[1,Math.SQRT1_2,0.5][enc];
+    return {l0_cm:f*L,f,desc:libre?'console (2·l, livre p.154)':'élément isolé ('+(f===1?'l':(f===0.5?'0,5·l':'0,7·l'))+', livre p.154)'};
+   }
+   const k1=ptKside(dp,'bas'), k2=ptKside(dp,'haut');
+   if(mode==='portique_contreve'){
+    const g=k=>isFinite(k)?1+k/(0.45+k):2; const f=0.5*Math.sqrt(g(k1)*g(k2));
+    return {l0_cm:f*L,f,desc:'portique contreventé, k1 = '+(isFinite(k1)?k1:'∞')+', k2 = '+(isFinite(k2)?k2:'∞')+' (éq. 5.15, livre p.155)'};
+   }
+   const kk=(isFinite(k1)&&isFinite(k2))?k1*k2/(k1+k2):(isFinite(k1)?k1:(isFinite(k2)?k2:Infinity));
+   const t1=1+10*kk, g2=k=>isFinite(k)?1+k/(1+k):2, t2=g2(k1)*g2(k2); const f=Math.max(t1,t2);
+   return {l0_cm:f*L,f,desc:'portique non contreventé, k1 = '+(isFinite(k1)?k1:'∞')+', k2 = '+(isFinite(k2)?k2:'∞')+' (éq. 5.16, livre p.155)'};
   }
-  function ptForcesFor(x,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es){
-   const ecu=0.0035, As1=As/2, As2=As/2, xcap=Math.max(1e-6,x);
-   const lx=Math.min(0.8*xcap,h_mm), Fc=lx*b_mm*fcd, yc=0.5*lx;
-   const eps1=ecu*(xcap-d1_mm)/xcap, eps2=ecu*(xcap-d2_mm)/xcap;
-   const sig1=Math.max(-fyd,Math.min(fyd,Es*eps1)), sig2=Math.max(-fyd,Math.min(fyd,Es*eps2));
-   const F1=As1*sig1, F2=As2*sig2;
-   const N=Fc+F1+F2;
-   const M=Fc*(h_mm/2-yc)+F1*(h_mm/2-d1_mm)+F2*(h_mm/2-d2_mm);
+  /* Modèle de section pour l'interaction N-M : y mesuré depuis la fibre la plus comprimée (mm), N > 0 en compression. */
+  function ptSecModel(geom,d1,As){
+   const prof=geom.prof*10;
+   if(geom.rect) return {rect:true,prof,b:geom.larg*10,steel:[{y:d1,A:As/2},{y:prof-d1,A:As/2}]};
+   const D=geom.D*10, Rs=D/2-d1, nb=8, steel=[]; for(let j=0;j<nb;j++) steel.push({y:D/2-Rs*Math.cos(2*Math.PI*(j+0.5)/nb),A:As/nb});
+   return {rect:false,prof:D,width:y=>2*Math.sqrt(Math.max(0,y*(D-y))),steel};
+  }
+  /* Effort normal et moment (autour du centre de la section) pour une profondeur d'axe neutre x.
+     x ≤ h : pivot B (ε_cu2 = 3,5 ‰ en fibre comprimée), bloc rectangulaire λ = 0,8 pour le rectangle (livre p.451) ;
+     x > h : pivot C (ε_c2 = 2 ‰ à 3h/7 de la fibre la plus comprimée), diagramme parabole-rectangle intégré ;
+     cercle : parabole-rectangle intégré par bandes. Acier : palier horizontal à ±f_yd. */
+  function ptNM(sec,x,fcd,fyd,Es){
+   const h=sec.prof; let N=0,M=0;
+   const eps=y=>x<=h?PT_ECU*(x-y)/x:PT_EC2*(x-y)/(x-3*h/7);
+   if(sec.rect&&x<=h){ const lx=Math.min(0.8*x,h), Fc=lx*sec.b*fcd; N+=Fc; M+=Fc*(h/2-lx/2); }
+   else { const n=160, dy=h/n; for(let i=0;i<n;i++){ const y=(i+0.5)*dy, e=eps(y); if(e<=0) continue; const s=e>=PT_EC2?fcd:fcd*(1-Math.pow(1-e/PT_EC2,2)); const w=sec.rect?sec.b:sec.width(y), F=s*w*dy; N+=F; M+=F*(h/2-y); } }
+   sec.steel.forEach(st=>{ const e=eps(st.y), s=Math.max(-fyd,Math.min(fyd,Es*e)), F=st.A*s; N+=F; M+=F*(h/2-st.y); });
    return {N,M};
   }
-  function ptSolveXforN(As,Ntarget,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es){
-   let lo=1, hi=3*h_mm;
-   const Nlo=ptForcesFor(lo,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).N, Nhi=ptForcesFor(hi,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).N;
-   if(Ntarget<=Nlo) return lo; if(Ntarget>=Nhi) return hi;
-   for(let k=0;k<60;k++){ const mid=(lo+hi)/2; if(ptForcesFor(mid,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).N<Ntarget) lo=mid; else hi=mid; }
-   return (lo+hi)/2;
+  function ptSolveX(sec,Nt,fcd,fyd,Es){
+   let lo=1, hi=60*sec.prof; const Nhi=ptNM(sec,hi,fcd,fyd,Es).N;
+   if(Nt>=Nhi) return {x:hi,sat:true};
+   for(let k=0;k<60;k++){ const mid=(lo+hi)/2; if(ptNM(sec,mid,fcd,fyd,Es).N<Nt) lo=mid; else hi=mid; }
+   return {x:(lo+hi)/2,sat:false};
   }
-  function ptInteractionAs(NEd_N,MEd_Nmm,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es){
-   const MforAs=As=>{ const x=ptSolveXforN(As,NEd_N,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es); return ptForcesFor(x,As,b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es).M; };
-   let loAs=0, hiAs=b_mm*h_mm*0.08;
-   const Mlo=MforAs(loAs); if(MEd_Nmm<=Mlo) return {As:0,ok:true,Mdispo:Mlo};
-   const Mhi=MforAs(hiAs); if(MEd_Nmm>Mhi) return {As:hiAs,ok:false,Mdispo:Mhi};
-   for(let k=0;k<60;k++){ const mid=(loAs+hiAs)/2; if(MforAs(mid)<MEd_Nmm) loAs=mid; else hiAs=mid; }
-   const As=(loAs+hiAs)/2; return {As,ok:true,Mdispo:MforAs(As)};
+  function ptInteractionAs(geom,d1,NEd_N,MEd_Nmm,fcd,fyd,Es){
+   const Ac_mm2=geom.Ac*100, hiAs=Ac_mm2*0.08;
+   const MforAs=As=>{ const sec=ptSecModel(geom,d1,As), s=ptSolveX(sec,NEd_N,fcd,fyd,Es); return {M:ptNM(sec,s.x,fcd,fyd,Es).M,sat:s.sat}; };
+   const m0=MforAs(0); let loAs=0;
+   if(m0.sat){ // N supérieur à la capacité du béton seul : A_s minimale pour reprendre N (compression centrée), puis flexion
+    const mh0=MforAs(hiAs); if(mh0.sat) return {As:hiAs,ok:false,Mdispo:mh0.M,axial:true};
+    let a=0,b=hiAs; for(let k=0;k<50;k++){ const mid=(a+b)/2; if(MforAs(mid).sat) a=mid; else b=mid; }
+    loAs=b; const mm=MforAs(loAs).M; if(MEd_Nmm<=mm) return {As:loAs,ok:true,Mdispo:mm};
+   } else if(MEd_Nmm<=m0.M) return {As:0,ok:true,Mdispo:m0.M};
+   const mh=MforAs(hiAs); if(MEd_Nmm>mh.M) return {As:hiAs,ok:false,Mdispo:mh.M};
+   let hi=hiAs; for(let k=0;k<50;k++){ const mid=(loAs+hi)/2; if(MforAs(mid).M<MEd_Nmm) loAs=mid; else hi=mid; }
+   const As=(loAs+hi)/2; return {As,ok:true,Mdispo:MforAs(As).M};
   }
-  /* Calcul complet : élancement (EC2 §5.8.3), moment du second ordre (§5.8.8, hypothèses par défaut
-     documentées dans la note — Kr=1, φef=2), interaction N-M, puis As,min/As,max/cadres/recouvrements
-     repris du classeur 096 (formules dans le skill dimensionnement-02-poteaux). */
+  /* Choix des barres : section, diamètre, nombre, avec contrôle de l'espacement libre a ≥ max(Ø ; 20 ; d_g + 5) (livre p.80)
+     et de la règle des 150 mm (barres non tenues par un cadre, livre p.161). Rectangle : n barres par face (lits), cercle : n total pair ≥ 6. */
+  function ptChooseBars(dp,geom,AsReq_mm2){
+   const enr=geom.enr*10; let best=null, bestAny=null;
+   const aMinOf=phi=>Math.max(phi,20,PT_DG+5);
+   for(const phi of PT_BARDIAMS){
+    const a=ptBarArea(phi), phiT=ptPhiCad(phi), xL=enr+phiT+phi/2;
+    if(geom.rect){
+     const nMin=Math.max(2,Math.ceil(AsReq_mm2/2/a));
+     for(let n=nMin;n<=8;n++){ const pitch=(geom.larg*10-2*xL)/(n-1), free=pitch-phi, ok=free>=aMinOf(phi)-1e-9;
+      const cand={phi,n,As:n*a,pitch,free,aMin:aMinOf(phi),espOk:ok,phiT};
+      if(!bestAny||cand.As<bestAny.As) bestAny=cand; if(ok&&(!best||cand.As<best.As)) best=cand; if(ok) break; }
+    } else {
+     const nMin=Math.max(6,Math.ceil(AsReq_mm2/a));
+     for(let nt=nMin+(nMin%2);nt<=24;nt+=2){ const pitch=Math.PI*(geom.D*10-2*xL)/nt, free=pitch-phi, ok=free>=aMinOf(phi)-1e-9;
+      const cand={phi,n:nt/2,As:nt/2*a,pitch,free,aMin:aMinOf(phi),espOk:ok,phiT};
+      if(!bestAny||cand.As<bestAny.As) bestAny=cand; if(ok&&(!best||cand.As<best.As)) best=cand; if(ok) break; }
+    }
+   }
+   const r=best||bestAny||{phi:32,n:8,As:8*ptBarArea(32),pitch:0,free:0,aMin:32,espOk:false,phiT:ptPhiCad(32)};
+   if(geom.rect){ const held=new Set([0,r.n-1]); let nEp=0; for(let k=1;k<r.n-1;k++){ let dmin=Infinity; held.forEach(h=>{ dmin=Math.min(dmin,Math.abs(k-h)*r.pitch); }); if(dmin>150){ held.add(k); nEp++; } } r.nEpingles=nEp; }
+   else r.nEpingles=0;
+   return r;
+  }
+  function ptPhiCad(phiL){ const need=Math.max(6,phiL/4); return PT_PHICAD.find(p=>p>=need-1e-9)||16; }
+  /* Calcul complet (Eurocode 2, livre « Pratique de l'EC2 » ch.6 et ch.11) :
+     élancement (5.8.3, p.152-158), excentricités e_i = l0/400 et Δe0 (p.445-446), compression centrée conventionnelle
+     (p.152, 158-159) si λ ≤ λlim et moment nul, sinon flexion composée par interaction N-M ; second ordre par courbure
+     nominale (§5.8.8 : NON vérifiable dans le livre fourni, valeurs par défaut K_r = 1, φ_ef = 2 signalées) ; A_s,min/A_s,max
+     (p.160) ; cadres et recouvrements (p.161-165). */
   function ptCompute(t){
    const dp=ptData(t);
-   const fck=pcFck(dp.classeGlobale), fcd=fck/1.5, fyk=PC_FYK[dp.classeAcier]||500, fyd=fyk/1.15, Es=200000;
-   const geom=ptGeom(dp);
-   const b_mm=geom.b*10, h_mm=geom.h*10, d1_mm=geom.d1*10, d2_mm=geom.d2*10;
-   const Ac_mm2=geom.Ac*100;
-   const NEd_N=Math.max(0,(+dp.N_kN||0)*1000);
-   const l0_cm=ptL0_cm(dp), l0_mm=l0_cm*10;
-   const lambda=geom.i>1e-6 ? l0_cm/geom.i : 0;
+   const fck=pcFck(dp.classeGlobale), fcd=fck/1.5, fyk=PC_FYK[dp.classeAcier]||500, fyd=fyk/1.15, Es=200000; // α_cc = 1 (livre p.159)
+   const geom=ptGeom(dp), rect=geom.rect, Lm=+dp.L_m||3;
+   const Ac_mm2=geom.Ac*100, prof_mm=geom.prof*10;
+   const ppKN=dp.poidsPropre==='inclus'?0:1.35*25*(geom.Ac/1e4)*Lm;       // poids propre du poteau, ELU (livre p.169)
+   const NEd_N=Math.max(0,((+dp.N_kN||0)+ppKN)*1000);
+   const L0=ptL0(dp), l0_cm=L0.l0_cm, l0_mm=l0_cm*10;
+   const lambda=geom.iBend>1e-6?l0_cm/geom.iBend:0, lambdaOther=geom.iOther>1e-6?l0_cm/geom.iOther:0, lambdaMax=Math.max(lambda,lambdaOther);
    const n=NEd_N/(Ac_mm2*fcd);
-   const A=0.7, Bn=1.1;
+   const A=0.7;                                                           // φ_ef inconnu (livre p.152)
+   const pass=Bn=>{
    const M1=+dp.M_pied_kNm||0, M2v=+dp.M_tete_kNm||0;
-   const Mmax=Math.max(Math.abs(M1),Math.abs(M2v)), Mmin=Math.min(Math.abs(M1),Math.abs(M2v));
-   const memeSigne=(M1*M2v)>=0, rm= Mmax>1e-9 ? (memeSigne?Mmin/Mmax:-Mmin/Mmax) : 0;
+   const [M02raw,M01raw]=Math.abs(M1)>=Math.abs(M2v)?[M1,M2v]:[M2v,M1];
+   const M02a=Math.abs(M02raw), sgn=M02raw<0?-1:1, M01s=M01raw*sgn;
+   const nonContr=(dp.mode_l0==='portique_non_contreve');
+   const rmCas=nonContr?'non contreventé : r_m = 1':(M02a<1e-6?'aucun moment saisi (imperfections) : r_m = 1':'r_m = M01/M02');
+   const rm=(nonContr||M02a<1e-6)?1:Math.max(-1,Math.min(1,M01s/M02a));
    const C=1.7-rm;
-   const lambdaLim = n>1e-6 ? 20*A*Bn*C/Math.sqrt(n) : 999;
-   const second = lambda>lambdaLim;
-   const signeMin=(M1*M2v>=0)?1:-1;
-   const M0e=Math.max(0.6*Mmax+0.4*signeMin*Mmin, 0.4*Mmax);
-   let M2mom=0;
-   if(second && NEd_N>1){
-    const beta=Math.max(0,0.35+fck/200-lambda/150), phief=2, Kphi=Math.max(1,1+beta*phief), Kr=1;
-    const invr=Kr*Kphi*(fyd/Es)/(0.45*(geom.d2*10));
-    M2mom=NEd_N*invr*(l0_mm*l0_mm)/10/1e6; // kN·m
+   const lambdaLim=n>1e-6?20*A*Bn*C/Math.sqrt(n):999;
+   const centree=(M02a<1e-6)&&(lambdaMax<=lambdaLim);
+   const second=!centree&&((M02a<1e-6)?lambdaMax>lambdaLim:lambda>lambdaLim);
+   const eiMM=l0_mm/400, De0mm=Math.max(20,prof_mm/30);
+   const Mei=NEd_N*eiMM/1e6, MDe=NEd_N*De0mm/1e6;                          // kN·m
+   let M0e=0, M2mom=0, MEd=0;
+   if(!centree){
+    if(!second){ M0e=M02a; MEd=M02a+Mei+MDe; }
+    else {
+     const M02p=M02a+Mei, M01p=M01s+Mei; M0e=Math.max(0.6*M02p+0.4*M01p,0.4*M02p);
+     const beta=Math.max(0,0.35+fck/200-lambda/150), phief=2, Kphi=Math.max(1,1+beta*phief), Kr=1;
+     const invr=Kr*Kphi*(fyd/Es)/(0.45*Math.max(10,prof_mm-geom.d1*10));
+     M2mom=NEd_N*invr*(l0_mm*l0_mm)/10/1e6;
+     MEd=M0e+M2mom+MDe;
+    }
    }
-   const e0min_cm=Math.max(2,geom.hmin/30);
-   const MEd_min=NEd_N*(e0min_cm*10)/1e6; // kN·m
-   const MEd=Math.max(M0e+M2mom, MEd_min);
-   const inter=ptInteractionAs(NEd_N, MEd*1e6, b_mm,h_mm,d1_mm,d2_mm,fcd,fyd,Es);
-   const AsMin_mm2=Math.max(0.002*Ac_mm2, 0.10*NEd_N/fyd);
-   const AsMax_mm2=0.04*Ac_mm2;
-   let AsTotal_mm2=Math.max(inter.As,AsMin_mm2);
-   const depasse=AsTotal_mm2>AsMax_mm2;
-   const barFace=ptChooseBar(AsTotal_mm2/2);
-   const AsReelle_mm2=barFace.As*2;
-   // Cadres (classeur 096, feuille Attentes) : diamètre ≥ max(6, φl/4) ; espacement courant
-   // ≤ min(20φl, 400mm, min(b,h)) ; réduit à 0,6× sur h (ou 45cm) en tête/pied.
-   const phiCadre=Math.max(6,Math.ceil(barFace.phi/4));
-   const sCourant_mm=Math.min(20*barFace.phi,400,geom.hmin*10);
-   const sExtrem_mm=0.6*sCourant_mm;
-   const hZoneExtrem_mm=Math.max(geom.hmin*10,450);
-   // Longueur d'ancrage/recouvrement (Attentes) : fbd=2,25·fctd ; lb,rqd=(φ/4)(fyd/fbd) ; lb,min=max(10φ,100,200mm).
-   const fctm=0.30*Math.pow(fck,2/3), fctd=fctm/1.5*0.7; // fctd≈0,7·fctk0,05/γc, approx usuelle
-   const fbd=2.25*fctd;
-   const lbrqd_mm=(barFace.phi/4)*(fyd/fbd);
-   const lbmin_mm=Math.max(10*barFace.phi,100,200);
-   const a6=1.5; // recouvrement (zone de jonction)
-   const lb_mm=Math.max(lbrqd_mm*(AsMin_mm2>0?AsTotal_mm2/Math.max(AsReelle_mm2,1):1)*a6, lbmin_mm);
-   return { fck,fcd,fyk,fyd,geom,l0_cm,lambda,lambdaLim,second,n,C,M0e,M2mom,MEd,
+   const AsMin_mm2=Math.max(0.002*Ac_mm2,0.10*NEd_N/fyd), AsMax_mm2=0.04*Ac_mm2;
+   const sigmaC=Math.min(fyd,Es*PT_EC2);                                   // σ_s en compression centrée = 400 MPa (livre p.159)
+   const FsC=Math.max(0,NEd_N-Ac_mm2*fcd);
+   let phiGuess=20, bars=null, inter=null, d1mm=0;
+   for(let it=0;it<3;it++){
+    d1mm=(geom.enr*10)+ptPhiCad(phiGuess)+phiGuess/2; geom.d1=d1mm/10; geom.d2=geom.prof-geom.d1;
+    inter=centree?{As:FsC/sigmaC,ok:NEd_N<=Ac_mm2*fcd+AsMax_mm2*sigmaC,Mdispo:0}:ptInteractionAs(geom,d1mm,NEd_N,MEd*1e6,fcd,fyd,Es);
+    const AsReq=Math.max(inter.As,AsMin_mm2); bars=ptChooseBars(dp,geom,AsReq);
+    if(bars.phi===phiGuess) break; phiGuess=bars.phi;
+   }
+   const barFace={phi:bars.phi,n:bars.n,As:bars.As};
+   const AsTotal_mm2=Math.max(inter.As,AsMin_mm2), AsReelle_mm2=barFace.As*2;
+   const depasse=AsTotal_mm2>AsMax_mm2||!inter.ok;
+   const phiCadre=bars.phiT, bMin=geom.hmin;
+   const sCourant_mm=Math.min(20*barFace.phi,bMin*10,400), sExtrem_mm=0.6*sCourant_mm, hZoneExtrem_mm=geom.hmax*10; // h = plus grande dimension (livre p.165)
+   const fctm=0.30*Math.pow(fck,2/3), fctd=Math.min(0.7*fctm,3.1)/1.5, fbd=2.25*fctd; // η1 = η2 = 1 (livre p.162-163)
+   const FsSd=centree?FsC:fyd*Math.min(AsTotal_mm2,AsReelle_mm2);
+   const sigmaSd=AsReelle_mm2>0?FsSd/AsReelle_mm2:0;
+   const lbrqd_mm=(barFace.phi/4)*(sigmaSd/fbd);
+   const a6=1.5;                                                           // 100 % de barres recouvertes dans la même section (livre p.173)
+   const lb_mm=Math.max(a6*lbrqd_mm,15*barFace.phi,200);
+   const lOverH=Lm*100/geom.hmax, domOk=lOverH>=3&&(!rect||geom.hmax<4*geom.hmin);
+   const enrNom=pcEnrobageNom(dp), enrSaisi=(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3;
+   return { fck,fcd,fyk,fyd,geom,l0_cm,l0f:L0.f,l0desc:L0.desc,lambda,lambdaOther,lambdaLim,second,centree,n,A,B:Bn,C,rm,rmCas,M0e,M2mom,MEd,
+    ei_mm:eiMM,De0_mm:De0mm,Mei,MDe,pp_kN:ppKN,sigmaC,FsC:FsC/1000,
     inter, AsMin_cm2:AsMin_mm2/100, AsMax_cm2:AsMax_mm2/100, AsTotal_cm2:AsTotal_mm2/100,
-    AsReelle_cm2:AsReelle_mm2/100, depasse, barFace, phiCadre, sCourant_mm, sExtrem_mm, hZoneExtrem_mm, lb_mm,
+    AsReelle_cm2:AsReelle_mm2/100, depasse, barFace, nBars:barFace.n*2, espOk:bars.espOk, aLibre_mm:bars.free, aMin_mm:bars.aMin, pitch_mm:bars.pitch, nEpingles:bars.nEpingles,
+    phiCadre, sCourant_mm, sExtrem_mm, hZoneExtrem_mm, lb_mm, lbrqd_mm, sigmaSd,
+    lOverH,domOk,enrNom,enrSaisi,
     NEd_kN:NEd_N/1000 };
+   };
+   /* B = 1 + 2ω : B = 1,1 si ω inconnu ; recalculé avec la section d'acier adoptée (livre p.168-171) tant que l'état reste cohérent */
+   let res=pass(1.1);
+   for(let it=0;it<3;it++){ const om=res.AsReelle_cm2*100*fyd/(Ac_mm2*fcd), B2=1+2*om; if(Math.abs(B2-res.B)<0.005) break;
+    const Q=pass(B2), omQ=Q.AsReelle_cm2*100*fyd/(Ac_mm2*fcd), Qc=pass(1+2*omQ);
+    if(Q.centree===res.centree&&Q.second===res.second) break;               // même état : on garde B = 1,1 (valeur par défaut, livre p.168)
+    if(Qc.centree===Q.centree&&Qc.second===Q.second){ res=Qc; res.omega=omQ; } else break; }
+   if(res.omega==null) res.omega=res.AsReelle_cm2*100*fyd/(Ac_mm2*fcd);
+   res.verifs=ptVerifs(dp,res);
+   return res;
+  }
+  /* Tableau des vérifications (skill note-de-calcul) : ok / ko / nf (non vérifié) / na. */
+  function ptVerifs(dp,res){
+   const f=(v,d)=>(+v).toFixed(d==null?2:d).replace('.',','), V=[], g=res.geom;
+   const add=(zone,nom,formule,calcul,limite,etat)=>V.push({zone,nom,formule,calcul,limite,etat});
+   add('Poteau','Domaine poteau (l/h et h/b)','l/h ≥ 3 ; h < 4·b (livre p.152 [6.1])','l/h = '+f(res.lOverH,1)+(g.rect?' ; h/b = '+f(g.hmax/g.hmin,1):''),'≥ 3 ; < 4',res.domOk?'ok':'ko');
+   if(!isFinite(res.l0_cm)) add('Flambement','Longueur efficace','Liaisons saisies','mécanisme (articulé-articulé non contreventé ou tête libre sans encastrement)','l0 fini','ko');
+   else add('Flambement','Élancement λ ≤ λlim','λ = l0/i ; λlim = 20·A·B·C/√n (livre p.152)','λ = '+f(res.lambda,1)+' ; λlim = '+f(res.lambdaLim,1)+(res.second?' → second ordre pris en compte (méthode à confirmer)':''),res.second?'λ > λlim : M2 ajouté':'λ ≤ λlim',res.second?'nf':'ok');
+   if(g.rect&&isFinite(res.l0_cm)) add('Flambement','Autre plan de flexion','λ = l0/(côté/√12), plan perpendiculaire au plan de flexion','λ = '+f(res.lambdaOther,1),'≤ λlim = '+f(res.lambdaLim,1),res.lambdaOther<=res.lambdaLim||res.centree?'ok':'nf');
+   add('Flexion composée','Interaction N-M (ELU)','N_Ed, M_Ed (e_i, Δe0 inclus), bloc rectangulaire / parabole-rectangle','M_Ed = '+f(res.MEd,1)+' kN·m ; N_Ed = '+f(res.NEd_kN,0)+' kN',res.centree?'compression centrée : N ≤ A_c·f_cd + A_s·σ_s':'M_Ed ≤ M_Rd(N_Ed, A_s)',res.inter.ok?'ok':'ko');
+   add('Armatures','A_s ≥ A_s,min','max(0,10·N_Ed/f_yd ; 0,002·A_c) (livre p.160)','A_s adoptée = '+f(res.AsReelle_cm2)+' cm²','A_s,min = '+f(res.AsMin_cm2)+' cm²',res.AsReelle_cm2+1e-9>=res.AsMin_cm2?'ok':'ko');
+   add('Armatures','A_s ≤ A_s,max','0,04·A_c hors recouvrement (0,08 en recouvrement)','A_s requise = '+f(res.AsTotal_cm2)+' cm²','A_s,max = '+f(res.AsMax_cm2)+' cm²',res.depasse?'ko':'ok');
+   add('Armatures','Espacement libre des barres','a ≥ max(Ø ; 20 ; d_g + 5) (livre p.80), d_g = 20 mm','a = '+f(res.aLibre_mm,0)+' mm','≥ '+f(res.aMin_mm,0)+' mm',res.espOk?'ok':'ko');
+   add('Cadres','Diamètre et espacement','Ø_t ≥ max(6 ; Ø_l/4) ; s ≤ min(20·Ø_l ; b ; 400) ; ×0,6 sur h (livre p.162, 165)','Ø'+res.phiCadre+' ; s = '+f(res.sCourant_mm/10,1)+' cm (courant), '+f(res.sExtrem_mm/10,1)+' cm (tête/pied)','conforme','ok');
+   if(g.rect) add('Cadres','Barres non tenues à plus de 150 mm','épingles si besoin (livre p.161)',res.nEpingles+' épingle(s) à prévoir par lit','≤ 150 mm',res.nEpingles>0?'ok':'ok');
+   add('Enrobage','Enrobage ≥ c_nom','c_nom = c_min,dur + Δc_dev, classe '+res.enrNom.classe+' (livre p.77-79)','saisi '+f(res.enrSaisi,1)+' cm','c_nom = '+f(res.enrNom.cnomCm,1)+' cm',res.enrSaisi+1e-9>=res.enrNom.cnomCm?'ok':'nf');
+   add('Poteau','Effort tranchant V_Ed','EC2 §6.2 (livre ch.8)','non calculé','—','nf');
+   add('Poteau','Contraintes ELS (XD, XF, XS)','σ_c ≤ 0,6·f_ck ; σ_s ≤ 0,8·f_yk (livre p.190, 214)','non calculé','—','nf');
+   add('Poteau','Flexion biaxiale, feu','EC2 §5.8.9 ; EC2-1-2','non calculé','—','nf');
+   return V;
   }
   function ptSvg(dp){
    /* Élévation du poteau + section, cotée selon le skill « schemas-cotes-dimensionnement » :
@@ -26482,24 +26584,32 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const geom=ptGeom(dp);
     return '<h5>1 · Géométrie</h5>'
      +'<label>Forme <select data-pt="forme"><option value="rect"'+(dp.forme!=='circ'?' selected':'')+'>Rectangulaire</option><option value="circ"'+(dp.forme==='circ'?' selected':'')+'>Circulaire</option></select></label>'
-     +'<p class="pcNote">Section ('+(dp.forme==='circ'?'D':'B, H')+') et hauteur libre L : à régler directement sur le schéma ci-dessus. Section Ac = '+geom.Ac.toFixed(0)+' cm² · rayon de giration i = '+geom.i.toFixed(2)+' cm (axe faible).</p>';
+     +(dp.forme==='circ'?'':'<label>Plan de flexion <select data-pt="planFlexion"><option value="h"'+(dp.planFlexion!=='b'?' selected':'')+'>Parallèle à h (profondeur = h)</option><option value="b"'+(dp.planFlexion==='b'?' selected':'')+'>Parallèle à b (profondeur = b)</option></select></label>')
+     +'<p class="pcNote">Section ('+(dp.forme==='circ'?'D':'B, H')+') et hauteur libre L : à régler directement sur le schéma ci-dessus. Section Ac = '+geom.Ac.toFixed(0)+' cm² · rayon de giration i = '+geom.i.toFixed(2)+' cm (axe faible)'+(dp.forme==='circ'?', A_c = π·D²/4':'')+'. Les moments M saisis agissent dans le plan de flexion choisi ; λ est vérifié dans les deux plans.</p>';
    }
    if(n===2){
     return '<h5>2 · Matériau</h5>'
      +'<label>Classe de béton <select data-pt="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
      +'<label>Acier <select data-pt="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
+     +'<label>Classe d\'exposition <select data-pt="classeExposition">'+Object.keys(PC_EXPO).map(c=>'<option value="'+c+'"'+(pcEnrobageNom(dp).classe===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
      +'<label>Enrobage <input type="number" step="0.5" min="1" data-pt="enrobage_cm" value="'+(dp.enrobage_cm??3)+'"> cm</label>'
-     +'<p class="pcNote">fck = '+pcFck(dp.classeGlobale)+' MPa · fcd = fck/1,5 · fyd = fyk/1,15.</p>';
+     +(()=>{ const e=pcEnrobageNom(dp), al=pcEnrobageAlerte(dp); return '<p class="pcNote pcEnrNote">Enrobage nominal minimal c_nom = c_min,dur ('+e.cminDur+' mm, '+e.classe+') + Δc_dev (10 mm) = '+pcF1(e.cnomCm*10)+' mm ('+pcF1(e.cnomCm)+' cm), classe structurale S4 (livre p.77-79).</p>'
+       +(al?'<p class="pcNote pcEnrWarn" role="status" style="color:#D9574A;font-weight:600">⚠ Enrobage saisi '+pcF1(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+pcF1(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier. Le calcul n\'est pas bloqué.</p>':''); })()
+     +'<p class="pcNote">fck = '+pcFck(dp.classeGlobale)+' MPa · fcd = α_cc·fck/1,5 avec α_cc = 1 (livre p.159) · fyd = fyk/1,15.</p>';
    }
    if(n===3){
+    const L0=ptL0(dp), mode=dp.mode_l0||'isole', por=mode!=='isole';
     return '<h5>3 · Appuis (conditions de flambement)</h5>'
-     +'<label>Pied <select data-pt="appuiBas"><option value="encastre"'+(dp.appuiBas!=='articule'?' selected':'')+'>Encastré</option><option value="articule"'+(dp.appuiBas==='articule'?' selected':'')+'>Articulé</option></select></label>'
-     +'<label>Tête <select data-pt="appuiHaut"><option value="encastre"'+(dp.appuiHaut!=='articule'?' selected':'')+'>Encastré</option><option value="articule"'+(dp.appuiHaut==='articule'?' selected':'')+'>Articulé</option></select></label>'
-     +'<p class="pcNote">Longueur de flambement l₀ selon EC2 §5.8.3.2 : encastré-encastré 0,5·L, encastré-articulé 0,7·L, articulé-articulé 1,0·L. l₀ = '+(ptL0_cm(dp)/100).toFixed(2)+' m.</p>';
+     +'<label>Longueur efficace <select data-pt="mode_l0"><option value="isole"'+(mode==='isole'?' selected':'')+'>Élément isolé (0,5 / 0,7 / 1 / 2 · L)</option><option value="portique_contreve"'+(mode==='portique_contreve'?' selected':'')+'>Portique contreventé (k1, k2)</option><option value="portique_non_contreve"'+(mode==='portique_non_contreve'?' selected':'')+'>Portique non contreventé (k1, k2)</option></select></label>'
+     +'<label>Pied <select data-pt="appuiBas"><option value="encastre"'+(dp.appuiBas==='encastre'||!dp.appuiBas?' selected':'')+'>Encastré</option><option value="articule"'+(dp.appuiBas==='articule'?' selected':'')+'>Articulé</option></select></label>'
+     +'<label>Tête <select data-pt="appuiHaut"><option value="encastre"'+(dp.appuiHaut==='encastre'||!dp.appuiHaut?' selected':'')+'>Encastré</option><option value="articule"'+(dp.appuiHaut==='articule'?' selected':'')+'>Articulé</option><option value="libre"'+(dp.appuiHaut==='libre'?' selected':'')+'>Libre (console)</option></select></label>'
+     +(por?'<label>Souplesse k1 (pied) <input type="number" step="0.05" min="0.1" data-pt="k_bas" value="'+(dp.k_bas??0.1)+'"></label><label>Souplesse k2 (tête) <input type="number" step="0.05" min="0.1" data-pt="k_haut" value="'+(dp.k_haut??0.1)+'"></label>':'')
+     +'<p class="pcNote">Longueur efficace l₀ (EC2 §5.8.3.2, livre p.154-156) : '+esc(L0.desc)+' → l₀ = '+(isFinite(L0.l0_cm)?(L0.l0_cm/100).toFixed(2)+' m ('+L0.f.toFixed(3).replace('.',',')+'·L)':'indéfinie (mécanisme)')+'. k ≥ 0,1 (l\'encastrement parfait n\'existe pas, livre p.156) ; k = 0,1 pour une liaison avec une poutre plus raide ; articulé : k infini.</p>';
    }
    return '<h5>4 · Chargement (ELU)</h5>'
     +'<p class="pcNote">Effort normal N et moments en tête/pied : à régler directement sur le schéma ci-dessus.</p>'
-    +'<p class="pcNote">1 t = 10 kN. Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2.</p>'
+    +'<label>Poids propre du poteau <select data-pt="poidsPropre"><option value="ajoute"'+(dp.poidsPropre!=='inclus'?' selected':'')+'>Ajouté à N (1,35 × 25 kN/m³ × Ac × L)</option><option value="inclus"'+(dp.poidsPropre==='inclus'?' selected':'')+'>Déjà inclus dans N saisi</option></select></label>'
+    +'<p class="pcNote">1 t = 10 kN. N et M saisis = valeurs ELU (1,35·G + 1,5·Q). Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2 ; excentricités e_i = l₀/400 et Δe₀ = max(20 mm ; h/30) ajoutées (livre p.445-446).</p>'
     +'<button type="button" class="ghost pcBtnSm" data-pt-act="openDescente">📥 Descente de charges</button>'
     +'<p class="pcNote">Calcule N à partir de l\'empilement des niveaux portés par ce poteau (dalles, poutres, poids propre, charges d\'exploitation avec dégression) puis le reporte ici.</p>';
   }
@@ -26528,12 +26638,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    ['Asmax_cm2','As,max','cm²',res=>res.AsMax_cm2],
   ];
   function ptResultatsHtml(res,dp,id){
+   if(!res||!res.verifs) return '<h5>Résultats</h5><p class="pcNote">Résultat d\'une ancienne version : toucher « Recalculer l\'ouvrage ».</p>';
    const g=res.geom;
    const busy=!!(window._ptIaBusy&&window._ptIaBusy[id]);
    const iaBtnLbl=busy?'⏳ Calcul IA en cours…':(dp.resultatsIA?'🔄 Relancer le calcul IA':'🧠 Lancer un calcul IA (comparaison)');
    return '<h5>Résultats</h5>'
-    +'<div class="pcDimBox"><b>Flambement</b><p class="pcNote">l₀ = '+(res.l0_cm/100).toFixed(2)+' m · λ = '+res.lambda.toFixed(1)+' · λlim = '+res.lambdaLim.toFixed(1)+' ('+(res.second?'effets du 2nd ordre pris en compte':'négligeables')+')</p></div>'
-    +'<div class="pcDimBox"><b>Moments</b><p class="pcNote">M0e = '+res.M0e.toFixed(2)+' kN·m'+(res.second?(' · M2 (2nd ordre) = '+res.M2mom.toFixed(2)+' kN·m'):'')+' · MEd retenu = '+res.MEd.toFixed(2)+' kN·m</p></div>'
+    +'<div class="pcDimBox"><b>Flambement</b><p class="pcNote">l₀ = '+(isFinite(res.l0_cm)?(res.l0_cm/100).toFixed(2):'∞')+' m ('+esc(res.l0desc)+') · λ = '+res.lambda.toFixed(1)+(g.rect?' (autre plan '+res.lambdaOther.toFixed(1)+')':'')+' · λlim = '+res.lambdaLim.toFixed(1)+' ('+(res.centree?'compression centrée':(res.second?'effets du 2nd ordre pris en compte':'2nd ordre négligeable'))+')</p></div>'
+    +'<div class="pcDimBox"><b>Sollicitations</b><p class="pcNote">N_Ed = '+res.NEd_kN.toFixed(0)+' kN'+(res.pp_kN>0?' (dont poids propre '+res.pp_kN.toFixed(1)+' kN)':'')+' · '+(res.centree?'compression centrée : σ_s = '+res.sigmaC.toFixed(0)+' MPa':'M_Ed retenu = '+res.MEd.toFixed(2)+' kN·m (e_i = '+res.ei_mm.toFixed(1)+' mm, Δe₀ = '+res.De0_mm.toFixed(1)+' mm'+(res.second?', M_0e = '+res.M0e.toFixed(2)+', M_2 = '+res.M2mom.toFixed(2)+' kN·m':'')+')')+'</p></div>'
     +'<div class="pcDimBox"><b>Ferraillage longitudinal</b><p class="pcNote">As requis (interaction N-M) = '+(res.inter.As/100).toFixed(2)+' cm² · As,min = '+res.AsMin_cm2.toFixed(2)+' cm² · As,max = '+res.AsMax_cm2.toFixed(2)+' cm²'+(res.depasse?' ⚠ As requis dépasse As,max — revoir la section':'')+'</p>'
     +'<p class="pcNote"><b>'+(res.barFace.n*2)+' Φ'+res.barFace.phi+'</b> ('+res.barFace.n+' par face) = '+res.AsReelle_cm2.toFixed(2)+' cm²</p></div>'
     +'<div class="pcDimBox"><b>Cadres</b><p class="pcNote">Φ'+res.phiCadre+' — espacement courant '+(res.sCourant_mm/10).toFixed(1)+' cm, réduit à '+(res.sExtrem_mm/10).toFixed(1)+' cm sur '+(res.hZoneExtrem_mm/10).toFixed(0)+' cm en tête/pied · longueur de recouvrement ≈ '+(res.lb_mm/10).toFixed(0)+' cm</p></div>'
@@ -26694,7 +26805,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const dd=dcData(t2), dp2=ptData(t2);
     if(dd.resultats&&dd.resultats.lignes.length){
      const last=dd.resultats.lignes[dd.resultats.lignes.length-1];
-     dp2.N_kN=Math.round(last.NEd*100)/100;
+     dp2.N_kN=Math.round(last.NEd*100)/100; dp2.poidsPropre='inclus';
      try{persist();}catch(_){ } try{clipToast('✓ N = '+dp2.N_kN+' kN reporté sur ce poteau — relancer « 🤖 Dimensionner » pour recalculer le ferraillage.');}catch(_){ }
      pteState(id).view='form'; pteRender(id);
     }
@@ -26723,16 +26834,39 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      avec le détail des formules pour rester vérifiable pas à pas par un ingénieur. */
   function ptNoteCalculHtml(t,dp,res){ return ncFormat(ptNoteCalculHtml0(t,dp,res),{t,dp,res,kind:'poteau'}); }
   function ptNoteCalculHtml0(t,dp,res){
-   const g=res.geom;
-   return '<div class="pcNC"><h3>Note de calcul — '+esc(dp.nom||t.nom||'Poteau')+'</h3>'
-    +'<p class="pcNote">Poteau (Eurocode 2 — EN 1992-1-1, Annexe Nationale française) · '+todayStr()+'</p>'
-    +'<h5>Hypothèses</h5><p class="pcNote">Section '+(g.rect?('rectangulaire '+g.b+'×'+g.h+' cm'):('circulaire D='+g.h+' cm'))+' · béton '+esc(dp.classeGlobale)+' (fck='+res.fck+' MPa, fcd='+res.fcd.toFixed(2)+' MPa) · acier '+esc(dp.classeAcier)+' (fyk='+res.fyk+' MPa, fyd='+res.fyd.toFixed(1)+' MPa) · enrobage '+g.enr+' cm · hauteur libre '+dp.L_m+' m, appuis '+esc(dp.appuiBas)+'/'+esc(dp.appuiHaut)+'.</p>'
-    +'<h5>Flambement (EC2 §5.8.3)</h5><p class="pcNote">l₀ = '+(res.l0_cm/100).toFixed(2)+' m · i = '+g.i.toFixed(2)+' cm · λ = l₀/i = '+res.lambda.toFixed(1)+'<br>n = NEd/(Ac·fcd) = '+res.n.toFixed(2)+' · A=0,7 (par défaut), B=1,1 (par défaut), C=1,7−rm = '+res.C.toFixed(2)+'<br>λlim = 20·A·B·C/√n = '+res.lambdaLim.toFixed(1)+' → '+(res.second?'λ>λlim : effets du second ordre à prendre en compte':'λ≤λlim : effets du second ordre négligeables')+'</p>'
-    +(res.second?'<p class="pcNote">⚠ Second ordre calculé par la méthode de la courbure nominale (§5.8.8) avec Kr=1 et φef=2 pris par défaut (hypothèses simplificatrices, à recaler par le validateur selon l\'historique de charge réel).</p>':'')
-    +'<h5>Sollicitations de calcul</h5><p class="pcNote">M0e (moment équivalent 1er ordre, §5.8.8.2) = '+res.M0e.toFixed(2)+' kN·m'+(res.second?(' · M2 = '+res.M2mom.toFixed(2)+' kN·m'):'')+' · MEd = '+res.MEd.toFixed(2)+' kN·m (≥ NEd·e0,min) · NEd = '+res.NEd_kN.toFixed(0)+' kN</p>'
-    +'<h5>Ferraillage longitudinal (interaction N-M)</h5><p class="pcNote">Résolution directe par bloc de contraintes rectangulaire (EC2 §3.1.7, λ=0,8, η=1,0), armatures symétriques sur 2 faces (poteau fléchi selon un seul axe — pas de flexion biaxiale). As requis = '+(res.inter.As/100).toFixed(2)+' cm² · As,min = max(0,002·Ac ; 0,10·NEd/fyd) = '+res.AsMin_cm2.toFixed(2)+' cm² · As,max = 0,04·Ac = '+res.AsMax_cm2.toFixed(2)+' cm²'+(res.depasse?' — ⚠ dépassé, revoir la section ou le béton':'')+'<br>Choix commercial : '+(res.barFace.n*2)+' Φ'+res.barFace.phi+' ('+res.barFace.n+' par face) = '+res.AsReelle_cm2.toFixed(2)+' cm²</p>'
-    +'<h5>Cadres et recouvrements (feuille « Attentes », classeur 096)</h5><p class="pcNote">Φcadre ≥ max(6 ; Φl/4) = '+res.phiCadre+' mm · espacement courant ≤ min(20Φl ; 400 mm ; min(b,h)) = '+(res.sCourant_mm/10).toFixed(1)+' cm · réduit à 0,6× = '+(res.sExtrem_mm/10).toFixed(1)+' cm sur max(h ; 45 cm) = '+(res.hZoneExtrem_mm/10).toFixed(0)+' cm en tête et en pied · longueur de recouvrement lb ≈ '+(res.lb_mm/10).toFixed(0)+' cm (a6=1,5).</p>'
-    +'<p class="pcNote">⚠ Cette note de calcul est générée automatiquement à partir des données saisies et de la méthode Eurocode 2 (EN 1992-1-1, Annexe Nationale française). Elle doit être vérifiée et validée par un ingénieur structure (bureau d\'études béton armé) avant toute utilisation pour l\'exécution. Elle ne remplace pas une étude signée par un bureau d\'études qualifié. Méthode d\'interaction N-M simplifiée (uniaxiale, armatures symétriques 2 faces) — une flexion biaxiale ou une disposition de barres différente doit être revue par le validateur.</p>'
+   if(!res||!res.verifs) return '<div class="pcNC"><h3>Note de calcul — '+esc(dp.nom||t.nom||'Poteau')+'</h3><p class="pcNote">Résultat de calcul d\'une ancienne version : toucher « Recalculer l\'ouvrage » pour régénérer la note.</p></div>';
+   const g=res.geom, fC=(x,d)=>(+x).toFixed(d==null?2:d).replace('.',','), nom=esc(dp.nom||t.nom||'Poteau');
+   const LB={ok:'Conforme',ko:'Non conforme',nf:'Non vérifié',na:'Sans objet'};
+   const nKo=res.verifs.filter(v=>v.etat==='ko').length;
+   const fmtKo=v=>v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')';
+   const constat=nom+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(res.nBars+' Φ'+res.barFace.phi+', A_s '+fC(res.AsReelle_cm2)+' cm²'))+' — ELU vérifié (flambement, interaction N-M, A_s,min/max, cadres) ; ELS, effort tranchant, flexion biaxiale NON vérifiés';
+   const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(fmtKo(v))+'</p>').join('')
+    +(res.second?'<p class="ncPt" data-bad="0">second ordre calculé par la méthode de la courbure nominale (EC2 §5.8.8) avec K_r = 1 et φ_ef = 2 par défaut : méthode non vérifiable dans les livres fournis, à confirmer par un ingénieur.</p>':'')
+    +(res.lambdaOther>res.lambdaLim&&!res.centree&&g.rect?'<p class="ncPt" data-bad="0">l\'élancement dans l\'autre plan ('+fC(res.lambdaOther,1)+') dépasse λlim ('+fC(res.lambdaLim,1)+') : second ordre et flexion biaxiale (EC2 §5.8.9) non traités, à confirmer.</p>':'')
+    +(dp.mode_l0==='portique_non_contreve'?'<p class="ncPt" data-bad="0">poteau non contreventé : imperfection prise comme e_i = l₀/400 (cas des éléments isolés contreventés, livre p.445) ; l\'inclinaison θ_i de la structure n\'est pas traitée, à confirmer.</p>':'')
+    +(res.enrSaisi+1e-9<res.enrNom.cnomCm?'<p class="ncPt" data-bad="0">enrobage saisi '+fC(res.enrSaisi,1)+' cm inférieur à l\'enrobage nominal minimal '+fC(res.enrNom.cnomCm,1)+' cm (classe '+res.enrNom.classe+') : à corriger ou à justifier.</p>':'')
+    +'<p class="ncPt" data-bad="0">ELS non vérifiés ; en classes XD/XF/XS vérifier les contraintes (σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk ; livre p.190, 214) ; effort tranchant du poteau, flexion biaxiale et résistance au feu non calculés.</p>'
+    +(g.rect?'':'<p class="ncPt" data-bad="0">section circulaire : interaction N-M par intégration du diagramme parabole-rectangle avec 8 barres équivalentes sur le cercle des armatures ; à confirmer par un ingénieur.</p>');
+   const hypo='<h4>Hypothèses</h4><p>Eurocode 2 (EN 1992-1-1 + AN France) : f_cd = α_cc·f_ck/γ_c avec <b>α_cc = 1,0</b> et γ_c = 1,5 (livre p.159) ; acier f_yd = f_yk/γ_s, γ_s = 1,15, palier horizontal. N et M saisis : valeurs ELU (1,35·G + 1,5·Q)'+(res.pp_kN>0?' ; poids propre du poteau ajouté à N : 1,35 × 25 kN/m³ × '+fC(g.Ac/1e4,4)+' m² × '+fC(dp.L_m,2)+' m = <b>'+fC(res.pp_kN)+' kN</b>':' ; poids propre déjà inclus dans N')+'. Longueur efficace : '+esc(res.l0desc)+'. A = 0,7 (φ_ef inconnu), B = '+fC(res.B)+(res.omega!=null&&res.B>1.1?' (ω = '+fC(res.omega,3)+')':' (ω inconnu)')+', C = 1,7 − r_m = '+fC(res.C)+' ('+esc(res.rmCas)+'). Excentricités : e_i = l₀/400 = '+fC(res.ei_mm,1)+' mm, Δe₀ = max(20 mm ; h/30) = '+fC(res.De0_mm,1)+' mm (armatures symétriques ; livre p.445-446). Enrobage c = '+fC(res.enrSaisi,1)+' cm, classe d\'exposition '+res.enrNom.classe+' (c_nom minimal '+fC(res.enrNom.cnomCm,1)+' cm).</p>';
+   const verifTbl='<h4>Vérifications réglementaires</h4><table class="pcNCt"><thead><tr><th>Zone</th><th>Vérification</th><th>Formule appliquée</th><th>Calcul</th><th>Limite</th><th>État</th></tr></thead><tbody>'
+    +res.verifs.map(v=>'<tr><td>'+esc(v.zone)+'</td><td>'+esc(v.nom)+'</td><td>'+esc(v.formule)+'</td><td>'+esc(v.calcul)+'</td><td>'+esc(v.limite)+'</td><td><b class="ncSt '+v.etat+'">'+LB[v.etat]+'</b></td></tr>').join('')+'</tbody></table>';
+   const flamb='<p>l₀ = '+(isFinite(res.l0_cm)?fC(res.l0_cm/100):'∞')+' m · i = '+fC(g.iBend)+' cm (plan de flexion) · λ = l₀/i = '+fC(res.lambda,1)+(g.rect?' · λ (autre plan) = '+fC(res.lambdaOther,1):'')+'<br>n = N_Ed/(A_c·f_cd) = '+fC(res.n)+' · λlim = 20·A·B·C/√n = '+fC(res.lambdaLim,1)+' → '+(res.centree?'λ ≤ λlim et M = 0 : compression centrée conventionnelle (livre p.152)':(res.second?'λ > λlim : effets du second ordre à prendre en compte':'λ ≤ λlim : effets du second ordre négligeables'))+'</p>';
+   const sollic=res.centree
+    ?'<p>Compression centrée : F_c = A_c·f_cd ; F_s = N_Ed − F_c = '+fC(res.FsC,0)+' kN ; σ_s = min(f_yd ; E_s·ε_c2) = '+fC(res.sigmaC,0)+' MPa (ε_c2 = 2 ‰) ; A_s = F_s/σ_s = '+fC(res.inter.As/100)+' cm² (livre p.158-159).</p>'
+    :'<p>M_02 = '+fC(Math.max(Math.abs(+dp.M_pied_kNm||0),Math.abs(+dp.M_tete_kNm||0)),1)+' kN·m · e_i·N = '+fC(res.Mei,1)+' kN·m · Δe₀·N = '+fC(res.MDe,1)+' kN·m'+(res.second?' · M_0e = '+fC(res.M0e,1)+' kN·m · M_2 = '+fC(res.M2mom,1)+' kN·m':'')+' → <b>M_Ed = '+fC(res.MEd,1)+' kN·m</b> · N_Ed = '+fC(res.NEd_kN,0)+' kN.</p>';
+   const ferr='<p>'+(res.centree?'':'Interaction N-M (EC2 §3.1.7 : pivot B/C, bloc rectangulaire ou parabole-rectangle, palier horizontal), armatures symétriques sur 2 faces ; ')+'A_s requise = '+fC(res.inter.As/100)+' cm² · A_s,min = max(0,10·N_Ed/f_yd ; 0,002·A_c) = '+fC(res.AsMin_cm2)+' cm² · A_s,max = 0,04·A_c = '+fC(res.AsMax_cm2)+' cm²'+(res.depasse?' — section de béton à revoir (A_s > A_s,max ou interaction non satisfaite)':'')+'<br>Choix commercial : '+res.nBars+' Φ'+res.barFace.phi+' ('+(g.rect?res.barFace.n+' par face':'sur le cercle')+') = '+fC(res.AsReelle_cm2)+' cm² · espacement libre '+fC(res.aLibre_mm,0)+' mm (mini '+fC(res.aMin_mm,0)+' mm)</p>'
+    +'<p>Cadres : Φ'+res.phiCadre+' ≥ max(6 ; Φ_l/4) · espacement courant ≤ min(20·Φ_l ; b ; 400 mm) = '+fC(res.sCourant_mm/10,1)+' cm · réduit à 0,6× = '+fC(res.sExtrem_mm/10,1)+' cm sur h = '+fC(res.hZoneExtrem_mm/10,0)+' cm en tête et en pied (livre p.162, 165)'+(g.rect&&res.nEpingles>0?' · '+res.nEpingles+' épingle(s) par lit (barres à plus de 150 mm d\'une barre tenue, livre p.161)':'')+'<br>Recouvrement : f_bd = 2,25·f_ctd, σ_sd = F_s/A_s,prov = '+fC(res.sigmaSd,0)+' MPa, l_b,rqd = '+fC(res.lbrqd_mm/10,1)+' cm, l₀ = max(α6·l_b,rqd ; 15Φ ; 200 mm) = '+fC(res.lb_mm/10,0)+' cm (α6 = 1,5, livre p.163-164).</p>';
+   return '<div class="pcNC"><h3>Note de calcul — '+nom+'</h3>'
+    +'<p class="pcNote">Poteau (Eurocode 2 — EN 1992-1-1, Annexe Nationale française) · '+todayStr()+'</p><div class="ncConstat" style="display:none">'+constat+'</div>'
+    +hypo
+    +'<h4>1 · Géométrie</h4><p>Section '+(g.rect?('rectangulaire b × h = '+fC(g.b,1)+' × '+fC(g.h,1)+' cm, plan de flexion parallèle à '+(g.planH?'h':'b')+' (profondeur '+fC(g.prof,1)+' cm)'):('circulaire D = '+fC(g.D,1)+' cm'))+', A_c = '+fC(g.Ac,0)+' cm² · hauteur libre l = '+fC(dp.L_m,2)+' m.</p>'
+    +'<h4>2 · Matériau</h4><p>Béton '+esc(dp.classeGlobale)+' (f_ck = '+res.fck+' MPa, f_cd = '+fC(res.fcd)+' MPa) · acier '+esc(dp.classeAcier)+' (f_yk = '+res.fyk+' MPa, f_yd = '+fC(res.fyd,1)+' MPa).</p>'
+    +'<h4>3 · Appuis</h4><p>Pied : '+esc(dp.appuiBas)+' · tête : '+esc(dp.appuiHaut)+' · '+esc(res.l0desc)+'.</p>'
+    +'<h4>4 · Chargement</h4><p>N saisi = '+fC(+dp.N_kN||0,1)+' kN (ELU) · M_pied = '+fC(+dp.M_pied_kNm||0,1)+' kN·m · M_tête = '+fC(+dp.M_tete_kNm||0,1)+' kN·m'+(res.pp_kN>0?' · poids propre ajouté : '+fC(res.pp_kN)+' kN':'')+' → N_Ed = '+fC(res.NEd_kN,1)+' kN.</p>'
+    +'<h4>5 · Calcul</h4>'+flamb+sollic
+    +verifTbl
+    +'<h4>6 · Ferraillage retenu</h4>'+ferr+pts
+    +'<p class="pcNote">⚠ Cette note de calcul est générée automatiquement à partir des données saisies et de la méthode Eurocode 2 (EN 1992-1-1, Annexe Nationale française). Elle doit être vérifiée et validée par un ingénieur structure (bureau d\'études béton armé) avant toute utilisation pour l\'exécution. Elle ne remplace pas une étude signée par un bureau d\'études qualifié.</p>'
     +'</div>';
   }
   function ptPlanFerraillageSvg(dp,res){
