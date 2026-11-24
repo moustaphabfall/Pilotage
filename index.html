@@ -19955,7 +19955,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pjBeam-ttl-in:hover,.pjBeam-ttl-in:focus{background:var(--line);outline:none}
 /* ===== Fiche d'ouvrage (modules de dimensionnement) : échelle typographique et zones tactiles =====
    Titre de fiche (nom de l'ouvrage) > titre d'étape > libellé de champ > aide ; partagé par les modules qui utilisent .pcModHead / .pjBeam-ttl-in / .pcPanel. */
-:root{--ds-fs-h1:clamp(22px,1.1vw + 17px,28px);--ds-fs-h2:clamp(18px,.5vw + 15px,21px);--ds-fs-label:14px;--ds-fs-help:13px;--ds-fs-input:16px}
+:root{--ds-fs-h1:clamp(22px,1.1vw + 17px,28px);--ds-fs-h2:clamp(18px,.5vw + 15px,21px);--ds-fs-label:15px;--ds-fs-help:13px;--ds-fs-input:16px}
 .pjBeamRoot .pcModHead{margin:0 0 6px;gap:10px;justify-content:flex-start;flex-wrap:wrap}
 .pjBeamRoot .pcModIco .illu-svg{width:34px;height:34px}
 .pjBeamRoot .pcModName{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--ds-line);border-radius:999px;background:transparent;font:600 var(--ds-fs-md,14px)/1.2 var(--ds-font-title);color:var(--ds-ink);cursor:pointer}
@@ -27586,6 +27586,27 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    }
    return {beta:P.type==='rive'?1.4:1.5,methode:'simplifiée ('+(P.type==='rive'?'1,4 poteau de rive':'1,5 poteau d\'angle')+', p.262-263)'+((P.mode==='detail'&&!G.uStarValide)?' — formule détaillée non applicable : u1* défini pour un poteau au droit du bord libre (distance 0)':''),ok:true};
   }
+  /* Notes pour l'ingénieur (poutre et dalle) : une note par thème, 4 à 6 phrases numérotées avec la référence du livre ; alimentent « Hypothèses » (résumé) et « Points à confirmer » (texte). */
+  function dimNotesIngenieur(kind,dp,F,pc){
+   const L=[], cat=dp.categorieUsage==='autre'?'autre':'A à D', saisi=k=>elsSaisi(dp,k)?'saisi':'par défaut';
+   const cl=(F&&F.ctx&&F.ctx.classe)||dp.classeExposition||'XC1', zones=(F&&F.zones)||[], dis=zones.filter(z=>z.dispense);
+   L.push({titre:'Catégorie d\'usage',resume:cat+' ('+saisi('categorieUsage')+')',texte:
+    'Note pour l\'ingénieur — catégorie d\'usage : 1) catégorie retenue : '+cat+' ('+saisi('categorieUsage')+') ; A à D = habitation, bureaux, commerces (EN 1991-1-1). 2) Elle ne change que la dispense de fissuration : en XC2 à XC4, w_max = 0,3 mm et le calcul de w_k n\'est pas requis pour les bâtiments A à D si les dispositions constructives sont respectées (AN France, Maîtrise p.162). 3) Catégorie « autre » : pas de dispense, w_k (ou diamètre et espacement, tableaux 7.2N/7.3N) est contrôlé ; les ponts relèvent d\'un autre tableau (7.101N), non traité. 4) Elle ne modifie ni les charges ni ψ2 (champ séparé). 5) À confirmer par l\'ingénieur selon l\'usage réel du bâtiment (classe d\'exposition saisie : '+cl+').'});
+   if(kind==='dl'&&pc){
+    const pos=pc.position||'int';
+    L.push({titre:'Poinçonnement',resume:pc.nonGere?'non calculé':dlPoinconTypeTxt(pc).replace(/ \(.*$/,'')+', β = '+pc.beta.toFixed(2).replace('.',','),texte:
+     pc.nonGere?('Note pour l\'ingénieur — poinçonnement : non calculé ('+pc.message+') : le contrôle est à faire hors module (Maîtrise p.245-280).'):
+     'Note pour l\'ingénieur — poinçonnement (Maîtrise p.245-280) : 1) vérifié : v_Ed(u0) ≤ v_Rd,max (bielle) et v_Ed(u1) ≤ v_Rd,c, avec armatures de poinçonnement dimensionnées si besoin (A_sw/s_r, u_out,ef) mais non dessinées, sans espacement tangentiel ni A_sw,min. 2) Poteau '+({int:'intérieur',rive:'de rive',angle:'d\'angle'}[pos])+' ; contour u1 = '+(pc.u1_mm/10).toFixed(0)+' cm'+(pc.reduit?' réduit par le bord libre (p.249)':'')+' ; β = '+pc.beta.toFixed(2).replace('.',',')+' ('+pc.betaMethode+'), moment transmis '+(pc.betaDetail?'pris par e_par':'non pris en compte')+'. 3) ρl = √(ρlx·ρly) = '+(pc.rhoL*100).toFixed(2).replace('.',',')+' % avec l\'armature supérieure '+(elsSaisi(dp,'AsSupY_cm2')?'du sens y saisie':'du sens y par hypothèse (20 % de l\'appui)')+', uniforme par mètre. 4) À contrôler : contreventement et portées voisines 0,8 à 1,25 (β forfaitaire, p.262-263), armature réellement posée au droit du poteau, moment transmis, trémies et bords libres proches (< d : armatures de rive, p.249). 5) Non traités : poteau circulaire de rive ou d\'angle, excentricité vers l\'extérieur, chapiteaux.'});
+   }
+   if(kind==='pc'){
+    const T=dp.sectionT===true;
+    L.push({titre:'Section en T',resume:T?'oui : b_eff = '+elsVal(dp,{k:'beff_cm'})+' cm, h_f = '+elsVal(dp,{k:'hf_cm'})+' cm':'non (rectangle b × h)',texte:
+     'Note pour l\'ingénieur — section en T : 1) section en T '+(T?'saisie (b_eff = '+elsVal(dp,{k:'beff_cm'})+' cm, h_f = '+elsVal(dp,{k:'hf_cm'})+' cm)':'non saisie : poutre rectangulaire')+'. 2) Prise en compte uniquement dans la flèche par la courbure (table comprimée en travée, Maîtrise p.224, 229-230) ; sur appui la table est tendue et ignorée. 3) Flexion ELU et fissuration restent traitées en rectangle b × h : sécuritaire pour la flèche et la fissuration. 4) La section en T n\'est pas dessinée au plan de ferraillage et la jonction table-âme n\'est pas vérifiée. 5) À contrôler : largeur efficace b_eff selon les portées et les appuis.'});
+   }
+   L.push({titre:'Dispense de fissuration',resume:dis.length?'dispense appliquée':'aucune dispense (calcul exigé)',texte:
+    'Note pour l\'ingénieur — dispense de fissuration : 1) '+(dis.length?'dispense appliquée : '+dis[0].motif:'aucune dispense : w_k ≤ w_max (ou tableaux 7.2N/7.3N et A_s,min) est contrôlé')+'. 2) Conditions du livre : dalle de bâtiment avec h ≤ 200 mm et dispositions constructives respectées (p.178) ; XC2 à XC4 en bâtiments A à D si les dispositions constructives sont respectées (AN France, p.162) ; X0 et XC1 sans exigence d\'aspect (p.162). 3) Les dispositions constructives (A_s,min et A_s,max, espacements maximaux, armatures de répartition) sont contrôlées par le module ; leur respect sur chantier reste à la charge de l\'ingénieur. 4) Avec dispense, σs, s_r,max, w_k, diamètre et espacement sont affichés à titre indicatif et ne décident pas de la conformité. 5) Classe d\'exposition saisie : '+cl+' ; catégorie d\'usage : '+cat+'.'});
+   return L;
+  }
   function dlChooseBars(AsReq_mm2perm,sMax_mm){
    let best=null;
    for(const phi of DL_BARDIAMS){
@@ -28107,6 +28128,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    R.push(['p_Ed = 1,35G + 1,5Q',f(res.pEd)+' kN/m²','calculé']);
    elsRowsHyp(dp,'dl').forEach(r=>R.push(r));
    dlChoixAValider(res,dp).filter(c=>c.ligne!==false).forEach(c=>R.push([c.nom,c.valeur,c.origine]));
+   dimNotesIngenieur('dl',dp,res.fissuration,res.poincon).forEach(n=>R.push(['Note : '+n.titre,n.resume,'note pour l\'ingénieur (voir Points à confirmer)']));
    return '<table class="pcNCt"><thead><tr><th>Donnée</th><th>Valeur</th><th>Origine</th></tr></thead><tbody>'+R.map(r=>'<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td></tr>').join('')+'</tbody></table>';
   }
   /* « Données transmises au plan de ferraillage » : JSON résultat de calcul (format d'entrée du skill dimensionnement-ferraillage §0), bloc repliable */
@@ -28136,6 +28158,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +(res.sensDeux?('<br>Sens ly — travée (sans réduction appuis, continuité non prise en compte dans ce sens) : As='+res.AsTravY_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinY_cm2.toFixed(2)+') → Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm.'+(res.depasseY?' ⚠ As,max dépassé sens ly.':'')):'')+'</p>');
    VF.filter(v=>v.etat==='ko'&&/tranchant|bielle|Méthode forfaitaire/.test(v.nom)).forEach(v=>{ h+='<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>'; });
    dlChoixAValider(res,dp).forEach(c=>{ h+='<p class="ncPt" data-bad="0">'+esc(c.texte)+'</p>'; });
+   dimNotesIngenieur('dl',dp,res.fissuration,res.poincon).forEach(n=>{ h+='<p class="ncPt" data-bad="0">'+esc(n.texte)+'</p>'; });
    h+='<p class="ncPt" data-bad="0">Contraintes ELS en XD/XF/XS à vérifier en plus (livre p.190, 214).</p>'
     +'<p class="ncPt" data-bad="0">non couverts : armatures de répartition (secondaires), charges localisées, poinçonnement : poteau circulaire de rive ou d\'angle, excentricité perpendiculaire vers l\'extérieur, dessin et dispositions des armatures de poinçonnement, conditions de la méthode forfaitaire autres que Q ≤ max(2G ; 5), coefficients μx/μy approchés.</p>'
     +(al?'<p class="ncPt" data-bad="0">enrobage saisi '+fC(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+fC(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier.</p>':'')
@@ -30556,6 +30579,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="ncPt" data-bad="0">Valeurs retenues par défaut : α_cc = 1,0 et γ_c = 1,5 ; Ø des cadres (8 ou 10 mm) et des barres (16 mm) estimés pour la hauteur utile d ; largeur d\'appui 30 cm. Le validateur doit les confirmer.</p>'
     +(fr&&fr.flechePar?'<p class="ncPt" data-bad="0">Flèche par la courbure (EC2 §7.4.3, Maîtrise p.207-209, 225-227) : charges quasi permanentes g + ψ2·Q avec ψ2 = '+fC(fr.flechePar.psi2)+' (non saisi : valeur par défaut), φ = '+fC(fr.flechePar.phi)+' et ε_cs = '+fC(fr.flechePar.epsCs*1e4)+'·10⁻⁴ (valeurs par défaut), armatures = sections calculées non arrondies (la section posée, plus grande, réduit la flèche), armatures comprimées négligées, cloisons fragiles : '+(dp.cloisonsFragiles===true?'oui, l/500 contrôlé sur la flèche totale':'non saisies, seule la limite l/250 est contrôlée')+' : à valider par l\'ingénieur.</p>':'')
     +(fr&&fr.fissuration?fcChoixFissuration(fr.fissuration,true,dp).map(c=>'<p class="ncPt" data-bad="0">'+esc(c.texte)+'</p>').join(''):'')
+    +(fr?dimNotesIngenieur('pc',dp,fr.fissuration,null).map(n=>'<p class="ncPt" data-bad="0">'+esc(n.texte)+'</p>').join(''):'')
     +'<p class="ncPt" data-bad="0">En classes XD/XF/XS vérifier aussi les contraintes (σ_c ≤ 0,6 f_ck, σ_s ≤ 0,8 f_yk ; livre p.190, 214).</p>'
     +'<p class="ncPt" data-bad="0">non couverts par ce calcul — charges concentrées proches des appuis (0,5d ≤ a_v < 2d), bielle d\'about, section en T, torsion, armatures comprimées au-delà de K\' = 0,21.</p>'
     +(pp.inclus?'':'<p class="ncPt" data-bad="0">poids propre de la poutre exclu du calcul (non coché) — '+fC(pp.g_kNm)+' kN/m à ajouter si non compris dans G.</p>');
@@ -30578,7 +30602,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     ['Combinaisons',isCR?'Convoi mobile, coefficients 1':'ELU 1,35 G + 1,5 Q · ELS G + Q','EN 1990'],
     ['Poids propre',pp.inclus?'Inclus : '+fC(pp.g_kNm)+' kN/m (25 kN/m³ × b × h)':'Exclu du calcul ('+fC(pp.g_kNm)+' kN/m non ajouté)','Case à cocher du formulaire'],
     ].concat(elsRowsHyp(dp,'pc')).concat(fr&&fr.fissuration?fcChoixFissuration(fr.fissuration,true,dp).filter(c=>c.ligne!==false).map(c=>[c.nom,c.valeur,c.origine]):[]).concat([
-    ['Appuis et section','Largeur d\'appui 30 cm · K′ = 0,21 (plafond) · section rectangulaire '+(dp.b_cm||20)+' × '+(dp.h_cm||50)+' cm','Valeurs par défaut (livre p.194)']]);
+    ].concat(fr?dimNotesIngenieur('pc',dp,fr.fissuration,null).map(n=>['Note : '+n.titre,n.resume,'note pour l\'ingénieur (voir Points à confirmer)']):[]).concat([
+    ['Appuis et section','Largeur d\'appui 30 cm · K′ = 0,21 (plafond) · section rectangulaire '+(dp.b_cm||20)+' × '+(dp.h_cm||50)+' cm','Valeurs par défaut (livre p.194)']]));
    const hypo='<h4>Hypothèses</h4><table class="pcNCt"><thead><tr><th>Paramètre</th><th>Valeur retenue</th><th>Origine</th></tr></thead><tbody>'+hypRows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('')+'</tbody></table>'
     +'<p class="pcNote">Hauteur utile d = h − c − Ø cadre − Ø/2 (Ø cadre 8 ou 10 mm, Ø barres 16 mm estimés). V<sub>Ed</sub> non réduit au nu d\'appui pour la bielle et cotθ ; V<sub>Ed0</sub> réduit à d du nu pour A<sub>sw</sub>/s.</p>';
    const verifSec=fr?'<h4>Vérifications réglementaires</h4>'+pcVerifsHtml(res):'';
