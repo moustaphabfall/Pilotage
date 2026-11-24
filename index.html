@@ -24852,7 +24852,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     classeGlobale:'C25/30', termeGlobal:'court', classeAcier:'B500', enrobage_cm:3, b_cm:20, h_cm:50, charges:[], resultats:null, vueCombo:'ELS', _maxStep:1,
     convoiActif:false, convoi:[{dx:0,P:50},{dx:1.5,P:50}], zone:{debut:null,fin:null}, sens:'deux' };
   }
-  function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); if(!t.dimPC._maxStep) t.dimPC._maxStep=(t.dimPC.resultats?PC_NSTEPS:1); return t.dimPC; }
+  /* Enrobage nominal minimal (EC2 4.4.1, AN France ; « Pratique de l'EC2 » p.77-79, classe structurale S4) :
+     c_nom = c_min + Δc_dev, c_min = max(c_min,b ; c_min,dur ; 10 mm), Δc_dev = 10 mm. c_min,b = Ø (cadre ≤ 12 mm : c_min,dur gouverne). */
+  const PC_EXPO={X0:10,XC1:15,XC2:25,XC3:25,XC4:30,XD1:35,XD2:40,XD3:45,XS1:35,XS2:40,XS3:45}, PC_EXPO_DEV=10; // c_min,dur en mm, classe S4 : colonnes XD1/XS1, XD2/XS2, XD3/XS3 du tableau (XF2, XF4 : ponts seulement, non repris)
+  function pcEnrobageNom(dp){ const k=PC_EXPO[dp&&dp.classeExposition]?dp.classeExposition:'XC1'; const cmin=Math.max(PC_EXPO[k],10); return {classe:k,cminDur:cmin,cnom:cmin+PC_EXPO_DEV,cnomCm:(cmin+PC_EXPO_DEV)/10}; }
+  function pcEnrobageAlerte(dp){ const e=pcEnrobageNom(dp); const sai=(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3; return sai+1e-9<e.cnomCm?Object.assign({saisi:sai},e):null; }
+  const pcF1=v=>String(Math.round(v*10)/10).replace('.',',');
+  function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); if(!PC_EXPO[t.dimPC.classeExposition]) t.dimPC.classeExposition='XC1'; t.dimPC.enrobageNomMin_cm=pcEnrobageNom(t.dimPC).cnomCm; if(!t.dimPC._maxStep) t.dimPC._maxStep=(t.dimPC.resultats?PC_NSTEPS:1); return t.dimPC; }
   function pcSyncAppuis(dp){ const need=dp.travees.length+1; while(dp.appuis.length<need) dp.appuis.push({raideur_kN_m:null,blocage_rotation:false}); while(dp.appuis.length>need) dp.appuis.pop(); }
   function pcStepValid(dp,step){
    if(step===1){ if(!dp.travees.length||dp.travees.some(tr=>!(+tr.portee_m>0))||!(+dp.b_cm>0)||!(+dp.h_cm>0)) return {ok:false,msg:'Les données de « Géométrie » n\'ont pas été saisies (travées, portées ou section manquantes).'}; return {ok:true}; }
@@ -25254,7 +25260,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      +'<label>Classe de béton <select data-pc="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
      +'<label>Module E <span class="pcInline"><label><input type="radio" name="pcTerme" data-pc="termeGlobal" value="court" '+(dp.termeGlobal!=='differe'?'checked':'')+'> court terme</label> <label><input type="radio" name="pcTerme" data-pc="termeGlobal" value="differe" '+(dp.termeGlobal==='differe'?'checked':'')+'> différé (φ=2)</label></span></label>'
      +'<label>Acier <select data-pc="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
+     +'<label>Classe d\'exposition <select data-pc="classeExposition">'+Object.keys(PC_EXPO).map(c=>'<option value="'+c+'"'+(pcEnrobageNom(dp).classe===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
      +'<label>Enrobage <input type="number" step="0.5" min="1" data-pc="enrobage_cm" value="'+(dp.enrobage_cm??3)+'"> cm</label>'
+     +(()=>{ const e=pcEnrobageNom(dp), al=pcEnrobageAlerte(dp); return '<p class="pcNote pcEnrNote">Enrobage nominal minimal c_nom = c_min,dur ('+e.cminDur+' mm, '+e.classe+') + Δc_dev (10 mm) = '+pcF1(e.cnomCm*10)+' mm ('+pcF1(e.cnomCm)+' cm), classe structurale S4, cadres Ø ≤ 12 mm.</p>'
+       +(al?'<p class="pcNote pcEnrWarn" role="status" style="color:#D9574A;font-weight:600">⚠ Enrobage saisi '+pcF1(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+pcF1(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier. Le calcul n\'est pas bloqué.</p>':''); })()
      +'<p class="pcNote">E = '+pcE(dp.classeGlobale||'C25/30',dp.termeGlobal,2).toFixed(0)+' MPa · Inertie I = b·h³/12 = '+(( (+dp.b_cm||20)/100*Math.pow((+dp.h_cm||50)/100,3)/12 ).toExponential(3))+' m⁴ (section '+(dp.b_cm||20)+'×'+(dp.h_cm||50)+' cm, appliquée à toutes les travées) · fck = '+pcFck(dp.classeGlobale)+' MPa, fyk = '+(PC_FYK[dp.classeAcier||'B500'])+' MPa, d ≈ h − enrobage − 1 cm (ferraillage EC2 simplifié)</p>';
    }
    if(step===3){
@@ -26011,7 +26020,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const total=dp.travees.reduce((a,tr)=>a+(+tr.portee_m||0),0);
    const lines=[
     '1. Géométrie — '+dp.travees.length+' travée(s), longueur totale '+total.toFixed(2)+' m. Section b×h = '+(dp.b_cm||20)+' × '+(dp.h_cm||50)+' cm.',
-    '2. Matériau — Béton '+(dp.classeGlobale||'C25/30')+', '+(dp.termeGlobal==='differe'?'module différé':'court terme')+'. Acier '+(dp.classeAcier||'B500')+', enrobage '+(dp.enrobage_cm||3)+' cm.',
+    '2. Matériau — Béton '+(dp.classeGlobale||'C25/30')+', '+(dp.termeGlobal==='differe'?'module différé':'court terme')+'. Acier '+(dp.classeAcier||'B500')+', enrobage '+(dp.enrobage_cm||3)+' cm, classe d\'exposition '+pcEnrobageNom(dp).classe+' (c_nom min. '+pcF1(pcEnrobageNom(dp).cnomCm)+' cm).'+(pcEnrobageAlerte(dp)?' ATTENTION : enrobage saisi inferieur au c_nom minimal.':''),
    ];
    pdoc.setFont('helvetica','normal'); pdoc.setFontSize(10);
    lines.forEach(l=>{ pdoc.text(pdfTxt(l),M,y,{maxWidth:180}); y+=7; });
@@ -29099,6 +29108,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(el.matches('[data-pc="classeGlobale"]')){ dp.classeGlobale=el.value; beamRender(id); return; }
    if(el.matches('[data-pc="termeGlobal"]')){ dp.termeGlobal=el.value; beamRender(id); return; }
    if(el.matches('[data-pc="classeAcier"]')){ dp.classeAcier=el.value; beamRender(id); return; }
+   if(el.matches('[data-pc="classeExposition"]')){ dp.classeExposition=PC_EXPO[el.value]?el.value:'XC1'; dp.enrobageNomMin_cm=pcEnrobageNom(dp).cnomCm; beamRender(id); return; }
    if(el.matches('[data-pc="enrobage_cm"]')){ dp.enrobage_cm=el.value===''?3:+el.value; beamRender(id); return; }
    if(el.matches('[data-pc="sens"]')){ dp.sens=el.value; beamRender(id); return; }
    const ii=el.dataset.pcI;
@@ -29212,6 +29222,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Module '+esc(res._engineLabel||'Poutre continue')+' (dimensionnement RDM) · '+todayStr()+'</p>'
     +'<h4>1 · Géométrie</h4><p>'+dp.travees.length+' travée(s), longueur totale '+total.toFixed(2)+' m : '+dp.travees.map((tr,i)=>'Travée '+(i+1)+' = '+(+tr.portee_m||0).toFixed(2)+' m').join(' · ')+'.<br>Section b × h = '+(dp.b_cm||20)+' × '+(dp.h_cm||50)+' cm.</p>'
     +'<h4>2 · Matériau</h4><p>Béton '+(dp.classeGlobale||'C25/30')+', module '+(dp.termeGlobal==='differe'?'différé (φ=2)':'court terme')+' : E = '+Ecourant.toFixed(0)+' MPa. Inertie I = b·h³/12 = '+Ival.toExponential(3)+' m⁴.</p>'
+    +(()=>{ const e=pcEnrobageNom(dp), al=pcEnrobageAlerte(dp); return '<p>Classe d\'exposition '+e.classe+' : c_min,dur = '+e.cminDur+' mm (tableau S4), c_nom minimal = '+pcF1(e.cnomCm*10)+' mm ; enrobage retenu '+pcF1(+dp.enrobage_cm||3)+' cm.</p>'+(al?'<p>⚠ Enrobage saisi '+pcF1(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+pcF1(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier.</p>':''); })()
     +'<h4>3 · Appuis</h4><p>'+apLine+'</p>'
     +'<h4>4 · Chargement</h4>'+chgSection
     +'<h4>5 · Calcul</h4><p>'+calcTxt+'</p>'
