@@ -6451,6 +6451,36 @@ function dimValiderClick(dp,onEditYes,onRecalcNow,onFirstValider){
  onFirstValider&&onFirstValider();
 }
 
+/* ===================== Calcul IA (second avis, comparaison avec le moteur embarqué) =====================
+   Demandé par Moustapha le 24/11/2026 : laisser le choix d'un calcul IA en plus du moteur intégré, et
+   comparer les deux pour juger de leur fiabilité. Le moteur embarqué (ptCompute/dlCompute/...) reste
+   TOUJOURS la seule source utilisée pour le ferraillage et les PDF (note de calcul, plan de ferraillage) :
+   l'IA ne fait ici qu'un second calcul indépendant, affiché à côté à titre de comparaison, jamais
+   utilisé pour produire les documents. Appelle l'edge function Supabase « dimensionnement-ia-calcul »
+   (vrai modèle Claude côté serveur, réseau requis — même principe que le chat de remplissage). */
+async function dimAppelIA(type,dp){
+ const resp=await fetch(SUPABASE_URL+'/functions/v1/dimensionnement-ia-calcul',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({type,dp})});
+ const j=await resp.json().catch(()=>null);
+ if(!resp.ok||!j||j.error||!j.data) throw new Error((j&&j.error)||('Erreur réseau ('+resp.status+')'));
+ return j.data;
+}
+/* Tableau de comparaison générique : cmp = [[cle, label, unite, getEmbarque(res)], ...] */
+function dimComparisonHtml(res,resIA,cmp){
+ if(!resIA) return '';
+ const rows=cmp.map(([cle,label,unite,get])=>{
+  let emb=null; try{ emb=get(res); }catch(_){ emb=null; }
+  const row=(resIA.valeurs||[]).find(v=>v.cle===cle); const ia=row?(+row.valeur):null;
+  const diffPct=(ia!=null&&emb!=null&&isFinite(emb))?Math.abs(ia-emb)/Math.max(Math.abs(emb),1e-6)*100:null;
+  const flag=diffPct!=null&&diffPct>5;
+  return '<tr'+(flag?' style="color:var(--rust,#c0392b)"':'')+'><td style="padding:2px 4px">'+esc(label)+(unite?' ('+esc(unite)+')':'')+'</td><td style="padding:2px 4px">'+(emb==null||!isFinite(emb)?'—':emb.toFixed(2))+'</td><td style="padding:2px 4px">'+(ia==null?'—':ia.toFixed(2))+'</td><td style="padding:2px 4px">'+(diffPct==null?'—':diffPct.toFixed(1)+'%'+(flag?' ⚠':''))+'</td></tr>';
+ }).join('');
+ return '<div class="pcDimBox" style="margin-top:10px"><b>🧠 Comparaison moteur intégré / IA</b>'
+  +'<div style="overflow-x:auto"><table style="font-size:11px;border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;padding:2px 4px">Grandeur</th><th style="text-align:left;padding:2px 4px">Moteur intégré</th><th style="text-align:left;padding:2px 4px">IA</th><th style="text-align:left;padding:2px 4px">Écart</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+  +(resIA.resume?'<p class="pcNote">'+esc(resIA.resume)+'</p>':'')
+  +(Array.isArray(resIA.avertissements)&&resIA.avertissements.length?'<p class="pcNote">⚠ '+resIA.avertissements.map(esc).join(' · ')+'</p>':'')
+  +'</div>';
+}
+
 function niveauOptions(sel){ return state.niveaux.map(n=>`<option value="${esc(n)}" ${n===sel?'selected':''}>${esc(n)}</option>`).join('')+`<option value="__autre__">+ Autre…</option>`; }
 function zoneOptions(sel){ return state.zones.map(z=>`<option value="${esc(z)}" ${z===sel?'selected':''}>${esc(z)}</option>`).join('')+`<option value="__autre__">+ Autre…</option>`; }
 function handleNiveauChange(sel){
@@ -22145,7 +22175,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v520';
+  const VER='v521';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -25187,15 +25217,34 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pt')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, conditions d\'appui et chargement ELU (N, M). « Valider » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
   }
-  function ptResultatsHtml(res,dp){
+  /* Correspondance moteur embarqué ↔ clés attendues de l'edge function dimensionnement-ia-calcul
+     (prompt SYSTEM_POTEAU, mêmes noms de clé que ptCompute) — pour le tableau de comparaison. */
+  const PT_CMP=[
+   ['lambda','Élancement λ','',res=>res.lambda],
+   ['lambdaLim','Élancement limite λlim','',res=>res.lambdaLim],
+   ['MEd_kNm','Moment de calcul MEd','kN·m',res=>res.MEd],
+   ['NEd_kN','Effort normal NEd','kN',res=>res.NEd_kN],
+   ['As_cm2','Section d\'acier requise As','cm²',res=>res.inter.As/100],
+   ['Asmin_cm2','As,min','cm²',res=>res.AsMin_cm2],
+   ['Asmax_cm2','As,max','cm²',res=>res.AsMax_cm2],
+  ];
+  function ptResultatsHtml(res,dp,id){
    const g=res.geom;
+   const busy=!!(window._ptIaBusy&&window._ptIaBusy[id]);
+   const iaBtnLbl=busy?'⏳ Calcul IA en cours…':(dp.resultatsIA?'🔄 Relancer le calcul IA':'🧠 Lancer un calcul IA (comparaison)');
    return '<h5>Résultats</h5>'
     +'<div class="pcDimBox"><b>Flambement</b><p class="pcNote">l₀ = '+(res.l0_cm/100).toFixed(2)+' m · λ = '+res.lambda.toFixed(1)+' · λlim = '+res.lambdaLim.toFixed(1)+' ('+(res.second?'effets du 2nd ordre pris en compte':'négligeables')+')</p></div>'
     +'<div class="pcDimBox"><b>Moments</b><p class="pcNote">M0e = '+res.M0e.toFixed(2)+' kN·m'+(res.second?(' · M2 (2nd ordre) = '+res.M2mom.toFixed(2)+' kN·m'):'')+' · MEd retenu = '+res.MEd.toFixed(2)+' kN·m</p></div>'
     +'<div class="pcDimBox"><b>Ferraillage longitudinal</b><p class="pcNote">As requis (interaction N-M) = '+(res.inter.As/100).toFixed(2)+' cm² · As,min = '+res.AsMin_cm2.toFixed(2)+' cm² · As,max = '+res.AsMax_cm2.toFixed(2)+' cm²'+(res.depasse?' ⚠ As requis dépasse As,max — revoir la section':'')+'</p>'
     +'<p class="pcNote"><b>'+(res.barFace.n*2)+' Φ'+res.barFace.phi+'</b> ('+res.barFace.n+' par face) = '+res.AsReelle_cm2.toFixed(2)+' cm²</p></div>'
     +'<div class="pcDimBox"><b>Cadres</b><p class="pcNote">Φ'+res.phiCadre+' — espacement courant '+(res.sCourant_mm/10).toFixed(1)+' cm, réduit à '+(res.sExtrem_mm/10).toFixed(1)+' cm sur '+(res.hZoneExtrem_mm/10).toFixed(0)+' cm en tête/pied · longueur de recouvrement ≈ '+(res.lb_mm/10).toFixed(0)+' cm</p></div>'
-    +'<button type="button" class="ghost pcBtnSm" data-pt-act="printNote">🖶 Voir la note</button>';
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">'
+    +'<button type="button" class="ghost pcBtnSm" data-pt-act="printNote">🖶 Voir la note</button>'
+    +'<button type="button" class="ghost pcBtnSm" data-pt-act="runIA"'+(busy?' disabled':'')+'>'+iaBtnLbl+'</button>'
+    +(dp.resultatsIA?'<button type="button" class="ghost pcBtnSm" data-pt-act="voirNoteIA">📄 Voir la note IA</button>':'')
+    +'</div>'
+    +(dp.resultatsIAErr?'<p class="pcNote">⚠ '+esc(dp.resultatsIAErr)+'</p>':'')
+    +dimComparisonHtml(res,dp.resultatsIA,PT_CMP);
   }
   /* ===================== Descente de charges (poteau) — classeur 152, H. Thonier =====================
      Module complémentaire du moteur Poteau ci-dessus : calcule l'effort normal NEd cumulé niveau par
@@ -25299,7 +25348,17 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      +(res? ptNoteCalculHtml(t,dp,res) : '<p class="pcNote">Aucun résultat — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>');
     return;
    }
-   wrap.innerHTML=ptFormHtml(id,t)+(dp.resultats?ptResultatsHtml(dp.resultats,dp):'');
+   if(st.view==='noteIA'){
+    const resIA=dp.resultatsIA;
+    wrap.innerHTML='<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📄 Note de calcul — second avis IA</h4></div>'
+     +(resIA?('<div class="pcNC"><p class="pcNote">Calcul indépendant produit par un modèle Claude, à titre de second avis comparatif — n\'alimente jamais le ferraillage ni les documents officiels (voir note et plan générés par le moteur intégré). '+esc(resIA.resume||'')+'</p>'
+       +'<div style="white-space:pre-wrap">'+esc(resIA.noteTexte||'')+'</div>'
+       +(Array.isArray(resIA.avertissements)&&resIA.avertissements.length?'<p class="pcNote">⚠ '+resIA.avertissements.map(esc).join(' · ')+'</p>':'')
+       +'</div>')
+      :'<p class="pcNote">Aucun calcul IA encore lancé.</p>');
+    return;
+   }
+   wrap.innerHTML=ptFormHtml(id,t)+(dp.resultats?ptResultatsHtml(dp.resultats,dp,id):'');
   }
   function pteClick(e,id){
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ pteState(id).view='form'; pteRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
@@ -25313,6 +25372,20 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
    const pn=e.target.closest('[data-pt-act="printNote"]'); if(pn){ pteState(id).view='note'; pteRender(id); return; }
+   const voirIA=e.target.closest('[data-pt-act="voirNoteIA"]'); if(voirIA){ pteState(id).view='noteIA'; pteRender(id); return; }
+   const runIA=e.target.closest('[data-pt-act="runIA"]'); if(runIA){
+    const t3=taskById(id); if(!t3) return; const dp3=ptData(t3);
+    window._ptIaBusy=window._ptIaBusy||{}; window._ptIaBusy[id]=true; pteRender(id);
+    dimAppelIA('poteau',dp3).then(data=>{
+     dp3.resultatsIA=data; delete dp3.resultatsIAErr;
+    }).catch(err=>{
+     dp3.resultatsIAErr=(err&&err.message)||'Erreur lors du calcul IA.'; delete dp3.resultatsIA;
+    }).finally(()=>{
+     if(window._ptIaBusy) delete window._ptIaBusy[id];
+     try{persist();}catch(_){ } pteRender(id);
+    });
+    return;
+   }
    const dcOpen=e.target.closest('[data-pt-act="openDescente"]'); if(dcOpen){ pteState(id).view='descente'; pteRender(id); return; }
    const t2=taskById(id);
    const dcAdd=e.target.closest('[data-dc-act="add"]'); if(dcAdd&&t2){ const dd=dcData(t2); dd.niveaux.push(dcNivDefaut(dd.niveaux.length)); try{persist();}catch(_){ } pteRender(id); return; }
