@@ -24688,6 +24688,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    // Un seul passage : le ferraillage (flexion + cadres) est calculé tout de suite derrière le RDM,
    // sans étape de validation séparée — mais l'utilisateur voit toujours les efforts (étape 6) avant/avec lui.
    try{ res.ferraillage=pcFerraillage(dp,res); }catch(_){ res.ferraillage=null; }
+   // Plan de ferraillage (dispositions constructives EC2) : section + moteur ferraillagePoutrePlan, lu par le dessin du plan
+   try{ res.section={b_cm:+dp.b_cm||20,h_cm:+dp.h_cm||50,enrobage_cm:(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3,classeGlobale:dp.classeGlobale||'C25/30',classeAcier:dp.classeAcier||'B500'}; res.plan=ferraillagePoutrePlan(res,dp); }catch(err){ console.error(err); res.plan=null; }
    return res;
   }
   function pcComputePoutreContinue(dp,choice){
@@ -28061,6 +28063,307 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    });
    return { travees, appuis, cadres, AsMin, materiaux:{fck,fyk,fcd:+fcd.toFixed(2),fyd:+fyd.toFixed(1),b,d:+d.toFixed(3)} };
   }
+  /* ===== FPP:BEGIN — Moteur du plan de ferraillage de la poutre continue (dispositions constructives EC2) =====
+     Fonction PURE : ferraillagePoutrePlan(resultat, params) -> { travees, nomenclature, poidsTotal, hypotheses, avertissements }.
+     - resultat = résultat RDM de la poutre (spans, samplesPerSpan, M, V, _engine, section? ferraillage?), params = dp (b_cm, h_cm,
+       enrobage_cm, classeGlobale, classeAcier, appui_cm facultatif : largeur des appuis, 30 cm par défaut).
+     - Unités : abscisses x0/x1 en m depuis l'axe de l'appui 0 (peuvent être légèrement négatives/dépasser L : bouts de barres dans
+       les appuis) ; section en cm ; diamètres, espacements, l_bd en mm ; As en cm² ; poids en kg.
+     - Sections d'acier : K=M/(b·d²·fck), z=d(0,5+√(0,25−K/1,134)) ≤ 0,95d (skill dimensionnement-beton-arme §3.9), avec le d RÉEL des lits choisis.
+     - Efforts : combinaison ELU 1,35G+1,5Q (1,0 pour la charge roulante). EC2 : §6.2.3 (cadres, θ variable), §8.4 (ancrages, recouvrements), §9.2. */
+  function ferraillagePoutrePlan(resultat,params){
+   const R=resultat||{}, hyp=[], warn=[];
+   const P=Object.assign({},R.section||{},params||{});
+   const mat=(R.ferraillage&&R.ferraillage.materiaux)||{};
+   const mC=/C(\d+)\//.exec(P.classeGlobale||P.classeBeton||''), mA=/(\d{3})/.exec(String(P.classeAcier||''));
+   const fck=mC?+mC[1]:(mat.fck||25), fyk=mA?+mA[1]:(mat.fyk||500);
+   const fcd=fck/1.5, fyd=fyk/1.15, fctm=0.3*Math.pow(fck,2/3), fctd=0.7*fctm/1.5;
+   const cEnr=(P.enrobage_cm!=null&&P.enrobage_cm!=='')?+P.enrobage_cm:3, c=cEnr*10;
+   const b=(+P.b_cm||(mat.b?mat.b*100:20))*10;
+   const h=(+P.h_cm||(mat.d?mat.d*100+cEnr+1:50))*10;
+   const aApp=(P.appui_cm!=null&&P.appui_cm!==''?+P.appui_cm:30)*10;
+   const spans=R.spans||[], n=spans.length;
+   if(!n||!R.M||!R.V||!R.samplesPerSpan) return {travees:[],nomenclature:[],poidsTotal:0,hypotheses:[],avertissements:['Résultat RDM absent : plan de ferraillage non calculé.']};
+   const node=[0]; spans.forEach(L=>node.push(node[node.length-1]+L));
+   const Ltot=node[n];
+   const r2=(v,k)=>{ const p=Math.pow(10,k==null?2:k); return Math.round(v*p)/p; };
+   const Ab=phi=>Math.PI/4*phi*phi; // mm²
+   const wkg=(phi,Lm)=>phi*phi*0.006165*Lm; // kg
+   /* ---- enveloppe ELU le long de la poutre ---- */
+   const isCR=R._engine==='charge_roulante', fG=isCR?1:1.35, fQ=isCR?1:1.5;
+   const pts=[];
+   spans.forEach((L,e)=>{ R.samplesPerSpan[e].forEach((xi,i)=>{ const o=R.M[e][i], v=R.V[e][i];
+    pts.push({x:node[e]+xi, mp:fG*o.g+fQ*(o.max-o.g), mn:fG*o.g+fQ*(o.min-o.g),
+     v:Math.max(Math.abs(fG*v.g+fQ*(v.max-v.g)),Math.abs(fG*v.g+fQ*(v.min-v.g)))}); }); });
+   pts.sort((p,q)=>p.x-q.x);
+   { const fine=[]; for(let i=0;i<pts.length;i++){ fine.push(pts[i]); const p=pts[i], q=pts[i+1]; if(!q) break; const dx=q.x-p.x; if(dx>0.06){ const k=Math.ceil(dx/0.05); for(let j=1;j<k;j++){ const t=j/k; fine.push({x:p.x+dx*t,mp:p.mp+(q.mp-p.mp)*t,mn:p.mn+(q.mn-p.mn)*t,v:p.v+(q.v-p.v)*t}); } } } pts.length=0; fine.forEach(p=>pts.push(p)); } // maillage ≤ 5 cm (interpolation linéaire)
+   const Mpos=p=>Math.max(p.mp,0), Mneg=p=>Math.max(-p.mn,0);
+   const Vat=x=>{ let best=0,bd=1e9; pts.forEach(p=>{ const dd=Math.abs(p.x-x); if(dd<bd-1e-9||(Math.abs(dd-bd)<1e-9&&p.v>best)){ bd=dd; best=p.v; } }); return best; };
+   /* ---- flexion (µ, z) et capacité résistante ---- */
+   const K_LIM=0.21; // K' sans redistribution (skill dimensionnement-beton-arme §3.9)
+   const zOf=(K,d)=>Math.min(0.95*d,d*(0.5+Math.sqrt(Math.max(0,0.25-K/1.134))));
+   function flex(M,d,dp){ // M kN·m ; d, dp mm -> {As1, As2 (comprimée), K, mu}
+    const Mn=Math.abs(M)*1e6; if(Mn<1) return {As1:0,As2:0,K:0,mu:0};
+    const K=Mn/(b*d*d*fck), mu=Mn/(b*d*d*fcd);
+    if(K<=K_LIM) return {As1:Mn/(zOf(K,d)*fyd),As2:0,K,mu};
+    const Ml=K_LIM*b*d*d*fck, As2=(Mn-Ml)/((d-dp)*fyd);
+    return {As1:Ml/(zOf(K_LIM,d)*fyd)+As2,As2,K,mu};
+   }
+   function mrd(As,d){ // kN·m, armatures tendues seules (arrêts de barres)
+    const Asl=(K_LIM*b*d*d*fck)/(zOf(K_LIM,d)*fyd); if(As>=Asl) return K_LIM*b*d*d*fck/1e6;
+    let lo=0,hi=K_LIM; for(let k=0;k<50;k++){ const m=(lo+hi)/2; if(m*b*d*d*fck/(zOf(m,d)*fyd)<As) lo=m; else hi=m; }
+    return lo*b*d*d*fck/1e6;
+   };
+   const AsMinF=d=>Math.max(0.26*fctm/fyk*b*d,0.0013*b*d);
+   const AsMax=0.04*b*h;
+   /* ---- armatures : géométrie des lits ---- */
+   const dg=20, svOf=phi=>Math.max(phi,dg+5,20);
+   const phiT0=(b>350?10:8);
+   function nPerLayer(phi,phit){ const bc=b-2*c-2*phit; return Math.max(1,Math.floor((bc+svOf(phi))/(phi+svOf(phi)))); }
+   const PHIS=[10,12,14,16,20,25,32];
+   function ctr(counts,phis,phit,phimax){ // distance moyenne (mm) du centre de gravité des barres à la face (comptée par aire)
+    let sA=0,sY=0; counts.forEach((cnt,i)=>{ if(!cnt) return; const y=c+phit+phimax/2+i*(phimax+svOf(phimax)); const a=cnt.reduce((s,q)=>s+q.n*Ab(q.phi),0); sA+=a; sY+=a*y; }); return sA?sY/sA:c+phit+phimax/2;
+   }
+   function fill(n,nPer){ const out=[]; let r=n; while(r>0){ const k=Math.min(r,nPer); out.push(k); r-=k; } return out; }
+   function chooseBars(AsReq,phit,minN,fixedTop){ // fixedTop = {n,phi} barres de montage déjà en lit 1 (pour les chapeaux)
+    let best=null; const reqA=Math.max(AsReq,0);
+    PHIS.forEach(phi=>{ const base=fixedTop?fixedTop.n:0, phiM=fixedTop?Math.max(phi,fixedTop.phi):phi, nPer=fixedTop?nPerLayer(phi,phit):nPerLayer(phiM,phit);
+     let first=nPer; if(fixedTop){ const bc=b-2*c-2*phit, sv=svOf(Math.max(phi,fixedTop.phi)); first=0; while(fixedTop.n*fixedTop.phi+(first+1)*phi+(fixedTop.n+first)*sv<=bc) first++; }
+     const need=Math.max(reqA<=0?0:Math.ceil(reqA/Ab(phi)-1e-9),minN||0);
+     [need,need+1].forEach(nb=>{ if(nb<(minN||0)) return; if(nb===0&&base===0) return; const lits=fixedTop?(nb<=first?1:1+Math.ceil((nb-first)/nPer)):Math.ceil(nb/nPer); if(lits>3) return;
+      const As=nb*Ab(phi); if(As<reqA-1e-6) return; const cand={phi,n:nb,As,lits,nPer,first,excess:As-reqA};
+      if(!best||cand.lits<best.lits||(cand.lits===best.lits&&(cand.excess<best.excess-1e-6||(Math.abs(cand.excess-best.excess)<1e-6&&cand.n<best.n)))) best=cand; }); });
+    if(!best){ const phi=32, nPer=nPerLayer(phi,phit), nb=Math.max(minN||2,Math.ceil(reqA/Ab(phi))); best={phi,n:nb,As:nb*Ab(phi),lits:Math.ceil(nb/nPer),nPer,first:nPer,excess:0,insuff:true}; }
+    return best;
+   }
+   /* ---- ancrages, recouvrements (EC2 §8.4) ---- */
+   const fbdOf=poor=>2.25*(poor?0.7:1)*fctd;
+   const lbRqd=(phi,sig,poor)=>phi/4*sig/fbdOf(poor);
+   function ancrage(phi,sig,poor,ndGap,hook){ // longueur de calcul l_bd (mm)
+    const lb=lbRqd(phi,sig,poor), cd=Math.min(ndGap/2,c),
+     a1=hook?(cd>3*phi?0.7:1):1, a2=hook?1:Math.min(1,Math.max(0.7,1-0.15*(cd-phi)/phi));
+    return {lb, lbd:Math.max(a1*a2*lb,0.3*lb,10*phi,100), a1,a2};
+   }
+   function lap(phi,sig,poor,gap,rho){ const lb=lbRqd(phi,sig,poor), a6=Math.min(1.5,Math.max(1,Math.sqrt((rho||100)/25)));
+    return Math.max(a6*lb,0.3*a6*lb,15*phi,200); }
+   const hookDev=phi=>{ const Dm=phi<=16?4*phi:7*phi; return Math.PI/4*(Dm+phi)+10*phi; };
+
+   /* ---- cadres : diamètre (augmenté si l'écartement serait < 75 mm), cotθ optimisé ---- */
+   const dShear0=h-c-phiT0-20;
+   let phiT=phiT0, brins=(b>400?4:2);
+   const Vmax0=Math.max(...pts.map(p=>p.v));
+   const nuF=0.6*(1-fck/250);
+   const kBielle=z=>b*z*nuF*fcd; // N
+   const cotOf=(V,z)=>{ const Rr=kBielle(z)/(Math.max(V,1)*1e3); if(Rr<2) return 1; return Math.min(2.5,(Rr+Math.sqrt(Rr*Rr-4))/2); };
+   for(let k=0;k<3;k++){ const z=0.9*dShear0, cot=cotOf(Vmax0,z), sreq=brins*Ab(phiT)/(Vmax0*1e3/(z*fyd*cot)); if(sreq>=75||phiT>=12) break; phiT+=2; }
+   /* ---- conception d'une zone en travée (lit inférieur) ---- */
+   const sections=[];
+   function designBottom(M){
+    let dEst=h-c-phiT-6, ch=null, rq=null, AsReq=0, dReal=dEst;
+    for(let it=0;it<8;it++){
+     rq=flex(M,dEst,c+phiT+10); AsReq=Math.max(rq.As1,AsMinF(dEst));
+     ch=chooseBars(AsReq,phiT,2);
+     const fl=fill(ch.n,ch.nPer); dReal=h-ctr(fl.map(k=>[{n:k,phi:ch.phi}]),null,phiT,ch.phi);
+     if(dReal>=dEst-0.5) break; dEst=Math.min(dEst,dReal);
+    }
+    return {rq,AsReq,ch,d:dReal};
+   }
+   /* ---- montage / compression (2 barres au moins, filantes en lit supérieur) ---- */
+   let AsComp=0; // compression requise en travée (doublement des armatures)
+   const trav=[]; // dimensionnement des travées
+   for(let e=0;e<n;e++){
+    let Mm=0; pts.forEach(p=>{ if(p.x>=node[e]-1e-9&&p.x<=node[e+1]+1e-9) Mm=Math.max(Mm,Mpos(p)); });
+    const bt=designBottom(Mm); trav.push(Object.assign({e,Mmax:Mm},bt)); AsComp=Math.max(AsComp,bt.rq.As2);
+    if(bt.rq.As2>0) warn.push('Travée '+(e+1)+' : section trop faible en flexion simple (K='+r2(bt.rq.K,3)+' > 0,21) — armatures comprimées prévues, augmenter la hauteur si possible.');
+    if(bt.ch.insuff||bt.ch.As>AsMax) warn.push('Travée '+(e+1)+' : As requis = '+r2(bt.AsReq/100)+' cm² dépasse les possibilités de la section (As,max = '+r2(AsMax/100)+' cm²) — revoir la section.');
+   }
+   const phiM0=Math.max(10,phiT===8?10:phiT+2);
+   let mont=chooseBars(AsComp,phiT,2); if(mont.phi<phiM0&&AsComp<=2*Ab(phiM0)) mont={phi:phiM0,n:2,As:2*Ab(phiM0),nPer:nPerLayer(phiM0,phiT),lits:1,excess:0};
+   const nm=mont.n, phim=mont.phi, AsMont=mont.As;
+   const al=zz=>zz*cotOf(Vmax0,zz)/2; // a_l = z·cotθ/2
+   const zS=0.9*dShear0, aL=al(zS);
+   /* ---- chapeaux sur appuis ---- */
+   const apps=[];
+   for(let k=0;k<=n;k++){
+    let Mn=0; pts.forEach(p=>{ if(Math.abs(p.x-node[k])<1e-6) Mn=Math.max(Mn,Mneg(p)); });
+    const adj=(k===0)?trav[0].Mmax:(k===n?trav[n-1].Mmax:0);
+    const Mreq=Math.max(Mn,(k===0||k===n)?0.15*adj:0); // appui de rive : encastrement partiel ≥ 15 % du moment de travée (EC2 9.2.1.2)
+    let dEst=h-c-phiT-phim/2-1, ch={n:0,phi:0,As:0}, AsReq=0, dReal=dEst;
+    for(let it=0;it<8;it++){
+     const rq=flex(Mreq,dEst,c+phiT+10); AsReq=Math.max(rq.As1,AsMinF(dEst));
+     const rest=AsReq-AsMont;
+     if(rest<=0){ ch={n:0,phi:0,As:0,nPer:nPerLayer(phim,phiT)}; dReal=h-ctr([[{n:nm,phi:phim}]],null,phiT,phim); }
+     else { ch=chooseBars(rest,phiT,2,{n:nm,phi:phim}); const phiMx=Math.max(ch.phi,phim);
+      const nc1=Math.min(ch.n,ch.first), cnts=[[{n:nm,phi:phim},{n:nc1,phi:ch.phi}]]; fill(ch.n-nc1,ch.nPer).forEach(k=>cnts.push([{n:k,phi:ch.phi}]));
+      dReal=h-ctr(cnts,null,phiT,phiMx); }
+     if(dReal>=dEst-0.5) break; dEst=Math.min(dEst,dReal);
+    }
+    apps.push({k,Mn,Mreq,AsReq,ch,d:dReal}); 
+   }
+   /* ---- construction du plan ---- */
+   let repN=0; const nextRep=()=>String(++repN);
+   const nomen=[]; const T=[];
+   const addNom=(rep,desig,nb,phi,AsReel,AsReq,Lm,facon,usage)=>nomen.push({rep,designation:desig,nbDiam:nb+'HA'+phi,nb,diam:phi,AsReel:r2(AsReel/100),AsReq:r2(AsReq/100),longueur:r2(Lm),faconnage:facon,poids:r2(nb*wkg(phi,Lm),1),usage});
+   const lapsAll=[];
+   const arretsAll=[], ancAll=[], chapAll=[];
+   const travOut=[];
+   const gapBot=ch=>{ const nPer=Math.min(ch.n,ch.nPer); return nPer>1?((b-2*c-2*phiT-ch.phi)/(nPer-1)-ch.phi):1e3; };
+   // ancrage aux appuis de rive : force à ancrer F = 0,5·V·cotθ (EC2 9.2.1.4) répartie sur les barres amenées à l'appui
+   function ancrageRive(phi,nbA,V,gap,poor){ const FE=0.5*V*1e3*cotOf(V,zS); const sig=Math.min(fyd,FE/(nbA*Ab(phi)));
+    const dispo=aApp-c, st=ancrage(phi,Math.max(sig,1),poor,gap,false);
+    const hk=ancrage(phi,Math.max(sig,1),poor,gap,true);
+    if(st.lbd<=dispo) return {type:'droit',lbd:st.lbd,dispo,sig,lb:st.lb};
+    if(hk.lbd<=dispo+10*phi) return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb};
+    return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,insuffisant:true}; }
+   const Vf0=Vat(aApp/2000), VfN=Vat(Ltot-aApp/2000);
+   for(let e=0;e<n;e++){
+    const t=trav[e], ch=t.ch, phi=ch.phi; let nA=Math.max(2,Math.ceil(ch.n/2)), nB=ch.n-nA;
+    const gap=gapBot(ch), Lint=Math.max(10*phi,0.3*lbRqd(phi,fyd,false),100)/1000;
+    const sigS=fyd, anB=ancrage(phi,sigS,false,gap,false);
+    let xl=null,xr=null;
+    if(nB>0){ // zone où le moment décalé de a_l (EC2 9.2.1.3) dépasse la capacité des barres filantes seules
+     const Mr=mrd(nA*Ab(phi),t.d);
+     pts.forEach(p=>{ if(p.x<node[e]-1e-9||p.x>node[e+1]+1e-9) return; let ms=0; pts.forEach(q=>{ if(Math.abs(q.x-p.x)<=aL/1000+1e-9) ms=Math.max(ms,Mpos(q)); });
+      if(ms>Mr){ if(xl==null||p.x<xl) xl=p.x; if(xr==null||p.x>xr) xr=p.x; } });
+     if(xl==null){ xl=node[e]+spans[e]*0.35; xr=node[e]+spans[e]*0.65; }
+     const sav=Math.max(0,xl-anB.lbd/1000-(node[e]-Lint))+Math.max(0,(node[e+1]+Lint)-(xr+anB.lbd/1000)); // longueur économisée par l'arrêt des renforts
+     if(sav<1.0){ nA=ch.n; nB=0; } // arrêt non rentable : toutes les barres filent d'un appui à l'autre
+    }
+    // appuis (rive) : ancrage des barres filantes
+    let x0A, x1A, type0='droit', type1='droit', hk0=false, hk1=false;
+    if(e===0){ const r=ancrageRive(phi,nA,Vf0,gap,false); x0A=-aApp/2/1000+c/1000; type0=r.type; hk0=r.type!=='droit';
+     ancAll.push({appui:0,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'inf',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui 0 : ancrage des barres inférieures insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles) — élargir l\'appui ou réduire le diamètre.'); }
+    else { x0A=node[e]-Lint; ancAll.push({appui:e,type:'droit',lbd:r2(Lint*1000,0),lbd_m:r2(Lint,3),lit:'inf',diam:phi,lbDispo:null}); }
+    if(e===n-1){ const r=ancrageRive(phi,nA,VfN,gap,false); x1A=Ltot+aApp/2/1000-c/1000; type1=r.type; hk1=r.type!=='droit';
+     ancAll.push({appui:n,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'inf',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui '+n+' : ancrage des barres inférieures insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles) — élargir l\'appui ou réduire le diamètre.'); }
+    else x1A=node[e+1]+Lint;
+    // répartition en lits : groupe A (filantes) d'abord
+    const lits=fill(ch.n,ch.nPer); const fA=fill(nA,ch.nPer);
+    const repA=nextRep();
+    const entA={rep:repA,nb:nA,diam:phi,x0:r2(x0A,3),x1:r2(x1A,3),lit:1,repartitionLits:fA,role:'filantes',AsReel:r2(nA*Ab(phi)/100),AsReelZone:r2(ch.n*Ab(phi)/100),AsReq:r2(t.AsReq/100),ancrage:[type0,type1]};
+    const litInf=[entA];
+    let LA=x1A-x0A+(hk0?hookDev(phi)/1000:0)+(hk1?hookDev(phi)/1000:0);
+    const faconA=(hk0&&hk1)?'Droit, crochets 90° aux 2 extrémités':hk0||hk1?'Droit, crochet 90° à 1 extrémité':'Droit';
+    if(LA>12){ warn.push('Travée '+(e+1)+' : barres inférieures de '+r2(LA,2)+' m > 12 m — recouvrement ou manchon à prévoir (non positionné au plan).'); }
+    addNom(repA,'Lit inférieur travée '+(e+1)+(nB>0?' — filantes':''),nA,phi,ch.n*Ab(phi),t.AsReq,LA,faconA,'inf');
+    let nSup=null;
+    if(nB>0){
+     const lbdB=anB.lbd/1000, x0B=Math.max(xl-lbdB,x0A), x1B=Math.min(xr+lbdB,x1A);
+     const hkB0=e===0&&(xl-x0A<lbdB), hkB1=e===n-1&&(x1A-xr<lbdB);
+     const repB=nextRep();
+     litInf.push({rep:repB,nb:nB,diam:phi,x0:r2(x0B,3),x1:r2(x1B,3),lit:(fA.length>1||fA[0]>=ch.nPer)?2:1,repartitionLits:fill(nB,ch.nPer),role:'renforts',AsReel:r2(nB*Ab(phi)/100),AsReelZone:r2(ch.n*Ab(phi)/100),AsReq:r2(t.AsReq/100)});
+     arretsAll.push({x:r2(x0B,3),rep:repB,e},{x:r2(x1B,3),rep:repB,e});
+     addNom(repB,'Lit inférieur travée '+(e+1)+' — renforts',nB,phi,ch.n*Ab(phi),t.AsReq,x1B-x0B+((hkB0?1:0)+(hkB1?1:0))*hookDev(phi)/1000,(hkB0&&hkB1)?'Droit, crochets 90° aux 2 extrémités':(hkB0||hkB1)?'Droit, crochet 90° à 1 extrémité':'Droit','inf');
+    }
+    travOut.push({id:e+1,L:r2(spans[e],3),x0:r2(node[e],3),x1:r2(node[e+1],3),section:{b:b/10,h:h/10,enrobage:cEnr},litInf,litSup:[],chapeaux:[],cadres:null,arrets:[],ancrages:[],recouvrements:[],
+     calcul:{Mmax:r2(t.Mmax,1),AsReq:r2(t.AsReq/100),AsReel:r2(ch.n*Ab(phi)/100),d:r2(t.d/10,2),AsMin:r2(AsMinF(t.d)/100),AsMax:r2(AsMax/100),lits:Math.ceil(ch.n/ch.nPer),K:r2(t.rq.K,3),mu:r2(t.rq.mu,3)}});
+   }
+   /* chapeaux (armatures supérieures sur appuis) */
+   apps.forEach(a=>{
+    if(a.ch.n===0) return;
+    const phi=a.ch.phi, nc=a.ch.n, nS=nc>=3?Math.floor(nc/2):0, nL=nc-nS;
+    const adjL=a.k>0?spans[a.k-1]:0, adjR=a.k<n?spans[a.k]:0;
+    const gap=Math.max(20,(b-2*c-2*phiT-phi)/Math.max(1,Math.min(nc+nm,nPerLayer(Math.max(phi,phim),phiT))-1)-phi);
+    const anc=ancrage(phi,fyd,true,gap,false), lbdc=anc.lbd/1000;
+    const AsStageS=AsMont+nL*Ab(phi);
+    const reach=(dir,As)=>{ // abscisse où le moment décalé redescend sous M_Rd(As) ; dir=-1 gauche, +1 droite
+     const Mr=mrd(As,a.d), lim=dir<0?node[a.k]-(adjL||0):node[a.k]+(adjR||0); let xs=null;
+     const arr=pts.filter(p=>dir<0?(p.x<=node[a.k]+1e-9&&p.x>=lim-1e-9):(p.x>=node[a.k]-1e-9&&p.x<=lim+1e-9)).sort((p,q)=>dir<0?q.x-p.x:p.x-q.x);
+     for(const p of arr){ let ms=0; pts.forEach(q=>{ if(Math.abs(q.x-p.x)<=aL/1000+1e-9) ms=Math.max(ms,Mneg(q)); }); if(ms<=Mr){ xs=p.x; break; } }
+     if(xs==null){ xs=lim; warn.push('Appui '+a.k+' : chapeaux prolongés jusqu\'à l\'appui voisin (moment sur appui non résorbé).'); }
+     return xs; };
+    const groups=[{nb:nL,As:AsMont,tag:'longs'}]; if(nS>0) groups.unshift({nb:nS,As:AsStageS,tag:'courts'});
+    const out=[];
+    groups.forEach(g=>{
+     const xl=reach(-1,g.As), xr=reach(1,g.As);
+     let x0=xl-lbdc, x1=xr+lbdc, hk0=false, hk1=false;
+     if(a.k===0){ x0=-aApp/2000+c/1000; const r=ancrageRive(phi,g.nb,Vf0,gap,true); hk0=r.type!=='droit'; ancAll.push({appui:0,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'sup',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui 0 : ancrage des chapeaux Ø'+phi+' insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles dans l\'appui).'); }
+     if(a.k===n){ x1=Ltot+aApp/2000-c/1000; const r=ancrageRive(phi,g.nb,VfN,gap,true); hk1=r.type!=='droit'; ancAll.push({appui:n,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'sup',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui '+n+' : ancrage des chapeaux Ø'+phi+' insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles dans l\'appui).'); }
+     x0=Math.max(x0,node[a.k]-(adjL||0)); x1=Math.min(x1,node[a.k]+(adjR||0));
+     if(a.k===0) x0=-aApp/2000+c/1000; if(a.k===n) x1=Ltot+aApp/2000-c/1000;
+     const rep=nextRep(); const rec={rep,appui:a.k,nb:g.nb,diam:phi,x0:r2(x0,3),x1:r2(x1,3),lit:1,role:g.tag,AsReel:r2(g.nb*Ab(phi)/100),AsReelZone:r2((nc*Ab(phi)+AsMont)/100),AsReq:r2(a.AsReq/100),ancrage:hk0||hk1?'crochet 90°':'droit'};
+     out.push(rec);
+     const Lm=x1-x0+((hk0?1:0)+(hk1?1:0))*hookDev(phi)/1000;
+     addNom(rep,'Chapeaux appui '+a.k+' ('+g.tag+')',g.nb,phi,nc*Ab(phi)+AsMont,a.AsReq,Lm,(hk0||hk1)?'Droit, crochet 90°':'Droit','sup');
+     if(a.k>0&&a.k<n){ arretsAll.push({x:rec.x0,rep,e:a.k-1},{x:rec.x1,rep,e:a.k}); }
+     else if(a.k===0) arretsAll.push({x:rec.x1,rep,e:0}); else arretsAll.push({x:rec.x0,rep,e:n-1});
+    });
+    chapAll.push(...out);
+   });
+   // barres de montage (filantes en lit supérieur), recouvrées au-delà de 12 m
+   {
+    const xs=-aApp/2000+c/1000, xe=Ltot+aApp/2000-c/1000, Ltm=xe-xs;
+    const l0=lap(phim,fyd,true,0,100)/1000;
+    const segs=[]; const mids=node.slice(0,n).map((x0,e)=>x0+spans[e]/2); let pos=xs, guard=0;
+    // tronçons de 12 m maximum ; coupures en milieu de travée (zone comprimée pour des barres supérieures), jamais sur un appui
+    while(xe-pos>12&&guard++<20){ const lim=pos+12-l0/2; let cut=null; mids.forEach(mm=>{ if(mm>pos+l0&&mm<=lim&&(cut==null||mm>cut)) cut=mm; }); if(cut==null) cut=lim;
+     segs.push([pos,cut+l0/2]); lapsAll.push({x0:r2(cut-l0/2,3),x1:r2(cut+l0/2,3),repSeg:segs.length}); pos=cut-l0/2; }
+    segs.push([pos,xe]);
+    segs.forEach((sg,i)=>{ const rep=nextRep(); sg.rep=rep; addNom(rep,'Barres de montage'+(segs.length>1?' (tronçon '+(i+1)+')':''),nm,phim,nm*Ab(phim),AsComp,sg[1]-sg[0],'Droit','montage'); });
+    lapsAll.forEach(l=>{ l.rep=segs[l.repSeg-1].rep; l.nb=nm; l.diam=phim; l.lo=r2(l0*1000,0); });
+    // affectation aux travées (portion de chaque tronçon dans la travée)
+    travOut.forEach((to,e)=>{ segs.forEach(sg=>{ const a0=Math.max(sg[0],node[e]-1e-9), a1=Math.min(sg[1],node[e+1]+1e-9);
+      const ex0=e===0?sg[0]:null, ex1=e===n-1?sg[1]:null;
+      if(a1>a0) to.litSup.push({rep:sg.rep,nb:nm,diam:phim,x0:r2(e===0?Math.min(sg[0],a0):a0,3),x1:r2(e===n-1?Math.max(sg[1],a1):a1,3),lit:1,role:'montage',xTotal0:r2(sg[0],3),xTotal1:r2(sg[1],3),AsReel:r2(nm*Ab(phim)/100),AsReq:r2(AsComp/100)}); }); });
+   }
+   // chapeaux, arrêts, ancrages, recouvrements -> travées
+   chapAll.forEach(ch=>{ const e=Math.min(ch.appui,n-1); travOut[e].chapeaux.push(ch); });
+   arretsAll.forEach(a=>{ const e=a.e!=null?a.e:0; travOut[Math.min(Math.max(e,0),n-1)].arrets.push({x:a.x,rep:a.rep}); });
+   ancAll.forEach(a=>{ const e=Math.min(a.appui,n-1); travOut[e].ancrages.push({appui:a.appui,type:a.type,lbd:a.lbd,lbd_m:a.lbd_m,lit:a.lit,diam:a.diam,lbDispo:a.lbDispo}); });
+   lapsAll.forEach(l=>{ let e=0; node.forEach((x,i)=>{ if(i<n&&(l.x0+l.x1)/2>=x) e=i; }); travOut[e].recouvrements.push({x0:l.x0,x1:l.x1,rep:l.rep,nb:l.nb,diam:l.diam,lo:l.lo}); });
+   /* ---- cadres : zones d'espacement variable ---- */
+   const dS=Math.min(...trav.map(t=>t.d),...apps.map(a=>a.d)), zS2=0.9*dS;
+   const smaxAbs=Math.min(0.75*dS,400); const AswMinS=0.08*Math.sqrt(fck)/fyk*b; // mm²/mm
+   const Asw=brins*Ab(phiT);
+   const smax=Math.floor(Math.min(smaxAbs,Asw/AswMinS)/25)*25;
+   const SER=[75,100,150,200,250,300,350,400].filter(s=>s<=smax); if(!SER.length||SER[SER.length-1]<smax) SER.push(smax);
+   const dmS=dS/1000, VredMax=Math.max(...travOut.map((to,e)=>{ let xa=node[e]+aApp/2000, xb=node[e+1]-aApp/2000; if(xb<=xa+0.2){ xa=node[e]; xb=node[e+1]; } return Math.max(Vat(Math.min(xa+dmS,(xa+xb)/2)),Vat(Math.max(xb-dmS,(xa+xb)/2))); }));
+   const cotUsed=cotOf(VredMax,zS2); let AswReqMax=0;
+   const cadresAll=[]; let nbCadresTot=0;
+   const stirrupLen=2*((b-2*c-phiT)+(h-2*c-phiT))/1000+2*Math.max(10*phiT,70)/1000;
+   const reqS=V=>Math.floor(Math.min(smax,Asw/Math.max(V*1e3/(zS2*fyd*cotUsed),1e-9))/1);
+   const pickS=sr=>{ let s=SER[0]; SER.forEach(v=>{ if(v<=sr+1e-9) s=v; }); return s; };
+   const VrdMaxMin=kBielle(zS2)/2/1e3; // kN, à cotθ=1
+   if(VredMax>VrdMaxMin*1.0001) warn.push('Effort tranchant V_Ed = '+r2(VredMax,1)+' kN > V_Rd,max = '+r2(VrdMaxMin,1)+' kN (bielle comprimée, cotθ=1) — augmenter la section ou la classe de béton.');
+   travOut.forEach((to,e)=>{
+    let xa=node[e]+aApp/2000, xb=node[e+1]-aApp/2000; if(xb<=xa+0.2){ xa=node[e]; xb=node[e+1]; }
+    const dm=dS/1000; const Vd=x=>{ const lo=xa+dm, hi=xb-dm; return Vat(lo<=hi?Math.min(Math.max(x,lo),hi):x); };
+    const step=Math.max(0.05,(xb-xa)/120); const prof=[];
+    for(let x=xa;x<xb-1e-9;x+=step){ const V=Vd(x+step/2); prof.push({x0:x,x1:Math.min(x+step,xb),s:pickS(reqS(V)),V}); AswReqMax=Math.max(AswReqMax,V*1e3/(zS2*fyd*cotUsed)); }
+    let zn=[]; prof.forEach(p=>{ const l=zn[zn.length-1]; if(l&&l.s===p.s) l.x1=p.x1; else zn.push({x0:p.x0,x1:p.x1,s:p.s}); });
+    // zones trop courtes -> absorbées par la voisine à plus petit espacement (sécurité)
+    for(let it=0;it<20;it++){ let ch=false; for(let i=0;i<zn.length&&zn.length>1;i++){ const z=zn[i]; if(z.x1-z.x0<Math.max(0.3,2*z.s/1000)){ const L=zn[i-1],Rz=zn[i+1]; const tgt=(L&&Rz)?(L.s<=Rz.s?'L':'R'):(L?'L':'R'); if(tgt==='L'){ L.x1=z.x1; L.s=Math.min(L.s,z.s); } else { Rz.x0=z.x0; Rz.s=Math.min(Rz.s,z.s); } zn.splice(i,1); ch=true; break; } } if(!ch) break; }
+    zn=zn.reduce((acc,z)=>{ const l=acc[acc.length-1]; if(l&&l.s===z.s) l.x1=z.x1; else acc.push(z); return acc; },[]);
+    // positions des cadres : 50 mm du nu de l'appui, puis espacement de la zone
+    let pos=xa+0.05; const zones=zn.map((z,i)=>{ let cnt=0; const lim=(i===zn.length-1)?xb-0.045:z.x1; while(pos<=lim+1e-9){ cnt++; pos+=z.s/1000; } return {x0:r2(z.x0,3),x1:r2(z.x1,3),esp:z.s,espCm:r2(z.s/10,1),nb:cnt}; });
+    if(zones.length&&pos-zones[zones.length-1].esp/1000<xb-0.05-0.5*zones[zones.length-1].esp/1000) zones[zones.length-1].nb++;
+    to.cadres={diam:phiT,brins,AswBrins:r2(Asw/100),cotTheta:r2(cotUsed,2),zones};
+    nbCadresTot+=zones.reduce((s,z)=>s+z.nb,0);
+   });
+   if(nbCadresTot>0){ const rep=nextRep(); cadresAll.push(rep); travOut.forEach(to=>{ to.cadres.rep=rep; });
+    nomen.push({rep,designation:'Cadres'+(brins===4?' + étriers (4 brins)':''),nbDiam:nbCadresTot+'HA'+phiT,nb:nbCadresTot,diam:phiT,AsReel:r2(Asw/Math.min(...travOut.map(to=>Math.min(...to.cadres.zones.map(z=>z.esp))))*10),AsReq:r2(AswReqMax*10),longueur:r2(stirrupLen),faconnage:'Cadre fermé, crochets 135° (retour ≥ 10Ø)',poids:r2(nbCadresTot*wkg(phiT,stirrupLen),1),usage:'cadres'}); }
+   // armatures de peau (h > 1000 mm)
+   if(h>1000){ const phiP=10, ns=Math.max(1,Math.ceil((h-2*(c+phiT)-2*phim)/200)-1); const rep=nextRep(); const x0=-aApp/2000+c/1000, x1=Ltot+aApp/2000-c/1000;
+    travOut.forEach((to,e)=>{ to.peau=[{rep,nb:2*ns,diam:phiP,x0:r2(Math.max(x0,node[e]),3),x1:r2(Math.min(x1,node[e+1]),3)}]; });
+    addNom(rep,'Armatures de peau ('+ns+' par face)',2*ns,phiP,2*ns*Ab(phiP),0,x1-x0,'Droit','peau'); hyp.push('Armatures de peau HA10 (h > 1 m, EC2 §7.3.3 — valeur usuelle, espacement ≤ 200 mm).'); }
+   const poidsTotal=r2(nomen.reduce((s,r)=>s+r.poids,0),1);
+   hyp.push('Norme : Eurocode 2 (EN 1992-1-1 + AN France), béton '+'C'+fck+', acier fyk = '+fyk+' MPa, γc = 1,5, γs = 1,15, α_cc = 1,0.');
+   hyp.push('Enrobage nominal c = '+cEnr+' cm (donnée du formulaire, mesuré au cadre). Granulat 20 mm : espacement mini entre barres = max(Ø ; 25 ; 20 mm).');
+   hyp.push('Moments et efforts : combinaison ELU '+(isCR?'(enveloppe de la charge roulante, coefficients 1)':'1,35G + 1,5Q')+' prise sur l\'enveloppe du calcul RDM (poids propre non inclus si non saisi). Appuis supposés de largeur '+aApp/10+' cm, portées entre axes d\'appuis.');
+   hyp.push('Sections d\'acier calculées (skill dimensionnement-beton-arme §3.9) avec la hauteur utile RÉELLE des lits choisis (d = h − c − Øcadre − Ø/2 ou centre de gravité des lits) ; K = M/(b·d²·fck), z = d·(0,5+√(0,25−K/1,134)) ≤ 0,95d, K lim = 0,21 (au-delà : armatures comprimées) ; As,min = max(0,26·fctm/fyk·b·d ; 0,0013·b·d) ; As,max = 0,04·Ac.');
+   hyp.push('Arrêts de barres : épure des moments décalée de a_l = z·cotθ/2 = '+r2(aL,0)+' mm (EC2 §9.2.1.3), puis prolongement de l_bd au-delà du point où la barre n\'est plus nécessaire.');
+   hyp.push('Ancrages : l_bd = α1·α2·α3·α4·α5·l_b,rqd ≥ l_b,min (EC2 §8.4.4) ; f_bd = 2,25·η1·η2·f_ctd (η1 = 1 lits inférieurs, 0,7 lits supérieurs h > 250 mm) ; α3 = α4 = α5 = 1 par défaut (valeurs usuelles) ; appui de rive : F = 0,5·V·cotθ, crochet 90° (α1 = 0,7 si cd > 3Ø) si l\'ancrage droit ne tient pas dans l\'appui.');
+   hyp.push('Cadres : Ø'+phiT+', '+brins+' brins, cotθ = '+r2(cotUsed,2)+' (optimisé ≤ 2,5 tel que V_Ed ≤ V_Rd,max), VEd réduit à d du nu d\'appui (EC2 §6.2.1(8)), écartement max = min(0,75d ; Asw/(ρw,min·b)) = '+smax+' mm ; premier cadre à 50 mm du nu de l\'appui.');
+   hyp.push('Recouvrements : barres de montage recouvertes au-delà de 12 m, l0 = α6·l_b,rqd ≥ max(0,3·α6·l_b,rqd ; 15Ø ; 200 mm), α6 = 1,5 (100 % recouvert au même endroit).');
+   hyp.push('Limites : flèche, fissuration (ELS), torsion, charges concentrées proches des appuis, réservations et doublement des cadres sur appuis non traités ici. Poids = π/4·Ø²·7850 kg/m³ sur longueurs développées ; chutes de coupe non comptées.');
+
+   if(apps.some(a=>a.ch.insuff)||trav.some(t=>t.ch.insuff)) warn.push('Section d\'acier requise au-delà de 3 lits de HA32 sur certaines zones — section de béton à revoir.');
+   const warnU=[...new Set(warn)];
+   return {travees:travOut,nomenclature:nomen,poidsTotal,hypotheses:hyp,avertissements:warnU,
+    parametres:{fck,fyk,b:b/10,h:h/10,enrobage:cEnr,appui:aApp/10,phiCadre:phiT,brins,aL:r2(aL,0),cotTheta:r2(cotUsed,2),dMin:r2(dS/10,2)}};
+  }
+  /* ===== FPP:END ===== */
+  window.ferraillagePoutrePlan=ferraillagePoutrePlan;
   function pcSet(obj,path,val){ const parts=path.split('.'); let o=obj; for(let i=0;i<parts.length-1;i++){ o=o[parts[i]]; if(!o) return; } o[parts[parts.length-1]]=val; }
   function pcGet(obj,path){ const parts=path.split('.'); let o=obj; for(const p of parts){ if(o==null) return undefined; o=o[p]; } return o; }
   function pcChange(e,id){
