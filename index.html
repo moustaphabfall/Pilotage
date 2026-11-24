@@ -25037,13 +25037,17 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const rectH=Math.max(10,Math.min(50,hcm*0.55));
    const pos=pcGlobalPositions(spans);
    // pré-passe : combien de « voies » de charges superposées faut-il réserver au-dessus de la poutre ?
-   const CHG_GAP=13, LANE_H=58;
-   let _nLanes=1;
+   const CHG_GAP=10, STACK_GAP=3;
+   let _nLanes=1, _laneH=[], _laneOf=[];
+   /* hauteur d'une charge : proportionnelle à sa valeur (règle D05), avec un plancher de 12 px pour que l'étiquette reste lisible */
+   const _hFor=(ch,v)=>{ const isP=(ch.forme==='ponctuelle'||ch.forme==='couple'); const Lm=total/Math.max(1,spans.length), REF=isP?40*Lm:40, HM=Math.max(rectH,24); return Math.max(HM/4,12,Math.min(HM,HM*Math.abs(v)/REF)); };
    { const preLanes=[]; const preAssign=(a,b)=>{ for(let lvl=0;;lvl++){ if(!preLanes[lvl]){ preLanes[lvl]=[{a,b}]; return lvl; }
       if(!preLanes[lvl].some(r=>!(b<=r.a+1e-9||a>=r.b-1e-9))){ preLanes[lvl].push({a,b}); return lvl; } } };
-    (dp.charges||[]).forEach(ch=>{ const {Xa,Xb}=pcChgExtent(spans,pos,ch); preAssign(Math.max(0,Xa),Math.max(0,Xb,Xa+0.01)); });
+    (dp.charges||[]).forEach((ch,ci)=>{ const {Xa,Xb}=pcChgExtent(spans,pos,ch); const lv=preAssign(Math.max(0,Xa),Math.max(0,Xb,Xa+0.01)); _laneOf[ci]=lv;
+      const g=+ch.valeur_gauche||0, d2=(ch.valeur_droite!=null&&ch.valeur_droite!=='')?+ch.valeur_droite:g;
+      const hh=ch.forme==='couple'?32:Math.max(_hFor(ch,g),ch.forme==='ponctuelle'?0:_hFor(ch,d2)); _laneH[lv]=Math.max(_laneH[lv]||0,hh); });
     _nLanes=preLanes.length||1; }
-   const chgHeadroom=CHG_GAP+(_nLanes-1)*LANE_H+50;
+   const chgHeadroom=CHG_GAP+_laneH.reduce((a,h)=>a+(h||0),0)+Math.max(0,_nLanes-1)*STACK_GAP+30;
    const baseY=Math.max(98,chgHeadroom+rectH/2+12); const topY=baseY-rectH/2, botY=baseY+rectH/2;
    // taille des appuis proportionnelle à la hauteur de la poutre (évite un appui minuscule sous une grosse section)
    const triW=Math.max(6,Math.min(22,rectH*0.46)), triH=Math.max(9,Math.min(26,rectH*0.56));
@@ -25090,34 +25094,42 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const chgHtml=(dp.charges||[]).map((ch,ci)=>{
     const col=pcChgCol(ci);
     const {Xa,Xb,isPonct}=pcChgExtent(spans,pos,ch);
-    const lane=assignLane(Math.max(0,Xa),Math.max(0,Xb,Xa+0.01));
-    const chBase=topY-CHG_GAP-lane*LANE_H;
+    const lane=_laneOf[ci];
+    let chBase=topY-CHG_GAP; for(let l=0;l<lane;l++) chBase-=(_laneH[l]||0)+STACK_GAP;
     const vg=+ch.valeur_gauche||0, vd=(ch.valeur_droite!=null&&ch.valeur_droite!=='')?+ch.valeur_droite:vg;
     /* règle D05 : la charge de référence (4 t/m = 40 kN/m ; ponctuelle : 4 t × L) est dessinée à la hauteur
        de la poutre ; plafond = hauteur de la poutre, minimum = 1/4 (une petite charge reste visible) */
     const Lmoy=total/Math.max(1,spans.length), REF=isPonct?40*Lmoy:40, HMAX=Math.max(rectH,24);
-    const hFor=v=>Math.max(HMAX/4,Math.min(HMAX,HMAX*Math.abs(v)/REF));
+    const hFor=v=>_hFor(ch,v);
     const xa=padL+Math.max(0,Math.min(total,Xa))*sx, xb=padL+Math.max(0,Math.min(total,Xb))*sx;
     const fmt=v=>(Math.round(v*100)/100).toString().replace('.',',');
     const uLab=ch.forme==='couple'?'kN·m':(isPonct?'kN':'kN/m');
     const vTxt=(ch.forme!=='couple'&&!isPonct&&vd!==vg)?(fmt(vg)+' → '+fmt(vd)):fmt(vg);
     const lab=(ch.type==='Q'?'Q':'G')+(ci+1)+' = '+vTxt+' '+uLab;
+    /* étiquette à l'extérieur, au bout de la charge (à droite, sinon à gauche) : jamais entre deux niveaux empilés */
+    const lblTxt=(fallX,fallY)=>{ const wT=lab.length*6.2+8; let rOk=true,lOk=true;
+     (dp.charges||[]).forEach((o,oi)=>{ if(oi===ci||_laneOf[oi]!==lane) return; const e2=pcChgExtent(spans,pos,o); const oa=padL+Math.max(0,Math.min(total,e2.Xa))*sx, ob=padL+Math.max(0,Math.min(total,e2.Xb))*sx;
+      if(oa>=xb-1&&oa<xb+wT) rOk=false; if(ob<=xa+1&&ob>xa-wT) lOk=false; });
+     const yy=chBase-(_laneH[lane]||0)/2+4;
+     if(rOk) return '<text x="'+(xb+5)+'" y="'+yy+'" font-size="11" fill="'+col+'">'+lab+'</text>';
+     if(lOk) return '<text x="'+(xa-5)+'" y="'+yy+'" text-anchor="end" font-size="11" fill="'+col+'">'+lab+'</text>';
+     return '<text x="'+fallX+'" y="'+fallY+'" text-anchor="middle" font-size="11" fill="'+col+'">'+lab+'</text>'; };
     if(ch.forme==='couple'){
      const r=11, cy=chBase-16;
      return '<path d="M'+(xa-r)+' '+cy+' A'+r+' '+r+' 0 1 1 '+(xa+r*0.2)+' '+(cy-r*0.98)+'" fill="none" stroke="'+col+'" stroke-width="2.4" marker-end="url(#pcArr)"/>'
-      +'<text x="'+xa+'" y="'+(cy-r-4)+'" text-anchor="middle" font-size="11" fill="'+col+'">'+lab+'</text>';
+      +lblTxt(xa,cy-r-4);
     }
     if(isPonct){
      const h=hFor(vg), y0=chBase-h;
      return '<line x1="'+xa+'" y1="'+y0+'" x2="'+xa+'" y2="'+(chBase-1)+'" stroke="'+col+'" stroke-width="3" marker-end="url(#pcArr)"/>'
-      +'<text x="'+xa+'" y="'+(y0-4)+'" text-anchor="middle" font-size="11" fill="'+col+'">'+lab+'</text>';
+      +lblTxt(xa,y0-4);
     }
     const ha=hFor(vg), hb=hFor(vd); const ya=chBase-ha, yb=chBase-hb;
     const w=Math.max(xb-xa,2); const nArr=Math.max(2,Math.min(8,Math.round(w/26)));
     const arrows=Array.from({length:nArr},(_,k)=>{ const t2=nArr>1?k/(nArr-1):0; const xx=xa+t2*w; const hh=ha+(hb-ha)*t2;
      return '<line x1="'+xx+'" y1="'+(chBase-hh)+'" x2="'+xx+'" y2="'+(chBase-1)+'" stroke="'+col+'" stroke-width="2.2" marker-end="url(#pcArr)"/>'; }).join('');
     return '<polygon points="'+xa+','+ya+' '+xb+','+yb+' '+xb+','+chBase+' '+xa+','+chBase+'" fill="none" stroke="'+col+'" stroke-width="1.4"/>'
-     +arrows+'<text x="'+((xa+xb)/2)+'" y="'+(Math.min(ya,yb)-4)+'" text-anchor="middle" font-size="11" fill="'+col+'">'+lab+'</text>';
+     +arrows+lblTxt((xa+xb)/2,Math.min(ya,yb)-4);
    }).join('');
    // boutons ＋ / － de travée : collés directement à la poutre, le － toujours côté poutre (le plus proche)
    const xEnd=padL+beamW; const bY=baseY-btnSz/2;
