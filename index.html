@@ -24861,27 +24861,119 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcChatNote">Appel à un modèle IA externe (connexion réseau requise) — vérifier les données avant « 🤖 Dimensionner ».</p>'
     +'</div>';
   }
+  /* ===== Bulle IA : validation, différences, annulation (poutre continue) =====
+     L'IA ne peut écrire que ces champs de dp, avec des bornes ; tout le reste est ignoré. Aucun calcul lancé. */
+  const PC_IA_KEYS=['nom','travees','b_cm','h_cm','classeGlobale','termeGlobal','classeAcier','enrobage_cm','appuis','charges','convoiActif','convoi','zone','sens'];
+  function pcIaSnap(dp){ const o={}; PC_IA_KEYS.forEach(k=>{ if(dp[k]!==undefined) o[k]=JSON.parse(JSON.stringify(dp[k])); }); return o; }
+  const pcIaF=v=>(v==null||v==='')?'—':String(Math.round(+v*1000)/1000).replace('.',',');
+  function pcIaNum(v,min,max){ if(v===null||v===''||typeof v==='boolean') return undefined; const n=+v; return (isFinite(n)&&n>=min&&n<=max)?n:undefined; }
+  function pcIaSanitize(d,dp){
+   const patch={}, rej=[]; const nT0=dp.travees.length;
+   const bornes=(k,v,lo,hi,u)=>{ const n=pcIaNum(v,lo,hi); if(n===undefined){ rej.push(k+' = '+(typeof v==='object'?'?':v)+' ('+lo+' à '+hi+' '+u+')'); return undefined; } return Math.round(n*100)/100; };
+   if(typeof d.nom==='string'&&d.nom.trim()) patch.nom=d.nom.trim().slice(0,80);
+   if(d.travees!==undefined){
+    if(Array.isArray(d.travees)&&d.travees.length>=1&&d.travees.length<=20){
+     const out=[]; let ok=true;
+     d.travees.forEach((tr,i)=>{ const v=bornes('portée travée '+(i+1),tr&&tr.portee_m,0.3,60,'m'); if(v===undefined){ const old=dp.travees[i]; if(old) out.push(Object.assign({},old)); else ok=false; } else out.push(Object.assign({},dp.travees[i]||{},{portee_m:v})); });
+     if(ok) patch.travees=out; else rej.push('travées (nombre 1 à 20)');
+    } else rej.push('travées (nombre 1 à 20)');
+   }
+   const nT=(patch.travees||dp.travees).length;
+   [['b_cm','largeur b',10,200,'cm'],['h_cm','hauteur h',15,300,'cm'],['enrobage_cm','enrobage',1,10,'cm']].forEach(([k,nm,lo,hi,u])=>{ if(d[k]!==undefined){ const v=bornes(nm,d[k],lo,hi,u); if(v!==undefined) patch[k]=v; } });
+   if(d.classeGlobale!==undefined){ if(PC_ECM[d.classeGlobale]) patch.classeGlobale=d.classeGlobale; else rej.push('béton '+d.classeGlobale); }
+   if(d.classeAcier!==undefined){ if(PC_FYK[d.classeAcier]) patch.classeAcier=d.classeAcier; else rej.push('acier '+d.classeAcier); }
+   if(d.termeGlobal!==undefined){ if(d.termeGlobal==='court'||d.termeGlobal==='differe') patch.termeGlobal=d.termeGlobal; else rej.push('module E '+d.termeGlobal); }
+   if(d.sens!==undefined){ if(['g2d','d2g','deux'].includes(d.sens)) patch.sens=d.sens; else rej.push('sens '+d.sens); }
+   if(Array.isArray(d.appuis)){
+    patch.appuis=d.appuis.slice(0,nT+1).map((a,i)=>{ const old=dp.appuis[i]||{raideur_kN_m:null,blocage_rotation:false}; const r=(a&&a.raideur_kN_m!=null&&a.raideur_kN_m!=='')?pcIaNum(a.raideur_kN_m,0,1e9):null; if(a&&a.raideur_kN_m!=null&&a.raideur_kN_m!==''&&r===undefined) rej.push('raideur appui '+(i+1)); return {raideur_kN_m:r===undefined?old.raideur_kN_m:r,blocage_rotation:(a&&typeof a.blocage_rotation==='boolean')?a.blocage_rotation:!!old.blocage_rotation}; });
+   }
+   if(Array.isArray(d.charges)){
+    if(d.charges.length<=30){ const out=[];
+     d.charges.forEach((c,i)=>{ const nm='charge '+(i+1); const old=dp.charges[i]||{};
+      const type=(c&&(c.type==='G'||c.type==='Q'))?c.type:null, forme=(c&&['repartie','ponctuelle','couple'].includes(c.forme))?c.forme:null;
+      const vg=pcIaNum(c&&c.valeur_gauche,-1e6,1e6);
+      const rp=(c&&c.repere==='global')?'global':(c&&Number.isInteger(+c.repere)&&+c.repere>=1&&+c.repere<=nT?+c.repere:null);
+      if(!type||!forme||vg===undefined||rp===null){ rej.push(nm+' (type G/Q, forme, valeur ou travée invalide)'); if(dp.charges[i]) out.push(Object.assign({},old)); return; }
+      const o=Object.assign({},old,{type,forme,repere:rp,valeur_gauche:vg});
+      const nu=pcIaNum(c.nu_gauche_m==null?0:c.nu_gauche_m,0,60); o.nu_gauche_m=nu===undefined?(old.nu_gauche_m||0):nu; if(nu===undefined) rej.push(nm+' position');
+      if(c.longueur_m==null||c.longueur_m==='') o.longueur_m=null; else { const l=pcIaNum(c.longueur_m,0.01,60); if(l===undefined) rej.push(nm+' longueur'); else o.longueur_m=l; }
+      if(c.valeur_droite==null||c.valeur_droite==='') o.valeur_droite=null; else { const vd=pcIaNum(c.valeur_droite,-1e6,1e6); if(vd===undefined) rej.push(nm+' valeur droite'); else o.valeur_droite=vd; }
+      out.push(o); });
+     patch.charges=out; } else rej.push('charges (30 maximum)');
+   }
+   if(typeof d.convoiActif==='boolean') patch.convoiActif=d.convoiActif;
+   if(Array.isArray(d.convoi)&&d.convoi.length<=10){ const cv=d.convoi.map(a=>({dx:pcIaNum(a&&a.dx,0,50),P:pcIaNum(a&&a.P,0,5000)})); if(cv.every(a=>a.dx!==undefined&&a.P!==undefined)) patch.convoi=cv; else rej.push('convoi (dx 0 à 50 m, P 0 à 5000 kN)'); }
+   if(d.zone&&typeof d.zone==='object'){ const db=(d.zone.debut==null||d.zone.debut==='')?null:pcIaNum(d.zone.debut,0,60), fi=(d.zone.fin==null||d.zone.fin==='')?null:pcIaNum(d.zone.fin,0,60); if(db===undefined||fi===undefined) rej.push('zone du convoi'); else patch.zone={debut:db,fin:fi}; }
+   return {patch,rejected:rej};
+  }
+  function pcIaDiff(a,b){
+   const L=[]; const f=pcIaF;
+   if(a.nom!==b.nom&&b.nom!==undefined) L.push('nom « '+(a.nom||'—')+' » → « '+b.nom+' »');
+   const ta=a.travees||[], tb=b.travees||[];
+   if(ta.length!==tb.length) L.push('travées '+ta.length+' → '+tb.length);
+   for(let i=0;i<Math.max(ta.length,tb.length);i++){
+    if(!ta[i]) L.push('travée '+(i+1)+' ajoutée ('+f(tb[i].portee_m)+' m)'); else if(!tb[i]) L.push('travée '+(i+1)+' supprimée ('+f(ta[i].portee_m)+' m)');
+    else if(+ta[i].portee_m!==+tb[i].portee_m) L.push('portée travée '+(i+1)+' : '+f(ta[i].portee_m)+' → '+f(tb[i].portee_m)+' m');
+   }
+   [['b_cm','largeur b','cm'],['h_cm','hauteur h','cm'],['enrobage_cm','enrobage','cm']].forEach(([k,n,u])=>{ if(a[k]!==b[k]&&b[k]!==undefined) L.push(n+' : '+f(a[k])+' → '+f(b[k])+' '+u); });
+   [['classeGlobale','béton'],['classeAcier','acier'],['termeGlobal','module E'],['sens','sens du convoi']].forEach(([k,n])=>{ if(a[k]!==b[k]&&b[k]!==undefined) L.push(n+' : '+(a[k]||'—')+' → '+b[k]); });
+   const pa=a.appuis||[], pb=b.appuis||[];
+   for(let i=0;i<pb.length;i++){ if(JSON.stringify(pa[i]||null)!==JSON.stringify(pb[i])&&pa[i]) L.push('appui '+(i+1)+' modifié'+(pa[i].blocage_rotation!==pb[i].blocage_rotation?' (rotation '+(pb[i].blocage_rotation?'bloquée':'libre')+')':'')+(pa[i].raideur_kN_m!==pb[i].raideur_kN_m?' (raideur '+f(pa[i].raideur_kN_m)+' → '+f(pb[i].raideur_kN_m)+' kN/m)':'')); }
+   const ca=a.charges||[], cb=b.charges||[];
+   const lab=(c,i)=>(c.type||'G')+(i+1)+' '+(c.forme==='ponctuelle'?'ponctuelle '+f(c.valeur_gauche)+' kN':c.forme==='couple'?'couple '+f(c.valeur_gauche)+' kN·m':'répartie '+f(c.valeur_gauche)+(c.valeur_droite!=null&&c.valeur_droite!==''&&+c.valeur_droite!==+c.valeur_gauche?' → '+f(c.valeur_droite):'')+' kN/m')+' ('+(c.repere==='global'?'toutes travées':'travée '+c.repere)+')';
+   for(let i=0;i<Math.max(ca.length,cb.length);i++){
+    if(!ca[i]) L.push('charge ajoutée : '+lab(cb[i],i)); else if(!cb[i]) L.push('charge supprimée : '+lab(ca[i],i));
+    else if(JSON.stringify(ca[i])!==JSON.stringify(cb[i])) L.push('charge modifiée : '+lab(ca[i],i)+' → '+lab(cb[i],i));
+   }
+   if(a.convoiActif!==b.convoiActif&&b.convoiActif!==undefined) L.push('convoi '+(b.convoiActif?'activé':'désactivé'));
+   if(JSON.stringify(a.convoi)!==JSON.stringify(b.convoi)&&b.convoi!==undefined) L.push('essieux du convoi modifiés');
+   if(JSON.stringify(a.zone)!==JSON.stringify(b.zone)&&b.zone!==undefined) L.push('zone du convoi modifiée');
+   return L;
+  }
+  /* annule le DERNIER changement fait par l'IA (refusé si la fiche a été modifiée à la main depuis) */
+  window.pcIaUndo=function(id){
+   const t=taskById(id); if(!t) return false; const dp=pcData(t); const cs=pcChatState(id);
+   let e=null; for(let i=cs.log.length-1;i>=0;i--){ if(cs.log[i].snap&&!cs.log[i].undone){ e=cs.log[i]; break; } }
+   if(!e) return false;
+   if(dimStatut(dp)==='calcule'){ cs.log.push({role:'err',text:'⚠ Annulation impossible : fiche verrouillée (calcul fait).'}); beamRender(id); return false; }
+   if(JSON.stringify(pcIaSnap(dp))!==e.after){ cs.log.push({role:'err',text:'⚠ Annulation impossible : la fiche a été modifiée à la main depuis ce changement.'}); beamRender(id); return false; }
+   Object.keys(e.snap).forEach(k=>{ dp[k]=JSON.parse(JSON.stringify(e.snap[k])); });
+   if(e.snap.nom) t.nom=e.snap.nom;
+   try{ pcSyncAppuis(dp); }catch(_){}
+   e.undone=true; cs.log.push({role:'bot',text:'↶ Dernier changement annulé ('+e.diff.length+' modification'+(e.diff.length>1?'s':'')+').'});
+   try{ persist(); }catch(_){}
+   beamRender(id); return true;
+  };
   async function pcChatSend(id,msgOpt){
    const t=taskById(id); if(!t) return; const dp=pcData(t);
    const root=document.getElementById('modalBody'); const ta=root&&root.querySelector('[data-pc-chat-in]');
    const msg=String(msgOpt!=null?msgOpt:(ta?ta.value:'')).trim(); if(!msg) return;
    const cs=pcChatState(id); if(cs.busy) return;
+   if((typeof dimStatut==='function'&&dimStatut(dp)==='calcule')||navigator.onLine===false){
+    cs.log.push({role:'user',text:msg});
+    cs.log.push({role:'err',text:navigator.onLine===false?'⚠ Hors ligne : l\'assistant IA a besoin d\'une connexion Internet. Rien n\'a été modifié.':'⚠ Fiche verrouillée (calcul fait) : toucher « Recalculer l\'ouvrage » pour la rouvrir avant de la modifier par IA. Rien n\'a été modifié.'});
+    beamRender(id); return; }
    cs.log.push({role:'user',text:msg}); cs.busy=true; beamRender(id);
    try{
     const current={nom:dp.nom,travees:dp.travees,b_cm:dp.b_cm,h_cm:dp.h_cm,classeGlobale:dp.classeGlobale,termeGlobal:dp.termeGlobal,classeAcier:dp.classeAcier,enrobage_cm:dp.enrobage_cm,appuis:dp.appuis,charges:dp.charges,convoiActif:dp.convoiActif,convoi:dp.convoi,zone:dp.zone,sens:dp.sens};
     const resp=await fetch(SUPABASE_URL+'/functions/v1/dimensionnement-ia-poutre',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({message:msg,current:current})});
     const j=await resp.json().catch(()=>null);
     if(!resp.ok||!j||j.error||!j.data) throw new Error((j&&j.error)||('Erreur réseau ('+resp.status+')'));
-    const d=j.data;
-    ['nom','travees','b_cm','h_cm','classeGlobale','termeGlobal','classeAcier','enrobage_cm','appuis','charges','convoiActif','convoi','zone','sens'].forEach(k=>{ if(d[k]!==undefined) dp[k]=d[k]; });
-    if(dp.nom) t.nom=dp.nom;
+    const d=j.data; const snap=pcIaSnap(dp); const sa=pcIaSanitize(d,dp);
+    Object.keys(sa.patch).forEach(k=>{ dp[k]=sa.patch[k]; });
+    if(sa.patch.nom) t.nom=sa.patch.nom;
     try{ pcSyncAppuis(dp); }catch(_){}
-    let txt=d.resume||'Fiche mise à jour.';
+    const after=pcIaSnap(dp); const diff=pcIaDiff(snap,after);
+    let txt=d.resume||(diff.length?'Fiche mise à jour.':'Aucune modification.');
     if(Array.isArray(d.manquant)&&d.manquant.length) txt+=' Encore à préciser : '+d.manquant.join(', ')+'.';
-    cs.log.push({role:'bot',text:txt});
+    if(sa.rejected.length) txt+=' Refusé (valeur invalide ou hors bornes) : '+sa.rejected.join(' ; ')+'.';
+    const ent={role:'bot',text:txt,diff:diff};
+    if(diff.length){ ent.snap=snap; ent.after=JSON.stringify(after); }
+    cs.log.push(ent);
     try{ persist(); }catch(_){}
    }catch(e){
-    cs.log.push({role:'err',text:'⚠ '+(e&&e.message||String(e))});
+    const em=(e&&e.message)||String(e);
+    cs.log.push({role:'err',text:'⚠ '+(/Failed to fetch|NetworkError|Load failed|network/i.test(em)?'Serveur IA injoignable (hors ligne ?). Rien n\'a été modifié.':em)});
    } finally {
     cs.busy=false; beamRender(id);
    }
@@ -30529,10 +30621,11 @@ async function apply(vals,map){ let n=0;
 function log(){ const id=curId()||'_'; return (LOGS[id]=LOGS[id]||[]); }
 function renderLog(){ if(!box) return; const l=$('.fia-log',box); const id=curId();
  let L=log();
- if(isBeam()&&window._pcChat&&window._pcChat[id]) L=window._pcChat[id].log.map(h=>({role:h.role,text:h.text}));
- l.innerHTML=L.length?L.map(h=>'<div class="fia-m fia-'+h.role+'">'+esc(h.text)+'</div>').join('')
+ if(isBeam()&&window._pcChat&&window._pcChat[id]) L=window._pcChat[id].log.map(h=>({role:h.role,text:h.text,diff:h.diff,snap:!!h.snap,undone:h.undone}));
+ let lastU=-1; L.forEach((h,i)=>{ if(h.snap&&!h.undone) lastU=i; });
+ const _h=L.length?L.map((h,i)=>'<div class="fia-m fia-'+h.role+'">'+esc(h.text)+(h.diff&&h.diff.length?'<ul class="fia-diff">'+h.diff.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+(i===lastU?'<button type="button" class="fia-undo" data-fia-undo="1">↶ Annuler ce changement</button>':'')+'</div>').join('')
   :'<p class="fia-empty">Décrivez l\'ouvrage, au micro ou au clavier : « portée 6 m, section 25 × 50, G = 18 kN/m »…</p>';
- l.scrollTop=l.scrollHeight;
+ if(l._h!==_h){ l._h=_h; l.innerHTML=_h; l.scrollTop=l.scrollHeight; }
  $('.fia-ttl',box).textContent=(ficheTitle()||'Ouvrage');
  $('.fia-send',box).disabled=busy; $('.fia-send',box).textContent=busy?'…':'Envoyer';
 }
@@ -30563,7 +30656,7 @@ function mic(){
  const r=new SR(); r.lang='fr-FR'; r.interimResults=true; r.continuous=true; rec=r; recStop=false; recBase=ta.value?ta.value+' ':'';
  b.classList.add('on'); b.textContent='⏹'; b.title='Arrêter et envoyer'; fab&&fab.classList.add('rec');
  r.onresult=e=>{ let t=''; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript; ta.value=recBase+t; };
- r.onerror=e=>{ const c=e&&e.error; try{ clipToast((c==='not-allowed'||c==='service-not-allowed')?'Micro bloqué par le navigateur : autorisez le micro ou utilisez la dictée du clavier.':c==='no-speech'?'Aucune voix détectée.':c==='audio-capture'?'Aucun micro détecté.':'Dictée indisponible ('+(c||'erreur')+').'); }catch(_){ } };
+ r.onerror=e=>{ const c=e&&e.error; try{ clipToast((c==='not-allowed'||c==='service-not-allowed')?'Micro bloqué par le navigateur : autorisez le micro ou utilisez la dictée du clavier.':c==='no-speech'?'Aucune voix détectée.':c==='audio-capture'?'Aucun micro détecté.':c==='network'?'Dictée indisponible hors ligne : le service vocal du navigateur a besoin d\'Internet.':'Dictée indisponible ('+(c||'erreur')+').'); }catch(_){ } };
  r.onend=()=>{ const go=recStop; rec=null; recStop=false; b.classList.remove('on'); b.textContent='🎤'; b.title='Dicter'; fab&&fab.classList.remove('rec'); if(go&&ta.value.trim()) send(ta.value); };
  try{ r.start(); }catch(_){ rec=null; b.classList.remove('on'); b.textContent='🎤'; }
 }
@@ -30576,15 +30669,18 @@ function build(){
   +'<div class="fia-f"><textarea class="fia-in" rows="2" aria-label="Votre message" placeholder="Votre message…"></textarea>'
   +'<button type="button" class="fia-mic" title="Dicter" aria-label="Dicter">🎤</button><button type="button" class="primary fia-send">Envoyer</button></div>';
  document.body.appendChild(fab); document.body.appendChild(box);
+ window.ficheIaToggle=function(){ if(box.hidden){ box.hidden=false; box.classList.remove('fia-min'); renderLog(); $('.fia-in',box).focus(); } else box.classList.toggle('fia-min'); kick(); };
+ document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.pcIaFab'); if(b){ e.stopPropagation(); window.ficheIaToggle(); } });
+ $('.fia-log',box).addEventListener('click',e=>{ if(e.target.closest('[data-fia-undo]')){ try{ window.pcIaUndo&&window.pcIaUndo(curId()); }catch(x){ console.error(x); } renderLog(); } });
  fab.onclick=()=>{ box.hidden=!box.hidden; fab.classList.toggle('on',!box.hidden); if(!box.hidden){ renderLog(); $('.fia-in',box).focus(); } };
- $('.fia-x',box).onclick=()=>{ box.hidden=true; fab.classList.remove('on'); };
+ $('.fia-x',box).onclick=()=>{ box.hidden=true; box._drag=false; box.classList.remove('fia-min'); fab.classList.remove('on'); kick(); };
  $('.fia-off',box).onclick=()=>{ box.hidden=true; window.ficheIaSetEnabled(false); try{ clipToast('Assistant IA masqué. Pour le réactiver : profil ou option « calcul par IA ».'); }catch(_){ } };
  $('.fia-send',box).onclick=()=>send($('.fia-in',box).value);
  $('.fia-mic',box).onclick=mic;
  $('.fia-in',box).addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(e.target.value); } });
  /* fenêtre déplaçable par son en-tête */
  const h=$('.fia-h',box); let dx=0,dy=0,drag=false;
- h.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; drag=true; const r=box.getBoundingClientRect(); dx=e.clientX-r.left; dy=e.clientY-r.top; h.setPointerCapture(e.pointerId); });
+ h.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; drag=true; box._drag=true; const r=box.getBoundingClientRect(); dx=e.clientX-r.left; dy=e.clientY-r.top; h.setPointerCapture(e.pointerId); });
  h.addEventListener('pointermove',e=>{ if(!drag) return; box.style.left=Math.max(4,Math.min(innerWidth-box.offsetWidth-4,e.clientX-dx))+'px'; box.style.top=Math.max(4,Math.min(innerHeight-60,e.clientY-dy))+'px'; box.style.right='auto'; box.style.bottom='auto'; });
  h.addEventListener('pointerup',()=>{ drag=false; });
  const st=document.createElement('style'); st.id='ficheIaCss';
@@ -30605,14 +30701,35 @@ function build(){
   +'.fia-in{flex:1;resize:none;background:transparent;color:inherit;border:none;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:var(--ds-fs-md,13px);padding:6px 2px}.fia-in:focus{outline:none;border-bottom-color:var(--ds-accent,#FFC400)}'
   +'.fia-mic{min-width:44px;min-height:44px;border-radius:50%;border:1.5px solid var(--ds-line,#DAD8D1);background:transparent;font-size:18px;cursor:pointer}.fia-mic.on{background:var(--ds-danger,#B4432D);color:#fff;border-color:transparent}'
   +'.fia-send{min-height:44px}.fia-off{min-height:44px;background:transparent;border:none;color:var(--ds-ink-soft,#5f6a66);font-size:var(--ds-fs-sm,12px);cursor:pointer}'
-  +'@media (max-width:600px){#ficheIaBox{right:8px;left:8px;width:auto;bottom:80px;height:55vh}}';
+  +'@media (max-width:600px){#ficheIaBox{right:8px;left:8px;width:auto;bottom:80px;height:55vh}}'
+  +'.pcIaFab{position:absolute;right:8px;bottom:34px;z-index:6;width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;border:2.5px solid var(--ds-accent,#FFC400);color:var(--ds-ink,#16232B);font:700 15px var(--ds-font-body,system-ui,sans-serif);cursor:pointer}'
+  +'.pcIaFab.on{border-color:var(--ds-ink,#16232B);outline:3px solid var(--ds-accent,#FFC400);outline-offset:1px}'
+  +'.pcBeamDraw.pcCollapsed .pcIaFab{bottom:auto;top:1px;right:150px}'
+  +'@media (pointer:coarse){.pcIaFab{bottom:42px}.pcBeamDraw.pcCollapsed .pcIaFab{bottom:auto;top:4px;right:170px}}'
+  +'#ficheIaBox.fia-beam{bottom:18px;height:min(44vh,340px)}#ficheIaBox.fia-min{height:auto}#ficheIaBox.fia-min .fia-log,#ficheIaBox.fia-min .fia-f{display:none}'
+  +'.fia-diff{margin:6px 0 0;padding-left:18px}.fia-diff li{margin:2px 0}'
+  +'.fia-undo{display:block;margin-top:8px;min-height:44px;padding:0 12px;border-radius:var(--ds-r-ctl,8px);border:1.5px solid var(--ds-accent,#FFC400);background:transparent;color:inherit;font:inherit;font-size:var(--ds-fs-md,13px);cursor:pointer}'
+  +'@media (max-width:600px){#ficheIaBox.fia-beam{bottom:8px;height:min(38vh,320px)}#ficheIaBox.fia-beam.fia-min{height:auto}}';
  document.head.appendChild(st);
 }
+/* poutre : la fenêtre se pose juste sous (sinon au-dessus) du bouton IA du cadre, sans jamais le recouvrir */
+function place(){ if(!box||box.hidden||!box.classList.contains('fia-beam')||box._drag) return;
+ const f=document.querySelector('#modalBody .pcIaFab'); if(!f) return; const r=f.getBoundingClientRect(); if(!r.width) return;
+ const rst=()=>{ ['top','left','right','bottom','maxHeight'].forEach(k=>box.style[k]=''); };
+ rst(); const H=box.offsetHeight, below=innerHeight-r.bottom-8, above=r.top-8; let up=false;
+ up=(below>=260)?false:(above>=260?true:above>below);
+ const mh=up?above:below; if(mh<170) return;
+ box.style.maxHeight=mh+'px'; box.style.bottom='auto'; box.style.top=(up?Math.max(8,r.top-8-box.offsetHeight):r.bottom+8)+'px';
+ if(innerWidth>600){ box.style.left='auto'; box.style.right=Math.max(8,innerWidth-r.right)+'px'; } }
 function sync(){ if(!fab) build(); const on=ficheOpen();
- fab.hidden=!on; const cf=document.getElementById('chatFab'); fab.style.bottom=(cf&&!cf.hidden&&cf.offsetParent)?'84px':'18px';
- if(!on){ box.hidden=true; fab.classList.remove('on'); if(rec){ recStop=false; try{ rec.stop(); }catch(_){ } } }
- else if(!box.hidden) renderLog();
+ const bm=on&&isBeam(); fab.hidden=!on||bm; box.classList.toggle('fia-beam',bm);
+ if(bm){ document.querySelectorAll('#modalBody .pjBeamRoot .pcBeamDraw').forEach(d=>{ if(d.querySelector('.pcIaFab')) return; const b=document.createElement('button'); b.type='button'; b.className='pcIaFab'; b.textContent='IA'; b.setAttribute('aria-label','Assistant IA : dicter ou écrire une modification de la poutre'); b.title='Assistant IA — dicter ou écrire une modification'; b.setAttribute('aria-haspopup','dialog'); d.appendChild(b); }); }
+ const opn=!box.hidden&&!box.classList.contains('fia-min'); document.querySelectorAll('.pcIaFab').forEach(b=>{ b.classList.toggle('on',opn); b.setAttribute('aria-expanded',opn?'true':'false'); });
+ const cf=document.getElementById('chatFab'); fab.style.bottom=(cf&&!cf.hidden&&cf.offsetParent)?'84px':'18px';
+ if(!on){ box.hidden=true; box._drag=false; box.classList.remove('fia-min'); fab.classList.remove('on'); if(rec){ recStop=false; try{ rec.stop(); }catch(_){ } } }
+ else if(!box.hidden){ renderLog(); place(); }
 }
+try{ window.addEventListener('resize',()=>kick()); document.addEventListener('scroll',()=>kick(),true); }catch(_){ }
 let raf=0; function kick(){ if(!raf) raf=requestAnimationFrame(()=>{ raf=0; try{ sync(); }catch(e){ console.error(e); } }); }
 try{ new MutationObserver(kick).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']}); }catch(_){ }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',kick); else kick();
