@@ -25224,9 +25224,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcMatKey(m){ return PC_MATERIAUX.some(x=>x[0]===m)?m:'beton_arme'; }
   function pcMatLabel(m){ const x=PC_MATERIAUX.find(q=>q[0]===pcMatKey(m)); return x?x[1]:'Béton armé'; }
   function pcMatCalc(dp){ return pcMatKey(dp&&dp.materiau)==='beton_arme'; }
-  function pcMateriauHtml(dp){
+  function pcMateriauHtml(dp,attr){
    const cur=pcMatKey(dp.materiau);
-   return '<label>Matériau de l\'ouvrage <select data-pc="materiau">'+PC_MATERIAUX.map(x=>'<option value="'+x[0]+'"'+(cur===x[0]?' selected':'')+'>'+esc(x[1])+'</option>').join('')+'</select></label>'
+   return '<label>Matériau de l\'ouvrage <select '+(attr||'data-pc')+'="materiau">'+PC_MATERIAUX.map(x=>'<option value="'+x[0]+'"'+(cur===x[0]?' selected':'')+'>'+esc(x[1])+'</option>').join('')+'</select></label>'
     +(cur==='beton_arme'?'':'<p class="pcNote pcMatWarn" role="status">'+esc(PC_MAT_MSG)+' Le matériau reste utilisé pour le dessin et l\'étude.<br>À prévoir : '+esc(PC_MAT_MANQUE[cur]||'règles de calcul du matériau')+'.</p>');
   }
   function pcValiderBtnHtml(dp){
@@ -26890,7 +26890,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     poincon:false, poteauForme:'rect', c1_cm:40, c2_cm:40, D_cm:40, N_poincon_kN:0,
     resultats:null };
   }
-  function dlData(t){ if(!t.dimDL) t.dimDL=dlDefaultData(t); if(!PC_EXPO[t.dimDL.classeExposition]) t.dimDL.classeExposition='XC1'; t.dimDL.enrobageNomMin_cm=pcEnrobageNom(t.dimDL).cnomCm; return t.dimDL; }
+  function dlData(t){ if(!t.dimDL) t.dimDL=dlDefaultData(t); if(!PC_EXPO[t.dimDL.classeExposition]) t.dimDL.classeExposition='XC1'; if(!t.dimDL.materiau) t.dimDL.materiau='beton_arme'; t.dimDL.enrobageNomMin_cm=pcEnrobageNom(t.dimDL).cnomCm; return t.dimDL; }
   /* Méthode forfaitaire (BAEL91 Annexe E.1, validée sur le classeur 068) : répartition d'un moment
      isostatique de référence Mo entre travée et appuis selon la position de la travée et le rapport
      des charges α=Q/(G+Q). */
@@ -27042,12 +27042,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     /* un sens de portée : COUPE (portée lx horizontale, épaisseur h exagérée et signalée), appuis aux
        extrémités, charge répartie en bandeau de flèches sur toute la portée, G / Q au-dessus */
     const lx1=+dp.lx_m||5, W1=320, hh=Math.max(24,Math.min(48,(+dp.h_cm||20)*1.2)), x0=0, y0=0;
-    let g1='<rect x="'+x0+'" y="'+y0+'" width="'+W1+'" height="'+hh+'" fill="none" stroke="'+SB+'" stroke-width="2"/>';
+    const mat=pcMatKey(dp.materiau); // volume 3D rempli du matériau (face, dessus, tranche), comme la poutre ; cotes, charges et appuis inchangés
+    let g1=pcBox3d(mat,x0,y0,W1,hh,12,-10,true);
     const tri=xx=>'<path d="M'+(xx-10)+' '+(y0+hh+14)+' L'+xx+' '+(y0+hh)+' L'+(xx+10)+' '+(y0+hh+14)+' Z" fill="none" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="1.5"/>';
     g1+=tri(x0)+tri(x0+W1);
-    boxes.push({x:x0-10,y:y0,w:W1+20,h:hh+14});
+    boxes.push({x:x0-10,y:y0-10,w:W1+32,h:hh+24});
     add(DC({dir:'h',a:[x0,y0+hh],b:[x0+W1,y0+hh],off:14+22,key:'dl-lx',label:'lx',val:lx1,unit:'m',attr:'data-dl="lx_m" min="0.5"',title:'Portée lx'}));
-    add(DC({dir:'v',a:[x0+W1,y0],b:[x0+W1,y0+hh],off:24,key:'dl-h',label:'h',val:dp.h_cm||20,unit:'cm',attr:'data-dl="h_cm" min="8"',title:'Épaisseur h'}));
+    add(DC({dir:'v',a:[x0+W1,y0],b:[x0+W1,y0+hh],off:38,key:'dl-h',label:'h',val:dp.h_cm||20,unit:'cm',attr:'data-dl="h_cm" min="8"',title:'Épaisseur h'}));
     /* bandeau de charge répartie : hauteur = épaisseur dessinée (règle D05, plafond = hauteur de l'objet) */
     const yb=y0-8, ht=hh, n=9; let band='<line x1="'+x0+'" y1="'+(yb-ht)+'" x2="'+(x0+W1)+'" y2="'+(yb-ht)+'" stroke="'+SB+'" stroke-width="1.5"/>';
     for(let k=0;k<n;k++){ const xx=x0+k*W1/(n-1); band+='<line x1="'+xx+'" y1="'+(yb-ht)+'" x2="'+xx+'" y2="'+(yb-2)+'" stroke="'+SB+'" stroke-width="1.6" marker-end="url(#dlArrQ)"/>'; }
@@ -27066,13 +27067,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const fr1=window.dimFrame(boxes);
     return '<svg viewBox="'+fr1.vb+'" width="100%" height="'+Math.round(Math.min(300,fr1.h))+'" class="pcSvg" role="img" aria-label="Dalle, coupe">'
      +g1+parts.join('')
-     +'<defs><marker id="dlArrQ" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="'+SB+'"/></marker></defs></svg>';
+     +'<defs><marker id="dlArrQ" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="'+SB+'"/></marker>'+pcMatDefs(mat)+'</defs></svg>';
    }
    const lx=+dp.lx_m||5, ly=+dp.ly_m||5;
    const sk=200/Math.max(lx,ly,1), rw=Math.max(80,lx*sk), rh=Math.max(60,ly*sk), rx=0, ry=0;
    let hatch=''; const step=Math.max(12,Math.min(rw,rh)/8);
    for(let x=-rh;x<rw;x+=step) hatch+='<line x1="'+(rx+Math.max(0,x))+'" y1="'+(ry+Math.max(0,-x))+'" x2="'+(rx+Math.min(rw,x+rh))+'" y2="'+(ry+Math.min(rh,rh-x))+'" stroke="'+SB+'" stroke-width="0.4" stroke-opacity="0.35"/>';
-   let g='<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="'+SB+'" stroke-width="2"/>'
+   const mat2=pcMatKey(dp.materiau);
+   let g='<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="'+pcMatFills(mat2).t+'" stroke="'+SB+'" stroke-width="2"/>'
     +'<clipPath id="dlClip"><rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'"/></clipPath><g clip-path="url(#dlClip)">'+hatch+'</g>';
    boxes.push({x:rx,y:ry,w:rw,h:rh});
    add(DC({dir:'h',a:[rx,ry+rh],b:[rx+rw,ry+rh],off:22,key:'dl-lx',label:'lx',val:lx,unit:'m',attr:'data-dl="lx_m" min="0.5"',title:'Portée lx'}));
@@ -27099,7 +27101,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const fr=window.dimFrame(boxes);
    return '<svg viewBox="'+fr.vb+'" width="100%" height="'+Math.round(Math.min(300,fr.h))+'" class="pcSvg" role="img" aria-label="Dalle, vue en plan">'
     +g+parts.join('')
-    +'<defs><marker id="dlArrQ" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="'+SB+'"/></marker></defs>'
+    +'<defs><marker id="dlArrQ" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="'+SB+'"/></marker>'+pcMatDefs(mat2)+'</defs>'
     +'</svg>';
   }
   function dlStepHtml(n,dp,t){
@@ -27110,7 +27112,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      +'<label>Enrobage <input type="number" step="0.5" min="1" data-dl="enrobage_cm" value="'+(dp.enrobage_cm??2)+'"> cm</label>';
    }
    if(n===2){
-    return '<h5>2 · Matériau</h5>'
+    return '<h5>2 · Matériau</h5>'+pcMateriauHtml(dp,'data-dl')
      +'<label>Classe de béton <select data-dl="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
      +'<label>Acier <select data-dl="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
      +'<label>Classe d\'exposition <select data-dl="classeExposition">'+Object.keys(PC_EXPO).map(c=>'<option value="'+c+'"'+(pcEnrobageNom(dp).classe===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
@@ -27145,7 +27147,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcSchemaCap">'+(dp.sens==='deux'?'Dalle — vue en plan (deux sens de portée)':'Dalle — coupe (un sens de portée, épaisseur non à l\'échelle)')+'</p>'
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
-    +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'dl')+'</div>'
+    +'<div class="pcNav pcFormNav">'+(pcMatCalc(dp)?dimValiderBtnHtml(dp,'dl'):'<button type="button" class="primary" disabled aria-disabled="true" title="'+esc(PC_MAT_MSG)+'">✓ Calculer</button><p class="pcNote pcMatWarn" role="status" style="width:100%;text-align:center">'+esc(PC_MAT_MSG)+'</p>')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, continuité/charges et poinçonnement si besoin. « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
   function dlInsuffHtml(res){ return '<div class="pcDimBox"><b>Ferraillage : non calculé</b><p class="pcNote">⚠ Épaisseur insuffisante : K = M/(b·d²·f_ck) &gt; K\' = 0,21 en '+res.koZones.map(k=>esc(k.nom)+' (K = '+k.K.toFixed(3)+')').join(', ')+' — armatures comprimées non couvertes par ce calcul. Épaisseur minimale proposée : h ≥ <b>'+res.hMinCm+' cm</b> (au lieu de '+res.h_cm+' cm).</p></div>'; }
@@ -27343,6 +27345,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return pdoc.output('blob');
   }
   async function dlCreerDocumentsDimensionnement(t,dp){
+   if(!pcMatCalc(dp)) return {docNote:null,docPlan:null}; // seul le béton armé (EC2) a un calcul
    const res=dp.resultats; const docNote=dlCreerNoteCalcul(t,dp); const docPlan=dlCreerPlanFerraillage(t,dp);
    try{
     if(docNote&&res){ const blob=await dlNoteCalculPdf(t,dp,res); await pcAttacherPdf(docNote,blob,docNote.nom); }
@@ -27360,6 +27363,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const t=taskById(id); if(!t) continue;
     if(beTypeStructureNom(t.typeStructureId)!==DALLE_TYPE_NOM) continue;
     const dp=dlData(t);
+    if(!pcMatCalc(dp)) continue;
     const geomOk=(+dp.lx_m>0)&&(dp.sens!=='deux'||(+dp.ly_m>0))&&(+dp.h_cm>0);
     const hasCharge=(+dp.G_kNm2>0)||(+dp.Q_kNm2>0);
     if(!geomOk||!hasCharge){ incomplets.push(id); continue; }
