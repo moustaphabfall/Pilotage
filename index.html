@@ -27403,6 +27403,25 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return V;
   }
   /* Données géométriques et charges (modèle de note : tableau, origine de chaque valeur) */
+  /* Choix du module à faire valider par l'ingénieur : alimentent le tableau « Hypothèses » (colonne Origine), les « Points à confirmer » de la note (écran + PDF) et le JSON. */
+  function dlChoixAValider(res,dp){
+   const L=[];
+   if(res.poincon){
+    L.push({nom:'Armature supérieure sens y sous poteau (ρl)',valeur:'max(20 % de l\'armature d\'appui ; A_s,min en deux sens), uniforme par mètre',origine:'hypothèse du module, à valider',
+     texte:'Poinçonnement : l\'armature supérieure du sens y sous le poteau n\'a pas de saisie dédiée ; elle est prise égale à max(20 % de l\'armature d\'appui ; A_s,min en deux sens), supposée uniforme par mètre. ρl = √(ρlx·ρly) en est plus bas et le résultat plus sévère. À remplacer par l\'armature réellement posée au droit du poteau.'});
+    L.push({nom:'Position du poteau (β)',valeur:'poteau intérieur, β = 1,15',origine:'limite du module, à valider',
+     texte:'Poinçonnement : le module ne traite que le poteau INTÉRIEUR (β = 1,15). Poteaux de rive et d\'angle NON gérés (contour u1 réduit, β différent : 1,4 et 1,5 seulement approchés). β = 1,15 n\'est valable que si la structure est contreventée (stabilité latérale indépendante du portique dalles-poteaux) et si les portées voisines vérifient 0,8 ≤ l_i/l_i+1 ≤ 1,25 (Maîtrise p.262-263).'});
+   }
+   if(!res.fleche.nonCalculee){
+    L.push({nom:'Décision de flèche',valeur:'formule EC2 7.16 (l/d = '+res.fleche.ratio.toFixed(1)+')'+(res.fleche.ratioAN!=null?' ; tableau AN affiché : '+res.fleche.ratioAN.toFixed(1):''),origine:'choix du module, à valider',
+     texte:'Flèche : la décision suit la formule de l\'EC2 (7.16), plus sévère que le tableau de l\'Annexe nationale'+(res.fleche.ratioAN!=null?' ('+res.fleche.ratioAN.toFixed(1)+', affiché à côté)':'')+'. L\'ingénieur peut retenir l\'AN si elle est applicable.'});
+    L.push({nom:'ρ de la flèche',valeur:'acier posé (ρ = '+(res.fleche.rho*100).toFixed(2)+' %)',origine:'choix du module, à valider',
+     texte:'Flèche : ρ est calculé avec l\'acier POSÉ, alors que le livre (Maîtrise p.218) prend l\'acier REQUIS ; l\'écart est généralement favorable (acier posé ≥ requis).'});
+    L.push({nom:'Correctifs de flèche',valeur:'non saisis (section en T, cloisons fragiles, 310/σs)',origine:'non pris en compte, à reprendre à la main',
+     texte:'Flèche : correctifs non saisis (section en T, cloisons fragiles avec l > 7 m, 310/σs non branché) : à reprendre à la main si applicable (Maîtrise p.224-225).'});
+   }
+   return L;
+  }
   function dlDonneesHtml(res,dp){
    const f=(x,n)=>(+x).toFixed(n==null?2:n).replace('.',','), R=[];
    R.push(['Portée lx',f(res.lx)+' m','saisie']);
@@ -27415,19 +27434,20 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    R.push(['Charge permanente G totale',f(res.G)+' kN/m²','calculé']);
    R.push(['Charge d\'exploitation Q',f(res.Q)+' kN/m²','saisie']);
    R.push(['p_Ed = 1,35G + 1,5Q',f(res.pEd)+' kN/m²','calculé']);
+   dlChoixAValider(res,dp).forEach(c=>R.push([c.nom,c.valeur,c.origine]));
    return '<table class="pcNCt"><thead><tr><th>Donnée</th><th>Valeur</th><th>Origine</th></tr></thead><tbody>'+R.map(r=>'<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td></tr>').join('')+'</tbody></table>';
   }
   /* « Données transmises au plan de ferraillage » : JSON résultat de calcul (format d'entrée du skill dimensionnement-ferraillage §0), bloc repliable */
   function dlJsonPlan(res,dp){
    const z=[]; const add=(nom,as,bar)=>{ if(as!=null) z.push({nom,as_cm2:+(+as).toFixed(2),largeur_m:1,hauteur_utile_m:+(res.d_x_cm/100).toFixed(3),barres:bar?('HA'+bar.phi+' e='+bar.s+' mm'):null}); };
    if(!res.insuffisant){ add('travée lx',res.AsTravX_cm2,res.barTravX); if(res.forf.Mw>0) add('appui gauche',res.AsAppW_cm2,res.barAppW); if(res.forf.Me>0) add('appui droit',res.AsAppE_cm2,res.barAppE); if(res.sensDeux) z.push({nom:'travée ly',as_cm2:+(+res.AsTravY_cm2).toFixed(2),largeur_m:1,hauteur_utile_m:+(res.d_y_cm/100).toFixed(3),barres:res.barTravY?('HA'+res.barTravY.phi+' e='+res.barTravY.s+' mm'):null}); }
-   return {norme:'EC2',type_ouvrage:'dalle',statut:res.insuffisant?'non calculé : épaisseur insuffisante (K > 0,21), h minimale '+res.hMinCm+' cm':'calculé',beton:{fck:res.fck,classe_exposition:pcEnrobageNom(dp).classe},acier:{fyk:res.fyk,nuance:'HA'},zones:z,effort_tranchant:{ved_kn_m:+res.shear.VEd.toFixed(1),vrdc_kn_m:+res.shear.VRdc.toFixed(1),armatures_requises:!res.shear.ok},enrobage_nominal_mm:Math.round((+res.enr||0)*10)};
+   return {norme:'EC2',type_ouvrage:'dalle',statut:res.insuffisant?'non calculé : épaisseur insuffisante (K > 0,21), h minimale '+res.hMinCm+' cm':'calculé',beton:{fck:res.fck,classe_exposition:pcEnrobageNom(dp).classe},acier:{fyk:res.fyk,nuance:'HA'},zones:z,effort_tranchant:{ved_kn_m:+res.shear.VEd.toFixed(1),vrdc_kn_m:+res.shear.VRdc.toFixed(1),armatures_requises:!res.shear.ok},enrobage_nominal_mm:Math.round((+res.enr||0)*10),choix_a_valider:dlChoixAValider(res,dp).map(c=>({nom:c.nom,valeur:c.valeur,origine:c.origine}))};
   }
   function dlJsonPlanHtml(res,dp){ return '<details class="ncJson"><summary>Données transmises au plan de ferraillage (JSON)</summary><pre>'+esc(JSON.stringify(dlJsonPlan(res,dp),null,1))+'</pre></details>'; }
   function dlNoteCalculHtml(t,dp,res){ return ncFormat(dlNoteCalculHtml0(t,dp,res),{t,dp,res,kind:'dalle'}); }
   function dlNoteCalculHtml0(t,dp,res){
    const VF=dlVerifs(res,dp), nKo=VF.filter(v=>v.etat==='ko').length, fC=x=>(+x).toFixed(2).replace('.',','), al=pcEnrobageAlerte(dp), en=pcEnrobageNom(dp);
-   const constat=esc(dp.nom||t.nom||'Dalle')+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(res.barTravX&&!res.insuffisant?'Φ'+res.barTravX.phi+' e = '+res.barTravX.s+' mm en travée':'ferraillage non calculé'))+' — ELU vérifié (flexion, A_s,min/max, effort tranchant) ; ELS (flèche, fissuration) NON vérifiés';
+   const constat=esc(dp.nom||t.nom||'Dalle')+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(res.barTravX&&!res.insuffisant?'Φ'+res.barTravX.phi+' e = '+res.barTravX.s+' mm en travée':'ferraillage non calculé'))+' — ELU vérifié (flexion, A_s,min/max, effort tranchant) ; flèche par l/d seulement, fissuration NON vérifiée';
    let h='<div class="pcNC"><h3>Note de calcul — '+esc(dp.nom||t.nom||'Dalle')+'</h3><div class="ncConstat" style="display:none">'+constat+'</div>'
     +'<p class="pcNote">Dalle (Eurocode 2 — EN 1992-1-1, Annexe Nationale française ; méthode forfaitaire BAEL91 Annexe E.1 pour la répartition travée/appuis) · '+todayStr()+'</p>'
     +'<h5>Hypothèses</h5><p class="pcNote">Épaisseur h='+res.h_cm+' cm · enrobage='+res.enr+' cm · d(x)='+res.d_x_cm.toFixed(1)+' cm'+(res.sensDeux?(' · d(y)='+res.d_y_cm.toFixed(1)+' cm'):'')+' · béton '+esc(dp.classeGlobale)+' (fck='+res.fck+' MPa) · acier '+esc(dp.classeAcier)+' (fyk='+res.fyk+' MPa) · G='+res.G+' kN/m² · Q='+res.Q+' kN/m² · pEd=1,35G+1,5Q='+res.pEd.toFixed(2)+' kN/m².</p>'
@@ -27443,7 +27463,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +(res.depasseX?' ⚠ As,max dépassé sens lx — revoir l\'épaisseur ou le béton.':'')
     +(res.sensDeux?('<br>Sens ly — travée (sans réduction appuis, continuité non prise en compte dans ce sens) : As='+res.AsTravY_cm2.toFixed(2)+' cm²/m (As,min='+res.AsMinY_cm2.toFixed(2)+') → Φ'+res.barTravY.phi+' e='+res.barTravY.s+'mm.'+(res.depasseY?' ⚠ As,max dépassé sens ly.':'')):'')+'</p>');
    VF.filter(v=>v.etat==='ko'&&/tranchant|bielle|Méthode forfaitaire/.test(v.nom)).forEach(v=>{ h+='<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>'; });
-   h+='<p class="ncPt" data-bad="0">ELS non vérifiés (flèche, fissuration) ; flèche à faire confirmer par un ingénieur structure (formule 7.16 non vérifiée) ; en XD/XF/XS vérifier aussi les contraintes (livre p.190, 214).</p>'
+   dlChoixAValider(res,dp).forEach(c=>{ h+='<p class="ncPt" data-bad="0">'+esc(c.texte)+'</p>'; });
+   h+='<p class="ncPt" data-bad="0">Fissuration non vérifiée ; flèche par la méthode simplifiée l/d uniquement ; en XD/XF/XS vérifier aussi les contraintes (livre p.190, 214).</p>'
     +'<p class="ncPt" data-bad="0">non couverts : armatures de répartition (secondaires), charges localisées, poinçonnement hors poteau intérieur courant (β calculé, bords libres), conditions de la méthode forfaitaire autres que Q ≤ max(2G ; 5), coefficients μx/μy approchés.</p>'
     +(al?'<p class="ncPt" data-bad="0">enrobage saisi '+fC(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+fC(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier.</p>':'')
     +(res.poidsPropre?'':'<p class="ncPt" data-bad="0">poids propre de la dalle exclu du calcul (25·h = '+fC(25*res.h_cm/100)+' kN/m² non ajouté) : à ajouter si non compris dans G.</p>');
