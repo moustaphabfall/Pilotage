@@ -19802,6 +19802,11 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .dimCalcBox p{font:400 13px var(--ds-font-body,'IBM Plex Sans',system-ui,sans-serif);color:var(--ds-ink-soft,#5f6a66)}
 .dimCalcBox button{min-height:var(--ds-tap,44px);width:100%;border-radius:var(--ds-r-ctl,6px)}
 .dimCalcBox button[data-dim-doc]{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.pjDocActs{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.pjDocActs>button{flex:1 1 180px;box-sizing:border-box;min-height:44px;padding:0 16px;border-radius:var(--ds-r-ctl,6px);font:600 14px var(--ds-font-body,'IBM Plex Sans',system-ui,sans-serif);line-height:1.2;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+@media (max-width:520px){.pjDocActs>button{flex-basis:100%}}
+.pjFmtBox{max-width:380px}.pjFmtG{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:100%}
+.pjFmtG button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px 2px;min-width:0;min-height:56px}.pjFmtG button span{font:700 15px var(--ds-font-body,system-ui,sans-serif)}.pjFmtG button small{font-size:10.5px;opacity:.8;white-space:nowrap}
 .dimDocIco{flex:none;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .dimCalcSpin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,196,0,.25);border-top-color:var(--ds-accent,#FFC400);animation:dimCalcSpin .8s linear infinite}
 @keyframes dimCalcSpin{to{transform:rotate(360deg)}}
@@ -21688,19 +21693,37 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
     premier plan, avec un bouton pour passer à la pièce sœur (note ⇄ plan) quand elle existe.
     La modification des informations (nom, type…) reste dans la fiche classique (openDocFiche),
     ouverte par appui long sur la ligne. */
+ const PJ_SVG=(d,a)=>'<svg class="dimDocIco" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+d+'</svg>';
+ const PJ_ICO_NOTE=PJ_SVG('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>'),
+  PJ_ICO_PLAN=PJ_SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/><path d="M12.5 17.5l5-5M14 12.5h3.5V16"/>'),
+  PJ_ICO_PDF=PJ_SVG('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5"/>'),
+  PJ_ICO_INFO=PJ_SVG('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>');
  function openDocContenu(id){
   const doc=DOCS().find(q=>q.id===id); if(!doc||!doc.contenuHtml) return openDocFiche(id);
   const soeurType=doc.docType==='Note de calcul'?'Plan de ferraillage':(doc.docType==='Plan de ferraillage'?'Note de calcul':null);
   const soeur=soeurType&&doc.ouvrageTaskId?DOCS().find(d=>d.ouvrageTaskId===doc.ouvrageTaskId&&d.docType===soeurType):null;
   openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><div class="tf-kind">'+esc(doc.docType||'Document')+'</div>'
    +'<div class="pcNCwrap" style="padding-right:46px">'+((doc.docType==='Note de calcul'&&window.ncFormat)?window.ncFormat(doc.contenuHtml,{t:(ST().tasks||[]).find(x=>x.id===doc.ouvrageTaskId)}):doc.contenuHtml)+'</div>'
-   +'<div class="ov-row" style="margin-top:14px">'
-   +(soeur?'<button type="button" class="primary" data-vers-soeur="'+esc(soeur.id)+'">→ '+esc(soeurType)+'</button>':'')
-   +'<button type="button" class="ghost" data-voir-infos="1">✎ Informations du document</button>'
+   +'<div class="pjDocActs">'
+   +(soeur?'<button type="button" class="primary" data-vers-soeur="'+esc(soeur.id)+'">'+(soeurType==='Note de calcul'?PJ_ICO_NOTE:PJ_ICO_PLAN)+'<span>'+esc(soeurType)+'</span></button>':'')
+   +(doc.docType==='Plan de ferraillage'&&doc.ouvrageTaskId&&window.pcPlanExportPdf?'<button type="button" class="ghost" data-export-pdf="1">'+PJ_ICO_PDF+'<span>Exporter en PDF</span></button>':'')
+   +'<button type="button" class="ghost" data-voir-infos="1">'+PJ_ICO_INFO+'<span>Informations du document</span></button>'
    +'</div>');
   const mb=document.getElementById('modalBody'); const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
   const vs=mb.querySelector('[data-vers-soeur]'); if(vs) vs.onclick=()=>openDocContenu(vs.dataset.versSoeur);
   const vi=mb.querySelector('[data-voir-infos]'); if(vi) vi.onclick=()=>openDocFiche(id);
+  const ex=mb.querySelector('[data-export-pdf]'); if(ex) ex.onclick=()=>pjFmtPicker(doc);
+ }
+ /* choix du format de feuille avant l'export PDF du plan (paysage ; A3 par défaut = comportement historique) */
+ function pjFmtPicker(doc){
+  const F=[['a4','A4','297×210'],['a3','A3','420×297'],['a2','A2','594×420'],['a1','A1','841×594'],['a0','A0','1189×841']];
+  const ov=document.createElement('div'); ov.className='dimCalcOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Format du PDF');
+  ov.innerHTML='<div class="dimCalcBox pjFmtBox"><b>Exporter en PDF</b><p>Format de feuille, paysage (dimensions en mm)</p><div class="pjFmtG">'+F.map(f=>'<button type="button" class="'+(f[0]==='a3'?'primary':'ghost')+'" data-fmt="'+f[0]+'" aria-label="Format '+f[1]+', '+f[2]+' mm"><span>'+f[1]+'</span><small>'+f[2]+'</small></button>').join('')+'</div><button type="button" class="ghost" data-fmt="">Annuler</button></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',async e=>{ if(e.target===ov){ ov.remove(); return; } const b=e.target.closest('[data-fmt]'); if(!b) return; const f=b.dataset.fmt; if(!f){ ov.remove(); return; }
+   ov.querySelectorAll('button').forEach(x=>x.disabled=true); const bx=ov.querySelector('.dimCalcBox'); bx.insertAdjacentHTML('afterbegin','<div class="dimCalcSpin"></div>');
+   try{ await window.pcPlanExportPdf(doc.ouvrageTaskId,f); ov.remove(); try{ clipToast('PDF '+f.toUpperCase()+' exporté.'); }catch(_){ } }
+   catch(err){ ov.remove(); try{ miniAlert('Export PDF impossible : '+((err&&err.message)||err)); }catch(_){ } } });
  }
  window.pjOpenDocContenu=openDocContenu;
  window.pjDbRefresh=()=>{ try{ dbRender(); }catch(_){ } };
@@ -25669,7 +25692,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const subL=[info.projet,info.bat,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' · ');
    const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(info.projet||'—')+'</td><td><b>Ouvrage</b>'+esc(info.nomO)+(info.typ?' · '+esc(info.typ):'')+'</td><td><b>Document</b>Plan de ferraillage '+esc(info.nomO)+'</td></tr>'
     +'<tr><td><b>Norme</b>'+esc(info.norme)+'</td><td><b>Béton / acier</b>'+esc(info.beton)+' · '+esc(info.acier)+'</td><td><b>Indice · date</b>'+esc(info.indice)+(info.indice==='0'?' (première émission)':'')+' · '+esc(date)+'</td></tr>'
-    +'<tr><td><b>Échelles</b>Élévation et coupes : échelle graphique (barre de 1 m) · PDF A3 : échelle en pied de page</td><td><b>Établi par</b>Been11 · module Poutre continue</td><td><b>Statut</b>À vérifier par un ingénieur structure · Vérifié par : —</td></tr>'
+    +'<tr><td><b>Échelles</b>Élévation et coupes : échelle graphique (barre de 1 m) · PDF (A4 à A0) : échelle en pied de page selon le format</td><td><b>Établi par</b>Been11 · module Poutre continue</td><td><b>Statut</b>À vérifier par un ingénieur structure · Vérifié par : —</td></tr>'
     +'<tr><td><b>Plan lié</b>Note de calcul '+esc(info.nomO)+'</td><td><b>Section</b>'+fplF(par.b,0)+' × '+fplF(par.h,0)+' cm · enrobage '+fplF(par.enrobage,1)+' cm</td><td><b>Géométrie</b>'+n+' travée'+(n>1?'s':'')+' · '+fplF(P.travees[n-1].x1)+' m entre axes</td></tr></table>';
    const kp='<div class="ncKpi">'+fplKpis(P,info).map(k=>'<div class="ncK"><b>'+esc(k[0])+'</b><small>'+esc(k[1])+'</small></div>').join('')+'</div>';
    const elevs=fplElevScenes(P,reps,lit);
@@ -25717,14 +25740,31 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     setDash(null);
    });
   }
-  async function pcPlanFerraillagePdf(t,dp,res){
+  /* Formats de feuille (paysage). La mise en page est calculée en « mm A3 » (420 × 297) puis mise à l'échelle sur la feuille
+     réelle : même découpage et mêmes pages pour tous les formats ; textes à l'échelle^0,85 (lisibles en A4, pas minuscules en A0). */
+  const FPL_FMT_W={a4:297,a3:420,a2:594,a1:841,a0:1189};
+  function fplPdfCtx(d,s,F,fmt){
+   const w={ line:(a,b,c,e)=>d.line(a*s,b*s,c*s,e*s), rect:(x,y,W,H,st)=>d.rect(x*s,y*s,W*s,H*s,st), roundedRect:(x,y,W,H,rx,ry,st)=>d.roundedRect(x*s,y*s,W*s,H*s,rx*s,ry*s,st),
+    circle:(x,y,r,st)=>d.circle(x*s,y*s,r*s,st), triangle:(a,b,c,e,f,g,st)=>d.triangle(a*s,b*s,c*s,e*s,f*s,g*s,st),
+    text:(t,x,y,o)=>{ let o2=o; if(o&&o.maxWidth){ o2=Object.assign({},o,{maxWidth:o.maxWidth*s}); } return d.text(t,x*s,y*s,o2); },
+    setLineWidth:v=>d.setLineWidth(v*s), setFontSize:v=>d.setFontSize(v*F), setLineDashPattern:(a,ph)=>d.setLineDashPattern((a||[]).map(v=>v*s),(ph||0)*s),
+    splitTextToSize:(t,W)=>d.splitTextToSize(t,W*s), addPage:()=>d.addPage(fmt,'landscape'),
+    setFont:(...a)=>d.setFont(...a), setTextColor:(...a)=>d.setTextColor(...a), setDrawColor:(...a)=>d.setDrawColor(...a), setFillColor:(...a)=>d.setFillColor(...a),
+    setLineCap:v=>d.setLineCap(v), setLineJoin:v=>d.setLineJoin(v), setPage:n=>d.setPage(n), getNumberOfPages:()=>d.getNumberOfPages(), output:(...a)=>d.output(...a) };
+   if(d.autoTable){ w.autoTable=o=>{ const st=o.styles||{}, hs=o.headStyles||{}; return d.autoTable(Object.assign({},o,{startY:o.startY*s,tableWidth:o.tableWidth*s,margin:{left:o.margin.left*s,right:o.margin.right*s},
+     styles:Object.assign({},st,{fontSize:st.fontSize*F,cellPadding:st.cellPadding*s,lineWidth:st.lineWidth*s}),headStyles:Object.assign({},hs,{lineWidth:hs.lineWidth*s})})); };
+    Object.defineProperty(w,'lastAutoTable',{get:()=>({finalY:d.lastAutoTable.finalY/s})}); }
+   return w;
+  }
+  async function pcPlanFerraillagePdf(t,dp,res,opts){
    const JsPDF=await loadPdfLibs(); const P=fplPlan(dp,res);
-   const doc=new JsPDF({unit:'mm',format:'a3',orientation:'landscape'}), PW=420, PH=297, M=12; let y=M;
+   const FMT=(opts&&FPL_FMT_W[opts.format])?opts.format:'a3', PS=FPL_FMT_W[FMT]/420;
+   const doc=fplPdfCtx(new JsPDF({unit:'mm',format:FMT,orientation:'landscape'}),PS,Math.pow(PS,0.85),FMT), PW=420, PH=297, M=12; let y=M;
    const info=fplCartInfo(t,dp,P||{parametres:{}}), date=(typeof todayStr==='function')?todayStr():'';
    const head=(txt)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(0); doc.text(FPL_PDFSYM(txt),M,M+6); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(FPL_PDFSYM([info.projet,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' - ')),M,M+12); doc.setTextColor(0); y=M+18; };
    if(!P){ head('Plan de ferraillage - '+info.nomO); doc.setFontSize(11); doc.text('Plan non disponible : resultat de calcul absent ou incomplet. Relancer le calcul de la poutre.',M,y+10); return doc.output('blob'); }
    const reps=fplReps(P), lit=fplLitMap(P,reps), par=P.parametres, n=P.travees.length;
-   const page=()=>{ doc.addPage('a3','landscape'); head('Plan de ferraillage - '+info.nomO+' (suite)'); };
+   const page=()=>{ doc.addPage(); head('Plan de ferraillage - '+info.nomO+' (suite)'); };
    const need=h=>{ if(y+h>PH-M-6) page(); };
    head('Plan de ferraillage - '+info.nomO);
    /* cartouche */
@@ -25734,7 +25774,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    y+=32;
    /* élévations */
    const elevs=fplElevScenes(P,reps,lit); let scaleTxt='';
-   elevs.forEach(q=>{ const S=q.scene; const k=Math.min((PW-2*M)/S.w,(PH*0.42)/S.h); const hh=S.h*k; need(hh+4); fplPdfScene(doc,S,M+((PW-2*M)-S.w*k)/2,y,k); y+=hh+3; if(!scaleTxt){ const mmPerM=S.meta.sx*k; scaleTxt='Elevation 1/'+Math.round(1000/mmPerM); } });
+   elevs.forEach(q=>{ const S=q.scene; const k=Math.min((PW-2*M)/S.w,(PH*0.42)/S.h); const hh=S.h*k; need(hh+4); fplPdfScene(doc,S,M+((PW-2*M)-S.w*k)/2,y,k); y+=hh+3; if(!scaleTxt){ const mmPerM=S.meta.sx*k; scaleTxt='Elevation 1/'+Math.round(1000/(mmPerM*PS)); } });
    doc.setFontSize(8); doc.setTextColor(110); doc.text(FPL_PDFSYM(scaleTxt+' en long (indicatif) - hauteur non a l\'echelle (x '+fplF(elevs[0].scene.meta.k,1)+') - cotes en m'),M,y+2); doc.setTextColor(0); y+=6;
    /* coupes */
    const secs=fplSections(P).map(sc=>({sc,S:fplSectionScene(P,reps,lit,sc)}));
@@ -25767,9 +25807,18 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    doc.setPage(doc.getNumberOfPages());
    doc.setDrawColor(242,169,0); doc.setLineWidth(0.6); const aw=PW-2*M; const WL=doc.splitTextToSize(FPL_PDFSYM('Avertissement. '+FPL_NOTE_AVERT),aw-8); const ah=WL.length*4+6; const ay=PH-M-ah; doc.roundedRect(M,ay,aw,ah,2,2,'S'); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.text(WL,M+4,ay+5); doc.setTextColor(0);
    /* pied de page et numérotation */
-   const NP=doc.getNumberOfPages(); for(let i=1;i<=NP;i++){ doc.setPage(i); doc.setFontSize(7); doc.setTextColor(120); doc.text(FPL_PDFSYM(info.nomO+' - Plan de ferraillage - feuille '+i+'/'+NP+' - '+scaleTxt),PW-M,PH-4,{align:'right'}); }
+   const NP=doc.getNumberOfPages(); for(let i=1;i<=NP;i++){ doc.setPage(i); doc.setFontSize(7); doc.setTextColor(120); doc.text(FPL_PDFSYM(info.nomO+' - Plan de ferraillage - feuille '+i+'/'+NP+' - '+FMT.toUpperCase()+' paysage - '+scaleTxt),PW-M,PH-4,{align:'right'}); }
    return doc.output('blob');
   }
+  /* Export PDF du plan à la demande (format au choix) : même génération que l'écran, nom de fichier ouvrage + date + format */
+  window.pcPlanExportPdf=async function(taskId,fmt){
+   const t=taskById(taskId); if(!t) throw new Error('Ouvrage introuvable.'); const dp=pcData(t); const res=dp&&dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la poutre.');
+   const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await pcPlanFerraillagePdf(t,dp,res,{format:f});
+   const nom=String(dp.nom||t.nom||'Poutre').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Poutre';
+   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
+   return {blob,fn};
+  };
   /* ===== FPL:END ===== */
   /* Crée (ou met à jour) le document « Plan de ferraillage <ouvrage> » — pièce graphique, séparée de
      la note de calcul (pièce écrite), comme dans l'usage classique d'un bureau d'études. */
