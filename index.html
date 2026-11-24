@@ -30451,8 +30451,180 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    new MutationObserver(()=>{
     const mb=document.getElementById('modalBody'); if(!mb) return;
     mb.querySelectorAll('.pcDraw').forEach(pcZoomSetup);
+    mb.querySelectorAll('.fplDoc .fplDraw,.fplDoc .fplShape').forEach(fplFsSetup);
    }).observe(document.getElementById('modalBody')||document.body,{childList:true,subtree:true});
   }catch(_){ }
+
+  /* ===== Plan de ferraillage : PLEIN ÉCRAN + IMPRESSION DE VUE pour chaque cadre de dessin =====
+     Cadres visés : .fplDoc .fplDraw (élévation, coupes, légende) et .fplDoc .fplShape (schémas de façonnage).
+     Ne modifie ni le dessin du plan ni son moteur : on clone le <svg> déjà rendu dans un calque plein écran
+     (Fullscreen API ; repli calque fixe plein viewport quand l'API n'existe pas sur un élément, ex. iPhone/Safari).
+     Zoom/déplacement tactile (pincer, glisser, molette, double appui) ; ✕ « Quitter » toujours visible + Échap.
+     Impression : seule la vue affichée, A4…A0, @page size = format choisi, cartouche réduit, échelle indicative. */
+  const FPLFS_IC={
+   fs:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+   x:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>',
+   pr:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V3h10v6M7 17H4v-7h16v7h-3"/><rect x="7" y="14" width="10" height="7"/></svg>'
+  };
+  const FPL_FMT={A4:[210,297],A3:[297,420],A2:[420,594],A1:[594,841],A0:[841,1189]};
+  const FPL_FMT_FS={A4:2.5,A3:3.2,A2:4.2,A1:5.6,A0:7.5};
+  let fplFsOn=null;
+  function fplFsCss(){
+   if(document.getElementById('fplFsCss')) return;
+   const s=document.createElement('style'); s.id='fplFsCss';
+   s.textContent=[
+    '.fplDoc .fplShape{position:relative}',
+    '.fplDoc .pcZoomBtn[data-fpl-fs]{color:var(--ink,#16232B)}',
+    '@media (pointer:coarse){.fplDoc .pcZoomBtn{width:40px;height:40px}}',
+    '#fplFs{position:fixed;inset:0;z-index:100001;background:var(--panel,#fff);color:var(--ink,#16232B);display:flex;flex-direction:column;touch-action:none;overscroll-behavior:contain;font-family:var(--ds-font-body,"IBM Plex Sans",system-ui,sans-serif)}',
+    '#fplFs .fplFsBar{display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) calc(68px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));border-bottom:3px solid #FFC400;background:var(--panel,#fff);flex:0 0 auto;min-height:60px;box-sizing:border-box}',
+    '#fplFs .fplFsT{flex:1 1 auto;min-width:0;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#fplFs .fplFsAct{display:flex;gap:6px;align-items:center;flex:0 0 auto}',
+    '#fplFs button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}',
+    '#fplFs .fplFsB{min-width:44px;height:44px;border-radius:22px;border:1.5px solid var(--line,#c9c9c9);background:var(--panel,#fff);display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;font-size:16px;font-weight:600;box-sizing:border-box}',
+    '#fplFs .fplFsB:focus-visible,#fplFs .fplFsQ:focus-visible{outline:3px solid #FFC400;outline-offset:2px}',
+    '#fplFs .fplFsB.pri{background:#FFC400;border-color:#FFC400;color:#16232B}',
+    '#fplFs .fplFsQ{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:3;width:48px;height:48px;border-radius:50%;border:2px solid #16232B;background:#FFC400;color:#16232B;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.3)}',
+    '#fplFs .fplFsStage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;cursor:grab;background:var(--panel,#fff)}',
+    '#fplFs .fplFsStage.grab{cursor:grabbing}',
+    '#fplFs .fplFsPan{position:absolute;inset:0;transform-origin:0 0;will-change:transform;padding:8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));box-sizing:border-box}',
+    '#fplFs .fplFsPan svg{width:100%;height:100%;display:block;max-width:none}',
+    '#fplFs .fplFsPanel{position:absolute;right:calc(10px + env(safe-area-inset-right));top:calc(70px + env(safe-area-inset-top));z-index:4;width:min(340px,calc(100% - 20px));box-sizing:border-box;background:var(--panel,#fff);border:2px solid #FFC400;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:10px}',
+    '#fplFs .fplFsPanel[hidden]{display:none}',
+    '#fplFs .fplFsPanel h4{margin:0;font-size:15px}',
+    '#fplFs .fplFsSeg{display:flex;gap:6px;flex-wrap:wrap}',
+    '#fplFs .fplFsSeg button{flex:1 1 56px;min-height:44px;border-radius:12px;border:1.5px solid var(--line,#c9c9c9);background:transparent;font-weight:600;font-size:15px}',
+    '#fplFs .fplFsSeg button[aria-pressed="true"]{background:#FFC400;border-color:#FFC400;color:#16232B}',
+    '#fplFs .fplFsHint{font-size:12px;opacity:.75;margin:0}',
+    '@media (max-width:560px){#fplFs .fplFsB .lb{display:none}#fplFs .fplFsB{padding:0}#fplFs .fplFsB.pri{min-width:44px}}',
+    '#fplPrint{display:none}'
+   ].join('\n');
+   document.head.appendChild(s);
+  }
+  function fplFsSetup(fr){
+   if(fr.__fplFs) return; fr.__fplFs=true; fplFsCss();
+   const mk=()=>{ const b=document.createElement('button'); b.type='button'; b.className='pcZoomBtn'; b.setAttribute('data-fpl-fs','1'); b.setAttribute('aria-label','Plein écran'); b.title='Plein écran'; b.innerHTML=FPLFS_IC.fs; return b; };
+   let tools=fr.querySelector(':scope>.pcZoomTools');
+   if(!tools){ tools=document.createElement('div'); tools.className='pcZoomTools'; fr.appendChild(tools); }
+   const b=mk(); tools.appendChild(b);
+   b.addEventListener('pointerdown',e=>e.stopPropagation());
+   b.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); const sv=fr.querySelector('svg.fplSvg'); if(sv) fplFsOpen(sv,b); });
+  }
+  function fplFsOpen(src,opener){
+   if(fplFsOn) return; fplFsCss();
+   const title=src.getAttribute('aria-label')||'Plan de ferraillage';
+   const layer=document.createElement('div'); layer.id='fplFs'; layer.setAttribute('role','dialog'); layer.setAttribute('aria-modal','true'); layer.setAttribute('aria-label','Plein écran : '+title);
+   layer.innerHTML='<div class="fplFsBar"><span class="fplFsT"></span><div class="fplFsAct">'
+    +'<button type="button" class="fplFsB" data-a="out" aria-label="Réduire" title="Réduire">−</button>'
+    +'<button type="button" class="fplFsB" data-a="reset" aria-label="Ajuster la vue" title="Ajuster la vue">⟲</button>'
+    +'<button type="button" class="fplFsB" data-a="in" aria-label="Agrandir" title="Agrandir">＋</button>'
+    +'<button type="button" class="fplFsB pri" data-a="print" aria-label="Imprimer la vue" title="Imprimer la vue" aria-haspopup="dialog">'+FPLFS_IC.pr+'<span class="lb">Imprimer la vue</span></button></div></div>'
+    +'<button type="button" class="fplFsQ" data-a="quit" aria-label="Quitter le plein écran" title="Quitter le plein écran">'+FPLFS_IC.x+'</button>'
+    +'<div class="fplFsStage"><div class="fplFsPan"></div></div>'
+    +'<div class="fplFsPanel" role="group" aria-label="Impression de la vue" hidden><h4>Imprimer la vue</h4>'
+    +'<div class="fplFsSeg" data-g="fmt" role="group" aria-label="Format du papier"></div>'
+    +'<div class="fplFsSeg" data-g="ori" role="group" aria-label="Orientation"><button type="button" data-o="landscape" aria-pressed="false">Paysage</button><button type="button" data-o="portrait" aria-pressed="false">Portrait</button></div>'
+    +'<p class="fplFsHint"></p><button type="button" class="fplFsB pri" data-a="go">'+FPLFS_IC.pr+'<span>Imprimer</span></button></div>';
+   layer.querySelector('.fplFsT').textContent=title;
+   const clone=src.cloneNode(true); clone.removeAttribute('style'); clone.removeAttribute('width'); clone.removeAttribute('height'); clone.setAttribute('preserveAspectRatio','xMidYMid meet');
+   const stage=layer.querySelector('.fplFsStage'), pan=layer.querySelector('.fplFsPan'); pan.appendChild(clone);
+   document.body.appendChild(layer);
+   const root=document.documentElement, prevOv=[root.style.overflow,document.body.style.overflow]; root.style.overflow='hidden'; document.body.style.overflow='hidden';
+   const Z={s:1,x:0,y:0}; let inFs=false, closed=false;
+   const apply=()=>{ const W=stage.clientWidth,H=stage.clientHeight; Z.x=Math.min(0,Math.max(W*(1-Z.s),Z.x)); Z.y=Math.min(0,Math.max(H*(1-Z.s),Z.y)); pan.style.transform='translate('+Z.x+'px,'+Z.y+'px) scale('+Z.s+')'; };
+   const zoomAt=(cx,cy,ns)=>{ ns=Math.max(1,Math.min(10,ns)); const r=stage.getBoundingClientRect(), px=cx-r.left, py=cy-r.top; Z.x=px-(px-Z.x)*ns/Z.s; Z.y=py-(py-Z.y)*ns/Z.s; Z.s=ns; apply(); };
+   const zoomC=f=>{ const r=stage.getBoundingClientRect(); zoomAt(r.left+r.width/2,r.top+r.height/2,Z.s*f); };
+   const reset=()=>{ Z.s=1;Z.x=0;Z.y=0; apply(); };
+   /* gestes : glisser, pincer, molette, double appui */
+   const pts={}; let panning=false,lx=0,ly=0,d0=0,s0=1,lastTap=0;
+   stage.addEventListener('pointerdown',e=>{ pts[e.pointerId]={x:e.clientX,y:e.clientY}; const ids=Object.keys(pts);
+    if(ids.length===1){ panning=true; lx=e.clientX; ly=e.clientY; stage.classList.add('grab'); try{ stage.setPointerCapture(e.pointerId); }catch(_){ }
+     const t=Date.now(); if(t-lastTap<320){ if(Z.s>1.05) reset(); else zoomAt(e.clientX,e.clientY,3); lastTap=0; } else lastTap=t; }
+    else if(ids.length===2){ panning=false; const p=ids.map(k=>pts[k]); d0=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1; s0=Z.s; } });
+   stage.addEventListener('pointermove',e=>{ if(!(e.pointerId in pts)) return; pts[e.pointerId]={x:e.clientX,y:e.clientY}; const ids=Object.keys(pts);
+    if(ids.length===2){ const p=ids.map(k=>pts[k]); const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1; zoomAt((p[0].x+p[1].x)/2,(p[0].y+p[1].y)/2,s0*d/d0); }
+    else if(panning){ Z.x+=e.clientX-lx; Z.y+=e.clientY-ly; lx=e.clientX; ly=e.clientY; apply(); } });
+   const endP=e=>{ delete pts[e.pointerId]; if(!Object.keys(pts).length){ panning=false; stage.classList.remove('grab'); } else if(Object.keys(pts).length===1){ const k=Object.keys(pts)[0]; panning=true; lx=pts[k].x; ly=pts[k].y; } try{ stage.releasePointerCapture(e.pointerId); }catch(_){ } };
+   stage.addEventListener('pointerup',endP); stage.addEventListener('pointercancel',endP);
+   stage.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(e.clientX,e.clientY,Z.s*(e.deltaY<0?1.15:1/1.15)); },{passive:false});
+   layer.addEventListener('touchmove',e=>{ if(!e.target.closest('.fplFsPanel')) e.preventDefault(); },{passive:false});
+   /* panneau d'impression */
+   const panel=layer.querySelector('.fplFsPanel'), segF=panel.querySelector('[data-g=fmt]'), segO=panel.querySelector('[data-g=ori]'), hint=panel.querySelector('.fplFsHint');
+   const vb=(src.getAttribute('viewBox')||'0 0 1 1').split(/[\s,]+/).map(Number), vw=vb[2]||1, vh=vb[3]||1;
+   let fmt='A3', ori=(vh/vw>1.1)?'portrait':'landscape';
+   try{ const f=localStorage.getItem('pg_fplFmt'); if(f&&FPL_FMT[f]) fmt=f; }catch(_){ }
+   segF.innerHTML=Object.keys(FPL_FMT).map(k=>'<button type="button" data-f="'+k+'" aria-pressed="false">'+k+'</button>').join('');
+   const refresh=()=>{ segF.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.f===fmt?'true':'false')); segO.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.o===ori?'true':'false')); const w=FPL_FMT[fmt]; hint.textContent=fmt+' · '+(ori==='landscape'?'paysage':'portrait')+' ('+(ori==='landscape'?w[1]+' × '+w[0]:w[0]+' × '+w[1])+' mm). Seule cette vue est imprimée, à l’échelle du dessin.'; };
+   segF.addEventListener('click',e=>{ const b=e.target.closest('[data-f]'); if(!b) return; fmt=b.dataset.f; try{ localStorage.setItem('pg_fplFmt',fmt); }catch(_){ } refresh(); });
+   segO.addEventListener('click',e=>{ const b=e.target.closest('[data-o]'); if(!b) return; ori=b.dataset.o; refresh(); });
+   refresh();
+   const close=()=>{ if(closed) return; closed=true; fplFsOn=null;
+    window.removeEventListener('keydown',onKey,true); document.removeEventListener('fullscreenchange',onFsc); document.removeEventListener('webkitfullscreenchange',onFsc);
+    try{ if((document.fullscreenElement||document.webkitFullscreenElement)===layer){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); } }catch(_){ }
+    layer.remove(); root.style.overflow=prevOv[0]; document.body.style.overflow=prevOv[1]; fplPrintEnd();
+    try{ if(opener&&opener.isConnected) opener.focus({preventScroll:true}); }catch(_){ } };
+   const onKey=e=>{ if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); if(!panel.hidden){ panel.hidden=true; return; } close(); }
+    else if(e.key==='+'||e.key==='='){ zoomC(1.3); } else if(e.key==='-'){ zoomC(1/1.3); } else if(e.key==='0'){ reset(); } };
+   const onFsc=()=>{ const el=document.fullscreenElement||document.webkitFullscreenElement; if(el===layer) inFs=true; else if(inFs) close(); };
+   window.addEventListener('keydown',onKey,true); document.addEventListener('fullscreenchange',onFsc); document.addEventListener('webkitfullscreenchange',onFsc);
+   layer.addEventListener('click',e=>{ const b=e.target.closest('[data-a]'); if(!b) return; const a=b.dataset.a;
+    if(a==='quit') close(); else if(a==='in') zoomC(1.3); else if(a==='out') zoomC(1/1.3); else if(a==='reset') reset();
+    else if(a==='print'){ panel.hidden=!panel.hidden; if(!panel.hidden){ const f=segF.querySelector('[aria-pressed=true]'); if(f) f.focus(); } }
+    else if(a==='go'){ fplPrintView(clone,fmt,ori,opener); } });
+   fplFsOn={close,layer};
+   const rf=layer.requestFullscreen||layer.webkitRequestFullscreen;
+   if(rf){ try{ const p=rf.call(layer); if(p&&p.catch) p.catch(()=>{}); }catch(_){ } }
+   try{ layer.querySelector('.fplFsQ').focus({preventScroll:true}); }catch(_){ }
+  }
+  /* --- impression : #fplPrint (cartouche réduit + vue seule, à l'échelle) + @page size du format --- */
+  function fplPrintEnd(){ const a=document.getElementById('fplPrint'), b=document.getElementById('fplPrintCss'); if(a) a.remove(); if(b) b.remove(); }
+  function fplScaleSx(svg){
+   const t=[...svg.querySelectorAll('text')].find(x=>/1 m \(échelle graphique/.test(x.textContent)); if(!t) return 0;
+   const tx=(+t.getAttribute('x'))-8;
+   const ln=[...svg.querySelectorAll('line.fp-cote')].find(l=>Math.abs((+l.getAttribute('y1'))-(+l.getAttribute('y2')))<0.01&&Math.abs((+l.getAttribute('x2'))-tx)<0.6);
+   return ln?Math.abs((+ln.getAttribute('x2'))-(+ln.getAttribute('x1'))):0;
+  }
+  function fplPrintPrep(svg,fmt,ori,opener){
+   fplPrintEnd();
+   const sz=FPL_FMT[fmt]||FPL_FMT.A3, land=ori!=='portrait', PW=land?sz[1]:sz[0], PH=land?sz[0]:sz[1];
+   const fs=FPL_FMT_FS[fmt]||3.2, mg=(fmt==='A4'?8:10), cw=PW-2*mg, ch=PH-2*mg;
+   const vb=(svg.getAttribute('viewBox')||'0 0 1 1').split(/[\s,]+/).map(Number), vw=vb[2]||1, vh=vb[3]||1;
+   const cartH=fs*7.4, gap=fs*1.2, availH=ch-cartH-gap-1;
+   const k=Math.min(cw/vw,availH/vh), dw=vw*k, dh=vh*k;
+   const sx=fplScaleSx(svg), echelle=sx?('≈ 1/'+Math.round(1000/(sx*k))+' en long (indicatif)'):'graphique (voir dessin)';
+   const doc=(opener&&opener.closest('.fplDoc'))||document.querySelector('.fplDoc'), cell={};
+   if(doc) doc.querySelectorAll('.ncCart td').forEach(td=>{ const b=td.querySelector('b'); if(b){ const l=b.textContent.trim(); cell[l]=td.textContent.replace(l,'').trim(); } });
+   const date=(typeof todayStr==='function')?todayStr():new Date().toLocaleDateString('fr-FR');
+   const vue=svg.getAttribute('aria-label')||'Plan de ferraillage';
+   const esc2=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+   const c=(l,v)=>'<td><b>'+l+'</b>'+esc2(v||'—')+'</td>';
+   const sv=svg.cloneNode(true); sv.removeAttribute('style'); sv.removeAttribute('class'); sv.setAttribute('class','fplSvg');
+   sv.setAttribute('width',dw.toFixed(2)+'mm'); sv.setAttribute('height',dh.toFixed(2)+'mm'); sv.setAttribute('preserveAspectRatio','xMidYMid meet');
+   sv.setAttribute('style','--fp-acier:#C98A00;--fp-ink:#16232B;--fp-dim:#555;--fp-bg:#fff;display:block');
+   const box=document.createElement('div'); box.id='fplPrint';
+   box.innerHTML='<div class="fpD"></div><table class="fpC"><tr>'+c('Projet',cell['Projet'])+c('Ouvrage',cell['Ouvrage'])+c('Vue',vue)+c('Date',date)+'</tr><tr>'+c('Échelle',echelle)+c('Format',fmt+' '+(land?'paysage':'portrait'))+c('Document',cell['Document']||'Plan de ferraillage')+c('Statut','À vérifier par un ingénieur structure')+'</tr></table>';
+   box.querySelector('.fpD').appendChild(sv);
+   const css=document.createElement('style'); css.id='fplPrintCss';
+   css.textContent='@page{size:'+PW+'mm '+PH+'mm;margin:'+mg+'mm}'
+    +'@media print{html,body{background:#fff!important;margin:0!important;padding:0!important;height:auto!important;min-height:0!important;overflow:visible!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    +'body>*:not(#fplPrint){display:none!important}'
+    +'#fplPrint,#fplPrint *{visibility:visible!important}'
+    +'#fplPrint{display:flex!important;flex-direction:column;position:static!important;width:'+cw+'mm;height:'+(ch-1)+'mm;overflow:hidden;background:#fff;color:#000;font:'+fs+'mm/1.25 Arial,Helvetica,sans-serif}'
+    +'#fplPrint .fpD{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;margin-bottom:'+gap+'mm}'
+    +'#fplPrint .fpC{flex:0 0 auto;width:100%;border-collapse:collapse;table-layout:fixed;border:'+(fs/6).toFixed(2)+'mm solid #C98A00}'
+    +'#fplPrint .fpC td{border:'+(fs/12).toFixed(2)+'mm solid #C98A00;padding:'+(fs*0.25).toFixed(2)+'mm '+(fs*0.5).toFixed(2)+'mm;vertical-align:top;overflow:hidden;word-break:break-word}'
+    +'#fplPrint .fpC b{display:block;font-size:'+(fs*0.7).toFixed(2)+'mm;color:#555;font-weight:600}'
+    +'#fplPrint svg text{font-family:Arial,Helvetica,sans-serif}}';
+   document.head.appendChild(css); document.body.appendChild(box);
+   return {PW,PH,k,echelle,sx};
+  }
+  function fplPrintView(svg,fmt,ori,opener){
+   fplPrintPrep(svg,fmt,ori,opener);
+   const done=()=>{ window.removeEventListener('afterprint',done); fplPrintEnd(); };
+   window.addEventListener('afterprint',done);
+   setTimeout(()=>{ try{ window.print(); }catch(_){ done(); } },80);
+  }
+  window.__fplPrint={prep:fplPrintPrep,end:fplPrintEnd,open:fplFsOpen};
 
   /* ===== Schéma « Poutre continue » : cadre redimensionnable (poignée en bas, souris + tactile + clavier)
      et réductible en barre compacte (bouton ▴/▾ à côté de −/⟲/＋). Réservé aux cadres .pcBeamDraw ;
