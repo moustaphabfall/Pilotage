@@ -26072,6 +26072,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Export PDF du plan à la demande (format au choix) : même génération que l'écran, nom de fichier ouvrage + date + format */
   window.pcPlanExportPdf=async function(taskId,fmt){
    const t=taskById(taskId); if(!t) throw new Error('Ouvrage introuvable.');
+   if(beTypeStructureNom(t.typeStructureId)===POTEAU_TYPE_NOM) return ptPlanExportPdf(t,fmt); /* plan de poteau */
    if(t.dimDL&&t.dimDL.resultats&&!(t.dimPC&&t.dimPC.resultats)) return dlPlanExportPdf(t,fmt); /* plan de dalle */ const dp=pcData(t); const res=dp&&dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la poutre.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await pcPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=String(dp.nom||t.nom||'Poutre').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Poutre';
@@ -27054,10 +27055,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function ptCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
-   const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Poteau')+'</h3>'
-    +'<p class="pcNote">Coupe courante · '+todayStr()+'</p>'+ptPlanFerraillageSvg(dp,res)
-    +ptPlanFerraillageNomenclature(dp,res)
-    +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (coupe courante, méthode EC2 simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (élévation, zones de renfort tête/pied non représentées).</p></div>';
+   const html=ptPlanHtml(t,dp,res);
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
@@ -27070,16 +27068,89 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    /* UN SEUL générateur : même HTML (ptNoteCalculHtml → ncFormat, modèle du skill note-de-calcul) et même rendu que l'export « Exporter en PDF » (ncPdfNote), A4 portrait. */
    return await ncPdfNote(ptNoteCalculHtml(t,dp,res),dimOuvrageNom(t,dp),{format:'a4'});
   }
-  async function ptPlanFerraillagePdf(t,dp,res){
-   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16;
-   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Plan de ferraillage — '+(dp.nom||t.nom||'Poteau')),M,M+6);
-   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9); pdoc.setTextColor(110); pdoc.text(pdfTxt('Coupe courante — '+todayStr()),M,M+12); pdoc.setTextColor(0);
-   const g=res.geom; const x0=M+10,y0=M+24,w=70,h=70*(g.h/Math.max(g.b,1));
-   pdoc.setDrawColor(55,53,47); pdoc.setLineWidth(0.4); pdoc.rect(x0,y0,w,Math.min(h,90));
-   pdoc.setFontSize(9); pdoc.text(pdfTxt((res.barFace.n*2)+' phi'+res.barFace.phi+' + cadres phi'+res.phiCadre),x0,y0+Math.min(h,90)+8);
-   pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
-   pdoc.text(pdfTxt('Schema genere automatiquement. A reprendre par un dessinateur/ingenieur structure pour l\'execution.'),M,pdoc.internal.pageSize.getHeight()-10,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
-   return pdoc.output('blob');
+  const PT_NOTES=['Béton et acier : voir le cartouche. Norme : Eurocode 2 (NF EN 1992-1-1) et Annexe Nationale française.','Enrobage nominal c = valeur du cartouche (mesuré au cadre) ; cales d\'enrobage non représentées. Cotes en mètres sur l\'élévation, en millimètres ou centimètres sur les coupes.','Barres longitudinales Lo1 : dépassant de l_0 en tête pour le recouvrement avec les barres de l\'étage supérieur ; attentes en pied non dessinées.','Cadres Ca1 (et épingles Ep1) : crochets à 135° avec retour dirigé vers l\'intérieur ; espacement réduit ×0,6 sur la plus grande dimension en pied et en tête (livre p.162, 165).','Coupes A-A (section courante) et B-B (recouvrement) à l\'échelle réelle ; élévation à l\'échelle en hauteur, largeur non à l\'échelle.','Plan à valider par un ingénieur structure : effort tranchant, ELS, nœuds poutre-poteau et armatures de continuité non traités.'];
+  function ptPlanHtml(t,dp,res){
+   const P=ptPlan(res,dp), info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp);
+   if(!P) return '<div class="pcNC ncDoc"><h3 class="ncH1">Plan de ferraillage non disponible</h3><p class="pcNote">Le plan du poteau n\'a pas pu être calculé (résultat absent ou d\'une ancienne version : relancer le calcul).</p></div>';
+   const nW=P.avertissements.length, date=todayStr(), par=P.parametres, g=P.g;
+   const constat=info.nomO+' : '+fplF(P.poidsTotal,1)+' kg d\'acier, '+P.nomenclature.length+' repères'+(nW?' — '+nW+' point'+(nW>1?'s':'')+' à reprendre':', cadres à espacements par zone, recouvrement l₀ coté')+' — effort tranchant et ELS à confirmer';
+   const subL=[info.projet,info.bat,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' · ');
+   const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(info.projet||'—')+'</td><td><b>Ouvrage</b>'+esc(info.nomO)+(info.typ?' · '+esc(info.typ):'')+'</td><td><b>Document</b>Plan de ferraillage '+esc(info.nomO)+'</td></tr>'
+    +'<tr><td><b>Norme</b>'+esc(info.norme)+'</td><td><b>Béton / acier</b>'+esc(info.beton)+' · '+esc(info.acier)+'</td><td><b>Indice · date</b>'+esc(info.indice)+(info.indice==='0'?' (première émission)':'')+' · '+esc(date)+'</td></tr>'
+    +'<tr><td><b>Échelles</b>Élévation : hauteur à l\'échelle, largeur non à l\'échelle · coupes transversales à l\'échelle réelle</td><td><b>Établi par</b>Been11 · module Poteau</td><td><b>Statut</b>À vérifier par un ingénieur structure · Vérifié par : —</td></tr>'
+    +'<tr><td><b>Plan lié</b>Note de calcul '+esc(info.nomO)+'</td><td><b>Section</b>'+(P.rect?fplF(g.b,0)+' × '+fplF(g.h,0)+' cm':'Ø '+fplF(g.D,0)+' cm')+' · enrobage '+fplF(par.enrobage,1)+' cm</td><td><b>Hauteur libre</b>'+fplF(P.L)+' m</td></tr></table>';
+   const kp='<div class="ncKpi"><div class="ncK"><b>'+fplF(P.poidsTotal,1)+' kg</b><small>acier total de la nomenclature ('+P.nomenclature.length+' repères)</small></div>'
+    +'<div class="ncK"><b>'+P.nTot+' HA'+P.phi+'</b><small>armatures longitudinales : '+fplF(res.AsReelle_cm2)+' / '+fplF(res.AsTotal_cm2)+' cm² (adoptée / requise)</small></div>'
+    +'<div class="ncK"><b>'+P.nCad+' HA'+P.phiT+'</b><small>cadres : e = '+fplF(P.sC/10,1)+' cm courant, '+fplF(P.sE/10,1)+' cm en pied et en tête</small></div></div>';
+   const dr=(S,lab,cap)=>'<div class="pcDraw fplDraw">'+fplSceneSvg(S,{label:lab})+'</div><p class="pcSchemaCap">'+esc(cap)+'</p>';
+   const secs='<div class="fplSecs"><div>'+dr(ptSceneSection(P,'A'),'Coupe transversale A-A',ptSectionTitle(P,'A'))+'</div><div>'+dr(ptSceneSection(P,'B'),'Coupe transversale B-B',ptSectionTitle(P,'B'))+'</div></div>';
+   const nomHtml='<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb × Ø</th><th>A<sub>s</sub> réel / requis (cm²)</th><th>Long. unit. (m)</th><th>Façonnage</th><th>Poids (kg)</th></tr>'
+    +P.nomenclature.map(r=>'<tr><td>'+esc(r.rep)+'</td><td>'+esc(r.designation)+'</td><td style="white-space:nowrap">'+esc(r.nbDiam)+'</td><td style="white-space:nowrap">'+(r.AsReel!=null?fplF(r.AsReel)+(r.AsReq?' / '+fplF(r.AsReq):''):'—')+'</td><td>'+fplF(r.longueur)+'</td><td>'+esc(r.faconnage)+'</td><td>'+fplF(r.poids,1)+'</td></tr>').join('')
+    +'<tr><td colspan="6" style="text-align:right"><b>Total</b></td><td><b>'+fplF(P.poidsTotal,1)+' kg</b></td></tr></table>'
+    +'<p class="pcSchemaCap">Enrobage '+fplF(par.enrobage,1)+' cm · l<sub>0</sub> = '+fplF(par.l0,0)+' cm · cadres Ø'+P.phiT+' : '+P.zones.map(z=>z.nb+' × '+fplF(z.esp/10,1)+' cm').join(' ; ')+'.</p>';
+   const shapes='<div class="fplShapes">'+ptShapeScenes(P).map(q=>'<div class="fplShape">'+fplSceneSvg(q.scene,{label:'Façonnage repère '+q.rep})+'<p class="pcSchemaCap"><b>'+esc(q.rep)+'</b> — '+esc(q.txt)+'</p></div>').join('')+'</div>';
+   const ver='<table class="ncG"><tr><th>Zone</th><th>Barres</th><th>A<sub>s</sub> réel (cm²)</th><th>A<sub>s</sub> requis (cm²)</th><th>Rapport</th><th>État</th></tr>'
+    +P.verifs.map(r=>{ const ok=r.reel+1e-6>=r.req; return '<tr><td>'+esc(r.zone)+'</td><td>'+esc(r.barres)+'</td><td>'+fplF(r.reel)+'</td><td>'+fplF(r.req)+'</td><td>'+(r.req>0?'×'+fplF(r.reel/r.req):'—')+'</td><td style="color:var(--ds-'+(ok?'ok':'danger')+')">'+(ok?'Conforme':'Non conforme')+'</td></tr>'; }).join('')+'</table>';
+   const notes='<ol class="fplNotes">'+PT_NOTES.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>';
+   const pts='<section class="ncSec"><h4>Points à confirmer</h4>'+P.avertissements.map(a=>'<div class="ncAn"><b>Bloquant : </b>'+esc(a)+'</div>').join('')+P.hypotheses.map(a=>'<div class="ncAn conf"><b>À confirmer : </b>'+esc(a)+'</div>').join('')+'</section>';
+   return '<div class="pcNC ncDoc fplDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+'</p>'+cart+kp
+    +'<section class="ncSec"><h4>Élévation</h4>'+dr(ptSceneElev(P),'Élévation du ferraillage du poteau','Élévation · hauteur à l\'échelle, largeur non à l\'échelle · cadres par zones d\'espacement · barres dépassant de l₀ en tête · traits de coupe A-A et B-B')+'</section>'
+    +'<section class="ncSec"><h4>Coupes transversales</h4>'+secs+'</section>'
+    +'<section class="ncSec"><h4>Nomenclature des aciers</h4>'+nomHtml+'</section>'
+    +'<section class="ncSec"><h4>Schémas de façonnage</h4>'+shapes+'</section>'
+    +'<section class="ncSec"><h4>Vérification des sections</h4>'+ver+'</section>'
+    +'<section class="ncSec"><h4>Notes générales</h4>'+notes+'</section>'
+    +'<section class="ncSec"><h4>Légende des traits et symboles</h4><div class="pcDraw fplDraw fplLeg">'+fplSceneSvg(ptLegendScene(),{label:'Légende des traits'})+'</div></section>'
+    +pts+'<div class="ncWarn">⚠ Ce plan de ferraillage est généré automatiquement à partir des sections d\'acier calculées et des dispositions constructives courantes de l\'Eurocode 2. Les coefficients et valeurs non fournis explicitement par l\'utilisateur sont retenus aux valeurs usuelles par défaut et doivent être recoupés par un ingénieur structure avant exécution. Ce document ne remplace pas une étude signée par un bureau d\'études qualifié.</div></div>';
+  }
+  /* ---- PDF (jsPDF) : mêmes scènes que l'écran, A4 à A0 paysage (mise en page en mm A3 puis mise à l'échelle, fplPdfCtx) ---- */
+  async function ptPlanFerraillagePdf(t,dp,res,opts){
+   const JsPDF=await loadPdfLibs(); const P=ptPlan(res,dp);
+   const FMT=(opts&&FPL_FMT_W[opts.format])?opts.format:'a3', PS=FPL_FMT_W[FMT]/420;
+   const doc=fplPdfCtx(new JsPDF({unit:'mm',format:FMT,orientation:'landscape'}),PS,Math.pow(PS,0.85),FMT), PW=420, PH=297, M=12; let y=M;
+   const info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp); const date=todayStr();
+   const head=txt=>{ doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(0); doc.text(FPL_PDFSYM(txt),M,M+6); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(FPL_PDFSYM([info.projet,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' - ')),M,M+12); doc.setTextColor(0); y=M+18; };
+   if(!P){ head('Plan de ferraillage - '+info.nomO); doc.setFontSize(11); doc.text('Plan non disponible : resultat absent ou d\'une ancienne version.',M,y+10); return doc.output('blob'); }
+   const page=()=>{ doc.addPage(); head('Plan de ferraillage - '+info.nomO+' (suite)'); }, need=h=>{ if(y+h>PH-M-6) page(); };
+   head('Plan de ferraillage - '+info.nomO);
+   const g=P.g, par=P.parametres;
+   const ci=[['Projet',info.projet||'-'],['Ouvrage',info.nomO+(info.typ?' - '+info.typ:'')],['Norme',info.norme],['Béton / acier',info.beton+' - '+info.acier],['Indice / date',info.indice+' - '+date],['Statut','A verifier par un ingenieur structure'],['Section',(P.rect?fplF(g.b,0)+' x '+fplF(g.h,0)+' cm':'D '+fplF(g.D,0)+' cm')+' - enrobage '+fplF(par.enrobage,1)+' cm'],['Poids d\'acier',fplF(P.poidsTotal,1)+' kg'],['Établi par','Been11 - Poteau']];
+   const cw=(PW-2*M)/3; doc.setDrawColor(242,169,0); doc.setLineWidth(0.3);
+   ci.forEach((c,i)=>{ const cx=M+(i%3)*cw, cy=y+Math.floor(i/3)*10; doc.rect(cx,cy,cw,10); doc.setFontSize(6.5); doc.setTextColor(110); doc.text(FPL_PDFSYM(c[0]),cx+1.5,cy+3.4); doc.setFontSize(8.5); doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.text(FPL_PDFSYM(c[1]),cx+1.5,cy+7.6,{maxWidth:cw-3}); doc.setFont('helvetica','normal'); });
+   y+=32;
+   const sc=(S,wmax,hmax)=>Math.min(wmax/S.w,hmax/S.h);
+   { const S=ptSceneElev(P), Lg=ptLegendScene(), wE=(PW-2*M)*0.58, kE=sc(S,wE,PH*0.52), kL=Math.min(0.30,((PW-2*M)*0.38)/Lg.w); need(S.h*kE+4); const y0=y; fplPdfScene(doc,S,M+(wE-S.w*kE)/2,y0,kE); fplPdfScene(doc,Lg,M+wE+8,y0+4,kL); y=y0+Math.max(S.h*kE,Lg.h*kL)+3;
+     doc.setFontSize(8); doc.setTextColor(110); doc.text('Elevation - hauteur a l\'echelle, largeur non a l\'echelle - traits de coupe A-A et B-B - legende des traits',M,y+2); doc.setTextColor(0); y+=7; }
+   page();
+   { const B=ptSceneSection(P,'A'), C=ptSceneSection(P,'B'), w2=(PW-2*M)*0.46, kB=sc(B,w2,PH*0.34); const y0=y; fplPdfScene(doc,B,M,y0,kB); fplPdfScene(doc,C,M+w2+10,y0,kB); y=y0+Math.max(B.h,C.h)*kB+3;
+     doc.setFontSize(8); doc.setTextColor(110); doc.text('Coupes transversales A-A (section courante) et B-B (recouvrement) a l\'echelle reelle',M,y+2); doc.setTextColor(0); y+=8; }
+   doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Nomenclature des aciers',M,y); y+=2;
+   const HW=PW/2-M-4, AT={styles:{fontSize:8.5,cellPadding:1.6,lineColor:[242,169,0],lineWidth:0.2},headStyles:{fillColor:[255,255,255],textColor:[0,0,0],lineColor:[242,169,0],lineWidth:0.3},margin:{left:M,right:PW/2+4},tableWidth:HW};
+   let yL=y;
+   if(doc.autoTable){
+    doc.autoTable(Object.assign({startY:y+2,head:[['Rep.','Designation','Nb x Ø','As reel / requis (cm2)','Long. unit. (m)','Faconnage','Poids (kg)']],body:P.nomenclature.map(r=>[r.rep,FPL_PDFSYM(r.designation),r.nbDiam,r.AsReel!=null?fplF(r.AsReel)+(r.AsReq?' / '+fplF(r.AsReq):''):'-',fplF(r.longueur),FPL_PDFSYM(r.faconnage),fplF(r.poids,1)]).concat([['','Total','','','','',fplF(P.poidsTotal,1)+' kg']])},AT));
+    yL=doc.lastAutoTable.finalY+5;
+    doc.autoTable(Object.assign({startY:yL,head:[['Zone','Barres','As reel (cm2)','As requis (cm2)','Rapport','Etat']],body:P.verifs.map(r=>[FPL_PDFSYM(r.zone),FPL_PDFSYM(r.barres),fplF(r.reel),fplF(r.req),r.req>0?'x'+fplF(r.reel/r.req):'-',r.reel+1e-6>=r.req?'Conforme':'Non conforme'])},AT));
+    yL=doc.lastAutoTable.finalY+6; }
+   { const shapes=ptShapeScenes(P), ncol=3, kk=Math.min(0.26,(HW/ncol-2)/300), sx0=PW/2+4; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0); doc.text('Schemas de faconnage',sx0,y); let yR=y+4;
+    shapes.forEach((q,i)=>{ const col=i%ncol, row=Math.floor(i/ncol); const gx=sx0+col*(300*kk+2), gy=yR+row*(150*kk+7); fplPdfScene(doc,q.scene,gx,gy,kk); doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(60); doc.text(FPL_PDFSYM(q.rep+' - '+q.txt),gx,gy+q.scene.h*kk+3,{maxWidth:300*kk}); doc.setTextColor(0); }); }
+   y=yL; doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Notes generales',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+   PT_NOTES.forEach((x,i)=>{ const L=doc.splitTextToSize((i+1)+'. '+FPL_PDFSYM(x),HW-4); if(y+L.length*3.8>PH-M-30){ page(); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); } doc.text(L,M,y); y+=L.length*3.8+1; });
+   y+=3; if(y>PH-M-40) page(); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Points a confirmer',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+   P.avertissements.map(a=>({bad:true,t:a})).concat(P.hypotheses.map(a=>({bad:false,t:a}))).forEach(a=>{ const L=doc.splitTextToSize((a.bad?'Bloquant : ':'A confirmer : ')+FPL_PDFSYM(a.t),PW-2*M-6); if(y+L.length*3.8>PH-M-30){ page(); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); } doc.setDrawColor(...(a.bad?[180,40,30]:[242,169,0])); doc.setLineWidth(0.8); doc.line(M-1,y-3,M-1,y+L.length*3.8-3); doc.setTextColor(0); doc.text(L,M+1,y); y+=L.length*3.8+1.5; });
+   doc.setPage(doc.getNumberOfPages());
+   doc.setDrawColor(242,169,0); doc.setLineWidth(0.6); const aw=PW-2*M; const WL=doc.splitTextToSize(FPL_PDFSYM('Avertissement. Plan genere automatiquement a partir des sections d\'acier calculees et des dispositions constructives courantes (Eurocode 2). A recouper par un ingenieur structure avant execution ; ne remplace pas une etude signee par un bureau d\'etudes qualifie.'),aw-8); const ah=WL.length*4+6, ay=PH-M-ah; doc.roundedRect(M,ay,aw,ah,2,2,'S'); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.text(WL,M+4,ay+5); doc.setTextColor(0);
+   const NP=doc.getNumberOfPages(); for(let i=1;i<=NP;i++){ doc.setPage(i); doc.setFontSize(7); doc.setTextColor(120); doc.text(FPL_PDFSYM(info.nomO+' - Plan de ferraillage - feuille '+i+'/'+NP+' - '+FMT.toUpperCase()+' paysage'),PW-M,PH-4,{align:'right'}); }
+   return doc.output('blob');
+  }
+  /* Export PDF du plan de poteau à la demande (format au choix) : branché dans pcPlanExportPdf */
+  async function ptPlanExportPdf(t,fmt){
+   const dp=ptData(t), res=dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul du poteau.');
+   const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await ptPlanFerraillagePdf(t,dp,res,{format:f});
+   const nom=dimOuvrageNom(t,dp).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Poteau';
+   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
+   return {blob,fn};
   }
   async function ptCreerDocumentsDimensionnement(t,dp){
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null}; // seul le béton armé (EC2) a un calcul
