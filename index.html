@@ -27498,6 +27498,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {k:'sectionT',lbl:'Section en T',t:'bool',def:false,only:'pc',aide:'Flèche par la courbure calculée avec la table de compression (Maîtrise p.224). Flexion ELU et fissuration restent en section rectangulaire b × h (sécuritaire).'},
    {k:'beff_cm',lbl:'b_eff — largeur de table',t:'num',def:null,min:1,max:1000,step:1,unit:'cm',only:'pc',needT:true,aide:'Largeur efficace de la table, supérieure à la largeur de l\'âme b (3 × b proposé).'},
    {k:'hf_cm',lbl:'h_f — épaisseur de table',t:'num',def:null,min:1,max:200,step:0.5,unit:'cm',only:'pc',needT:true,aide:'Épaisseur de la table, inférieure à la hauteur h (0,2 × h proposé).'},
+   {k:'corr310',lbl:'Appliquer le correctif 310/σs',t:'bool',def:false,only:'dl',aide:'Flèche par l/d : multiplie le l/d limite par 310/σs (EC2 7.17 ; Maîtrise p.225). Non appliqué par défaut. S\'applique à la vérification l/d de la dalle ; la poutre n\'a pas de vérification l/d.'},
+   {k:'sigmaS310',lbl:'σs retenu pour le correctif',t:'num',def:null,min:100,max:500,step:1,unit:'MPa',only:'dl',cond:dp=>dp.corr310===true,aideFn:dp=>{ const f=dp.resultats&&dp.resultats.fleche&&dp.resultats.fleche.corr310; return 'Contrainte de l\'acier tendu à mi-travée sous charges quasi permanentes'+(f?' : valeur calculée '+f.sCalc.toFixed(0)+' MPa (utilisée si le champ est vide)':' (calculée au prochain calcul, utilisée si le champ est vide)')+' ; simplifié possible : 310/σs = 500/(f_yk·A_s,req/A_s,prov) (7.17).'; }},
    {k:'AsComp_cm2',lbl:'Armatures comprimées (flèche)',t:'num',def:0,min:0,max:200,step:0.1,unit:'cm²',aide:'Section A_s2 de la face comprimée prise en compte dans la flèche (ρ\' de la formule 7.16b et courbure fissurée) ; 0 = négligée, sécuritaire (Maîtrise p.218, 230). Dalle : cm² par mètre.'}
   ];
   const ELS_DALLE_POINCON=[
@@ -27514,8 +27516,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function elsFmt(sp,v){ if(v==null) return ''; if(sp.t==='bool') return v?'oui':'non'; if(sp.t==='sel'){ const o=sp.opts.find(x=>String(x[0])===String(v)); return o?o[1]:String(v); } const x=sp.scale?v*sp.scale:v; return String(+(+x).toFixed(3)).replace('.',',')+(sp.unit?' '+sp.unit:''); }
   /* Lignes du tableau « Hypothèses » : valeur et origine (saisi / par défaut) de chaque paramètre ELS */
   function elsRowsHyp(dp,kind){
-   const specs=ELS_SPEC.concat(kind==='dl'?ELS_DALLE_POINCON:[]).filter(sp=>(!sp.only||sp.only===kind)&&(!sp.needT||dp.sectionT===true)&&!(ELS_DALLE_POINCON.includes(sp)&&(!dp.poincon||(sp.cond&&!sp.cond(dp)))));
-   return specs.map(sp=>{ const sa=elsSaisi(dp,sp.k); return [sp.lbl.replace(/ — .*/,''),sp.k==='AsSupY_cm2'&&!sa?'hypothèse max(20 % de l\'armature d\'appui ; A_s,min)':elsFmt(sp,elsVal(dp,sp)),sa?'saisi':'par défaut']; });
+   const specs=ELS_SPEC.concat(kind==='dl'?ELS_DALLE_POINCON:[]).filter(sp=>(!sp.only||sp.only===kind)&&(!sp.needT||dp.sectionT===true)&&(ELS_DALLE_POINCON.includes(sp)||!sp.cond||sp.cond(dp))&&!(ELS_DALLE_POINCON.includes(sp)&&(!dp.poincon||(sp.cond&&!sp.cond(dp)))));
+   return specs.map(sp=>{ const sa=elsSaisi(dp,sp.k); return [sp.lbl.replace(/ — .*/,''),sp.k==='AsSupY_cm2'&&!sa?'hypothèse max(20 % de l\'armature d\'appui ; A_s,min)':(sp.k==='sigmaS310'&&!sa?'valeur calculée (charges quasi permanentes, mi-travée)':elsFmt(sp,elsVal(dp,sp))),sa?'saisi':'par défaut']; });
   }
   function elsFieldHtml(sp,dp,err){
    const v=elsVal(dp,sp), sa=elsSaisi(dp,sp.k), tag='<span class="pcElsTag'+(sa?' on':'')+'">'+(sa?'saisi':'par défaut')+'</span>';
@@ -27524,11 +27526,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    else if(sp.t==='bool') inp='<select data-els="'+sp.k+'"><option value="0"'+(!v?' selected':'')+'>Non</option><option value="1"'+(v?' selected':'')+'>Oui</option></select>';
    else inp='<select data-els="'+sp.k+'">'+sp.opts.map(o=>'<option value="'+o[0]+'"'+(String(o[0])===String(v)?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
    return '<label><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsCtl">'+inp+(sp.unit&&sp.t==='num'?'<span class="pcUnitEls">'+sp.unit+'</span>':'')+'</span>'+tag+'</label>'
-    +(err&&err.key===sp.k?'<p class="pcNote pcElsErr" role="alert">'+esc(err.msg)+'</p>':'')+'<p class="pcNote">'+sp.aide+'</p>';
+    +(err&&err.key===sp.k?'<p class="pcNote pcElsErr" role="alert">'+esc(err.msg)+'</p>':'')+'<p class="pcNote">'+(sp.aideFn?sp.aideFn(dp):sp.aide)+'</p>';
   }
   function elsBlockHtml(dp,kind,id){
    const err=(window._elsErr||{})[id];
-   const specs=ELS_SPEC.filter(sp=>(!sp.only||sp.only===kind)&&(!sp.needT||dp.sectionT===true));
+   const specs=ELS_SPEC.filter(sp=>(!sp.only||sp.only===kind)&&(!sp.needT||dp.sectionT===true)&&(!sp.cond||sp.cond(dp)));
    return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="'+kind+'"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés ELS</summary><div class="pcElsBody">'
     +'<p class="pcNote">Valeurs par défaut affichées dans les champs ; elles servent à la flèche (courbure) et à la fissuration, et sont reprises dans la note de calcul.</p>'
     +specs.map(sp=>elsFieldHtml(sp,dp,err)).join('')
@@ -27799,7 +27801,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const koZ=[]; [[fTrav,'Travée lx',0.6],[fAppW,'Appui gauche',0.6],[fAppE,'Appui droit',0.6],[fTravY,'Travée ly',1.6]].forEach(a=>{ if(a[0]&&!a[0].ok) koZ.push({nom:a[1],K:a[0].mucu,hMin_cm:a[0].dMin_mm/10+enr+a[2]}); });
    const insuffisant=koZ.length>0, hMinCm=insuffisant?Math.ceil(Math.max(...koZ.map(k=>k.hMin_cm))):null;
    const K=(+dp.nTravees||1)<=1?1.0:(dp.position==='rive'?1.3:1.5);
-   const fleche=insuffisant?{ldReel:((sensDeux?deuxSens.lx:lx)*100)/d_x_cm,ratio:0,ok:false,nonCalculee:true}:dlFlecheCheck(sensDeux?deuxSens.lx:lx,d_x_cm,barTravX.As,fck,K,{cloisons:dp.cloisonsFragiles===true,rhoPrime:Math.max(0,+dp.AsComp_cm2||0)*100/(1000*d_x_cm*10)}); // sans ferraillage calculé, pas de flèche trompeuse
+   let fleche=insuffisant?{ldReel:((sensDeux?deuxSens.lx:lx)*100)/d_x_cm,ratio:0,ok:false,nonCalculee:true}:dlFlecheCheck(sensDeux?deuxSens.lx:lx,d_x_cm,barTravX.As,fck,K,{cloisons:dp.cloisonsFragiles===true,rhoPrime:Math.max(0,+dp.AsComp_cm2||0)*100/(1000*d_x_cm*10)}); // sans ferraillage calculé, pas de flèche trompeuse
    /* flèche par la courbure (Maîtrise p.207-209, 225-227) : bande de 1 m, charges quasi permanentes G + ψ2·Q (ψ2 = dp.psi2, 0,3 par défaut), moments de service
       par la même méthode forfaitaire ; E_c,eff = E_cm/(1+φ), φ = dp.phi (2 par défaut), ε_cs = dp.epsCs (3·10⁻⁴ par défaut), β = 0,5 (long terme) */
    let flecheCourb=null, fissuration=null;
@@ -27822,6 +27824,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       if(sensDeux&&barTravY) Z.push(fcFissZone('Travée ly',secY,bb(barTravY),deuxSens.muy*MoQP,ctxF));
       fissuration={zones:Z,ctx:ctxF,psi2}; }
     flecheCourb={f_mm:r.f_mm,fSimplifiee_mm:r.fSimplifiee_mm,x:r.x,L:LF,l250:v.l250,l500:v.l500,etat:v.etat,note:v.note,cloisons:dp.cloisonsFragiles===true,psi2,pQP,phi:mat.phi,epsCs:mat.epsCs,Eceff:dm.Eceff,zeta:dm.zeta,Mcr:dm.Mcr_MNm*1000,Mmid:Ms[20],sigS:dm.sigS,k:dm.k};
+   }
+   /* correctif 310/σs (EC2 7.4.2 éq. 7.17 ; Maîtrise p.225) : σs à mi-travée sous charges quasi permanentes (valeur calculée ou saisie) ; appliqué seulement si demandé ; valeur simplifiée 500/(f_yk·A_s,req/A_s,prov) affichée */
+   if(flecheCourb&&!fleche.nonCalculee){
+    const sCalc=flecheCourb.sigS, sUsed=elsSaisi(dp,'sigmaS310')?+dp.sigmaS310:sCalc, appl=dp.corr310===true, AsReqMm2=Math.max(1e-6,AsTravX_mm2), simple=500/fyk*barTravX.As/AsReqMm2;
+    if(appl) fleche=dlFlecheCheck(sensDeux?deuxSens.lx:lx,d_x_cm,barTravX.As,fck,K,{cloisons:dp.cloisonsFragiles===true,rhoPrime:Math.max(0,+dp.AsComp_cm2||0)*100/(1000*d_x_cm*10),sigmaS:sUsed});
+    fleche.corr310={sCalc,sUsed,saisi:elsSaisi(dp,'sigmaS310'),appliquee:appl,beta310:310/sUsed,simple};
    }
    /* effort tranchant sans armatures (livre p.309-312) : V_Ed0 réduit à d du nu d'appui (p.307, 312) ≤ V_Rd,c ; V_Ed non réduit ≤ V_Rd,max (p.313) ;
       v_min AN France : 0,34/γc·√f_ck (dalle avec redistribution transversale) ou 0,053/γc·k^(3/2)·√f_ck (autres dalles) (p.310, 355) */
@@ -28087,8 +28095,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      texte:'Flèche : la décision suit la formule de l\'EC2 (7.16), plus sévère que le tableau de l\'Annexe nationale'+(res.fleche.ratioAN!=null?' ('+res.fleche.ratioAN.toFixed(1)+', affiché à côté)':'')+'. L\'ingénieur peut retenir l\'AN si elle est applicable.'});
     L.push({nom:'ρ de la flèche',valeur:'acier posé (ρ = '+(res.fleche.rho*100).toFixed(2)+' %)',origine:'choix du module, à valider',
      texte:'Flèche : ρ est calculé avec l\'acier POSÉ, alors que le livre (Maîtrise p.218) prend l\'acier REQUIS ; l\'écart est généralement favorable (acier posé ≥ requis).'});
-    L.push({ligne:false,nom:'Correctifs de flèche',valeur:'310/σs non branché',origine:'non pris en compte',
-     texte:'Flèche : le correctif 310/σs n\'est pas branché (à reprendre à la main si la contrainte de l\'acier diffère de 310 MPa) ; la section en T ne s\'applique pas à cette dalle pleine ; cloisons fragiles (correctif 7/l si l > 7 m) : '+(dp.cloisonsFragiles===true?'oui, saisi':'non'+(elsSaisi(dp,'cloisonsFragiles')?', saisi':', par défaut'))+' (Maîtrise p.224-225).'});
+    { const c=res.fleche.corr310, f1=(x,k)=>(+x).toFixed(k==null?2:k).replace('.',',');
+      L.push({nom:'Correctif de flèche 310/σs',valeur:c?(c.appliquee?'appliqué : l/d limite × 310/σs = 310/'+f1(c.sUsed,0)+' = '+f1(c.beta310):'non appliqué (σs = '+f1(c.sCalc,0)+' MPa → 310/σs = '+f1(c.beta310)+' ; simplifié 500/(f_yk·A_s,req/A_s,prov) = '+f1(c.simple)+')'):'non calculable',origine:c&&c.appliquee?'appliqué (saisi)':'non appliqué (par défaut)',
+       texte:'Flèche : correctif 310/σs (EC2 7.4.2, éq. 7.17 ; Maîtrise p.225) '+(c?(c.appliquee?'APPLIQUÉ sur demande de l\'ingénieur : l/d limite × 310/σs avec σs = '+f1(c.sUsed,0)+' MPa ('+(c.saisi?'saisi':'calculé sous charges quasi permanentes, à mi-travée')+') soit × '+f1(c.beta310)+'.':'NON APPLIQUÉ (défaut) : σs calculé sous charges quasi permanentes = '+f1(c.sCalc,0)+' MPa donnerait 310/σs = '+f1(c.beta310)+' (simplifié 500/(f_yk·A_s,req/A_s,prov) = '+f1(c.simple)+') ; cocher « Appliquer le correctif 310/σs » dans les paramètres avancés ELS pour l\'appliquer.'):'non calculable.')+' Section en T : sans objet pour cette dalle pleine ; cloisons fragiles (correctif 7/l si l > 7 m) : '+(dp.cloisonsFragiles===true?'oui':'non')+' ('+(elsSaisi(dp,'cloisonsFragiles')?'saisi':'par défaut')+').'}); }
    }
    if(res.fissuration) fcChoixFissuration(res.fissuration,false,dp).forEach(c=>L.push(c));
    return L;
