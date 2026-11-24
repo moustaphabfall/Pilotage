@@ -474,6 +474,7 @@ tr.tr-row:hover{background:#F7F9F6; cursor:pointer;}
 .fam-illu{width:30px; height:30px; border-radius:7px; vertical-align:middle;}
 .ts-illu{width:40px; height:40px; object-fit:contain; vertical-align:middle;}
 .ts-mini{width:20px; height:20px; border-radius:4px; vertical-align:-5px; margin-right:6px; flex:none;}
+.illu-svg{display:inline-block; flex:none; overflow:visible}
 .be-row-dim{width:20px; height:20px; object-fit:contain; vertical-align:middle; flex:0 0 auto; margin-right:2px;}
 .pv-open{cursor:pointer;}
 .pv-open:hover{background:rgba(0,0,0,.04);}
@@ -1732,7 +1733,13 @@ function illuUri(key){
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="10" fill="#FBEBDA"/><g fill="none" stroke="#CC5F00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'+inner+'</g></svg>';
   return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg);
 }
-function famIconHtml(ft){ return (ft && ft.illu && ILLU[ft.illu]) ? `<img src="${illuUri(ft.illu)}" class="fam-illu" alt="">` : (ft?ft.icone:''); }
+/* Pictogramme intégré en SVG : cadre à la couleur d'accent du thème, dessin à la couleur du texte —
+   suit automatiquement les modes Sombre / Blanc et le thème de l'espace (variables --ds-*). */
+function illuSvg(key,cls){ const inner=ILLU[key]; if(!inner) return '';
+ return '<svg class="'+(cls||'')+' illu-svg" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="61" height="61" rx="12" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="2.5"/><g transform="translate(7.7 7.7) scale(.76)" fill="none" stroke="var(--ds-ink,currentColor)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
+  +inner.replace(/(fill|stroke)="#[0-9A-Fa-f]{3,6}"/g,'$1="var(--ds-accent,#FFC400)"')+'</g></svg>'; }
+window.illuSvg=illuSvg;
+function famIconHtml(ft){ return (ft && ft.illu && ILLU[ft.illu]) ? illuSvg(ft.illu,'fam-illu') : (ft?ft.icone:''); }
 
 /* ===== Prestations CVC (ventilation double flux) : familles + ouvrages, ajoutées une seule fois ===== */
 const CVC_NIVEAU = 'Terrasse', CVC_BASE = 'ft-base-sols';
@@ -19871,6 +19878,13 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .ncDoc .pcDraw{margin:8px 0}
 .ncDoc .pcDimBox{border:0;padding:0;background:none}
 @media (max-width:600px){.ncDoc .ncCart td{display:block;border-bottom:0}.ncDoc .ncCart tr:last-child td:last-child{border-bottom:1px solid var(--ds-accent)}.ncDoc .ncKpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.gtTW{overflow-x:auto;margin:6px 0}
+.gtT{width:100%;border-collapse:collapse;font-size:var(--ds-fs-sm,13px)}
+.gtT th{font-weight:600;color:var(--ds-ink-soft);text-align:left;padding:4px 6px;border-bottom:1px solid var(--ds-line)}
+.gtT td{padding:3px 4px;border-bottom:1px solid var(--ds-line)}
+.gtT input,.gtT select{width:100%;min-width:64px;min-height:36px;font:inherit;font-size:16px;box-sizing:border-box}
+.gtT .gtDel{min-width:44px;min-height:44px;border:0;background:none;color:var(--ds-ink-soft);cursor:pointer;font-size:16px}
+.gtAdd{min-height:44px;margin:4px 0 8px}
 .pcNC h3{margin:4px 0 10px;font:700 17px system-ui,sans-serif}
 .pcNC h4{margin:16px 0 6px;font:700 13px system-ui,sans-serif;border-bottom:1px solid var(--line);padding-bottom:4px}
 .pcNC p{font-size:13px;line-height:1.6;margin:4px 0}
@@ -20786,9 +20800,9 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
      l'ouvrage en mode Exé — évite de devoir ouvrir l'ouvrage pour savoir si le dimensionnement a déjà
      produit ses documents. */
   const docBadges=tid=>{ const note=DOCS().find(d=>d.ouvrageTaskId===tid&&d.docType==='Note de calcul'), plan=DOCS().find(d=>d.ouvrageTaskId===tid&&d.docType==='Plan de ferraillage');
-   /* Note de calcul = icône tableur (XLS, vert) ; plan = icône CAO (CAD, bleu) */
-   const icX='<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="3" fill="#1D7A45"/><path d="M5 6h10M5 10h10M5 14h10M10 3v14" stroke="#fff" stroke-opacity=".35" stroke-width="1"/><text x="10" y="13.6" text-anchor="middle" font-size="7.5" font-weight="700" font-family="Arial,sans-serif" fill="#fff">XLS</text></svg>';
-   const icC='<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="3" fill="#1F5FA8"/><path d="M4 16L16 4M4 4v12h12" stroke="#fff" stroke-opacity=".35" stroke-width="1" fill="none"/><text x="10" y="13.6" text-anchor="middle" font-size="7.5" font-weight="700" font-family="Arial,sans-serif" fill="#fff">CAD</text></svg>';
+   /* Note de calcul = document texte (DOC, type Word) ; plan = CAO (CAD). Badges au thème : cadre accent, texte encre. */
+   const bdg=(lab,doc)=>'<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M2.5 2.5h'+(doc?'12l5 5v12':'17v17')+'h-17z" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6" stroke-linejoin="round"/>'+(doc?'<path d="M14.5 2.5v5h5" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6" stroke-linejoin="round"/>':'')+'<text x="11" y="15.5" text-anchor="middle" font-size="6.6" font-weight="800" font-family="Inter,Arial,sans-serif" fill="var(--ds-ink,currentColor)">'+lab+'</text></svg>';
+   const icX=bdg('DOC',true), icC=bdg('CAD',false);
    return (note?'<span class="pjd-badge" data-opendoc="'+esc(note.id)+'" title="Note de calcul" aria-label="Note de calcul">'+icX+'</span>':'')+(plan?'<span class="pjd-badge" data-opendoc="'+esc(plan.id)+'" title="Plan de ferraillage" aria-label="Plan de ferraillage">'+icC+'</span>':''); };
   const cell0=(r,k)=>{ let v=r[k]; if(k==='debut'||k==='fin') v=frDate(v); if(k==='avancement'&&v!=='') v+=' %'; const t=(k==='pieceArchi'&&v&&PAI[v]?'<span class="pa-i">'+PAI[v]+'</span>':'')+esc(v||''); if(k==='ouvrage'&&r.t&&r.t.typeStructureId&&window.tsMiniHtml) return window.tsMiniHtml(r.t.typeStructureId)+t; return k==='tache'?t+docBadges(r.id)+'<span class="pjd-open">OUVRIR</span><span class="pjd-open" data-bloc="1" title="Enregistrer comme bloc dans la bibliothèque">→ BLOC</span>':t; };
   if(!d._pd){ d._pd=1; d.addEventListener('pointerdown',e=>{ rowDrag(e); colDragStart(e); dopenLong(e); }); }
@@ -24089,7 +24103,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>📋 Missions</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beMAdd">＋ Mission</button>':'')
       +'</div>'
-      +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m">'+(beIsDimMission(m)?'<img src="'+illuUri('dim')+'" class="be-row-dim" alt="" title="Mission de dimensionnement">':'')+'<b>'+esc(m.client||'(Sans nom)')+'</b><small>'+(m.projet?esc(m.projet)+' · ':'')+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(m.dateDebut?' · '+esc(fmtDate(m.dateDebut)):'')+(m.dateFin?' → '+esc(fmtDate(m.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.</p>')
+      +(L.length?'<div class="be-list">'+L.map(m=>'<div class="be-row" data-id="'+esc(m.id)+'"><span class="be-row-m">'+(beIsDimMission(m)?''+illuSvg('dim','be-row-dim')+'':'')+'<b>'+esc(m.client||'(Sans nom)')+'</b><small>'+(m.projet?esc(m.projet)+' · ':'')+esc(beTypeMissionNom(m.typeMissionId)||'Type non défini')+(m.dateDebut?' · '+esc(fmtDate(m.dateDebut)):'')+(m.dateFin?' → '+esc(fmtDate(m.dateFin)):'')+'</small></span></div>').join('')+'</div>':'<p class="be-empty">Aucune mission pour l’instant.</p>')
       +'</div>';
     const b=document.getElementById('beMAdd'); if(b) b.onclick=()=>beMissionEdit(null);
     if(beAdmin()) w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beMissionOpen(L.find(m=>m.id===r.dataset.id)));
@@ -24213,7 +24227,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Types réellement développés (moteurs de calcul embarqués) — tous les autres sont grisés et non
      sélectionnables partout où ce type s'affiche (Moustapha, dictée du 24/11/2026). À étendre ici au fur
      et à mesure que « Tassements & géotechnique » puis les types suivants sont développés. */
-  const TS_DEV=new Set(['Poutres & éléments horizontaux','Poteaux & structures verticales','Dalles, planchers & poinçonnement','Semelles & fondations superficielles','Pieux & fondations profondes']);
+  const TS_DEV=new Set(['Poutres & éléments horizontaux','Poteaux & structures verticales','Dalles, planchers & poinçonnement','Semelles & fondations superficielles','Pieux & fondations profondes','Tassements & géotechnique']);
   function beTypeStructureDevNom(nom){ return TS_DEV.has(nom); }
   function beTypeStructureDev(id){ const t=L_typesStructure().find(x=>x.id===id); return !!t&&TS_DEV.has(t.nom); }
   function L_typesStructure(){
@@ -24245,10 +24259,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function beTypeStructureNom(id){ const t=L_typesStructure().find(x=>x.id===id); return t?t.nom:''; }
   function beTypeStructureIco(id){ const t=L_typesStructure().find(x=>x.id===id); return (t&&t.icone)||''; }
-  function tsIconHtml(t){ return (t&&t.illu&&ILLU[t.illu]) ? '<img src="'+illuUri(t.illu)+'" class="ts-illu" alt="">' : ((t&&t.icone)||'📐'); }
+  function tsIconHtml(t){ return (t&&t.illu&&ILLU[t.illu]) ? illuSvg(t.illu,'ts-illu') : ((t&&t.icone)||'📐'); }
   function beTypeStructureLabel(id){ const t=L_typesStructure().find(x=>x.id===id); return t?(((t.illu&&ILLU[t.illu])||!t.icone?'':t.icone+' ')+t.nom):''; }
   /* mini-pictogramme (20 px) d'un type d'ouvrage, pour les cellules de tableau et les menus */
-  function tsMiniHtml(id){ const t=L_typesStructure().find(x=>x.id===id); return (t&&t.illu&&ILLU[t.illu])?'<img src="'+illuUri(t.illu)+'" class="ts-mini" alt="">':''; }
+  function tsMiniHtml(id){ const t=L_typesStructure().find(x=>x.id===id); return (t&&t.illu&&ILLU[t.illu])?illuSvg(t.illu,'ts-mini'):''; }
   window.tsMiniHtml=tsMiniHtml;
   function beTypeStructureOptsHtml(sel){ return '<option value="">— Choisir —</option>'+L_typesStructure().map(t=>'<option value="'+esc(t.id)+'"'+(sel===t.id?' selected':'')+(TS_DEV.has(t.nom)?'':' disabled')+'>'+esc((((t.illu&&window.tsMiniHtml&&window.tsMiniHtml(t.id))||!t.icone?'':t.icone+' ')+t.nom))+(TS_DEV.has(t.nom)?'':' (bientôt disponible)')+'</option>').join('')+'<option value="__new__">＋ Ajouter un type…</option>'; }
   /* exposés globalement : réutilisés par la fiche document (mode dimensionnement, module pjV140Js) */
@@ -24291,6 +24305,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      K.push({v:ncF(res.A)+' × '+ncF(res.B)+' m',l:'Dimensions A × B'});
      if(res.barX) K.push({v:res.barX.n+' Φ'+res.barX.phi,l:'Nappe inférieure · '+ncF(res.barX.As/100)+' cm²'});
      if(res.barX) fer=res.barX.n+' Φ'+res.barX.phi;
+    } else if(kind==='geo'){
+     const m=res.methode;
+     if(m==='menard'){ const bad=res.sAdm_cm!=null&&res.S>res.sAdm_cm; K.push({v:ncF(res.S)+' cm',l:'Tassement total S = S_c + S_d'+(res.sAdm_cm!=null?' (admissible '+ncF(res.sAdm_cm)+' cm)':''),bad}); K.push({v:ncF(res.Sc)+' + '+ncF(res.Sd),l:'Sphérique S_c + déviatorique S_d (cm)'}); K.push({v:ncF(res.Ec,1)+' / '+ncF(res.Ed,1),l:'Modules E_c / E_d (MPa)'}); K.push({v:ncF(res.K,0)+' t/m³',l:'Raideur surfacique k = 10 000·q/S'}); fer='S = '+ncF(res.S)+' cm'; }
+     else if(m==='radier'){ const bad=res.sAdm_mm!=null&&res.S_mm>res.sAdm_mm; K.push({v:ncF(res.S_mm,1)+' mm',l:'Tassement du radier'+(res.sAdm_mm!=null?' (admissible '+ncF(res.sAdm_mm,0)+' mm)':''),bad}); K.push({v:ncF(res.q,1)+' kPa',l:'Contrainte au niveau du radier'}); K.push({v:res.rows.length+' × '+ncF(res.pas)+' m',l:'Tranches de calcul'}); fer='S = '+ncF(res.S_mm,1)+' mm'; }
+     else if(m==='boussinesq'){ K.push({v:ncF(res.Smax_mm)+' mm',l:'Tassement maximal des points étudiés'}); if(res.dmax) K.push({v:ncF(res.dmax.ds)+' mm',l:'Tassement différentiel max (P'+(res.dmax.i+1)+'–P'+(res.dmax.j+1)+', '+ncF(res.dmax.L)+' m)'}); K.push({v:String(res.semelles.length),l:'Semelles prises en compte'}); fer='S max = '+ncF(res.Smax_mm)+' mm'; }
+     else if(m==='pdl'&&res.min){ K.push({v:ncF(res.min.Rd)+' MPa',l:'R_d minimale (à '+ncF(res.min.z)+' m)'}); K.push({v:ncF(res.max.Rd)+' MPa',l:'R_d maximale (à '+ncF(res.max.z)+' m)'}); K.push({v:String(res.rows.length),l:'Mesures exploitées'}); fer='R_d min = '+ncF(res.min.Rd)+' MPa'; }
+     else if(m==='battage'){ K.push({v:ncF(res.Rmin)+' kN',l:'Force portante la plus faible des formules'}); K.push({v:ncF(res.R.hollandais)+' kN',l:'Formule des Hollandais'}); fer='R min = '+ncF(res.Rmin)+' kN'; }
     } else if(kind==='pieu'){
      K.push({v:ncF(res.surPieux)+' MPa',l:'Contrainte sur pieux',bad:!res.okSurPieux});
      if(res.tau!=null) K.push({v:ncF(res.tau)+' ≤ '+ncF(res.limTau),l:'Cisaillement τ / τ_lim (MPa)',bad:!res.okTau});
@@ -24307,7 +24328,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const box=document.createElement('div'); box.innerHTML=html; const root=box.querySelector('.pcNC')||box;
     const h3=root.querySelector('h3'); if(h3) h3.remove();
     let sub=''; const p0=root.firstElementChild; if(p0&&p0.tagName==='P'&&p0.classList.contains('pcNote')){ sub=p0.textContent.trim().replace(/\s*·\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/,''); p0.remove(); }
-    const norme=/BAEL/i.test(html)?'BAEL 91':/CCBA/i.test(html)?'CCBA 68':/Eurocode|EC2/i.test(html)?'Eurocode 2 · EN 1992-1-1 + AN française':/Rankine/i.test(html)?'Rankine (méthode simplifiée)':'—';
+    const norme=/Fascicule 62|NF P94-261/i.test(html)?'Fascicule 62 titre V / NF P94-261':/NF P94-115/.test(html)?'NF P94-115 (pénétromètre dynamique)':/Boussinesq/.test(html)?'Boussinesq (milieu élastique)':/EF9|battage/i.test(html)&&kind==='geo'?'Formules dynamiques de battage':/diffusion des contraintes/.test(html)?'Diffusion des contraintes (modules pressiométriques)':/BAEL/i.test(html)?'BAEL 91':/CCBA/i.test(html)?'CCBA 68':/Eurocode|EC2/i.test(html)?'Eurocode 2 · EN 1992-1-1 + AN française':/Rankine/i.test(html)?'Rankine (méthode simplifiée)':'—';
     /* avertissement d'origine (remplacé par l'avertissement commun, ses précisions sont conservées) */
     let avExtra=''; [...root.querySelectorAll('p')].forEach(p=>{ const tx=p.textContent.trim(); if(/^⚠/.test(tx)&&/générée? automatiquement|généré automatiquement/.test(tx)){ const m=tx.split(/\.\s+/).filter(x=>!/générée automatiquement|ingénieur structure|bureau d.études|ne remplace pas/i.test(x)).join('. '); if(m) avExtra+=' '+m.replace(/^⚠\s*/,'').trim(); p.remove(); } });
     /* points à confirmer / bloquants : phrases signalées ⚠ dans le texte */
@@ -24337,7 +24358,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const date=(typeof todayStr==='function')?todayStr():'';
     const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(projet||'—')+'</td><td><b>Ouvrage</b>'+esc(nomO)+(typ?' · '+esc(typ):'')+'</td><td><b>Norme</b>'+esc(norme)+'</td></tr>'
      +'<tr><td><b>Document</b>Note de calcul '+esc(nomO)+'</td><td><b>Indice</b>'+esc(indice)+(indice==='0'?' — première émission':'')+'</td><td><b>Statut</b>À vérifier par un ingénieur structure</td></tr>'
-     +'<tr><td><b>Établi par</b>Been11 · '+esc(sub.split('·')[0].trim()||'module embarqué')+'</td><td><b>Vérifié par</b>—</td><td><b>Plan lié</b>Plan de ferraillage '+esc(nomO)+'</td></tr></table>';
+     +'<tr><td><b>Établi par</b>Been11 · '+esc(sub.split('·')[0].trim()||'module embarqué')+'</td><td><b>Vérifié par</b>—</td><td><b>Plan lié</b>'+(kind==='geo'?'—':'Plan de ferraillage '+esc(nomO))+'</td></tr></table>';
     const kp=K.length?'<div class="ncKpi">'+K.map(k=>'<div class="ncK'+(k.bad?' bad':'')+'"><b>'+esc(k.v)+'</b><small>'+esc(k.l)+'</small></div>').join('')+'</div>':'';
     const an=AN.length?'<section class="ncSec"><h4>Points à confirmer</h4>'+AN.map(a=>'<div class="ncAn'+(a.bad?'':' conf')+'"><b>'+(a.bad?'Bloquant : ':'À confirmer : ')+'</b>'+esc(a.tx.replace(/^⚠\s*/,''))+'</div>').join('')+'</section>':'';
     const subL=[projet,bat,niv,'Note de calcul indice '+indice,date].filter(Boolean).join(' · ');
@@ -24700,7 +24721,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return '<span class="pcDotWrap"><button type="button" class="'+cls+'" '+(dis?'disabled':'data-pc-step="'+n+'"')+' title="'+esc(nm)+(dis?' — à venir':'')+'">'+n+'</button>'
      +(showName?'<span class="pcDotName'+(cur?' cur':'')+'">'+esc(nm)+'</span>':'')+'</span>';
    }).join('');
-   return '<div class="pcModHead"><span class="pcModIco"><img src="'+illuUri('poutre')+'" class="ts-mini" alt=""></span><span class="pcModName">Poutre continue (RDM)'+(step>=4?' — '+esc(pcChooseEngine(dp).label):'')+'</span></div>'
+   return '<div class="pcModHead"><span class="pcModIco">'+illuSvg('poutre','ts-mini')+'</span><span class="pcModName">Poutre continue (RDM)'+(step>=4?' — '+esc(pcChooseEngine(dp).label):'')+'</span></div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="grid" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDots">'+dots+'</div>'
     +'<div class="pcDraw">'+pcBeamSvg(dp,step)+'</div>'
@@ -24717,7 +24738,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=pcData(t);
    const body=[1,2,3,4].map(n=>pcStepHtml(n,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco"><img src="'+illuUri('poutre')+'" class="ts-mini" alt=""></span><span class="pcModName">Poutre continue (RDM)</span>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('poutre','ts-mini')+'</span><span class="pcModName">Poutre continue (RDM)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.nom||'Poutre')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+pcBeamSvg(dp,4)+'</div>'
     +'</div>'
@@ -25473,7 +25494,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=ptData(t);
    const body=[1,2,3,4].map(nn=>ptStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco"><img src="'+illuUri('poteau')+'" class="ts-mini" alt=""></span><span class="pcModName">Poteau (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('poteau','ts-mini')+'</span><span class="pcModName">Poteau (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pt="nom" value="'+esc(dp.nom||t.nom||'Poteau')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+ptSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">Poteau — élévation et section</p>'
@@ -26061,7 +26082,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=dlData(t);
    const body=[1,2,3,4].map(nn=>dlStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco"><img src="'+illuUri('dalle')+'" class="ts-mini" alt=""></span><span class="pcModName">Dalle (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('dalle','ts-mini')+'</span><span class="pcModName">Dalle (EC2)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-dl="nom" value="'+esc(dp.nom||t.nom||'Dalle')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+dlSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">'+(dp.sens==='deux'?'Dalle — vue en plan (deux sens de portée)':'Dalle — coupe (un sens de portée, épaisseur non à l\'échelle)')+'</p>'
@@ -26422,7 +26443,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=smData(t);
    const body=[1,2,3].map(nn=>smStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco"><img src="'+illuUri('semelle')+'" class="ts-mini" alt=""></span><span class="pcModName">Semelle (EC2/BAEL)</span>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('semelle','ts-mini')+'</span><span class="pcModName">Semelle (EC2/BAEL)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-sm="nom" value="'+esc(dp.nom||t.nom||'Semelle')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+smSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">'+(dp.sens!=='filante'?'Semelle isolée — vue en plan':'Semelle filante — coupe')+'</p>'
@@ -26812,7 +26833,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dp=puData(t);
    const body=[1,2,3].map(nn=>puStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco"><img src="'+illuUri('pieu')+'" class="ts-mini" alt=""></span><span class="pcModName">Tête de pieux (CCBA68)</span>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('pieu','ts-mini')+'</span><span class="pcModName">Tête de pieux (CCBA68)</span>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pu="nom" value="'+esc(dp.nom||t.nom||'Pieu')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+puSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[dp.config||'simple']+' · vue en plan</p>'
@@ -27366,6 +27387,379 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    };
   })();
   /* =================== fin Mur de soutènement =================== */
+  /* =================== Tassements & géotechnique (type 06) ===================
+     Moteur repris des classeurs du dossier 06 du pack Excel, vérifié valeur par valeur
+     (026, 027, 028, 109, pénétromètre dynamique, battage) — voir skill dimensionnement-06-geotechnique.
+     Méthodes : tassement pressiométrique d'une semelle (Ménard, Fascicule 62 titre V), tassement d'un
+     radier par diffusion, tassement de points sous plusieurs semelles (Boussinesq, 3 couches),
+     résistance de pointe au pénétromètre dynamique (formule des Hollandais), formules de battage. */
+  (function(){
+   const GT_TYPE_NOM='Tassements & géotechnique';
+   /* ---------- moteur ---------- */
+   const GT_LAMBDA=[[1,1.1,1.12],[2,1.2,1.53],[3,1.3,1.78],[5,1.4,2.14],[20,1.5,2.65],[1e4,1.5,2.65]];
+   function gtLambda(LsurB,circ,r0){
+    if(circ) return {lc:1,ld:1};
+    const T=GT_LAMBDA.map((x,i)=>i===0&&r0?[r0,x[1],x[2]]:x);
+    const r=Math.max(T[0][0],LsurB); let i=0; while(i<T.length-2&&r>=T[i+1][0]) i++;
+    const a=T[i],b=T[i+1], tt=(r-a[0])/(b[0]-a[0]);
+    return {lc:a[1]+tt*(b[1]-a[1]), ld:a[2]+tt*(b[2]-a[2])};
+   }
+   const GT_W=[1/4,1/4/0.85,1/12,1/12,1/12,1/30,1/30,1/30,1/80,1/80,1/80,1/80,1/80,1/80,1/80,1/80];
+   function gtMenardCouches(p){
+    const B=Math.min(+p.B,+p.L||+p.B), L=Math.max(+p.B,+p.L||+p.B), D=Math.max(0,+p.D||0), q=+p.q_MPa;
+    const circ=!!p.circulaire, lam=gtLambda(L/B,circ), cou=B/2;
+    const lay=(p.couches||[]).filter(c=>+c.h>0); if(!lay.length) throw new Error('Aucune couche de sol');
+    const bnd=[]; let z=0; lay.forEach((c,i)=>{ const top=z; z+=(i===lay.length-1)?1e6:(+c.h||0); bnd.push({top,bot:z,E:Math.max(+c.E||0,0.01),a:+c.a||0.5}); });
+    const tr=[];
+    for(let i=0;i<16;i++){ const z0=D+i*cou, z1=z0+cou; let invE=0,aa=0;
+     bnd.forEach(c=>{ const ov=Math.max(0,Math.min(z1,c.bot)-Math.max(z0,c.top)); invE+=ov/c.E; aa+=ov*c.a; });
+     tr.push({z0,z1,E:cou/invE,a:aa/cou}); }
+    const W=GT_W.reduce((s,x)=>s+x,0), Ec=tr[0].E, ac=tr[0].a;
+    const Ed=W/tr.reduce((s,x,i)=>s+GT_W[i]/x.E,0);
+    const Sc=ac/9/Ec*lam.lc*B*q*100;
+    const Sd=tr.reduce((s,x,i)=>s+2/9/x.E*GT_W[i]/W*0.6*Math.pow(lam.ld*B/0.6,x.a),0)*q*100;
+    const S=Sc+Sd;
+    return {methode:'menard',B,L,D,q,circ,lc:lam.lc,ld:lam.ld,cou,tranches:tr,Ec,Ed,ac,Sc,Sd,S,K:10000*q/S};
+   }
+   function gtRadier(p){
+    const L=+p.L,B=+p.B,q=+p.q_kPa,d=+p.diff||0.5,pas=+p.pas||1;
+    const lay=(p.couches||[]).filter(c=>+c.h>0); if(!lay.length) throw new Error('Aucune couche de sol');
+    const H=lay.reduce((s,c)=>s+(+c.h),0), N=Math.max(1,Math.round(H/pas));
+    const at=zm=>{ let z=0; for(const c of lay){ z+=+c.h; if(zm<=z+1e-9) return c; } return lay[lay.length-1]; };
+    const rows=[]; let tot=0;
+    for(let k=0;k<N;k++){ const Lk=L+2*k*pas*d, Bk=B+2*k*pas*d, sig=q*L*B/(Lk*Bk), c=at((k+0.5)*pas);
+     const s=sig*(+c.a||0.5)/Math.max(+c.E,0.01)*pas; rows.push({z0:k*pas,z:(k+1)*pas,E:+c.E,a:+c.a||0.5,sig,Lk,Bk,s}); tot+=s; }
+    return {methode:'radier',L,B,q,diff:d,pas,H,rows,S_mm:tot};
+   }
+   function gtMacro4(x,y,ze,c,d,zs,af,bf,ha,hb,hc,Ea,Eb,Ec){
+    if(!ha) return 0; const ni=12;
+    const ab=c-af/2-x, aa=ab+af, ba=d-bf/2-y, bb=ba+bf, zza=ze<zs?0:ze-zs, hbc=ha+hb+hc, segs=[];
+    if(zs>ha){ if(!hb) return 0;
+     if(zs>ha+hb){ if(hc) segs.push([zza,hbc-zs,Ec]); }
+     else if(ze>ha+hb){ if(hc) segs.push([ze-zs,hbc-zs,Ec]); }
+     else { segs.push([zza,ha+hb-zs,Eb]); if(hc){ const zb=ha+hb-zs; segs.push([zb,zb+hc,Ec]); } }
+    } else if(ze>ha){
+     if(ze>ha+hb){ if(hc) segs.push([ze-zs,hbc-zs,Ec]); }
+     else { if(!hb) return 0; segs.push([ze-zs,ha+hb-zs,Eb]); if(hc) segs.push([ha+hb-zs,hbc-zs,Ec]); }
+    } else { segs.push([zza,ha-zs,Ea]); if(hb){ segs.push([ha-zs,ha-zs+hb,Eb]); if(hc) segs.push([ha-zs+hb,ha-zs+hb+hc,Ec]); } }
+    let wb=0;
+    for(const [za,zb,E] of segs){ const h=zb-za; if(h===0) continue; let z=za, wa=0;
+     for(let j=0;j<=ni;j++){ if(j>0) z+=h/ni; let kk=(j%2===0)?2:4; if(j===0||j===ni) kk=1;
+      for(const [a,b,ka] of [[aa,bb,1],[ab,bb,-1],[aa,ba,-1],[ab,ba,1]]){ if(a*b===0) continue;
+       const ua=a*a+b*b+z*z, ub=z===0?3.14159265/2*Math.sign(a*b):Math.atan(a*b/z/Math.sqrt(ua));
+       wa+=kk*ka/2/3.14159265*(ub+a*b*z*(ua+z*z)/(a*a+z*z)/(b*b+z*z)/Math.sqrt(ua)); } }
+     wb+=wa*h/3/ni/E; }
+    return wb;
+   }
+   function gtBoussinesq(p){
+    const C=(p.couches||[]).slice(0,3).map(c=>({h:+c.h||0,E:+c.E||1})); while(C.length<3) C.push({h:0,E:1});
+    const [ha,hb,hc]=C.map(c=>c.h), [Ea,Eb,Ec]=C.map(c=>c.E);
+    const sem=(p.semelles||[]).filter(s=>+s.a>0&&+s.b>0);
+    const pts=(p.points||[]).map(pt=>{ const parts=sem.map(s=>(+s.Q_kN/1000)/(+s.a)/(+s.b)*gtMacro4(+pt.x,+pt.y,+pt.z,+s.x,+s.y,+s.z,+s.a,+s.b,ha,hb,hc,Ea,Eb,Ec)*1000);
+     return {x:+pt.x,y:+pt.y,z:+pt.z,parts,s_mm:parts.reduce((u,v)=>u+v,0)}; });
+    let dmax=null;
+    for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++){ const L=Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y); if(L<1e-6) continue;
+     const ds=Math.abs(pts[i].s_mm-pts[j].s_mm); if(!dmax||ds>dmax.ds) dmax={i,j,ds,L}; }
+    return {methode:'boussinesq',ha,hb,hc,Ea,Eb,Ec,semelles:sem,points:pts,Smax_mm:pts.length?Math.max(...pts.map(x=>x.s_mm)):0,dmax};
+   }
+   function gtPdl(p){
+    const M=+p.M,Me=+p.Menclume,Mp=+p.Mpointe,Mt=+p.Mtige,H=+p.H,A=+p.A,g=10;
+    const rows=(p.mesures||[]).filter(r=>+r.coups>0).map(r=>{ const e=(+r.pas||0.2)/(+r.coups), n=+r.tiges||1;
+     return {z:+r.z,coups:+r.coups,tiges:n,pas:+r.pas||0.2,e,Rd:(M*g*H/(e*A))*(M/(M+Me+Mp+Mt*n))/1e6}; });
+    const mn=rows.reduce((a,r)=>(!a||r.Rd<a.Rd)?r:a,null), mx=rows.reduce((a,r)=>(!a||r.Rd>a.Rd)?r:a,null);
+    return {methode:'pdl',M,Me,Mp,Mt,H,A,g,rows,min:mn,max:mx};
+   }
+   function gtBattage(p){
+    const M=+p.M,P=+p.P,h=+p.h,e=+p.e,S=+p.S,Lf=+p.Lf,g=9.81;
+    const El=({bois:1e10,beton:2e10,acier:21e10})[p.pieu||'beton'], c=(p.pieu==='bois'?0.6:0.3)/1000;
+    const R={
+     hollandais:M*M*g*h/6/e/(M+P)/1000,
+     redtenbacher:S*El/3/Lf*(-e+Math.sqrt(e*e+2*Lf*M*M*g*h/S/El/(M+P)))/1000,
+     crandall:M*M*g*h/(+p.nprime||4)/(e+(+p.e1x2||0)/2)/(M+P)/1000,
+     hiley:M*M*g*(h-(+p.h0||0))/4/(+p.eprime||e)/(M+P)*Math.min(M/P,1)/1000,
+     delmag:(+p.Emouton||0)*M*(+p.sigma||0.4)/(e+c*Lf)/(M+P)/1000
+    };
+    return {methode:'battage',M,P,h,e,S,Lf,El,c,pieu:p.pieu||'beton',R,Rmin:Math.min(...Object.values(R).filter(v=>v>0))};
+   }
+   /* ---------- données ---------- */
+   const GT_METH=[['menard','Tassement d\'une semelle — pressiomètre (Ménard)'],['radier','Tassement d\'un radier — diffusion'],['boussinesq','Tassement de points — Boussinesq'],['pdl','Pénétromètre dynamique — résistance de pointe'],['battage','Battage — force portante d\'un pieu']];
+   /* α de Ménard, sols normalement consolidés (tableau du classeur / Fascicule 62) */
+   const GT_NAT={'Tourbe':1,'Argile':0.67,'Limon':0.5,'Sable':0.33,'Grave':0.25,'Rocher':0.5};
+   function gtDefault(t){ return { nom:t.nom||t.quoi||'', methode:'menard', statut:null, resultats:null,
+    forme:'rect', B:2.5, L:3, D:0.5, q_kPa:200, sAdm_cm:'',
+    couches:[{nat:'Limon',h:1.5,E:5,a:0.5},{nat:'Argile',h:3,E:10,a:0.67},{nat:'Sable',h:10,E:25,a:0.33}],
+    radier:{L:9,B:9,q_kPa:34.5,diff:0.5,pas:1.5,sAdm_mm:''},
+    rcouches:[{nat:'Argile',h:6,E:1,a:0.5},{nat:'Limon',h:6,E:2,a:0.5},{nat:'Sable',h:6,E:10,a:0.33}],
+    semelles:[{x:0,y:0,z:1,a:3,b:3,Q_kN:2700},{x:5,y:0,z:2,a:1,b:1,Q_kN:300}],
+    bcouches:[{h:5,E:200},{h:1,E:20},{h:0,E:1}],
+    bpoints:[{x:0,y:0,z:1},{x:5,y:0,z:2}],
+    pdl:{M:63.5,Menclume:18,Mpointe:0.62,Mtige:6,H:0.75,A:0.002,mesures:[{z:0.2,coups:2,pas:0.2,tiges:1},{z:0.4,coups:4,pas:0.2,tiges:1},{z:0.6,coups:5,pas:0.2,tiges:1},{z:0.8,coups:7,pas:0.2,tiges:1},{z:1,coups:20,pas:0.2,tiges:1}]},
+    bat:{M:500,P:100,h:1,e:0.2,S:0.05,Lf:1,pieu:'beton',nprime:4,e1x2:0.1,h0:0.5,eprime:0.2,sigma:0.4,Emouton:200}
+   }; }
+   function gtData(t){ if(!t.dimGT) t.dimGT=gtDefault(t); return t.dimGT; }
+   function gtCompute(t){ const dp=gtData(t), m=dp.methode;
+    if(m==='menard') return Object.assign(gtMenardCouches({B:dp.B,L:dp.forme==='circ'?dp.B:dp.L,D:dp.D,q_MPa:(+dp.q_kPa)/1000,circulaire:dp.forme==='circ',couches:dp.couches}),{sAdm_cm:dp.sAdm_cm===''?null:+dp.sAdm_cm,couches:dp.couches});
+    if(m==='radier') return Object.assign(gtRadier(Object.assign({},dp.radier,{couches:dp.rcouches})),{sAdm_mm:dp.radier.sAdm_mm===''?null:+dp.radier.sAdm_mm,couches:dp.rcouches});
+    if(m==='boussinesq') return gtBoussinesq({couches:dp.bcouches,semelles:dp.semelles,points:dp.bpoints});
+    if(m==='pdl') return gtPdl(dp.pdl);
+    if(m==='battage') return gtBattage(dp.bat);
+    throw new Error('Méthode inconnue'); }
+   function gtComplet(dp){ const m=dp.methode;
+    if(m==='menard') return +dp.B>0&&(dp.forme==='circ'||+dp.L>0)&&+dp.q_kPa>0&&(dp.couches||[]).some(c=>+c.h>0&&+c.E>0);
+    if(m==='radier') return +dp.radier.L>0&&+dp.radier.B>0&&+dp.radier.q_kPa>0&&(dp.rcouches||[]).some(c=>+c.h>0&&+c.E>0);
+    if(m==='boussinesq') return (dp.semelles||[]).some(s=>+s.a>0&&+s.b>0)&&(dp.bpoints||[]).length>0&&+(dp.bcouches[0]||{}).h>0;
+    if(m==='pdl') return +dp.pdl.M>0&&+dp.pdl.A>0&&(dp.pdl.mesures||[]).some(r=>+r.coups>0);
+    if(m==='battage') return +dp.bat.M>0&&+dp.bat.e>0;
+    return false; }
+   /* ---------- formulaire ---------- */
+   const F=(x,n)=>(x==null||isNaN(+x))?'—':(+x).toFixed(n==null?2:n).replace('.',',');
+   const num=(path,val,lab,unit,step,min)=>'<label>'+lab+' <input type="number" inputmode="decimal" step="'+(step||'any')+'"'+(min!=null?' min="'+min+'"':'')+' data-gt="'+path+'" name="gt-'+path+'" value="'+esc(val==null?'':String(val))+'">'+(unit?' '+unit:'')+'</label>';
+   function gtTable(list,rows,cols,addLbl){
+    return '<div class="gtTW"><table class="gtT"><thead><tr>'+cols.map(c=>'<th>'+c.lab+(c.unit?' <small>('+c.unit+')</small>':'')+'</th>').join('')+'<th aria-label="Supprimer"></th></tr></thead><tbody>'
+     +rows.map((r,i)=>'<tr>'+cols.map(c=>'<td>'+(c.sel?'<select data-gt-row="'+list+'|'+i+'|'+c.k+'" aria-label="'+c.lab+'">'+c.sel.map(o=>'<option'+(r[c.k]===o?' selected':'')+'>'+o+'</option>').join('')+'</select>'
+      :'<input type="number" inputmode="decimal" step="any" data-gt-row="'+list+'|'+i+'|'+c.k+'" name="gt-'+list+'-'+i+'-'+c.k+'" aria-label="'+c.lab+' ligne '+(i+1)+'" value="'+esc(r[c.k]==null?'':String(r[c.k]))+'">')+'</td>').join('')
+      +'<td><button type="button" class="gtDel" data-gt-del="'+list+'|'+i+'" aria-label="Supprimer la ligne '+(i+1)+'" title="Supprimer la ligne">✕</button></td></tr>').join('')
+     +'</tbody></table></div><button type="button" class="ghost gtAdd" data-gt-add="'+list+'">＋ '+addLbl+'</button>';
+   }
+   const COLS_SOL=[{k:'nat',lab:'Sol',sel:Object.keys(GT_NAT)},{k:'h',lab:'Épaisseur',unit:'m'},{k:'E',lab:'E<sub>M</sub>',unit:'MPa'},{k:'a',lab:'α'}];
+   function gtStepHtml(n,dp){
+    const m=dp.methode;
+    if(n===1){
+     let h='<h5>1 · Méthode et géométrie</h5><label>Méthode <select data-gt="methode" name="gt-methode">'+GT_METH.map(x=>'<option value="'+x[0]+'"'+(m===x[0]?' selected':'')+'>'+x[1]+'</option>').join('')+'</select></label>';
+     if(m==='menard') h+='<label>Forme <select data-gt="forme" name="gt-forme"><option value="rect"'+(dp.forme!=='circ'?' selected':'')+'>Rectangulaire / carrée</option><option value="circ"'+(dp.forme==='circ'?' selected':'')+'>Circulaire</option></select></label><p class="pcNote">B, '+(dp.forme==='circ'?'':'L, ')+'D et q se règlent sur le schéma.</p>';
+     else if(m==='radier') h+='<p class="pcNote">Longueur, largeur, contrainte et diffusion se règlent sur le schéma.</p>'+num('radier.pas',dp.radier.pas,'Pas de calcul en profondeur','m',0.1,0.1);
+     else if(m==='boussinesq') h+='<p class="pcNote">Semelles : centre (x, y), niveau d\'assise z sous le terrain naturel, côtés a × b, charge Q.</p>'+gtTable('semelles',dp.semelles,[{k:'x',lab:'x',unit:'m'},{k:'y',lab:'y',unit:'m'},{k:'z',lab:'z',unit:'m'},{k:'a',lab:'a',unit:'m'},{k:'b',lab:'b',unit:'m'},{k:'Q_kN',lab:'Q',unit:'kN'}],'Ajouter une semelle');
+     else if(m==='pdl') h+=num('pdl.M',dp.pdl.M,'Masse du mouton','kg',0.1,0)+num('pdl.H',dp.pdl.H,'Hauteur de chute','m',0.01,0)+num('pdl.Menclume',dp.pdl.Menclume,'Masse enclume + guide','kg',0.1,0)+num('pdl.Mpointe',dp.pdl.Mpointe,'Masse de la pointe','kg',0.01,0)+num('pdl.Mtige',dp.pdl.Mtige,'Masse d\'une tige','kg',0.1,0)+num('pdl.A',dp.pdl.A,'Section de la pointe','m²',0.0001,0);
+     else if(m==='battage') h+='<label>Pieu <select data-gt="bat.pieu" name="gt-bat.pieu">'+[['bois','Bois'],['beton','Béton armé'],['acier','Acier']].map(o=>'<option value="'+o[0]+'"'+(dp.bat.pieu===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></label><p class="pcNote">Masse du mouton, hauteur de chute et refus se règlent sur le schéma.</p>'+num('bat.S',dp.bat.S,'Section du pieu','m²',0.001,0)+num('bat.Lf',dp.bat.Lf,'Longueur de fiche','m',0.1,0);
+     return h;
+    }
+    if(n===2){
+     if(m==='menard') return '<h5>2 · Sol (couches sous le terrain naturel)</h5>'+gtTable('couches',dp.couches,COLS_SOL,'Ajouter une couche')+'<p class="pcNote">E<sub>M</sub> : module pressiométrique. α : coefficient rhéologique (proposé selon le sol, sol normalement consolidé — à ajuster d\'après le rapport géotechnique). La dernière couche est prolongée en profondeur.</p>';
+     if(m==='radier') return '<h5>2 · Sol (couches sous le radier)</h5>'+gtTable('rcouches',dp.rcouches,COLS_SOL,'Ajouter une couche')+'<p class="pcNote">Le calcul s\'arrête à la base de la dernière couche saisie.</p>';
+     if(m==='boussinesq') return '<h5>2 · Sol (3 couches élastiques au plus)</h5>'+gtTable('bcouches',dp.bcouches,[{k:'h',lab:'Épaisseur',unit:'m'},{k:'E',lab:'E (Young)',unit:'MPa'}],'Ajouter une couche')+'<p class="pcNote">Niveau zéro = terrain naturel. Au-delà de la base des couches, le sol est considéré indéformable.</p>';
+     if(m==='pdl') return '<h5>2 · Mesures</h5>'+gtTable('pdl.mesures',dp.pdl.mesures,[{k:'z',lab:'Profondeur',unit:'m'},{k:'coups',lab:'Nombre de coups'},{k:'pas',lab:'Enfoncement mesuré',unit:'m'},{k:'tiges',lab:'Nb de tiges'}],'Ajouter une mesure');
+     if(m==='battage') return '<h5>2 · Paramètres des formules</h5>'+num('bat.P',dp.bat.P,'Masses entraînées (pieu + casque)','kg',1,0)+num('bat.nprime',dp.bat.nprime,'Crandall : coefficient de réduction n′','',0.1,0)+num('bat.e1x2',dp.bat.e1x2,'Crandall : raccourcissement élastique 2e₁','m',0.001,0)+num('bat.eprime',dp.bat.eprime,'Hiley : refus sous le dernier coup e′','m',0.001,0)+num('bat.h0',dp.bat.h0,'Hiley : chute à enfoncement nul h₀','m',0.01,0)+num('bat.Emouton',dp.bat.Emouton,'Delmag : énergie du mouton','J',1,0)+num('bat.sigma',dp.bat.sigma,'Delmag : coefficient (0,4 à 0,6)','',0.05,0);
+    }
+    if(n===3){
+     if(m==='menard') return '<h5>3 · Critère</h5>'+num('sAdm_cm',dp.sAdm_cm,'Tassement admissible (facultatif)','cm',0.1,0)+'<p class="pcNote">q : contrainte apportée au niveau de la fondation (ELS). Laisser vide pour ne pas vérifier de critère.</p>';
+     if(m==='radier') return '<h5>3 · Critère</h5>'+num('radier.sAdm_mm',dp.radier.sAdm_mm,'Tassement admissible (facultatif)','mm',1,0);
+     if(m==='boussinesq') return '<h5>3 · Points étudiés</h5>'+gtTable('bpoints',dp.bpoints,[{k:'x',lab:'x',unit:'m'},{k:'y',lab:'y',unit:'m'},{k:'z',lab:'z',unit:'m'}],'Ajouter un point');
+     return '';
+    }
+   }
+   /* ---------- schéma coté ---------- */
+   /* profondeur → ordonnée, par morceaux : chaque couche a au moins 28 px pour rester lisible */
+   function gtDepthMap(couches,zmax,Htot){
+    const bnd=[0]; let z=0; couches.filter(c=>+c.h>0).forEach((c,i,arr)=>{ z=(i===arr.length-1)?zmax:Math.min(zmax,z+(+c.h)); if(z>bnd[bnd.length-1]) bnd.push(z); });
+    if(bnd[bnd.length-1]<zmax) bnd.push(zmax);
+    const n=bnd.length-1, minH=44; const raw=[]; for(let i=0;i<n;i++) raw.push((bnd[i+1]-bnd[i])/zmax*Htot);
+    let px=raw.map(r=>Math.max(minH,r)); const extra=px.reduce((s,x)=>s+x,0)-Htot; if(extra>0){ const big=px.map((x,i)=>x>minH?x-minH:0), sb=big.reduce((s,x)=>s+x,0)||1; px=px.map((x,i)=>x-extra*big[i]/sb); }
+    const yb=[0]; px.forEach(h=>yb.push(yb[yb.length-1]+h));
+    const Y=zz=>{ if(zz<=0) return 0; for(let i=0;i<n;i++){ if(zz<=bnd[i+1]) return yb[i]+(zz-bnd[i])/(bnd[i+1]-bnd[i])*(yb[i+1]-yb[i]); } return yb[n]; };
+    return {Y,bnd,yb};
+   }
+   function gtLayersSvg(couches,x0,w,y0,map,ST){
+    let g=''; const L=couches.filter(c=>+c.h>0);
+    for(let i=0;i<map.bnd.length-1;i++){ const c=L[Math.min(i,L.length-1)]; const ya=y0+map.yb[i], yb=y0+map.yb[i+1];
+     g+='<rect x="'+x0+'" y="'+ya+'" width="'+w+'" height="'+(yb-ya)+'" fill="'+(i%2?'color-mix(in srgb,var(--ds-accent,#FFC400) 8%,transparent)':'none')+'" stroke="'+ST+'" stroke-width="0.8"/>'
+      +'<text x="'+(x0+w+8)+'" y="'+((ya+yb)/2+4)+'" class="dimLbl" font-size="12">'+esc((c.nat?c.nat+' · ':'')+'E = '+F(c.E,1)+' MPa'+(c.nat!=null?' · α = '+F(c.a,2):''))+'</text>'
+      +(i<map.bnd.length-2||i<L.length-1?'<text x="'+(x0-6)+'" y="'+(yb+4)+'" text-anchor="end" class="dimLbl" font-size="11">'+esc(F(map.bnd[i+1],2)+' m')+'</text>':''); }
+    return g;
+   }
+   function gtSvg(dp){
+    const DC=window.dimCote, FL=window.dimField, parts=[], boxes=[]; const add=c=>{ parts.push(c.svg); boxes.push(c.box); };
+    const SB='var(--ds-draw,#2e6ea6)', ST='var(--ds-ink-soft,#8a8a8a)', m=dp.methode;
+    const mk='<defs><marker id="gtArr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="'+SB+'"/></marker></defs>';
+    const arrow=(x,y1,y2)=>'<line x1="'+x+'" y1="'+y1+'" x2="'+x+'" y2="'+y2+'" stroke="'+SB+'" stroke-width="1.6" marker-end="url(#gtArr)"/>';
+    const fin=(g,aria)=>{ const fr=window.dimFrame(boxes); return '<svg viewBox="'+fr.vb+'" width="100%" height="'+Math.round(Math.min(320,fr.h))+'" class="pcSvg" role="img" aria-label="'+aria+'">'+mk+g+parts.join('')+'</svg>'; };
+    if(m==='menard'||m==='radier'){
+     const isR=m==='radier', B=isR?(+dp.radier.B||9):(+dp.B||2.5), D=isR?0:Math.max(0,+dp.D||0);
+     const zmax=isR?Math.max(1,(dp.rcouches||[]).reduce((s,c)=>s+(+c.h||0),0)):D+8*B;
+     const W=300, Htot=230, map=gtDepthMap(isR?dp.rcouches:dp.couches,zmax,Htot), fw=Math.max(60,Math.min(180,isR?180:B*40)), x0=-W/2, y0=0;
+     const Yd=z=>y0+map.Y(z), fh=isR?14:Math.max(12,Math.min(26,Yd(D)-y0+12));
+     let g=gtLayersSvg(isR?dp.rcouches:dp.couches,x0,W,y0,map,ST)+'<line x1="'+x0+'" y1="'+y0+'" x2="'+(x0+W)+'" y2="'+y0+'" stroke="'+SB+'" stroke-width="1.4"/>';
+     const yb=Yd(D), yt=yb-fh;
+     g+='<rect x="'+(-fw/2)+'" y="'+yt+'" width="'+fw+'" height="'+fh+'" fill="var(--ds-bg,#fff)" stroke="'+SB+'" stroke-width="2"/>';
+     boxes.push({x:x0,y:yt,w:W+190,h:Htot+(y0-yt)});
+     if(isR){ const d=+dp.radier.diff||0.5;
+      const hx=Math.min(W/2-fw/2-4,zmax*d*(fw/Math.max(B,0.1))); g+='<path d="M'+(-fw/2)+' '+yb+' L'+(-fw/2-hx)+' '+(y0+Htot)+' M'+(fw/2)+' '+yb+' L'+(fw/2+hx)+' '+(y0+Htot)+'" stroke="'+SB+'" stroke-width="1" stroke-dasharray="5 3" fill="none"/>';
+      const pas=+dp.radier.pas||1; for(let z=pas;z<zmax-1e-6;z+=pas) g+='<line x1="'+(x0+4)+'" y1="'+Yd(z)+'" x2="'+(x0+16)+'" y2="'+Yd(z)+'" stroke="'+ST+'" stroke-width="0.8"/>'; }
+     else { for(let i=1;i<16;i++){ const z=D+i*B/2; if(z>=zmax) break; g+='<line x1="'+(-fw/2)+'" y1="'+Yd(z)+'" x2="'+(fw/2)+'" y2="'+Yd(z)+'" stroke="'+SB+'" stroke-width="0.7" stroke-dasharray="3 3" opacity=".7"/>'; } }
+     const ya=yt-46; g+=[-fw/3,0,fw/3].map(x=>arrow(x,ya,yt-6)).join('');
+     if(isR){
+      add(DC({dir:'h',a:[-fw/2,yt],b:[fw/2,yt],off:-64,key:'gt-B',label:'B',val:dp.radier.B,unit:'m',attr:'data-gt="radier.B" min="0.1" step="0.1"',title:'Largeur du radier B'}));
+      add(FL({x:0,y:ya-60-34,align:'center',label:'q',val:dp.radier.q_kPa,unit:'kPa',attr:'data-gt="radier.q_kPa" min="0" step="any"',title:'Contrainte au niveau du radier q'}));
+      add(FL({x:x0-20,y:ya-60-34,align:'left',label:'L',val:dp.radier.L,unit:'m',attr:'data-gt="radier.L" min="0.1" step="0.1"',title:'Longueur du radier L'}));
+      add(FL({x:x0+W+20,y:ya-60-34,align:'right',label:'diffusion',val:dp.radier.diff,unit:'H/1V',attr:'data-gt="radier.diff" min="0" step="0.05"',title:'Pente de diffusion (horizontal pour 1 vertical)'}));
+     } else {
+      add(DC({dir:'h',a:[-fw/2,yt],b:[fw/2,yt],off:-64,key:'gt-B',label:dp.forme==='circ'?'Ø':'B',val:dp.B,unit:'m',attr:'data-gt="B" min="0.1" step="0.05"',title:dp.forme==='circ'?'Diamètre':'Largeur B (petit côté)'}));
+      if(D>0) add(DC({dir:'v',a:[-fw/2,y0],b:[-fw/2,yb],off:-30,key:'gt-D',label:'D',val:dp.D,unit:'m',attr:'data-gt="D" min="0" step="0.05"',title:'Profondeur d\'assise D'}));
+      else add(FL({x:x0,y:yt-36,align:'left',label:'D',val:dp.D,unit:'m',attr:'data-gt="D" min="0" step="0.05"',title:'Profondeur d\'assise D'}));
+      add(FL({x:0,y:ya-60-34,align:'center',label:'q',val:dp.q_kPa,unit:'kPa',attr:'data-gt="q_kPa" min="0" step="any"',title:'Contrainte apportée par la fondation q (ELS)'}));
+      if(dp.forme!=='circ') add(FL({x:x0+W,y:yt-36,align:'right',label:'L',val:dp.L,unit:'m',attr:'data-gt="L" min="0.1" step="0.05"',title:'Longueur L (grand côté)'}));
+     }
+     return fin(g,isR?'Radier sur sol en couches, diffusion des contraintes':'Semelle sur sol en couches, tranches de B/2');
+    }
+    if(m==='boussinesq'){
+     const S=(dp.semelles||[]).filter(s=>+s.a>0&&+s.b>0), P=dp.bpoints||[];
+     const xs=[...S.flatMap(s=>[+s.x-s.a/2,+s.x+s.a/2]),...P.map(p=>+p.x)], ys=[...S.flatMap(s=>[+s.y-s.b/2,+s.y+s.b/2]),...P.map(p=>+p.y)];
+     const xa=Math.min(...xs,0),xb=Math.max(...xs,1),ya=Math.min(...ys,0),yb=Math.max(...ys,1); const sc=Math.min(280/Math.max(xb-xa,0.1),170/Math.max(yb-ya,0.1));
+     const X=x=>(x-(xa+xb)/2)*sc, Y=y=>-(y-(ya+yb)/2)*sc; let g='';
+     S.forEach((s,i)=>{ g+='<rect x="'+X(+s.x-s.a/2)+'" y="'+Y(+s.y+s.b/2)+'" width="'+(s.a*sc)+'" height="'+(s.b*sc)+'" fill="none" stroke="'+SB+'" stroke-width="2"/><text x="'+X(+s.x)+'" y="'+(Y(+s.y-s.b/2)+16)+'" text-anchor="middle" class="dimLbl" font-size="12">S'+(i+1)+' · '+F(s.a)+' × '+F(s.b)+' m · '+F(s.Q_kN,0)+' kN</text>'; boxes.push({x:X(+s.x-s.a/2),y:Y(+s.y+s.b/2),w:s.a*sc,h:s.b*sc+22}); });
+     P.forEach((p,i)=>{ const x=X(+p.x),y=Y(+p.y); g+='<path d="M'+(x-6)+' '+(y-6)+'L'+(x+6)+' '+(y+6)+'M'+(x-6)+' '+(y+6)+'L'+(x+6)+' '+(y-6)+'" stroke="var(--ds-danger,#B4433A)" stroke-width="2"/><text x="'+(x+9)+'" y="'+(y-8)+'" class="dimLbl" font-size="12">P'+(i+1)+'</text>'; boxes.push({x:x-8,y:y-22,w:40,h:30}); });
+     return fin(g,'Vue en plan des semelles et des points étudiés');
+    }
+    if(m==='pdl'){
+     const R=gtPdl(dp.pdl).rows; const zm=Math.max(1,...R.map(r=>r.z)), rm=Math.max(1,...R.map(r=>r.Rd)); const sv=220/zm, sh=300/rm; let g='<line x1="0" y1="0" x2="300" y2="0" stroke="'+ST+'"/><line x1="0" y1="0" x2="0" y2="'+(zm*sv)+'" stroke="'+ST+'"/>';
+     R.forEach(r=>{ const y0=(r.z-r.pas)*sv, h=Math.max(2,r.pas*sv-2); g+='<rect x="0" y="'+(y0+1)+'" width="'+Math.max(1,r.Rd*sh)+'" height="'+h+'" fill="color-mix(in srgb,var(--ds-accent,#FFC400) 35%,transparent)" stroke="'+SB+'" stroke-width="0.8"/>'; });
+     g+='<text x="300" y="-8" text-anchor="end" class="dimLbl" font-size="12">R<tspan font-size="9" dy="3">d</tspan><tspan dy="-3"> (MPa) → '+F(rm,1)+'</tspan></text><text x="-6" y="'+(zm*sv)+'" text-anchor="end" class="dimLbl" font-size="12">'+F(zm,2)+' m</text>';
+     boxes.push({x:-60,y:-24,w:370,h:zm*sv+30});
+     return fin(g,'Profil de résistance dynamique de pointe');
+    }
+    /* battage */
+    const b=dp.bat; let g='<line x1="-150" y1="120" x2="150" y2="120" stroke="'+SB+'" stroke-width="1.4"/><rect x="-14" y="40" width="28" height="200" fill="none" stroke="'+SB+'" stroke-width="2"/><rect x="-34" y="-60" width="68" height="40" fill="none" stroke="'+SB+'" stroke-width="2"/>'+arrow(0,-14,34);
+    boxes.push({x:-150,y:-60,w:300,h:300});
+    add(FL({x:44,y:-56,align:'left',label:'M',val:b.M,unit:'kg',attr:'data-gt="bat.M" min="0" step="1"',title:'Masse du mouton M'}));
+    add(DC({dir:'v',a:[-14,-20],b:[-14,40],off:-60,key:'gt-h',label:'h',val:b.h,unit:'m',attr:'data-gt="bat.h" min="0" step="0.05"',title:'Hauteur de chute h'}));
+    add(FL({x:24,y:200,align:'left',label:'e (refus)',val:b.e,unit:'m',attr:'data-gt="bat.e" min="0.0001" step="0.001"',title:'Refus par coup e'}));
+    return fin(g,'Pieu battu, mouton et hauteur de chute');
+   }
+   /* ---------- résultats et note ---------- */
+   function gtResultatsHtml(r){
+    let h='<h5>Résultats</h5>';
+    if(r.methode==='menard') h+='<div class="pcDimBox"><b>Tassement</b><p class="pcNote">S<sub>c</sub> = '+F(r.Sc)+' cm · S<sub>d</sub> = '+F(r.Sd)+' cm · <b>S = '+F(r.S)+' cm</b>'+(r.sAdm_cm!=null?' '+(r.S<=r.sAdm_cm?'≤':'>')+' '+F(r.sAdm_cm)+' cm → '+(r.S<=r.sAdm_cm?'✓':'⚠ non vérifié'):'')+'</p><p class="pcNote">E<sub>c</sub> = '+F(r.Ec,1)+' MPa · E<sub>d</sub> = '+F(r.Ed,1)+' MPa · raideur k = '+F(r.K,0)+' t/m³</p></div>';
+    if(r.methode==='radier') h+='<div class="pcDimBox"><b>Tassement</b><p class="pcNote"><b>S = '+F(r.S_mm,1)+' mm</b> sur '+r.rows.length+' tranches de '+F(r.pas)+' m'+(r.sAdm_mm!=null?' → '+(r.S_mm<=r.sAdm_mm?'✓':'⚠ non vérifié'):'')+'</p></div>';
+    if(r.methode==='boussinesq') h+='<div class="pcDimBox"><b>Tassements</b>'+r.points.map((p,i)=>'<p class="pcNote">P'+(i+1)+' ('+F(p.x)+' ; '+F(p.y)+' ; z = '+F(p.z)+') : <b>'+F(p.s_mm)+' mm</b></p>').join('')+'</div>';
+    if(r.methode==='pdl') h+='<div class="pcDimBox"><b>Résistance de pointe</b><p class="pcNote">R<sub>d</sub> min = <b>'+F(r.min&&r.min.Rd)+' MPa</b> à '+F(r.min&&r.min.z)+' m · max = '+F(r.max&&r.max.Rd)+' MPa à '+F(r.max&&r.max.z)+' m</p></div>';
+    if(r.methode==='battage') h+='<div class="pcDimBox"><b>Force portante</b>'+Object.entries(r.R).map(([k,v])=>'<p class="pcNote">'+({hollandais:'Hollandais',redtenbacher:'Redtenbacher',crandall:'Crandall',hiley:'Hiley',delmag:'Delmag (Diesel)'})[k]+' : <b>'+F(v,2)+' kN</b></p>').join('')+'</div>';
+    return h+'<button type="button" class="ghost pcBtnSm" data-gt-act="printNote">🖶 Voir la note</button>';
+   }
+   function gtNoteCalculHtml(t,dp,res){ return ncFormat(gtNoteCalculHtml0(t,dp,res),{t,dp,res,kind:'geo'}); }
+   function gtNoteCalculHtml0(t,dp,r){
+    const nom=esc(dp.nom||t.nom||'Ouvrage'); let h='<div class="pcNC"><h3>Note de calcul — '+nom+'</h3>';
+    const solT=(C,alpha)=>'<table class="pcNCt"><tr><th>Couche</th><th>Sol</th><th>Épaisseur</th><th>E</th>'+(alpha?'<th>α</th>':'')+'</tr>'+C.filter(c=>+c.h>0||c.h==='0'||c.h===0).map((c,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(c.nat||'—')+'</td><td>'+F(c.h)+' m</td><td>'+F(c.E,1)+' MPa</td>'+(alpha?'<td>'+F(c.a,2)+'</td>':'')+'</tr>').join('')+'</table>';
+    if(r.methode==='menard'){
+     h+='<p class="pcNote">Tassement pressiométrique (méthode de Ménard, Fascicule 62 titre V / NF P94-261) · '+todayStr()+'</p>'
+      +'<h5>Hypothèses</h5><p class="pcNote">Fondation '+(r.circ?'circulaire Ø = '+F(r.B)+' m':'rectangulaire B = '+F(r.B)+' m × L = '+F(r.L)+' m')+' · assise à D = '+F(r.D)+' m · contrainte apportée q = '+F(r.q*1000,0)+' kPa (ELS) · sol découpé en 16 tranches de B/2 = '+F(r.cou)+' m sous la base.</p>'
+      +'<h5>Données de sol</h5>'+solT(r.couches,true)
+      +'<h5>Coefficients de forme</h5><p class="pcNote">L/B = '+F(r.L/r.B)+' → λ<sub>c</sub> = '+F(r.lc,3)+' · λ<sub>d</sub> = '+F(r.ld,3)+(r.circ?' (fondation circulaire)':' (interpolation linéaire du tableau du Fascicule 62)')+'.</p>'
+      +'<h5>Modules équivalents</h5><table class="pcNCt"><tr><th>Tranche</th><th>Profondeur</th><th>E moyen</th><th>α moyen</th></tr>'+r.tranches.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+F(x.z0)+' → '+F(x.z1)+' m</td><td>'+F(x.E,1)+' MPa</td><td>'+F(x.a,2)+'</td></tr>').join('')+'</table>'
+      +'<p class="pcNote">E<sub>c</sub> = E<sub>1</sub> = '+F(r.Ec,2)+' MPa · 4/E<sub>d</sub> = 1/E<sub>1</sub> + 1/(0,85·E<sub>2</sub>) + 1/E<sub>3/5</sub> + 1/(2,5·E<sub>6/8</sub>) + 1/(2,5·E<sub>9/16</sub>) → E<sub>d</sub> = '+F(r.Ed,2)+' MPa (moyennes harmoniques par tranche).</p>'
+      +'<h5>Tassements</h5><p class="pcNote">S<sub>c</sub> = α·q·λ<sub>c</sub>·B / (9·E<sub>c</sub>) = '+F(r.ac,2)+' × '+F(r.q,3)+' × '+F(r.lc,3)+' × '+F(r.B)+' / (9 × '+F(r.Ec,2)+') = <b>'+F(r.Sc,2)+' cm</b><br>S<sub>d</sub> = 2·q·B<sub>0</sub>·(λ<sub>d</sub>·B/B<sub>0</sub>)<sup>α</sup> / (9·E<sub>d</sub>), B<sub>0</sub> = 0,60 m, α propre à chaque tranche = <b>'+F(r.Sd,2)+' cm</b><br>S = S<sub>c</sub> + S<sub>d</sub> = <b>'+F(r.S,2)+' cm</b> · raideur surfacique k = 10 000·q/S = '+F(r.K,0)+' t/m³.</p>'
+      +(r.sAdm_cm!=null?'<p class="pcNote">Critère : S = '+F(r.S)+' cm '+(r.S<=r.sAdm_cm?'≤':'>')+' '+F(r.sAdm_cm)+' cm → '+(r.S<=r.sAdm_cm?'vérifié':'⚠ NON vérifié — tassement supérieur à l\'admissible')+'.</p>':'')
+      +'<p class="pcNote">⚠ Coefficients α retenus d\'après la nature du sol (sol normalement consolidé par défaut) — à confirmer par le rapport géotechnique.</p>';
+    } else if(r.methode==='radier'){
+     h+='<p class="pcNote">Tassement d\'un radier par diffusion des contraintes et modules pressiométriques · '+todayStr()+'</p>'
+      +'<h5>Hypothèses</h5><p class="pcNote">Radier L = '+F(r.L)+' m × B = '+F(r.B)+' m · contrainte q = '+F(r.q,1)+' kPa · diffusion '+F(r.diff)+' horizontal pour 1 vertical · pas '+F(r.pas)+' m jusqu\'à '+F(r.H)+' m.</p>'
+      +'<h5>Données de sol</h5>'+solT(r.couches,true)
+      +'<h5>Calcul par tranche</h5><p class="pcNote">σ<sub>k</sub> = q·L·B / (L<sub>k</sub>·B<sub>k</sub>), L<sub>k</sub> = L + 2·k·pas·diffusion (contrainte en tête de tranche) · s<sub>k</sub> = σ<sub>k</sub>·α/E·pas.</p>'
+      +'<table class="pcNCt"><tr><th>Tranche</th><th>E</th><th>α</th><th>L<sub>k</sub> × B<sub>k</sub></th><th>σ<sub>k</sub></th><th>s<sub>k</sub></th></tr>'+r.rows.map((x,i)=>'<tr><td>'+F(x.z0)+' → '+F(x.z)+' m</td><td>'+F(x.E,1)+' MPa</td><td>'+F(x.a,2)+'</td><td>'+F(x.Lk)+' × '+F(x.Bk)+' m</td><td>'+F(x.sig,2)+' kPa</td><td>'+F(x.s,2)+' mm</td></tr>').join('')+'</table>'
+      +'<h5>Tassement</h5><p class="pcNote">S = Σ s<sub>k</sub> = <b>'+F(r.S_mm,1)+' mm</b>'+(r.sAdm_mm!=null?' '+(r.S_mm<=r.sAdm_mm?'≤':'>')+' '+F(r.sAdm_mm,0)+' mm → '+(r.S_mm<=r.sAdm_mm?'vérifié':'⚠ NON vérifié — tassement supérieur à l\'admissible'):'')+'.</p>'
+      +'<p class="pcNote">⚠ La contrainte de chaque tranche est prise en tête de tranche (méthode du classeur de référence, légèrement sécuritaire) ; le sol sous la dernière couche saisie est supposé indéformable.</p>';
+    } else if(r.methode==='boussinesq'){
+     h+='<p class="pcNote">Tassement de points sous plusieurs semelles — Boussinesq (programme « Tassol », H. Thonier) · '+todayStr()+'</p>'
+      +'<h5>Hypothèses</h5><p class="pcNote">Charges uniformes sur rectangles, contrainte verticale de Boussinesq intégrée par la méthode de Simpson (12 pas par couche), déformation verticale ε = σ<sub>z</sub>/E (sans effet de Poisson). Niveau zéro = terrain naturel.</p>'
+      +'<h5>Données de sol</h5><table class="pcNCt"><tr><th>Couche</th><th>Épaisseur</th><th>E</th></tr>'+[[r.ha,r.Ea],[r.hb,r.Eb],[r.hc,r.Ec]].filter(x=>x[0]>0).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+F(x[0])+' m</td><td>'+F(x[1],0)+' MPa</td></tr>').join('')+'</table>'
+      +'<h5>Semelles</h5><table class="pcNCt"><tr><th>Semelle</th><th>Centre (x ; y)</th><th>z</th><th>a × b</th><th>Q</th><th>q</th></tr>'+r.semelles.map((s,i)=>'<tr><td>S'+(i+1)+'</td><td>'+F(s.x)+' ; '+F(s.y)+' m</td><td>'+F(s.z)+' m</td><td>'+F(s.a)+' × '+F(s.b)+' m</td><td>'+F(s.Q_kN,0)+' kN</td><td>'+F(s.Q_kN/s.a/s.b,1)+' kPa</td></tr>').join('')+'</table>'
+      +'<h5>Tassements</h5><table class="pcNCt"><tr><th>Point</th><th>(x ; y ; z)</th>'+r.semelles.map((s,i)=>'<th>dû à S'+(i+1)+'</th>').join('')+'<th>Total</th></tr>'+r.points.map((p,i)=>'<tr><td>P'+(i+1)+'</td><td>'+F(p.x)+' ; '+F(p.y)+' ; '+F(p.z)+'</td>'+p.parts.map(v=>'<td>'+F(v,2)+' mm</td>').join('')+'<td><b>'+F(p.s_mm,2)+' mm</b></td></tr>').join('')+'</table>'
+      +(r.dmax?'<p class="pcNote">Tassement différentiel maximal : '+F(r.dmax.ds,2)+' mm entre P'+(r.dmax.i+1)+' et P'+(r.dmax.j+1)+' (distance '+F(r.dmax.L)+' m, distorsion 1/'+F(r.dmax.L*1000/Math.max(r.dmax.ds,1e-9),0)+').</p>':'')
+      +'<p class="pcNote">⚠ Modules d\'Young à fixer d\'après l\'étude géotechnique ; au-delà de la base des couches saisies, le sol est supposé indéformable.</p>';
+    } else if(r.methode==='pdl'){
+     h+='<p class="pcNote">Essai au pénétromètre dynamique (NF P94-115), formule des Hollandais · '+todayStr()+'</p>'
+      +'<h5>Matériel</h5><p class="pcNote">Mouton M = '+F(r.M,1)+' kg · chute H = '+F(r.H)+' m · enclume + guide '+F(r.Me,1)+' kg · pointe '+F(r.Mp,2)+' kg · tige '+F(r.Mt,1)+' kg · section de pointe A = '+F(r.A*1e4,1)+' cm² · g = 10 m/s².</p>'
+      +'<h5>Résistance dynamique de pointe</h5><p class="pcNote">R<sub>d</sub> = (M·g·H / (e·A)) · M / (M + M<sub>enclume</sub> + M<sub>pointe</sub> + n·M<sub>tige</sub>), e = enfoncement mesuré / nombre de coups.</p>'
+      +'<table class="pcNCt"><tr><th>Profondeur</th><th>Coups</th><th>e</th><th>Tiges</th><th>R<sub>d</sub></th></tr>'+r.rows.map(x=>'<tr><td>'+F(x.z)+' m</td><td>'+x.coups+'</td><td>'+F(x.e*1000,1)+' mm</td><td>'+x.tiges+'</td><td>'+F(x.Rd,2)+' MPa</td></tr>').join('')+'</table>'
+      +'<p class="pcNote">⚠ R<sub>d</sub> est une résistance dynamique : sa conversion en portance ou en module doit être faite par le géotechnicien (corrélations locales).</p>';
+    } else if(r.methode==='battage'){
+     const lab={hollandais:'Hollandais : R = M²·g·h / (6·e·(M+P))',redtenbacher:'Redtenbacher : R = S·E/(3·L)·(−e + √(e² + 2·L·M²·g·h/(S·E·(M+P))))',crandall:'Crandall : R = M²·g·h / (n′·(e + 2e₁/2)·(M+P))',hiley:'Hiley : R = M²·g·(h−h₀) / (4·e′·(M+P)) · min(M/P ; 1)',delmag:'Delmag : R = E·M·σ / ((e + c·L)·(M+P))'};
+     h+='<p class="pcNote">Formules dynamiques de battage (annexe 11 de l\'EF9 C1 n°2, SNCF) · '+todayStr()+'</p>'
+      +'<h5>Données</h5><p class="pcNote">Mouton M = '+F(r.M,0)+' kg · masses entraînées P = '+F(r.P,0)+' kg · chute h = '+F(r.h)+' m · refus e = '+F(r.e*1000,1)+' mm · pieu '+({bois:'bois',beton:'béton armé',acier:'acier'})[r.pieu]+' (E = '+(r.El/1e9).toFixed(0)+' GPa) · S = '+F(r.S,3)+' m² · fiche L = '+F(r.Lf)+' m.</p>'
+      +'<h5>Force portante</h5><table class="pcNCt"><tr><th>Formule</th><th>R</th></tr>'+Object.entries(r.R).map(([k,v])=>'<tr><td>'+lab[k]+'</td><td>'+F(v,2)+' kN</td></tr>').join('')+'</table>'
+      +'<p class="pcNote">⚠ Le classeur de référence omet g dans quatre formules (résultat en kgf) : les valeurs sont données ici en kN avec g = 9,81 m/s². Les formules dynamiques ne remplacent pas un essai de chargement ; la plus faible valeur est à retenir avec un coefficient de sécurité adapté.</p>';
+    }
+    return h+'<p class="pcNote">⚠ Note de calcul générée automatiquement à partir des données saisies. À vérifier et valider par un ingénieur géotechnicien avant exécution.</p></div>';
+   }
+   function gtCreerNoteCalcul(t,dp){
+    const html=gtNoteCalculHtml(t,dp,dp.resultats), nom='Note de calcul '+(dp.nom||t.nom||'Géotechnique');
+    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+    doc.nom=nom; doc.ouvrage=dp.nom||t.nom||''; doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+    try{ persist(); }catch(_){ } return doc;
+   }
+   /* ---------- fiche ---------- */
+   function gtState(id){ window._dimViewGT=window._dimViewGT||{}; if(!window._dimViewGT[id]) window._dimViewGT[id]={view:'form'}; return window._dimViewGT[id]; }
+   function gtFormHtml(id,t){
+    const dp=gtData(t); const body=[1,2,3].map(n=>gtStepHtml(n,dp)).filter(Boolean).join('<hr class="pcFormSep">');
+    const cap={menard:'Semelle — coupe (tranches de B/2, hauteur non à l\'échelle)',radier:'Radier — coupe et diffusion (hauteur non à l\'échelle)',boussinesq:'Vue en plan — semelles S et points étudiés P',pdl:'Profil de résistance dynamique de pointe',battage:'Pieu battu — schéma'}[dp.methode];
+    return '<div class="pcFormSticky"><div class="pcModHead"><span class="pcModIco">'+illuSvg('geotech','ts-mini')+'</span><span class="pcModName">Tassements &amp; géotechnique</span>'+dimStatutBadgeHtml(dp)+'</div>'
+     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-gt="nom" name="gt-nom" value="'+esc(dp.nom||t.nom||'Ouvrage')+'" aria-label="Nom de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
+     +'<div class="pcDraw">'+gtSvg(dp)+'</div><p class="pcSchemaCap">'+cap+'</p></div>'
+     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
+     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'gt')+'</div>';
+   }
+   function gtRender(id){
+    window._ficheIaId=id;
+    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjGeoRoot'); const t=taskById(id); if(!wrap||!t) return;
+    const dp=gtData(t), st=gtState(id);
+    if(st.view==='note'){ wrap.innerHTML='<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📄 Note de calcul</h4></div>'+(dp.resultats?gtNoteCalculHtml(t,dp,dp.resultats):'<p class="pcNote">Aucun résultat — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>'); return; }
+    wrap.innerHTML=gtFormHtml(id,t)+(dp.resultats&&dp.resultats.methode===dp.methode?gtResultatsHtml(dp.resultats):'');
+   }
+   function gtFiche(id){
+    const mb=document.getElementById('modalBody'); const t=taskById(id); if(!mb||!t) return;
+    if(beTypeStructureNom(t.typeStructureId)!==GT_TYPE_NOM){ const old=mb.querySelector('.pjGeoRoot'); if(old) old.remove(); delete (window._dimViewGT||{})[id]; return; }
+    if(mb.querySelector('.pjGeoRoot')) return;
+    const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
+    const wrap=document.createElement('div'); wrap.className='pjGeoRoot'; wrap.setAttribute('data-dim-fiche','geo');
+    const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
+    [...mb.children].forEach(c=>{ if(c.classList.contains('close-x')||c.tagName==='H3'||c===wrap) return; c.classList.add('pjBeamHidden'); c.style.setProperty('display','none','important'); });
+    gtRender(id);
+    if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>gtClick(e,id)); wrap.addEventListener('change',e=>gtChange(e,id)); }
+   }
+   const _od_geo=window.openTaskDetail; if(typeof _od_geo==='function'){ window.openTaskDetail=function(id){ const r=_od_geo.apply(this,arguments); setTimeout(()=>{ try{ gtFiche(id); }catch(e){ console.error(e); } },750); return r; }; }
+   const getP=(o,p)=>p.split('.').reduce((a,k)=>a&&a[k],o);
+   const setP=(o,p,v)=>{ const ks=p.split('.'); const last=ks.pop(); const tg=ks.reduce((a,k)=>a[k]=a[k]||{},o); tg[last]=v; };
+   function gtClick(e,id){
+    const t=taskById(id); if(!t) return; const dp=gtData(t);
+    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ gtState(id).view='form'; gtRender(id); } else { try{ closeModal(); }catch(_){ } } return; }
+    const add=e.target.closest('[data-gt-add]'); if(add){ const L=getP(dp,add.dataset.gtAdd); if(Array.isArray(L)){ const last=L[L.length-1]||{}; const nw=Object.assign({},last);
+      if('z' in nw&&'coups' in nw) nw.z=+((+last.z||0)+(+last.pas||0.2)).toFixed(3); L.push(nw); gtRender(id); } return; }
+    const del=e.target.closest('[data-gt-del]'); if(del){ const [p,i]=del.dataset.gtDel.split('|'); const L=getP(dp,p); if(Array.isArray(L)&&L.length>1){ L.splice(+i,1); gtRender(id); } else { try{ clipToast('Il faut au moins une ligne.'); }catch(_){} } return; }
+    const ok=e.target.closest('[data-gt-act="validerForm"]'); if(ok){
+     dimValiderClick(dp,()=>gtRender(id),
+      ()=>{ try{ dp.resultats=gtCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } gtRender(id); },
+      ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } });
+     return; }
+    if(e.target.closest('[data-gt-act="printNote"]')){ gtState(id).view='note'; gtRender(id); }
+   }
+   function gtChange(e,id){
+    const t=taskById(id); if(!t) return; const dp=gtData(t), el=e.target;
+    if(el.matches('[data-gt="nom"]')){ dp.nom=el.value; t.nom=el.value; try{ persist(); }catch(_){} return; }
+    const k=el.dataset.gt; if(k){ setP(dp,k,(el.tagName==='SELECT')?el.value:(el.value===''?'':+el.value)); try{ persist(); }catch(_){} gtRender(id); return; }
+    const r=el.dataset.gtRow; if(r){ const [p,i,c]=r.split('|'); const L=getP(dp,p); if(!L||!L[+i]) return;
+     if(el.tagName==='SELECT'){ L[+i][c]=el.value; if(c==='nat'&&GT_NAT[el.value]!=null) L[+i].a=GT_NAT[el.value]; } else L[+i][c]=el.value===''?'':+el.value;
+     try{ persist(); }catch(_){} gtRender(id); }
+   }
+   /* ---------- « 🤖 Dimensionner » depuis la ligne d'ouvrage ---------- */
+   const _pjDim_geo=window.pjDimensionnerSelection;
+   window.pjDimensionnerSelection=async function(ids){
+    const rPrev= typeof _pjDim_geo==='function' ? await _pjDim_geo(ids) : {okN:0,skipTypeN:0,errN:0,incomplets:[]};
+    let okN=0, errN=0; const incomplets=[]; let lastOkT=null;
+    for(const id of (ids||[])){ const t=taskById(id); if(!t) continue; if(beTypeStructureNom(t.typeStructureId)!==GT_TYPE_NOM) continue;
+     const dp=gtData(t); if(!gtComplet(dp)){ incomplets.push(id); continue; }
+     try{ dp.resultats=gtCompute(t); dp.statut='calcule'; gtCreerNoteCalcul(t,dp); okN++; lastOkT=t; } catch(err){ console.error(err); errN++; } }
+    try{ persist(); }catch(_){ }
+    if(okN||errN||incomplets.length){
+     try{ clipToast(okN+' calcul'+(okN>1?'s':'')+' géotechnique'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'')); }catch(_){ }
+     if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const nd=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(nd&&window.pjOpenDocContenu) window.pjOpenDocContenu(nd.id); }
+     else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
+    }
+    return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
+   };
+   window.gtEngine={gtMenardCouches,gtRadier,gtBoussinesq,gtPdl,gtBattage,gtMacro4,gtLambda};
+  })();
+  /* =================== fin Tassements & géotechnique =================== */
 
   function pcResultatsHtml(res,dp,t){
    const vue=dp.vueCombo||'ELS';
