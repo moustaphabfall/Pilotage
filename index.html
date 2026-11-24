@@ -6501,6 +6501,61 @@ function dimValiderClick(dp,onEditYes,onRecalcNow,onFirstValider){
  onFirstValider&&onFirstValider();
 }
 
+/* ===================== Calcul en cours (fenêtre au premier plan) + proposition de voir les documents
+   ===================== Demandé par Moustapha le 24/11/2026 : au clic sur « ✓ Calculer » (première fois ou
+   recalcul), afficher au premier plan une fenêtre « Calcul en cours » (qui grise la fiche de l'ouvrage
+   derrière elle), lancer réellement le calcul (jusque-là seul « 🤖 Dimensionner » le faisait), verrouiller
+   la fiche (dp.statut='calcule', réutilise .dimLocked), puis proposer de voir la note de calcul et le plan
+   de ferraillage (si le module en produit un, ex. Tassements & géotechnique n'a pas de plan). */
+function dimCalcOverlayShow(){
+ let o=document.getElementById('dimCalcOverlay');
+ if(!o){ o=document.createElement('div'); o.id='dimCalcOverlay'; o.className='dimCalcOverlay';
+  o.innerHTML='<div class="dimCalcBox"><div class="dimCalcSpin"></div><b>Calcul en cours…</b></div>';
+  document.body.appendChild(o); }
+ return o;
+}
+function dimCalcOverlayHide(){ const o=document.getElementById('dimCalcOverlay'); if(o) o.remove(); }
+function dimProposerDocs(docNote,docPlan){
+ if(!docNote&&!docPlan) return;
+ const ov=document.createElement('div'); ov.className='dimCalcOverlay';
+ ov.innerHTML='<div class="dimCalcBox">'
+  +'<b>✓ Ouvrage calculé</b>'
+  +'<p>Voir la note de calcul'+(docPlan?' ou le plan de ferraillage':'')+' ?</p>'
+  +'<div style="display:flex;flex-direction:column;gap:8px;width:100%">'
+  +(docNote?'<button type="button" class="primary" data-dim-doc="note">📄 Voir la note de calcul</button>':'')
+  +(docPlan?'<button type="button" class="ghost" data-dim-doc="plan">📐 Voir le plan de ferraillage</button>':'')
+  +'<button type="button" class="ghost" data-dim-doc="fermer">Plus tard</button>'
+  +'</div></div>';
+ document.body.appendChild(ov);
+ ov.addEventListener('click',e=>{
+  if(e.target===ov){ ov.remove(); return; }
+  const b=e.target.closest('[data-dim-doc]'); if(!b) return;
+  const w=b.dataset.dimDoc; ov.remove();
+  if(w==='note'&&docNote&&window.pjOpenDocContenu) window.pjOpenDocContenu(docNote.id);
+  if(w==='plan'&&docPlan&&window.pjOpenDocContenu) window.pjOpenDocContenu(docPlan.id);
+ });
+}
+/* computeFn : () => résultats (synchrone, assigné à dp.resultats). creerDocsFn : () => Promise<{docNote,
+   docPlan}> (optionnel). renderFn : redessine la fiche (désormais verrouillée). */
+function dimRunCalcul(dp,computeFn,creerDocsFn,renderFn,okMsg){
+ dimCalcOverlayShow();
+ setTimeout(async ()=>{
+  let ok=true, docs=null;
+  try{
+   dp.resultats=computeFn();
+   dp.statut='calcule';
+   if(creerDocsFn) docs=await creerDocsFn();
+  }catch(err){ console.error(err); ok=false; try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } }
+  try{persist();}catch(_){ }
+  dimCalcOverlayHide();
+  try{ renderFn&&renderFn(); }catch(err){ console.error(err); }
+  if(ok){
+   try{clipToast(okMsg||'✓ Ouvrage calculé.');}catch(_){ }
+   if(docs) dimProposerDocs(docs.docNote,docs.docPlan);
+  }
+ },30);
+}
+
 /* ===================== Calcul IA (second avis, comparaison avec le moteur embarqué) =====================
    Demandé par Moustapha le 24/11/2026 : laisser le choix d'un calcul IA en plus du moteur intégré, et
    comparer les deux pour juger de leur fiabilité. Le moteur embarqué (ptCompute/dlCompute/...) reste
@@ -19737,6 +19792,15 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcModName{font:700 var(--ds-fs-lg) var(--ds-font-title);color:var(--ds-ink)}
 .dimLocked{position:relative;opacity:.6}
 .dimLocked input,.dimLocked select,.dimLocked textarea,.dimLocked button:not(.dimLockExempt){pointer-events:none!important}
+/* Fenêtre « Calcul en cours » + proposition de voir les documents, au premier plan par rapport à la
+   fiche de l'ouvrage (demandé par Moustapha le 24/11/2026). */
+.dimCalcOverlay{position:fixed;inset:0;z-index:100003;background:rgba(14,14,14,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+.dimCalcBox{background:var(--ds-bg,var(--panel,#fff));color:var(--ds-ink,var(--ink,#16232B));border:1px solid var(--ds-line,var(--line,#DAD8D1));border-radius:var(--ds-r-win,12px);padding:26px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:300px;width:100%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.dimCalcBox b{font:700 14.5px var(--ds-font-title,'Space Grotesk',system-ui,sans-serif)}
+.dimCalcBox p{font:400 13px var(--ds-font-body,'IBM Plex Sans',system-ui,sans-serif);color:var(--ds-ink-soft,#5f6a66)}
+.dimCalcBox button{min-height:var(--ds-tap,44px);width:100%;border-radius:var(--ds-r-ctl,6px)}
+.dimCalcSpin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,196,0,.25);border-top-color:var(--ds-accent,#FFC400);animation:dimCalcSpin .8s linear infinite}
+@keyframes dimCalcSpin{to{transform:rotate(360deg)}}
 .pcDraw{border:1.5px dashed var(--blueprint-dark,#8a8a8a);border-radius:12px;padding:10px 4px;margin-bottom:10px;background:var(--panel);display:flex;justify-content:center;overflow:hidden;position:relative;touch-action:none}
 .pcDraw{cursor:grab}
 .pcDraw.pcDrawGrab{cursor:grabbing}
@@ -22328,7 +22392,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v525';
+  const VER='v526';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -24466,8 +24530,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const t=taskById(id); if(!t) return; const dp=pcData(t);
     dimValiderClick(dp,
      ()=>{ beamRender(id); },
-     ()=>{ try{ dp.resultats=pcCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } beamRender(id); },
-     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+     ()=>{ dimRunCalcul(dp,()=>pcCompute(t),()=>pcCreerDocumentsDimensionnement(t,dp),()=>beamRender(id),'✓ Ouvrage recalculé.'); },
+     ()=>{ dimRunCalcul(dp,()=>pcCompute(t),()=>pcCreerDocumentsDimensionnement(t,dp),()=>beamRender(id),'✓ Ouvrage calculé.'); }
     );
     return;
    }
@@ -24744,7 +24808,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pc')+'</div>'
-    +'<p class="pcNote pcFormHint">Renseigner uniquement les données nécessaires au calcul (géométrie, matériau, appuis, chargement). « Calculer » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+    +'<p class="pcNote pcFormHint">Renseigner uniquement les données nécessaires au calcul (géométrie, matériau, appuis, chargement). « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
   /* ===== Chat IA de remplissage (Poutre continue) : appelle l'edge function Supabase
      « dimensionnement-ia-poutre » (vrai modèle Claude côté serveur, réseau requis — exception
@@ -25540,7 +25604,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pt')+'</div>'
-    +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, conditions d\'appui et chargement ELU (N, M). « Calculer » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+    +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, conditions d\'appui et chargement ELU (N, M). « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
   /* Correspondance moteur embarqué ↔ clés attendues de l'edge function dimensionnement-ia-calcul
      (prompt SYSTEM_POTEAU, mêmes noms de clé que ptCompute) — pour le tableau de comparaison. */
@@ -25691,8 +25755,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const t=taskById(id); if(!t) return; const dp=ptData(t);
     dimValiderClick(dp,
      ()=>{ pteRender(id); },
-     ()=>{ try{ dp.resultats=ptCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } pteRender(id); },
-     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+     ()=>{ dimRunCalcul(dp,()=>ptCompute(t),()=>ptCreerDocumentsDimensionnement(t,dp),()=>pteRender(id),'✓ Ouvrage recalculé.'); },
+     ()=>{ dimRunCalcul(dp,()=>ptCompute(t),()=>ptCreerDocumentsDimensionnement(t,dp),()=>pteRender(id),'✓ Ouvrage calculé.'); }
     );
     return;
    }
@@ -26142,7 +26206,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'dl')+'</div>'
-    +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, continuité/charges et poinçonnement si besoin. « Calculer » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+    +'<p class="pcNote pcFormHint">Renseigner géométrie, matériau, continuité/charges et poinçonnement si besoin. « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
   function dlResultatsHtml(res,dp){
    let h='<h5>Résultats</h5>'
@@ -26192,8 +26256,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const t=taskById(id); if(!t) return; const dp=dlData(t);
     dimValiderClick(dp,
      ()=>{ dleRender(id); },
-     ()=>{ try{ dp.resultats=dlCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } dleRender(id); },
-     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+     ()=>{ dimRunCalcul(dp,()=>dlCompute(t),()=>dlCreerDocumentsDimensionnement(t,dp),()=>dleRender(id),'✓ Ouvrage recalculé.'); },
+     ()=>{ dimRunCalcul(dp,()=>dlCompute(t),()=>dlCreerDocumentsDimensionnement(t,dp),()=>dleRender(id),'✓ Ouvrage calculé.'); }
     );
     return;
    }
@@ -26517,7 +26581,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'sm')+'</div>'
-    +'<p class="pcNote pcFormHint">Renseigner type, géométrie, matériau/sol et chargement. « Calculer » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+    +'<p class="pcNote pcFormHint">Renseigner type, géométrie, matériau/sol et chargement. « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
   function smResultatsHtml(res,dp){
    let h='<h5>Résultats</h5>';
@@ -26571,8 +26635,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const t=taskById(id); if(!t) return; const dp=smData(t);
     dimValiderClick(dp,
      ()=>{ smeRender(id); },
-     ()=>{ try{ dp.resultats=smCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } smeRender(id); },
-     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+     ()=>{ dimRunCalcul(dp,()=>smCompute(t),()=>smCreerDocumentsDimensionnement(t,dp),()=>smeRender(id),'✓ Ouvrage recalculé.'); },
+     ()=>{ dimRunCalcul(dp,()=>smCompute(t),()=>smCreerDocumentsDimensionnement(t,dp),()=>smeRender(id),'✓ Ouvrage calculé.'); }
     );
     return;
    }
@@ -26925,7 +26989,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pu')+'</div>'
-    +'<p class="pcNote pcFormHint">Renseigner configuration, matériau et chargement. « Calculer » enregistre — le calcul se lance depuis « 🤖 Dimensionner » sur la ligne de l\'ouvrage.</p>';
+    +'<p class="pcNote pcFormHint">Renseigner configuration, matériau et chargement. « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
   function puResultatsHtml(res,dp){
    let h='<h5>Résultats</h5>';
@@ -26983,8 +27047,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const t=taskById(id); if(!t) return; const dp=puData(t);
     dimValiderClick(dp,
      ()=>{ pueRender(id); },
-     ()=>{ try{ dp.resultats=puCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } pueRender(id); },
-     ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } }
+     ()=>{ dimRunCalcul(dp,()=>puCompute(t),()=>puCreerDocumentsDimensionnement(t,dp),()=>pueRender(id),'✓ Ouvrage recalculé.'); },
+     ()=>{ dimRunCalcul(dp,()=>puCompute(t),()=>puCreerDocumentsDimensionnement(t,dp),()=>pueRender(id),'✓ Ouvrage calculé.'); }
     );
     return;
    }
@@ -27837,8 +27901,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const del=e.target.closest('[data-gt-del]'); if(del){ const [p,i]=del.dataset.gtDel.split('|'); const L=getP(dp,p); if(Array.isArray(L)&&L.length>1){ L.splice(+i,1); gtRender(id); } else { try{ clipToast('Il faut au moins une ligne.'); }catch(_){} } return; }
     const ok=e.target.closest('[data-gt-act="validerForm"]'); if(ok){
      dimValiderClick(dp,()=>gtRender(id),
-      ()=>{ try{ dp.resultats=gtCompute(t); dp.statut='calcule'; try{clipToast('✓ Ouvrage recalculé.');}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } try{persist();}catch(_){ } gtRender(id); },
-      ()=>{ try{ persist(); }catch(_){ } try{ clipToast('✓ Données enregistrées — lancer « 🤖 Dimensionner » sur la ligne de l\'ouvrage pour calculer.'); }catch(_){ } });
+      ()=>{ dimRunCalcul(dp,()=>gtCompute(t),async()=>({docNote:gtCreerNoteCalcul(t,dp)}),()=>gtRender(id),'✓ Ouvrage recalculé.'); },
+      ()=>{ dimRunCalcul(dp,()=>gtCompute(t),async()=>({docNote:gtCreerNoteCalcul(t,dp)}),()=>gtRender(id),'✓ Ouvrage calculé.'); });
      return; }
     if(e.target.closest('[data-gt-act="printNote"]')){ gtState(id).view='note'; gtRender(id); }
    }
