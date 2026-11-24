@@ -21706,7 +21706,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    +'<div class="pcNCwrap" style="padding-right:46px">'+((doc.docType==='Note de calcul'&&window.ncFormat)?window.ncFormat(doc.contenuHtml,{t:(ST().tasks||[]).find(x=>x.id===doc.ouvrageTaskId)}):doc.contenuHtml)+'</div>'
    +'<div class="pjDocActs">'
    +(soeur?'<button type="button" class="primary" data-vers-soeur="'+esc(soeur.id)+'">'+(soeurType==='Note de calcul'?PJ_ICO_NOTE:PJ_ICO_PLAN)+'<span>'+esc(soeurType)+'</span></button>':'')
-   +(doc.docType==='Plan de ferraillage'&&doc.ouvrageTaskId&&window.pcPlanExportPdf?'<button type="button" class="ghost" data-export-pdf="1">'+PJ_ICO_PDF+'<span>Exporter en PDF</span></button>':'')
+   +((doc.docType==='Plan de ferraillage'&&doc.ouvrageTaskId&&window.pcPlanExportPdf)||(doc.docType==='Note de calcul'&&window.ncExportPdf)?'<button type="button" class="ghost" data-export-pdf="1">'+PJ_ICO_PDF+'<span>Exporter en PDF</span></button>':'')
    +'<button type="button" class="ghost" data-voir-infos="1">'+PJ_ICO_INFO+'<span>Informations du document</span></button>'
    +'</div>');
   const mb=document.getElementById('modalBody'); const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
@@ -21716,13 +21716,14 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  }
  /* choix du format de feuille avant l'export PDF du plan (paysage ; A3 par défaut = comportement historique) */
  function pjFmtPicker(doc){
-  const F=[['a4','A4','297×210'],['a3','A3','420×297'],['a2','A2','594×420'],['a1','A1','841×594'],['a0','A0','1189×841']];
+  const note=doc.docType==='Note de calcul', dflt=note?'a4':'a3';
+  const F=note?[['a4','A4','210×297'],['a3','A3','297×420'],['a2','A2','420×594'],['a1','A1','594×841'],['a0','A0','841×1189']]:[['a4','A4','297×210'],['a3','A3','420×297'],['a2','A2','594×420'],['a1','A1','841×594'],['a0','A0','1189×841']];
   const ov=document.createElement('div'); ov.className='dimCalcOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Format du PDF');
-  ov.innerHTML='<div class="dimCalcBox pjFmtBox"><b>Exporter en PDF</b><p>Format de feuille, paysage (dimensions en mm)</p><div class="pjFmtG">'+F.map(f=>'<button type="button" class="'+(f[0]==='a3'?'primary':'ghost')+'" data-fmt="'+f[0]+'" aria-label="Format '+f[1]+', '+f[2]+' mm"><span>'+f[1]+'</span><small>'+f[2]+'</small></button>').join('')+'</div><button type="button" class="ghost" data-fmt="">Annuler</button></div>';
+  ov.innerHTML='<div class="dimCalcBox pjFmtBox"><b>Exporter en PDF</b><p>Format de feuille, '+(note?'portrait':'paysage')+' (dimensions en mm)</p><div class="pjFmtG">'+F.map(f=>'<button type="button" class="'+(f[0]===dflt?'primary':'ghost')+'" data-fmt="'+f[0]+'" aria-label="Format '+f[1]+', '+f[2]+' mm"><span>'+f[1]+'</span><small>'+f[2]+'</small></button>').join('')+'</div><button type="button" class="ghost" data-fmt="">Annuler</button></div>';
   document.body.appendChild(ov);
   ov.addEventListener('click',async e=>{ if(e.target===ov){ ov.remove(); return; } const b=e.target.closest('[data-fmt]'); if(!b) return; const f=b.dataset.fmt; if(!f){ ov.remove(); return; }
    ov.querySelectorAll('button').forEach(x=>x.disabled=true); const bx=ov.querySelector('.dimCalcBox'); bx.insertAdjacentHTML('afterbegin','<div class="dimCalcSpin"></div>');
-   try{ await window.pcPlanExportPdf(doc.ouvrageTaskId,f); ov.remove(); try{ clipToast('PDF '+f.toUpperCase()+' exporté.'); }catch(_){ } }
+   try{ if(note) await window.ncExportPdf(doc,f); else await window.pcPlanExportPdf(doc.ouvrageTaskId,f); ov.remove(); try{ clipToast('PDF '+f.toUpperCase()+' exporté.'); }catch(_){ } }
    catch(err){ ov.remove(); try{ miniAlert('Export PDF impossible : '+((err&&err.message)||err)); }catch(_){ } } });
  }
  window.pjOpenDocContenu=openDocContenu;
@@ -24440,7 +24441,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function ncFormat(html,ctx){
    try{
-    if(!html||/class="ncDoc"/.test(html)) return html;
+    if(!html||/class="[^"]*\bncDoc\b/.test(html)) return html;
     const {t,dp,res,kind}=ctx||{}; const nomO=(dp&&dp.nom)||(t&&(t.nom||t.quoi))||'Ouvrage';
     const box=document.createElement('div'); box.innerHTML=html; const root=box.querySelector('.pcNC')||box;
     const h3=root.querySelector('h3'); if(h3) h3.remove();
@@ -25743,15 +25744,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Formats de feuille (paysage). La mise en page est calculée en « mm A3 » (420 × 297) puis mise à l'échelle sur la feuille
      réelle : même découpage et mêmes pages pour tous les formats ; textes à l'échelle^0,85 (lisibles en A4, pas minuscules en A0). */
   const FPL_FMT_W={a4:297,a3:420,a2:594,a1:841,a0:1189};
-  function fplPdfCtx(d,s,F,fmt){
+  function fplPdfCtx(d,s,F,fmt,ori){
    const w={ line:(a,b,c,e)=>d.line(a*s,b*s,c*s,e*s), rect:(x,y,W,H,st)=>d.rect(x*s,y*s,W*s,H*s,st), roundedRect:(x,y,W,H,rx,ry,st)=>d.roundedRect(x*s,y*s,W*s,H*s,rx*s,ry*s,st),
     circle:(x,y,r,st)=>d.circle(x*s,y*s,r*s,st), triangle:(a,b,c,e,f,g,st)=>d.triangle(a*s,b*s,c*s,e*s,f*s,g*s,st),
     text:(t,x,y,o)=>{ let o2=o; if(o&&o.maxWidth){ o2=Object.assign({},o,{maxWidth:o.maxWidth*s}); } return d.text(t,x*s,y*s,o2); },
     setLineWidth:v=>d.setLineWidth(v*s), setFontSize:v=>d.setFontSize(v*F), setLineDashPattern:(a,ph)=>d.setLineDashPattern((a||[]).map(v=>v*s),(ph||0)*s),
-    splitTextToSize:(t,W)=>d.splitTextToSize(t,W*s), addPage:()=>d.addPage(fmt,'landscape'),
+    splitTextToSize:(t,W)=>d.splitTextToSize(t,W*s), addPage:()=>d.addPage(fmt,ori||'landscape'), getTextWidth:t=>d.getTextWidth(t)/s, addImage:(im,f,x,y,W,H)=>d.addImage(im,f,x*s,y*s,W*s,H*s),
     setFont:(...a)=>d.setFont(...a), setTextColor:(...a)=>d.setTextColor(...a), setDrawColor:(...a)=>d.setDrawColor(...a), setFillColor:(...a)=>d.setFillColor(...a),
     setLineCap:v=>d.setLineCap(v), setLineJoin:v=>d.setLineJoin(v), setPage:n=>d.setPage(n), getNumberOfPages:()=>d.getNumberOfPages(), output:(...a)=>d.output(...a) };
-   if(d.autoTable){ w.autoTable=o=>{ const st=o.styles||{}, hs=o.headStyles||{}; return d.autoTable(Object.assign({},o,{startY:o.startY*s,tableWidth:o.tableWidth*s,margin:{left:o.margin.left*s,right:o.margin.right*s},
+   if(d.autoTable){ w.autoTable=o=>{ const st=o.styles||{}, hs=o.headStyles||{}; return d.autoTable(Object.assign({},o,{startY:o.startY*s,tableWidth:o.tableWidth*s,margin:{left:o.margin.left*s,right:o.margin.right*s,top:(o.margin.top==null?10:o.margin.top)*s,bottom:(o.margin.bottom==null?10:o.margin.bottom)*s},
      styles:Object.assign({},st,{fontSize:st.fontSize*F,cellPadding:st.cellPadding*s,lineWidth:st.lineWidth*s}),headStyles:Object.assign({},hs,{lineWidth:hs.lineWidth*s})})); };
     Object.defineProperty(w,'lastAutoTable',{get:()=>({finalY:d.lastAutoTable.finalY/s})}); }
    return w;
@@ -25816,6 +25817,132 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await pcPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=String(dp.nom||t.nom||'Poutre').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Poutre';
    const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
+   return {blob,fn};
+  };
+  /* ===== Note de calcul : export PDF à la demande (skill note-de-calcul) =====
+     Même modèle que le plan : format au choix, nom de fichier ouvrage + date + format, fplPdfCtx pour la mise à l'échelle.
+     A4 portrait par défaut ; A3…A0 = même mise en page (calculée en mm A4 puis mise à l'échelle), mêmes pages.
+     Le PDF est construit depuis le HTML de la note (ncFormat) : cartouche, chiffres clés, sections, tableaux, points à confirmer,
+     avertissement. Un tableau ou une figure n'est jamais coupé s'il tient sur une page. */
+  const NC_FMT_W={a4:210,a3:297,a2:420,a1:594,a0:841};
+  const NC_YEL=[242,169,0], NC_RED=[180,40,30], NC_GRN=[30,120,60];
+  const NC_PDFSYM=s=>FPL_PDFSYM(String(s==null?'':s).replace(/·/g,'\u0001').replace(/[\u202f\u2009\u2007]/g,' ').replace(/Φ/g,'Ø').replace(/φ/g,'phi').replace(/λ/g,'lambda').replace(/τ/g,'tau').replace(/σ/g,'sigma').replace(/γ/g,'gamma').replace(/ε/g,'eps').replace(/μ/g,'µ').replace(/ρ/g,'rho').replace(/Δ/g,'Delta').replace(/ν/g,'nu').replace(/ω/g,'omega').replace(/✓/g,'')).replace(/\u0001/g,'·');
+  /* texte d'un nœud : <br> et blocs = retours à la ligne, espaces HTML réduits */
+  function ncTxt(n){ let s=''; const nl=()=>{ if(s&&!/\n$/.test(s)) s+='\n'; };
+   (function w(x){ if(x.nodeType===3){ s+=x.textContent.replace(/\s+/g,' '); return; } if(x.nodeType!==1) return; const tg=x.tagName.toUpperCase(); if(tg==='BR'){ s+='\n'; return; } if(/^(SVG|SCRIPT|STYLE)$/.test(tg)) return;
+    const blk=/^(P|DIV|LI|H[1-6]|TR)$/.test(tg); if(blk) nl(); [...x.childNodes].forEach(w); if(blk) nl(); })(n);
+   return s.replace(/[ \t]*\n[ \t]*/g,'\n').replace(/\n{2,}/g,'\n').replace(/ {2,}/g,' ').trim(); }
+  /* figure SVG -> PNG (couleurs calculées figées, thème clair) */
+  async function ncSvgPng(svg){
+   const vb=(svg.getAttribute('viewBox')||'').split(/[\s,]+/).map(Number); let w=vb[2]||parseFloat(svg.getAttribute('width'))||600, h=vb[3]||parseFloat(svg.getAttribute('height'))||300;
+   const host=document.createElement('div'); host.style.cssText='position:fixed;left:-99999px;top:0;width:'+Math.round(w)+'px;visibility:hidden'; const cl=svg.cloneNode(true); host.appendChild(cl); document.body.appendChild(host);
+   const html=document.documentElement, th=html.getAttribute('data-theme'); if(th!=null) html.removeAttribute('data-theme');
+   try{ const P=['fill','stroke','stroke-width','stroke-dasharray','stroke-linecap','stroke-linejoin','opacity','fill-opacity','stroke-opacity','font-size','font-family','font-weight','font-style','text-anchor','dominant-baseline'];
+    [cl,...cl.querySelectorAll('*')].forEach(el=>{ const cs=getComputedStyle(el); el.setAttribute('style',P.map(k=>k+':'+cs.getPropertyValue(k)).join(';')); }); }
+   finally{ if(th!=null) html.setAttribute('data-theme',th); }
+   cl.setAttribute('xmlns','http://www.w3.org/2000/svg'); cl.setAttribute('width',w); cl.setAttribute('height',h); cl.removeAttribute('class');
+   const xml=new XMLSerializer().serializeToString(cl); host.remove();
+   const img=new Image(); const url=URL.createObjectURL(new Blob([xml],{type:'image/svg+xml;charset=utf-8'}));
+   await new Promise((ok,ko)=>{ img.onload=ok; img.onerror=()=>ko(new Error('figure')); img.src=url; });
+   const k=Math.min(3,3000/w), cv=document.createElement('canvas'); cv.width=Math.round(w*k); cv.height=Math.round(h*k); const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height); g.drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url);
+   return {png:cv.toDataURL('image/png'),w,h};
+  }
+  async function ncPdfNote(html,name,opts){
+   const JsPDF=await loadPdfLibs(); const FMT=(opts&&NC_FMT_W[opts.format])?opts.format:'a4', S=NC_FMT_W[FMT]/210, F=Math.pow(S,0.85);
+   const mk=()=>fplPdfCtx(new JsPDF({unit:'mm',format:FMT,orientation:'portrait'}),S,F,FMT,'portrait');
+   const doc=mk(), PW=210, PH=297, M=15, CW=PW-2*M, BOT=PH-M-4; let y=M;
+   const box=document.createElement('div'); box.innerHTML=html; const root=box.querySelector('.ncDoc')||box.querySelector('.pcNC')||box;
+   const page=()=>{ doc.addPage(); y=M; }, need=h=>{ if(y+h>BOT) page(); };
+   const LK=0.3528*1.38, T=s=>NC_PDFSYM(s).trim();
+   const para=(t,o)=>{ o=o||{}; const fs=o.fs||9.5, w=o.w||CW, x=o.x==null?M:o.x, lh=fs*LK; doc.setFont('helvetica',o.bold?'bold':'normal'); doc.setFontSize(fs); doc.setTextColor(...(o.color||[0,0,0]));
+    const L=doc.splitTextToSize(T(t),w); if(L.length*lh<=80) need(L.length*lh);
+    L.forEach(l=>{ need(lh); doc.setFont('helvetica',o.bold?'bold':'normal'); doc.setFontSize(fs); doc.setTextColor(...(o.color||[0,0,0])); doc.text(l,x,y+lh*0.78); y+=lh; }); y+=(o.gap==null?1.2:o.gap); doc.setTextColor(0); };
+   const heading=(t,lvl)=>{ const fs=lvl===1?15:11.5; need(lvl===1?16:20); doc.setFont('helvetica','bold'); doc.setFontSize(fs); doc.setTextColor(0);
+    const L=doc.splitTextToSize(T(t),CW); L.forEach(l=>{ doc.text(l,M,y+fs*LK*0.78); y+=fs*LK; });
+    if(lvl!==1){ doc.setDrawColor(215); doc.setLineWidth(0.2); doc.line(M,y+0.6,PW-M,y+0.6); y+=2.6; } else y+=1.5; };
+   /* cartouche : grille jaune */
+   const cartouche=tb=>{ const rows=[...tb.rows].map(r=>[...r.cells].map(td=>{ const b=td.querySelector('b'); const lab=b?b.textContent.trim():''; const c=td.cloneNode(true); const cb=c.querySelector('b'); if(cb) cb.remove(); return {lab:T(lab),val:T(ncTxt(c))}; }));
+    const nC=Math.max(...rows.map(r=>r.length)), cw=CW/nC; doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    const hs=rows.map(r=>Math.max(...r.map(c=>5+doc.splitTextToSize(c.val||'-',cw-3).length*3.7)));
+    need(hs.reduce((a,b)=>a+b,0)+3); doc.setDrawColor(...NC_YEL); doc.setLineWidth(0.3);
+    rows.forEach((r,ri)=>{ r.forEach((c,ci)=>{ const cx=M+ci*cw; doc.rect(cx,y,cw,hs[ri]); doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(110); doc.text(c.lab,cx+1.5,y+3.4);
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0); doc.text(doc.splitTextToSize(c.val||'-',cw-3),cx+1.5,y+7.2); }); y+=hs[ri]; }); y+=4; };
+   /* chiffres clés : pastilles à bordure jaune (rouge si non conforme) */
+   const kpis=el=>{ const K=[...el.querySelectorAll('.ncK')].map(k=>({v:T(k.querySelector('b')?k.querySelector('b').textContent:''),l:T(k.querySelector('small')?k.querySelector('small').textContent:''),bad:k.classList.contains('bad')})); if(!K.length) return;
+    const cols=Math.min(K.length,4), gap=3, kw=(CW-gap*(cols-1))/cols;
+    for(let i=0;i<K.length;i+=cols){ const row=K.slice(i,i+cols);
+     row.forEach(k=>{ let fs=14; doc.setFont('helvetica','bold'); doc.setFontSize(fs); while(fs>8&&doc.getTextWidth(k.v)>kw-5){ fs-=0.5; doc.setFontSize(fs); } k.fs=fs; doc.setFont('helvetica','normal'); doc.setFontSize(7.5); k.L=doc.splitTextToSize(k.l,kw-5); k.h=4+fs*LK+k.L.length*3.2+1.5; });
+     const rh=Math.max(...row.map(k=>k.h)); need(rh+gap);
+     row.forEach((k,j)=>{ const x=M+j*(kw+gap); doc.setDrawColor(...(k.bad?NC_RED:NC_YEL)); doc.setLineWidth(0.5); doc.roundedRect(x,y,kw,rh,2.5,2.5,'S');
+      doc.setFont('helvetica','bold'); doc.setFontSize(k.fs); doc.setTextColor(...(k.bad?NC_RED:[0,0,0])); doc.text(k.v,x+2.5,y+2.6+k.fs*LK*0.85);
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(95); doc.text(k.L,x+2.5,y+3.4+k.fs*LK+2.4); doc.setTextColor(0); });
+     y+=rh+gap; }
+    y+=2; };
+   /* tableaux : grille jaune pour les aciers (ncG), lignes fines sinon ; ni coupé en deux s'il tient sur une page */
+   const table=tb=>{ const head=[], body=[]; [...tb.rows].forEach(r=>{ const cells=[...r.cells].map(c=>T(ncTxt(c))); const isH=(r.parentNode.tagName==='THEAD')||[...r.cells].every(c=>c.tagName==='TH'); if(isH&&!body.length) head.push(cells); else body.push(cells); });
+    const nC=Math.max(0,...head.concat(body).map(r=>r.length)); if(!nC||!(head.length+body.length)) return;
+    const pad=r=>{ while(r.length<nC) r.push(''); return r; }; head.forEach(pad); body.forEach(pad);
+    const numRe=/^[−+-]?\d[\d\s,.]*(\s?[%A-Za-zµ²³·\/ ]{0,12})?$/; const right=[]; for(let c=0;c<nC;c++){ const col=body.map(r=>r[c]).filter(Boolean); right[c]=col.length>0&&col.every(v=>numRe.test(v)); }
+    const grid=tb.classList.contains('ncG'); const colSt={}; right.forEach((r,c)=>{ if(r) colSt[c]={halign:'right'}; });
+    const base={styles:{fontSize:8.5,cellPadding:1.5,lineColor:grid?NC_YEL:[205,205,205],lineWidth:grid?0.25:0,textColor:[0,0,0],overflow:'linebreak'},
+     headStyles:{fillColor:[255,255,255],textColor:grid?[0,0,0]:[110,110,110],fontStyle:'bold',lineColor:grid?NC_YEL:[150,150,150],lineWidth:grid?0.35:0},
+     columnStyles:colSt,theme:'plain',rowPageBreak:'avoid',showHead:'everyPage',margin:{left:M,right:M,top:M,bottom:M+4},tableWidth:CW,
+     didDrawCell:d=>{ if(grid) return; const c=d.cell, g=d.doc; g.setDrawColor(...(d.section==='head'?[150,150,150]:[205,205,205])); g.setLineWidth((d.section==='head'?0.3:0.15)*S); g.line(c.x,c.y+c.height,c.x+c.width,c.y+c.height); },
+     didParseCell:d=>{ if(right[d.column.index]) d.cell.styles.halign='right'; const tx=String((d.cell.text||[]).join(' ')); if(d.section==='body'){ if(/^(Non conforme|Cadres requis|INSUFFISANT|Bloquant)/i.test(tx)){ d.cell.styles.textColor=NC_RED; d.cell.styles.fontStyle='bold'; } else if(/^Conforme/i.test(tx)){ d.cell.styles.textColor=NC_GRN; d.cell.styles.fontStyle='bold'; } } }};
+    const opt=Object.assign({head:head,body:body},base);
+    const sc=mk(); sc.autoTable(Object.assign({},opt,{startY:0})); const h=sc.lastAutoTable.finalY, one=sc.getNumberOfPages()===1;
+    if(one) need(h+3); else need(Math.min(30,h));
+    doc.autoTable(Object.assign({},opt,{startY:y})); y=doc.lastAutoTable.finalY+4; };
+   const figure=async el=>{ const sv=el.tagName.toLowerCase()==='svg'?el:el.querySelector('svg'); if(!sv) return;
+    try{ const f=await ncSvgPng(sv); let w=CW, h=w*f.h/f.w; const mh=(PH-2*M)*0.5; if(h>mh){ h=mh; w=h*f.w/f.h; } need(h+3); doc.addImage(f.png,'PNG',M+(CW-w)/2,y,w,h); y+=h+4; }
+    catch(e){ console.warn('ncPdf figure',e); } };
+   const annot=el=>{ const bad=!el.classList.contains('conf'); const L=(()=>{ doc.setFont('helvetica','normal'); doc.setFontSize(9); return doc.splitTextToSize(T(ncTxt(el)),CW-5); })(); const lh=9*LK, h=L.length*lh+3;
+    need(h+2); doc.setDrawColor(...(bad?NC_RED:NC_YEL)); doc.setLineWidth(0.9); doc.line(M+0.5,y,M+0.5,y+h-1); doc.setTextColor(0); doc.text(L,M+3.5,y+lh*0.78+0.5); y+=h+1.5; };
+   const warn=el=>{ doc.setFont('helvetica','normal'); doc.setFontSize(8.5); const L=doc.splitTextToSize(T(ncTxt(el)),CW-8), lh=8.5*LK, h=L.length*lh+6; need(h+4); y+=3;
+    doc.setDrawColor(...NC_YEL); doc.setLineWidth(0.6); doc.roundedRect(M,y,CW,h,2.5,2.5,'S'); doc.setTextColor(60); doc.text(L,M+4,y+3+lh*0.78); doc.setTextColor(0); y+=h+2; };
+   const INL=/^(B|STRONG|SPAN|I|EM|A|SMALL|SUB|SUP|CODE|BR|U|MARK)$/;
+   const walk=async el=>{ let buf=[]; let skip=null; const flush=()=>{ const t=buf.map(b=>b.t).join(''); if(t.replace(/\s/g,'')){ const allB=buf.filter(b=>b.t.trim()).every(b=>b.b); para(t.trim(),{bold:allB}); } buf=[]; };
+    for(const c of [...el.childNodes]){
+     if(c===skip) continue;
+     if(c.nodeType===3){ buf.push({t:c.textContent.replace(/\s+/g,' '),b:false}); continue; } if(c.nodeType!==1) continue;
+     const tg=c.tagName.toUpperCase(), cl=c.classList;
+     if(INL.test(tg)){ buf.push({t:tg==='BR'?'\n':ncTxt(c),b:/^(B|STRONG)$/.test(tg)}); continue; }
+     flush();
+     if(/^(SCRIPT|STYLE|DETAILS)$/.test(tg)) continue;
+     if(tg==='H3'&&cl.contains('ncH1')) heading(c.textContent.trim(),1);
+     else if(cl.contains('ncSub')) para(c.textContent.trim(),{fs:8.5,color:[110,110,110],gap:3});
+     else if(cl.contains('ncCart')) cartouche(c);
+     else if(cl.contains('ncKpi')) kpis(c);
+     else if(cl.contains('ncAn')) annot(c);
+     else if(cl.contains('ncWarn')) warn(c);
+     else if(tg==='TABLE'){ let tb=c; const nx=c.nextElementSibling; if(!c.querySelector('tbody td')&&c.querySelector('th')&&nx&&nx.tagName==='TABLE'&&!nx.querySelector('th')){ tb=nx.cloneNode(true); const hr=c.querySelector('tr'); tb.insertBefore(document.createElement('thead'),tb.firstChild).appendChild(hr.cloneNode(true)); skip=nx; } table(tb); }
+     else if(tg==='SVG') await figure(c);
+     else if(cl.contains('pcDraw')&&c.querySelector('svg')) await figure(c);
+     else if(/^H[2-6]$/.test(tg)) heading(c.textContent.trim().replace(/^\s*\d+\s*[·.\-]\s*/,''),2);
+     else if(tg==='SECTION'&&c.querySelector(':scope>h4,:scope>h5')){ await walk(c); }
+     else if(tg==='P'){ para(ncTxt(c),cl.contains('pcNote')?{fs:8.5,color:[100,100,100]}:{}); }
+     else if(tg==='UL'||tg==='OL'){ [...c.children].forEach(li=>para('- '+ncTxt(li),{x:M+3,w:CW-3})); }
+     else await walk(c);
+    }
+    flush(); };
+   await walk(root);
+   /* pied de page et numérotation */
+   const NP=doc.getNumberOfPages(); for(let i=1;i<=NP;i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120);
+    if(i>1) doc.text(T('Note de calcul '+name+' (suite)'),M,M-6);
+    doc.text(T('Note de calcul '+name+' - feuille '+i+'/'+NP+' - '+FMT.toUpperCase()+' portrait'),PW-M,PH-5,{align:'right'}); }
+   return doc.output('blob');
+  }
+  /* Export PDF de la note de calcul (format au choix, A4 portrait par défaut) : nom de fichier ouvrage + date + format */
+  window.ncExportPdf=async function(docu,fmt){
+   if(!docu||!docu.contenuHtml) throw new Error('Note de calcul introuvable.');
+   let t=null, dp=null; try{ t=docu.ouvrageTaskId?taskById(docu.ouvrageTaskId):null; dp=t?pcData(t):null; }catch(_){ }
+   let kind; try{ if(t&&beTypeStructureNom(t.typeStructureId)===BEAM_TYPE_NOM) kind='poutre'; }catch(_){ }
+   const html=window.ncFormat?window.ncFormat(docu.contenuHtml,{t,dp,res:dp&&dp.resultats,kind}):docu.contenuHtml;
+   const f=NC_FMT_W[fmt]?fmt:'a4';
+   const nom=String(docu.ouvrage||(dp&&dp.nom)||(t&&t.nom)||'Ouvrage').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Ouvrage';
+   const blob=await ncPdfNote(html,String(docu.ouvrage||(dp&&dp.nom)||(t&&t.nom)||'Ouvrage'),{format:f});
+   const fn='Note-de-calcul_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'.pdf';
    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
    return {blob,fn};
   };
