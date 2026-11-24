@@ -27367,7 +27367,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function fcEcm(fck){ return 22000*Math.pow((fck+8)/10,0.3); }
   function fcCourbureSection(S,M_kNm,mat){
    // S={b,h,d,dp,As1,As2} (m, m²) orientée vers la face tendue ; mat={fck,phi,epsCs,beta}
-   const M=Math.abs(M_kNm)/1000, Ecm=fcEcm(mat.fck), Eceff=Ecm/(1+(mat.phi==null?2:mat.phi)), ae=200000/Eceff, fctm=0.30*Math.pow(mat.fck,2/3), beta=mat.beta==null?0.5:mat.beta, epsCs=mat.epsCs==null?3e-4:mat.epsCs;
+   const M=Math.abs(M_kNm)/1000, Ecm=fcEcm(mat.fck), Eceff=Ecm/(1+(mat.phi==null?2:mat.phi)), ae=mat.alphaE>0?mat.alphaE:200000/Eceff, fctm=0.30*Math.pow(mat.fck,2/3), beta=mat.beta==null?0.5:mat.beta, epsCs=mat.epsCs==null?3e-4:mat.epsCs;
    const {b,h,d,As1}=S, As2=S.As2||0, dp=S.dp||0.05, be=(S.beff>b&&S.hf>0)?S.beff:b, hf=be>b?S.hf:0, Af=(be-b)*hf; // section en T (table comprimée) si beff/hf fournis
    // non fissurée (p.229), table incluse
    const Ach=b*h+Af+ae*(As1+As2), vp=(b*h*h/2+Af*hf/2+ae*(As1*d+As2*dp))/Ach, vv=h-vp;
@@ -27607,6 +27607,22 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     'Note pour l\'ingénieur — dispense de fissuration : 1) '+(dis.length?'dispense appliquée : '+dis[0].motif:'aucune dispense : w_k ≤ w_max (ou tableaux 7.2N/7.3N et A_s,min) est contrôlé')+'. 2) Conditions du livre : dalle de bâtiment avec h ≤ 200 mm et dispositions constructives respectées (p.178) ; XC2 à XC4 en bâtiments A à D si les dispositions constructives sont respectées (AN France, p.162) ; X0 et XC1 sans exigence d\'aspect (p.162). 3) Les dispositions constructives (A_s,min et A_s,max, espacements maximaux, armatures de répartition) sont contrôlées par le module ; leur respect sur chantier reste à la charge de l\'ingénieur. 4) Avec dispense, σs, s_r,max, w_k, diamètre et espacement sont affichés à titre indicatif et ne décident pas de la conformité. 5) Classe d\'exposition saisie : '+cl+' ; catégorie d\'usage : '+cat+'.'});
    return L;
   }
+  /* ===== ELS : limitation des contraintes (EC2 7.2 ; Pratique de l'EC2 p.65-67 et ch.7 p.227-231, ex. p.272-275) — fonction PURE, combinaison caractéristique =====
+     Section non fissurée si σ_ct ≤ f_ct,eff (M ≤ M_cr), sinon fissurée (béton tendu négligé). σ_c ≤ 0,6·f_ck en classes XD, XF, XS ; σ_s ≤ 0,8·f_yk.
+     S={b,h,d,dp,As1,As2,beff,hf} (m, m²) orientée vers la face tendue ; mat={fck,phi,alphaE?} ; M_kNm = moment caractéristique ; retourne les contraintes en MPa. */
+  function fcContraintes(S,M_kNm,mat,fyk,classe){
+   const r=fcCourbureSection(S,M_kNm,mat), M=r.M_MNm, ae=r.ae, d=S.d, dp=S.dp||0.05;
+   let sigC,sigS1,sigS2,sigCt;
+   if(r.fissure){ const K=M/r.Icf; sigC=K*r.x1; sigS1=ae*K*(d-r.x1); sigS2=ae*K*(r.x1-dp); sigCt=null; }
+   else { const K=M/r.Ich; sigC=K*r.vp; sigS1=ae*K*(d-r.vp); sigS2=ae*K*(r.vp-dp); sigCt=K*(S.h-r.vp); }
+   const limC=0.6*mat.fck, limS=0.8*(fyk||500), applicC=/^X[DFS]/.test(String(classe||'')), okC=!applicC||sigC<=limC*1.005, okS=sigS1<=limS*1.005; // tolérance numérique de 0,5 % (l'exemple du livre est dimensionné à σ_c = 15 MPa ≈ limite)
+   return {fissure:r.fissure,x1:r.x1,vp:r.vp,Ich:r.Ich,Icf:r.Icf,ae,sigC,sigS1,sigS2,sigCt,limC,limS,applicC,okC,okS,etat:(okC&&okS)?'ok':'ko',Mcr_MNm:r.Mcr_kNm!=null?r.Mcr_kNm:r.Mcr_MNm};
+  }
+  function fcContraintesLigne(zone,z){
+   const f=(x,n)=>(+x).toFixed(n==null?1:n).replace('.',',');
+   return {zone,nom:'ELS contraintes',formule:'EC2 7.2 : σ_c ≤ 0,6·f_ck (classes XD, XF, XS) ; σ_s ≤ 0,8·f_yk ; combinaison caractéristique G + Q (ψ0 = 1) ; section '+(z.r.fissure?'fissurée':'non fissurée')+', α_e = '+f(z.r.ae,1),
+    calcul:'M_ser = '+f(z.M_kNm,1)+' kN·m ; σ_c = '+f(z.r.sigC)+' MPa ; σ_s = '+f(z.r.sigS1,0)+' MPa',limite:(z.r.applicC?'σ_c ≤ '+f(z.r.limC)+' MPa ; ':'σ_c non limité hors XD/XF/XS ; ')+'σ_s ≤ '+f(z.r.limS,0)+' MPa',etat:z.etat};
+  }
   function dlChooseBars(AsReq_mm2perm,sMax_mm){
    let best=null;
    for(const phi of DL_BARDIAMS){
@@ -27841,7 +27857,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       if(fQP.Mw>0&&barAppW) Z.push(fcFissZone('Appui gauche',secX,bb(barAppW),fQP.Mw,ctxF));
       if(fQP.Me>0&&barAppE) Z.push(fcFissZone('Appui droit',secX,bb(barAppE),fQP.Me,ctxF));
       if(sensDeux&&barTravY) Z.push(fcFissZone('Travée ly',secY,bb(barTravY),deuxSens.muy*MoQP,ctxF));
-      fissuration={zones:Z,ctx:ctxF,psi2}; }
+      fissuration={zones:Z,ctx:ctxF,psi2};
+      /* contraintes ELS (EC2 7.2) : combinaison caractéristique G + Q, mêmes barres posées, α_e = E_s/E_c,eff (φ de la flèche) ; σ_c limité en XD, XF, XS */
+      { const MoC=sensDeux?deuxSens.mux*(G+Q)*lx*lx:(G+Q)*lx*lx/8, fC=dlForfaitaire(dp,MoC,alphaQ), mC={fck,phi:mat.phi}, Zc=[];
+        const sec=(b,d_cm)=>({b:1,h:h_cm/100,d:d_cm/100,dp:(h_cm-d_cm)/100,As1:b.As*1e-6,As2:0}), mk=(nom,b,d_cm,M)=>{ const r=fcContraintes(sec(b,d_cm),M,mC,fyk,ctxF.classe); Zc.push({nom,r,M_kNm:M,etat:r.etat}); };
+        if(fC.Mt>0) mk('Travée lx',Object.assign({},barTravX),d_x_cm,fC.Mt);
+        if(fC.Mw>0&&barAppW) mk('Appui gauche',barAppW,d_x_cm,fC.Mw);
+        if(fC.Me>0&&barAppE) mk('Appui droit',barAppE,d_x_cm,fC.Me);
+        if(sensDeux&&barTravY) mk('Travée ly',barTravY,d_y_cm,deuxSens.muy*MoC);
+        fissuration.contraintes={zones:Zc,classe:ctxF.classe,phi:mat.phi}; } }
     flecheCourb={f_mm:r.f_mm,fSimplifiee_mm:r.fSimplifiee_mm,x:r.x,L:LF,l250:v.l250,l500:v.l500,etat:v.etat,note:v.note,cloisons:dp.cloisonsFragiles===true,psi2,pQP,phi:mat.phi,epsCs:mat.epsCs,Eceff:dm.Eceff,zeta:dm.zeta,Mcr:dm.Mcr_MNm*1000,Mmid:Ms[20],sigS:dm.sigS,k:dm.k};
    }
    /* effort tranchant sans armatures (livre p.309-312) : V_Ed0 réduit à d du nu d'appui (p.307, 312) ≤ V_Rd,c ; V_Ed non réduit ≤ V_Rd,max (p.313) ;
@@ -28082,7 +28106,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     V.push({zone:'Poteau',nom:'Poinçonnement — u1 (2d)',formule:'v_Ed(u1) ≤ v_Rd,c ('+dlPoinconTypeTxt(pc).replace(/ \(.*$/,'')+', β = '+f2(pc.beta)+')',calcul:'v_Ed = '+f2(pc.vEd1)+' MPa ; u1 = '+f2(pc.u1_mm/1000)+' m',limite:'v_Rd,c = '+f2(pc.vRdc)+' MPa',etat:pc.ok_c?'ok':(pc.asw?'cad':'ko')});
     if(pc.asw) V.push({zone:'Poteau',nom:'Poinçonnement — armatures',formule:'A_sw/s_r ≥ (v_Ed − 0,75·v_Rd,c)·u1/(1,5·f_ywd,ef) ; u_out,ef = β·V_Ed/(v_Rd,c·d) (Maîtrise p.255-256, 265-266)',calcul:'A_sw/s_r ≥ '+f2(pc.asw.AswSr_mm2_par_mm)+' mm²/mm ; A_sw ≥ '+f2(pc.asw.Asw_cours_mm2,0)+' mm² par cours (s_r = 0,75 d) ; u_out,ef = '+f2(pc.asw.uOut_mm/1000)+' m',limite:'dernier cours à ≤ 1,5·d de u_out,ef ; s_r ≤ 0,75·d',etat:'cad'});
     V.push({zone:'Poteau',nom:'Poinçonnement — hypothèses',formule:'β '+(pc.betaDetail?'détaillé (6.44/6.46)':'forfaitaire (1,15 intérieur, 1,4 rive, 1,5 angle ; structure contreventée, portées voisines 0,8 à 1,25)'),calcul:'moment transmis '+(pc.betaDetail?'pris par e_par':'non pris en compte')+' ; ρl uniforme par mètre ; armatures de poinçonnement non dessinées',limite:'—',etat:'nf'}); }
-   [['Armatures de répartition (secondaires)','EC2 9.3.1.1(2) : ≥ 20 % de A_s principal (confirmé, Maîtrise p.39)'],['ELS contraintes (XD/XF/XS)','σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk (livre p.190, 214)'],['Charges localisées','Pigeaud / Westergaard']].forEach(a=>V.push({zone:'Dalle',nom:a[0],formule:a[1],calcul:'—',limite:'—',etat:'nf'}));
+   if(res.fissuration&&res.fissuration.contraintes) res.fissuration.contraintes.zones.forEach(z=>V.push(fcContraintesLigne('Dalle — '+z.nom,z)));
+   else V.push({zone:'Dalle',nom:'ELS contraintes',formule:'EC2 7.2',calcul:'non calculable (ferraillage non calculé)',limite:'—',etat:'nf'});
+   [['Armatures de répartition (secondaires)','EC2 9.3.1.1(2) : ≥ 20 % de A_s principal (confirmé, Maîtrise p.39)'],['Charges localisées','Pigeaud / Westergaard']].forEach(a=>V.push({zone:'Dalle',nom:a[0],formule:a[1],calcul:'—',limite:'—',etat:'nf'}));
    return V;
   }
   /* Données géométriques et charges (modèle de note : tableau, origine de chaque valeur) */
@@ -28159,7 +28185,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    VF.filter(v=>v.etat==='ko'&&/tranchant|bielle|Méthode forfaitaire/.test(v.nom)).forEach(v=>{ h+='<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>'; });
    dlChoixAValider(res,dp).forEach(c=>{ h+='<p class="ncPt" data-bad="0">'+esc(c.texte)+'</p>'; });
    dimNotesIngenieur('dl',dp,res.fissuration,res.poincon).forEach(n=>{ h+='<p class="ncPt" data-bad="0">'+esc(n.texte)+'</p>'; });
-   h+='<p class="ncPt" data-bad="0">Contraintes ELS en XD/XF/XS à vérifier en plus (livre p.190, 214).</p>'
+   h+='<p class="ncPt" data-bad="0">Contraintes ELS (EC2 7.2, Pratique de l\'EC2 p.65-67, 227-231) : combinaison caractéristique G + Q (ψ0 = 1), α_e = E_s/E_c,eff avec le φ saisi (retrait et fluage par E_c,eff), acier posé (poutre : estimé, barres Ø16 en nombre entier), section non fissurée si σ_ct ≤ f_ct,eff sinon fissurée, bande de 1 m pour la dalle ; σ_c ≤ 0,6·f_ck vérifié seulement en classes XD, XF, XS, σ_s ≤ 0,8·f_yk en toutes classes ; effets de la température non traités.</p>'
     +'<p class="ncPt" data-bad="0">non couverts : armatures de répartition (secondaires), charges localisées, poinçonnement : poteau circulaire de rive ou d\'angle, excentricité perpendiculaire vers l\'extérieur, dessin et dispositions des armatures de poinçonnement, conditions de la méthode forfaitaire autres que Q ≤ max(2G ; 5), coefficients μx/μy approchés.</p>'
     +(al?'<p class="ncPt" data-bad="0">enrobage saisi '+fC(al.saisi)+' cm inférieur à l\'enrobage nominal minimal '+fC(al.cnomCm)+' cm (classe '+al.classe+') : à corriger ou à justifier.</p>':'')
     +(res.poidsPropre?'':'<p class="ncPt" data-bad="0">poids propre de la dalle exclu du calcul (25·h = '+fC(25*res.h_cm/100)+' kN/m² non ajouté) : à ajouter si non compris dans G.</p>');
@@ -28224,7 +28250,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    { const E={ok:'conforme',ko:'NON conforme',nf:'non vérifiée'}, fc=res.flecheCourb, fz=res.fissuration&&res.fissuration.zones||[];
      const tFl='flèche vérifiée par l/d ('+(res.fleche&&!res.fleche.nonCalculee?(res.fleche.ok?'dispense acquise':'dispense non acquise'):'non calculée')+') et par la courbure ('+(fc?E[fc.etat]+', f = '+r2(fc.f_mm,1)+' mm pour l/250 = '+r2(fc.l250,1)+' mm':'non calculée')+')';
      const tFi='fissuration '+(!fz.length?'non calculée':(fz.every(z=>z.dispense)?'DISPENSÉE ('+fz[0].motif+')':fz.map(z=>z.nom+' '+E[z.etat]).join(', ')));
-     hyp.push('États ELS (détail dans la note de calcul) : '+tFl+' ; '+tFi+'. À confirmer par un ingénieur : appuis de dalle (EC2 9.3.1.2), contraintes ELS en XD/XF/XS, charges localisées.'); }
+     hyp.push('États ELS (détail dans la note de calcul) : '+tFl+' ; '+tFi+'. À confirmer par un ingénieur : appuis de dalle (EC2 9.3.1.2), charges localisées ; contraintes ELS vérifiées (EC2 7.2, voir la note).'); }
    hyp.push('Non dessiné : treillis soudés, trémies et renforts, armatures de poinçonnement, recouvrements, cales d\'enrobage, détail aux appuis. Poids = Ø²/162,2 kg/m sur longueurs développées, chutes non comptées.');
    return {lx:res.lx,L:Lm,W,sensDeux:res.sensDeux,hmm,c,d,aApp,b1,la1,L1,rep1,bR,repR,LR,bRs,repRs,chap,nomenclature:nom,poidsTotal,verifs,avertissements:[...new Set(warn)],hypotheses:hyp,
     parametres:{fck:res.fck,fyk:res.fyk,h:res.h_cm,enrobage:res.enr,appui:aApp/10,aL:r2(d,0),lx:res.lx,ly:W,sens:res.sensDeux?'deux':'un'}};
@@ -30135,11 +30161,18 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    flechesC.forEach((fc,e)=>{ if(fc.etat==='nf'&&fc.f_mm==null) return; if(fc.Mpos>0) zonesF.push(zoneF('Travée '+(e+1),travees[e].ferrInf.As,fc.Mpos)); });
    appuis.forEach((ap,i)=>{ if(!(Math.abs(ap.Mappui)>1e-6)) return; const ms=[]; if(i>0&&flechesC[i-1].MsL!=null) ms.push(flechesC[i-1].MsL); if(i<flechesC.length&&flechesC[i].Ms0!=null) ms.push(flechesC[i].Ms0); const Mn=Math.min(0,...ms); if(Mn<0) zonesF.push(zoneF('Appui '+i,ap.ferrSup.As,-Mn)); });
    const fissF={zones:zonesF,ctx:ctxF,psi2};
+   /* contraintes ELS (EC2 7.2) : combinaison caractéristique G + Q (enveloppe ELS du calcul RDM), acier posé estimé (barres Ø16 en nombre entier), α_e = E_s/E_c,eff, table en T en travée si saisie */
+   { const Zc=[], mC={fck,phi:matC.phi}, As2c=Math.max(0,+dp.AsComp_cm2||0)*1e-4, tTc=dp.sectionT===true?{beff:elsVal(dp,{k:'beff_cm'})/100,hf:elsVal(dp,{k:'hf_cm'})/100}:{};
+     const mk=(nom,AsCm2,M,sag)=>{ if(AsCm2==null){ Zc.push({nom,etat:'nf',nf:true}); return; } const n=Math.max(2,Math.ceil(AsCm2*100/Abar-1e-9)); const r=fcContraintes(Object.assign({As1:n*Abar*1e-6,As2:sag?As2c:0},flBase,sag?tTc:{}),M,mC,fyk,ctxF.classe); Zc.push({nom,r,M_kNm:M,etat:r.etat}); };
+     res.spans.forEach((L,e)=>{ if(!res.M||!res.M[e]) return; const Mp=Math.max(0,...res.M[e].map(o=>o.max)); if(Mp>0) mk('Travée '+(e+1),travees[e].ferrInf.As,Mp,true); });
+     appuis.forEach((ap,i)=>{ if(!(Math.abs(ap.Mappui)>1e-6)||!res.M) return; const ms=[]; if(i>0&&res.M[i-1]) ms.push(res.M[i-1][res.M[i-1].length-1].min); if(i<res.spans.length&&res.M[i]) ms.push(res.M[i][0].min); const Mn=Math.min(0,...ms); if(Mn<0) mk('Appui '+i,ap.ferrSup.As,-Mn,false); });
+     fissF.contraintes={zones:Zc,classe:ctxF.classe,phi:matC.phi}; }
    flechesC.forEach(fc=>V.push({zone:'Travée '+(fc.e+1),nom:'ELS flèche — par la courbure',formule:'EC2 7.4.3 : α = ζ·α_II + (1−ζ)·α_I, E_c,eff = E_cm/(1+φ), retrait ε_cs·α_e·S/I ; f ≤ l/250 (quasi permanentes)'+(dp.cloisonsFragiles===true?' ; l/500 après construction':'')+' (Maîtrise p.207-209, 217)',
     calcul:fc.f_mm!=null?('f = '+f2(fc.f_mm,1)+' mm (g + '+f2(psi2,2)+'·Q, φ = '+f2(matC.phi,1)+', ε_cs = '+f2(matC.epsCs*1e4,1)+'·10⁻⁴, ζ = '+f2(fc.zeta,2)+')'+(fc.note?' — '+fc.note:'')):'non calculable (section d\'acier non déterminée)',
     limite:fc.f_mm!=null?('l/250 = '+f2(fc.l250,1)+' mm'+(dp.cloisonsFragiles===true?' ; l/500 = '+f2(fc.l500,1)+' mm':'')):'—',etat:fc.etat}));
    zonesF.forEach(z=>V.push(z.nf?{zone:z.nom,nom:'ELS fissuration',formule:'EC2 7.3 (Maîtrise p.161-193)',calcul:z.lits?'plusieurs lits d\'armatures nécessaires : calcul non fait (entraxe et c non définis)':'section d\'acier non déterminée',limite:'w_max = '+(+z.W.wmax).toFixed(1).replace('.',',')+' mm',etat:'nf'}:fcFissLigne(z.nom,z)));
-   [['ELS contraintes (XD/XF/XS)','σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk (livre p.190, 214)'],['Charges concentrées près des appuis','0,5d ≤ a_v < 2d : β, EC2 6.2.2(6) et 6.2.3(8)'],['Bielle d\'about','EC2 6.5.4 (livre p.335)'],['Section en T','jonction table-âme EC2 6.2.4 (livre p.337-341)']]
+   fissF.contraintes.zones.forEach(z=>V.push(z.nf?{zone:z.nom,nom:'ELS contraintes',formule:'EC2 7.2',calcul:'section d\'acier non déterminée',limite:'—',etat:'nf'}:fcContraintesLigne(z.nom,z)));
+   [['Charges concentrées près des appuis','0,5d ≤ a_v < 2d : β, EC2 6.2.2(6) et 6.2.3(8)'],['Bielle d\'about','EC2 6.5.4 (livre p.335)'],['Section en T','jonction table-âme EC2 6.2.4 (livre p.337-341)']]
     .forEach(a=>V.push({zone:'Poutre',nom:a[0],formule:a[1],calcul:'—',limite:'—',etat:'nf'}));
    return { travees, appuis, cadres, AsMin, AsMax, d, shear:sh, verifs:V, flechesC, fissuration:fissF, flechePar:{psi2,phi:matC.phi,epsCs:matC.epsCs}, materiaux:{fck,fyk,fcd:+fcd.toFixed(2),fyd:+fyd.toFixed(1),b,d:+d.toFixed(3)} };
   }
@@ -30450,7 +30483,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    { const E={ok:'conforme',ko:'NON conforme',nf:'non vérifié'}, vf=((R.ferraillage&&R.ferraillage.verifs)||[]), fl=vf.filter(v=>/flèche/.test(v.nom)), fi=vf.filter(v=>/fissuration/.test(v.nom));
      const tFl=fl.length?'flèche par la courbure ('+fl.map(v=>E[v.etat]).filter((x,i,a)=>a.indexOf(x)===i).join(' / ')+')':'flèche non calculée';
      const tFi=fi.length?(fi.every(v=>/DISPENSE APPLIQUÉE/.test(v.calcul))?'fissuration DISPENSÉE (voir la note de calcul)':'fissuration ('+fi.map(v=>E[v.etat]).filter((x,i,a)=>a.indexOf(x)===i).join(' / ')+')'):'fissuration non calculée';
-     hyp.push('États ELS (détail dans la note de calcul) : '+tFl+' ; '+tFi+'. Non vérifié : contraintes ELS en XD/XF/XS, torsion, charges concentrées proches des appuis (0,5d ≤ a_v < 2d), bielle d\'about, jonction table-âme (section en T), appuis indirects, réservations, doublement des cadres sur appuis. Section en T : non dessinée (table prise en compte dans la flèche seulement). Limites : Poids = π/4·Ø²·7850 kg/m³ sur longueurs développées ; chutes de coupe non comptées.'); }
+     hyp.push('États ELS (détail dans la note de calcul) : '+tFl+' ; '+tFi+'. Contraintes ELS vérifiées (EC2 7.2, voir la note). Non vérifié : torsion, charges concentrées proches des appuis (0,5d ≤ a_v < 2d), bielle d\'about, jonction table-âme (section en T), appuis indirects, réservations, doublement des cadres sur appuis. Section en T : non dessinée (table prise en compte dans la flèche seulement). Limites : Poids = π/4·Ø²·7850 kg/m³ sur longueurs développées ; chutes de coupe non comptées.'); }
 
    if(apps.some(a=>a.ch.insuff)||trav.some(t=>t.ch.insuff)) warn.push('Section d\'acier requise au-delà de 3 lits de HA32 sur certaines zones — section de béton à revoir.');
    const warnU=[...new Set(warn)];
@@ -30580,7 +30613,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +(fr&&fr.flechePar?'<p class="ncPt" data-bad="0">Flèche par la courbure (EC2 §7.4.3, Maîtrise p.207-209, 225-227) : charges quasi permanentes g + ψ2·Q avec ψ2 = '+fC(fr.flechePar.psi2)+' (non saisi : valeur par défaut), φ = '+fC(fr.flechePar.phi)+' et ε_cs = '+fC(fr.flechePar.epsCs*1e4)+'·10⁻⁴ (valeurs par défaut), armatures = sections calculées non arrondies (la section posée, plus grande, réduit la flèche), armatures comprimées négligées, cloisons fragiles : '+(dp.cloisonsFragiles===true?'oui, l/500 contrôlé sur la flèche totale':'non saisies, seule la limite l/250 est contrôlée')+' : à valider par l\'ingénieur.</p>':'')
     +(fr&&fr.fissuration?fcChoixFissuration(fr.fissuration,true,dp).map(c=>'<p class="ncPt" data-bad="0">'+esc(c.texte)+'</p>').join(''):'')
     +(fr?dimNotesIngenieur('pc',dp,fr.fissuration,null).map(n=>'<p class="ncPt" data-bad="0">'+esc(n.texte)+'</p>').join(''):'')
-    +'<p class="ncPt" data-bad="0">En classes XD/XF/XS vérifier aussi les contraintes (σ_c ≤ 0,6 f_ck, σ_s ≤ 0,8 f_yk ; livre p.190, 214).</p>'
+    +'<p class="ncPt" data-bad="0">Contraintes ELS (EC2 7.2, Pratique de l\'EC2 p.65-67, 227-231) : combinaison caractéristique G + Q (ψ0 = 1), α_e = E_s/E_c,eff avec le φ saisi (retrait et fluage par E_c,eff), acier posé (poutre : estimé, barres Ø16 en nombre entier), section non fissurée si σ_ct ≤ f_ct,eff sinon fissurée, bande de 1 m pour la dalle ; σ_c ≤ 0,6·f_ck vérifié seulement en classes XD, XF, XS, σ_s ≤ 0,8·f_yk en toutes classes ; effets de la température non traités.</p>'
     +'<p class="ncPt" data-bad="0">non couverts par ce calcul — charges concentrées proches des appuis (0,5d ≤ a_v < 2d), bielle d\'about, section en T, torsion, armatures comprimées au-delà de K\' = 0,21.</p>'
     +(pp.inclus?'':'<p class="ncPt" data-bad="0">poids propre de la poutre exclu du calcul (non coché) — '+fC(pp.g_kNm)+' kN/m à ajouter si non compris dans G.</p>');
    const chgSection=ppTxt+((dp.charges||[]).length?'<table class="pcNCt"><thead><tr><th>Charge</th><th>Forme</th><th>Repère</th><th>Position</th><th>Valeur</th></tr></thead><tbody>'+chLines+'</tbody></table>':'<p>Aucune charge fixe saisie.</p>')
