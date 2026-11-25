@@ -25531,7 +25531,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const spans=dp.travees.map(t=>+t.portee_m||0); const total=spans.reduce((a,b)=>a+b,0)||1;
    const bcm=+dp.b_cm||20, hcm=+dp.h_cm||50; const mat=pcMatKey(dp.materiau);
    const BTN=18;
-   const W=810,padL=72,padR=300; const beamW=W-padL-padR; const sx=beamW/total;
+   const W=850,padL=72,padR=340; const beamW=W-padL-padR; const sx=beamW/total;
    const rectH=Math.max(10,Math.min(50,hcm*0.55));
    const pos=pcGlobalPositions(spans);
    // pré-passe : combien de « voies » de charges superposées faut-il réserver au-dessus de la poutre ?
@@ -25662,16 +25662,49 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      +(extr?'<label class="pcApLbl pcApChk"><input type="checkbox" data-pc-i="appuis.'+apOpen+'.blocage_rotation" '+(ap.blocage_rotation?'checked':'')+'> encastrement (blocage rotation)</label>':'<span class="pcNote2">appui intermédiaire</span>')
      +'</div></foreignObject>';
    }
-   // coupe de section : toujours bien à droite des boutons ＋/－ (jamais superposée), sur la même ligne que la poutre
-   // pour rester visible et cliquable ; reste à la même position quel que soit le nombre de travées (beamW fixe).
-   const secX=xEnd+170, secCY=baseY;
-   const scaleSec=Math.min(42/Math.max(bcm,1), 46/Math.max(hcm,1));
+   /* coupe de section cotée (vraie coupe plane aux proportions réelles b:h) : colonne à droite des boutons ＋/－, jamais superposée ;
+      cote horizontale b sous la section, cote verticale h à droite, enrobage c à gauche (béton armé) ; lignes d'attache, extrémités obliques et champs éditables liés au formulaire */
+   const secColX=xEnd+2*HB+16, secColW=W-8-secColX, FWb=Math.round(58+Math.max(3,String(bcm).length+1.5)*8.5), FWh=Math.round(58+Math.max(3,String(hcm).length+1.5)*8.5);
+   const isBA=(mat==='beton_arme'), cEnr=(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3;
+   const leftW=isBA?70:0, rightW=22+FWh+4;
+   const secTop=40, secAvailH=Math.max(60,Math.min(200,H-secTop-66)), secAvailW=Math.max(40,Math.min(96,secColW-leftW-rightW));
+   const scaleSec=Math.min(secAvailW/Math.max(bcm,1), secAvailH/Math.max(hcm,1));
    const sw=bcm*scaleSec, sh=hcm*scaleSec;
-   const SDX=7, SDY=-7;
-   const secHtml='<text x="'+secX+'" y="'+(secCY-sh/2-34)+'" text-anchor="middle" font-size="11" fill="var(--ink-soft,#777)">Section</text>'
-    +pcBox3d(mat,secX-sw/2,secCY-sh/2,sw,sh,SDX,SDY,true)
-    +'<foreignObject x="'+(secX-60)+'" y="'+(secCY-sh/2-32)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">b =</span><input type="number" min="5" step="any" class="pcDimIn" style="width:'+pcChW(bcm,3)+'" data-pc-i="b_cm" value="'+bcm+'" title="Largeur b (cm)" aria-label="Largeur b (cm)"><i class="pcUnit">cm</i></div></foreignObject>'
-    +'<foreignObject x="'+(secX+sw/2+4)+'" y="'+(secCY-16)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">h =</span><input type="number" min="5" step="any" class="pcDimIn" style="width:'+pcChW(hcm,3)+'" data-pc-i="h_cm" value="'+hcm+'" title="Hauteur h (cm)" aria-label="Hauteur h (cm)"><i class="pcUnit">cm</i></div></foreignObject>';
+   const secX0=Math.round(secColX+(secColW-(leftW+sw+rightW))/2+leftW), secY0=secTop, secCX=secX0+sw/2;
+   const f1=n=>Math.round(n*10)/10, DK=4;
+   const sLn=(x1,y1,x2,y2,cls)=>'<line class="'+cls+'" x1="'+f1(x1)+'" y1="'+f1(y1)+'" x2="'+f1(x2)+'" y2="'+f1(y2)+'"/>';
+   const secFld=(x,y,w,nm,key,val,ttl)=>'<foreignObject class="dimFo" x="'+Math.round(x)+'" y="'+Math.round(y)+'" width="'+w+'" height="28"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">'+nm+' =</span><input type="number" min="5" step="any" class="pcDimIn" style="width:'+pcChW(val,3)+'" data-pc-i="'+key+'" value="'+val+'" title="'+ttl+'" aria-label="'+ttl+'"><i class="pcUnit">cm</i></div></foreignObject>';
+   const sx0=secX0, sx1=secX0+sw, sy0=secY0, sy1=secY0+sh;
+   let secBody;
+   {
+    secBody='<rect x="'+f1(sx0)+'" y="'+f1(sy0)+'" width="'+f1(sw)+'" height="'+f1(sh)+'" fill="'+pcMatFills(mat).f+'" stroke="var(--pcm-edge)" stroke-width="1.8"/>';
+    if(isBA){
+     const ce=Math.max(4,Math.min(cEnr*scaleSec,Math.min(sw,sh)/4)), rr=Math.max(3,Math.min(5.5,scaleSec*0.9)), ci=ce+rr+1.5;
+     secBody+='<rect x="'+f1(sx0+ce)+'" y="'+f1(sy0+ce)+'" width="'+f1(sw-2*ce)+'" height="'+f1(sh-2*ce)+'" rx="'+f1(Math.min(rr,6))+'" fill="none" style="stroke:var(--pcm-rebar)" stroke-width="1.5"/>';
+     const barY=y=>'<circle cx="X" cy="'+f1(y)+'" r="'+f1(rr)+'" style="fill:var(--pcm-rebar);stroke:var(--pcm-edge)" stroke-width=".8"/>';
+     const barsRow=(y,n)=>{ let o=''; const xa=sx0+ci, xb=sx1-ci; for(let k=0;k<n;k++){ const xx=n===1?(xa+xb)/2:xa+(xb-xa)*k/(n-1); o+=barY(y).replace('"X"','"'+f1(xx)+'"'); } return o; };
+     secBody+=barsRow(sy1-ci,sw>=50?3:2)+barsRow(sy0+ci,2);
+    }
+   }
+   /* cote b : horizontale sous la section, étiquette centrée (sur la ligne, interrompue, si la cote est assez longue ; sinon centrée juste dessous) */
+   const bLy=sy1+24, bOn=sw>=FWb+30;
+   const bGap=bOn?[secCX-FWb/2-2,secCX+FWb/2+2]:null;
+   const bLine=bOn?sLn(sx0,bLy,bGap[0],bLy,'dimLn')+sLn(bGap[1],bLy,sx1,bLy,'dimLn'):sLn(sx0,bLy,sx1,bLy,'dimLn');
+   const bDim='<g class="dimCote" data-dim-key="b">'+sLn(sx0,sy1+3,sx0,bLy+DK,'dimAtt')+sLn(sx1,sy1+3,sx1,bLy+DK,'dimAtt')+bLine
+    +sLn(sx0-DK,bLy+DK,sx0+DK,bLy-DK,'dimTk')+sLn(sx1-DK,bLy+DK,sx1+DK,bLy-DK,'dimTk')
+    +secFld(secCX-FWb/2,bOn?bLy-14:bLy+6,FWb,'b','b_cm',bcm,'Largeur b (cm)')+'</g>';
+   /* cote h : verticale à droite, étiquette horizontale centrée en hauteur, à droite de la ligne */
+   const hLx=sx1+22, hMy=(sy0+sy1)/2;
+   const hDim='<g class="dimCote" data-dim-key="h">'+sLn(sx1+3,sy0,hLx+DK,sy0,'dimAtt')+sLn(sx1+3,sy1,hLx+DK,sy1,'dimAtt')+sLn(hLx,sy0,hLx,sy1,'dimLn')
+    +sLn(hLx-DK,sy0+DK,hLx+DK,sy0-DK,'dimTk')+sLn(hLx-DK,sy1+DK,hLx+DK,sy1-DK,'dimTk')
+    +secFld(hLx+6,hMy-14,FWh,'h','h_cm',hcm,'Hauteur h (cm)')+'</g>';
+   /* cote c (enrobage, lecture seule : se règle dans le formulaire) : petite cote verticale à gauche, entre l'arête et le cadre */
+   let cDim='';
+   if(isBA){ const ce=Math.max(4,Math.min(cEnr*scaleSec,Math.min(sw,sh)/4)), cLx=sx0-12, cTxt=String(Math.round(cEnr*100)/100).replace('.',',');
+    cDim='<g class="dimCote" data-dim-key="c">'+sLn(sx0-3,sy0,cLx-DK,sy0,'dimAtt')+sLn(sx0+ce-3,sy0+ce,cLx-DK,sy0+ce,'dimAtt')+sLn(cLx,sy0-8,cLx,sy0+ce+8,'dimLn')
+     +sLn(cLx-DK,sy0+DK,cLx+DK,sy0-DK,'dimTk')+sLn(cLx-DK,sy0+ce+DK,cLx+DK,sy0+ce-DK,'dimTk')
+     +'<text x="'+(cLx-8)+'" y="'+f1(sy0+ce/2+4)+'" text-anchor="end" font-size="11" fill="var(--ink-soft,#777)">c = '+cTxt+' cm</text></g>'; }
+   const secHtml='<text x="'+f1(secCX)+'" y="'+(secTop-16)+'" text-anchor="middle" font-size="11" fill="var(--ink-soft,#777)">Section</text>'+secBody+cDim+bDim+hDim;
    return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+Math.round(H*1.35)+'" class="pcSvg" role="img" aria-label="Schéma de la poutre">'
     +'<defs><marker id="pcArr" markerWidth="7" markerHeight="7" refX="2.3" refY="3.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L6,3.5 L0,7 Z" fill="currentColor"/></marker>'+pcMatDefs(mat)+'</defs>'
     +rectHtml.join('')+chgHtml+supHtml.join('')+apBtnHtml.join('')+addBtns+dimHtml+totDim+apPanel+secHtml
