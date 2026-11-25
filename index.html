@@ -26601,6 +26601,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(res.omega==null) res.omega=res.AsReelle_cm2*100*fyd/(Ac_mm2*fcd);
    res.shear=ptTranchant(dp,res); if(res.shear.reduit){ res.sCourant_mm=res.shear.sRet; res.sExtrem_mm=0.6*res.shear.sRet; } /* espacement des cadres réduit si l'effort tranchant l'exige */
    res.els=ptEls(dp,res);
+   res.feu=ptFeu(dp,res);
    res.cad=ptCadres(res,dp);
    res.verifs=ptVerifs(dp,res);
    return res;
@@ -26655,6 +26656,44 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   /* Positions des cadres (mm depuis le pied) et nappes de recouvrement : zone de recouvrement l_0 au pied (attentes), cadres à 0,6·s sur h max ou l_0 ;
      Ø > 14 mm : au moins trois nappes sur l_0 ; Ø ≥ 20 mm : ΣA_st ≥ A_s d'une barre recouverte et une nappe hors recouvrement (Pratique p.164-165). */
+  /* ===== Résistance au feu du poteau : méthode tabulée de type BAEL/DTU feu, reprise du classeur 011 (H. Thonier, feuille « Poteau au feu »), PAS l'EN 1992-1-2 =====
+     Tables θm (M × durée), Fb, Fi (θ de 200 à 990 °C) retranscrites du classeur ; recherche « par palier » (valeur de la ligne ≤ argument, comme le classeur). Non vérifiable dans les livres fournis (aucun contenu feu). */
+const PT_FEU_DUR=[0.5,1,1.5,2,3,4];
+const PT_FEU_THM=[[0.05,[null,125,180,230,330,425]],[0.06,[100,155,225,290,400,480]],[0.07,[120,185,270,330,450,540]],[0.08,[130,215,305,380,505,590]],[0.09,[150,245,345,430,555,640]],[0.1,[160,270,380,470,600,680]],[0.11,[175,290,415,510,640,715]],[0.12,[190,320,450,540,675,760]],[0.13,[205,345,475,570,700,790]],[0.14,[215,370,505,595,725,820]],[0.15,[230,390,525,615,745,845]],[0.16,[245,415,550,630,760,860]],[0.17,[255,440,565,650,775,875]],[0.18,[270,460,580,660,785,885]],[0.19,[280,480,600,680,800,895]],[0.2,[295,500,610,690,805,900]],[0.21,[310,510,620,700,815,910]],[0.22,[315,525,630,710,825,915]],[0.23,[325,530,640,715,830,920]],[0.24,[335,540,650,720,835,925]],[0.25,[345,545,655,725,840,930]]];
+const PT_FEU_FB=[1,1,1,1,1,1,0.984,0.969,0.953,0.937,0.922,0.906,0.89,0.874,0.859,0.843,0.827,0.812,0.796,0.78,0.764,0.749,0.733,0.717,0.702,0.686,0.67,0.654,0.639,0.623,0.607,0.592,0.576,0.56,0.545,0.529,0.513,0.497,0.482,0.466,0.45,0.439,0.428,0.416,0.405,0.394,0.383,0.371,0.36,0.349,0.338,0.326,0.315,0.304,0.293,0.281,0.27,0.259,0.248,0.236,0.225,0.214,0.203,0.191,0.18,0.169,0.158,0.146,0.135,0.124,0.113,0.101,0.09,0.079,0.068,0.056,0.045,0.034,0.023,0.011];
+const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0.832,0.817,0.802,0.786,0.771,0.756,0.741,0.725,0.71,0.695,0.679,0.664,0.649,0.634,0.618,0.603,0.588,0.573,0.557,0.542,0.527,0.512,0.496,0.481,0.466,0.451,0.435,0.42,0.395,0.371,0.346,0.321,0.296,0.272,0.247,0.222,0.198,0.173,0.148,0.124,0.099,0.074,0.049,0.025,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+  function ptFeuLookup(x,tab,x0,step){ const i=Math.floor((x-x0)/step+1e-9); return (i<0||i>=tab.length)?null:tab[i]; }
+  function ptFeuDefaults(dp,res){
+   const L0=ptL0(dp), k=isFinite(L0.f)?L0.f:null, r=res||dp.resultats;
+   return {k, Av:(r&&r.AsReelle_cm2!=null)?Math.round(r.AsReelle_cm2*100)/100:null, th:800, N:(r&&r.NEd_kN!=null)?Math.round(r.NEd_kN/1.4*10)/10:null};
+  }
+  function ptFeu(dp,res){
+   const dur=+dp.feu_duree_h||0; if(!(dur>0)) return {etat:'na',dur:0};
+   const D=ptFeuDefaults(dp,res), g=res.geom, h=+dp.L_m||3;
+   const sa=k=>dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''&&isFinite(+dp[k]);
+   const k=sa('feu_k')?+dp.feu_k:D.k, Av=sa('feu_Av_cm2')?+dp.feu_Av_cm2:(D.Av!=null?D.Av:res.AsReelle_cm2), thI=sa('feu_thetaI')?+dp.feu_thetaI:D.th, Nfi=sa('feu_Nfi_kN')?+dp.feu_Nfi_kN:res.NEd_kN/1.4;
+   const src={k:sa('feu_k'),Av:sa('feu_Av_cm2'),thI:sa('feu_thetaI'),Nfi:sa('feu_Nfi_kN')};
+   const base={dur,k,Av,thI,Nfi,src,h};
+   const nf=motif=>Object.assign({etat:'nf',motif},base);
+   if(!g.rect) return nf('section circulaire : le classeur ne traite que la section rectangulaire');
+   if(PT_FEU_DUR.indexOf(dur)<0) return nf('durée '+dur+' h hors du domaine du classeur (0,5 ; 1 ; 1,5 ; 2 ; 3 ; 4 h)');
+   if(Math.abs(+dp.M_tete_kNm||0)>1e-6||Math.abs(+dp.M_pied_kNm||0)>1e-6) return nf('poteau en flexion composée : le classeur ne traite que la compression centrée');
+   if(!(k>0)||!isFinite(k)) return nf('coefficient de flambement k inconnu (appui libre / console) : saisir k');
+   const a=Math.min(g.b,g.h)/100, b=Math.max(g.b,g.h)/100;                                    // a = plus petit côté (m)
+   const Br=(a-0.02)*(b-0.02), lf=k*h;
+   const M=Math.round((b*100*2+a*100*2)/(a*100*b*100)*100)/100;                              // périmètre / aire, cm⁻¹, arrondi à 0,01 comme le classeur
+   if(M<PT_FEU_THM[0][0]-1e-9||M>PT_FEU_THM[PT_FEU_THM.length-1][0]+1e-9) return nf('M = périmètre/aire = '+M+' cm⁻¹ hors de la table du classeur (0,05 à 0,25)');
+   const row=PT_FEU_THM.find(r=>Math.abs(r[0]-M)<1e-9), thM=row[1][PT_FEU_DUR.indexOf(dur)];
+   if(thM==null) return nf('θm non tabulée pour M = '+M+' et '+dur+' h');
+   if(thM<200) return nf('θm = '+thM+' °C inférieure à 200 °C, début des tables Fb et Fi du classeur');
+   if(!(thI>=200&&thI<=990)) return nf('θi = '+thI+' °C hors de la plage 200 à 990 °C des tables du classeur');
+   const Fb=ptFeuLookup(thM,PT_FEU_FB,200,10), Fi=ptFeuLookup(thI,PT_FEU_FI,200,10);
+   const Bq=Fb*Br, lam=lf*Math.sqrt(12)/a;
+   if(lam>70) return nf('λ = '+lam.toFixed(1)+' > 70 : élancement trop important (limite 70 retenue, comme le classeur 009 ; le classeur 011 ne donne pas de limite)');
+   const alpha=lam<=50?0.85/(1+0.2*Math.pow(lam/35,2)):0.6*Math.pow(50/lam,2);
+   const NrMN=alpha/0.85*(Bq*res.fck/1.17+Av*1e-4*Fi*res.fyk), Nr=NrMN*1000;                 // kN
+   return Object.assign(base,{etat:Nfi<=Nr+1e-9?'ok':'ko',a,b,Br,lf,M,thM,Fb,Fi,Bq,lam,alpha,Nr,NrMN});
+  }
   function ptCadres(res,dp){
    const Lmm=(+dp.L_m||3)*1000, phi=res.barFace.phi, phiT=res.phiCadre;
    const sC=Math.max(50,Math.round(res.sCourant_mm/5)*5), sE=Math.max(50,Math.round(res.sExtrem_mm/5)*5), l0=Math.round(res.lb_mm/10)*10;
@@ -26692,7 +26731,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    else if(el.etat==='nf') add('ELS','Contraintes ELS (XD)','section fissurée élastique, α_e = 15','équilibre non trouvé','—','nf');
    else add('ELS','Contraintes ELS (XD)','section fissurée élastique, α_e = 15 : N_ser = '+f(el.Nser,0)+' kN, M_ser = '+f(el.Mser,1)+' kN·m (livre p.497-498)','σ_c = '+f(el.sigc,1)+' MPa ; σ_s max = '+f(el.sigsMax,0)+' MPa','σ_c ≤ '+f(el.lc,1)+' ; σ_s ≤ '+f(el.ls,0)+' MPa',el.etat);
    { const L=res.cad.lap; add('Recouvrement','Nappes transversales sur l_0','Ø > 14 mm : ≥ 3 nappes sur l_0 ; Ø ≥ 20 mm : ΣA_st ≥ A_s d\'une barre et 1 nappe hors recouvrement (livre p.164-165)',L.rule3?(L.nIn+' nappes sur l_0 = '+Math.round(L.l0/10)+' cm'+(L.rule20?' ; ΣA_st = '+f(L.Ast,0)+' mm² ; A_s barre = '+f(L.Abar,0)+' mm²':'')):'Ø ≤ 14 mm : disposition courante',L.rule3?(L.rule20?'ΣA_st ≥ '+f(L.Abar,0)+' mm²':'≥ 3 nappes'):'—',L.ok?'ok':'ko'); }
-   add('Poteau','Flexion biaxiale, feu','EC2 §5.8.9 ; EC2-1-2','non calculé','—','nf');
+   add('Poteau','Flexion biaxiale','EC2 §5.8.9','non calculé','—','nf');
+   { const fe=res.feu, ref='méthode tabulée de type BAEL/DTU feu (classeur 011), pas l\'EN 1992-1-2';
+     if(fe.etat==='na') add('Feu','Résistance au feu',ref,'durée de stabilité au feu non demandée','—','nf');
+     else if(fe.etat==='nf') add('Feu','Résistance au feu ('+f(fe.dur,1)+' h)',ref,'hors domaine du classeur : '+fe.motif,'—','nf');
+     else add('Feu','N_fi ≤ N_r ('+f(fe.dur,1)+' h)',ref+' : N_r = α/0,85·(B_q·f_c28/1,17 + A_v·F_i·f_e) ; θm = '+f(fe.thM,0)+' °C, F_b = '+f(fe.Fb,3)+', θi = '+f(fe.thI,0)+' °C, F_i = '+f(fe.Fi,3)+', λ = '+f(fe.lam,1)+', α = '+f(fe.alpha,3),'N_fi = '+f(fe.Nfi,0)+' kN ; N_r = '+f(fe.Nr,0)+' kN','N_fi ≤ N_r',fe.etat); }
    return V;
   }
   function ptSvg(dp){
@@ -26774,6 +26817,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<label>Effort tranchant V<sub>Ed</sub> (kN, facultatif) <input type="number" step="any" min="0" data-pt="V_kN" value="'+(dp.V_kN??'')+'" placeholder="déduit"></label>'
     +'<p class="pcNote">V<sub>Ed</sub> vide : déduit des moments d\'extrémité, V<sub>Ed</sub> = (M<sub>02</sub> − M<sub>01</sub>)/l (livre p.309-319).</p>'
     +ptElsBlockHtml(dp,t.id)
+    +ptFeuBlockHtml(dp,t.id)
     +'<p class="pcNote">1 t = 10 kN. N et M saisis = valeurs ELU (1,35·G + 1,5·Q). Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2 ; excentricités e_i = l₀/400 et Δe₀ = max(20 mm ; h/30) ajoutées (livre p.445-446).</p>'
     +'<button type="button" class="ghost pcBtnSm" data-pt-act="openDescente">📥 Descente de charges</button>'
     +'<p class="pcNote">Calcule N à partir de l\'empilement des niveaux portés par ce poteau (dalles, poutres, poids propre, charges d\'exploitation avec dégression) puis le reporte ici.</p>';
@@ -26794,6 +26838,21 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const err=(window._elsErr||{})[id];
    return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="pt"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés (second ordre, ELS)</summary><div class="pcElsBody">'
     +'<p class="pcNote">'+(req?'Classe '+cls+' : contraintes ELS vérifiées (σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk).':'Classe '+cls+' : contraintes ELS non requises (requises en XD, XF, XS) ; N_ser et M_ser ne servent alors à rien.')+' Valeurs par défaut affichées dans les champs, reprises dans la note de calcul.</p>'
+    +specs.map(sp=>elsFieldHtml(sp,dp,err)).join('')
+    +'<button type="button" class="ghost" data-els-reset="1">Rétablir les valeurs par défaut</button></div></details>';
+  }
+  /* Bloc repliable « Résistance au feu » du poteau (méthode du classeur 011) : durée, k, A_v, θ_i, N_fi. */
+  function ptFeuBlockHtml(dp,id){
+   const D=ptFeuDefaults(dp), g=ptGeom(dp), err=(window._elsErr||{})[id];
+   const specs=[
+    {k:'feu_duree_h',lbl:'Durée de stabilité au feu',t:'sel',def:0,opts:[[0,'Non demandée'],[0.5,'0,5 h'],[1,'1 h'],[1.5,'1,5 h'],[2,'2 h'],[3,'3 h'],[4,'4 h']],aide:'Durées du classeur 011 (0,5 à 4 h) ; « Non demandée » : la résistance au feu n\'est pas vérifiée.'},
+    {k:'feu_k',lbl:'k — coefficient de flambement (l_f = k·h)',t:'num',def:D.k,min:0.5,max:2,step:0.05,unit:'',aide:'Par défaut le coefficient de longueur efficace de la fiche (l₀/l) ; entre 0,5 et 2.'},
+    {k:'feu_Av_cm2',lbl:'A_v — section d\'acier longitudinal',t:'num',def:D.Av,min:0,max:1000,step:0.1,unit:'cm²',aide:'Par défaut la section réelle choisie au calcul ; le classeur compte toutes les barres.'},
+    {k:'feu_thetaI',lbl:'θ_i — température des armatures',t:'num',def:D.th,min:20,max:990,step:5,unit:'°C',aide:'Par défaut 800 °C (valeur de l\'exemple du classeur : F_i = 0, armatures ignorées, côté sécurité) ; tables de 200 à 990 °C.'},
+    {k:'feu_Nfi_kN',lbl:'N_fi — effort normal en situation d\'incendie',t:'num',def:D.N,min:0,max:1e6,step:1,unit:'kN',aide:'Par défaut N_Ed/1,4 (hypothèse : le classeur ne donne pas la combinaison accidentelle) ; remplacer par la valeur de la combinaison accidentelle.'}];
+   const fe=dp.resultats&&dp.resultats.feu;
+   return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="ptf"'+(dp._feuOpen?' open':'')+'><summary>Résistance au feu</summary><div class="pcElsBody">'
+    +'<p class="pcNote">Méthode tabulée de type BAEL/DTU feu reprise du classeur 011 (pas l\'EN 1992-1-2). Domaine : section rectangulaire, compression centrée (moments nuls), M = périmètre/aire de 0,05 à 0,25 cm⁻¹, durées 0,5 à 4 h ; hors domaine : non vérifié. f_c28 = f_ck, f_e = f_yk, h = hauteur du poteau, a = petit côté, quatre faces exposées.'+(g.rect?'':' Section circulaire : non vérifiée.')+'</p>'
     +specs.map(sp=>elsFieldHtml(sp,dp,err)).join('')
     +'<button type="button" class="ghost" data-els-reset="1">Rétablir les valeurs par défaut</button></div></details>';
   }
@@ -27007,7 +27066,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
    const dp=ptData(t);
-   if(el.dataset.els){ const sp=el.dataset.els; if(sp==='N_ser_kN'||sp==='M_ser_kNm'||sp==='phi_ef'){ window._elsErr=window._elsErr||{}; delete window._elsErr[id]; if(el.value===''){ delete dp[sp]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<0||(sp==='phi_ef'&&x>5)){ window._elsErr[id]={key:sp,msg:sp==='phi_ef'?'φ_ef compris entre 0 et 5.':'Valeur positive attendue.'}; } else dp[sp]=x; } try{persist();}catch(_){ } pteRender(id); } return; }
+   if(el.dataset.els){ const sp=el.dataset.els; if(sp==='feu_duree_h'){ dp[sp]=+el.value; try{persist();}catch(_){ } pteRender(id); return; }
+   if(sp==='N_ser_kN'||sp==='M_ser_kNm'||sp==='phi_ef'||sp==='feu_k'||sp==='feu_Av_cm2'||sp==='feu_thetaI'||sp==='feu_Nfi_kN'){ window._elsErr=window._elsErr||{}; delete window._elsErr[id]; if(el.value===''){ delete dp[sp]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<0||(sp==='phi_ef'&&x>5)||(sp==='feu_k'&&(x<0.5||x>2))||(sp==='feu_thetaI'&&(x<20||x>990))){ window._elsErr[id]={key:sp,msg:sp==='phi_ef'?'φ_ef compris entre 0 et 5.':(sp==='feu_k'?'k compris entre 0,5 et 2.':(sp==='feu_thetaI'?'θ_i compris entre 20 et 990 °C.':'Valeur positive attendue.'))}; } else dp[sp]=x; } try{persist();}catch(_){ } pteRender(id); } return; }
    if(el.matches('[data-pt="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
    const key=el.dataset.pt; if(key){
     if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
@@ -27129,7 +27189,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +(res.shear.reduit?'<p class="ncPt" data-bad="0">espacement des cadres réduit à '+fC(res.shear.sRet/10,1)+' cm (au lieu de '+fC(res.shear.sCour0/10,1)+' cm) pour reprendre l\'effort tranchant V_Ed = '+fC(res.shear.VEd,1)+' kN.</p>':'')
     +(res.shear.src&&res.shear.etat!=='na'&&!(dp.V_kN!=null&&dp.V_kN!=='')?'<p class="ncPt" data-bad="0">effort tranchant V_Ed déduit des moments d\'extrémité ELU : V_Ed = (M02 − M01)/l ; en présence de charges horizontales le saisir.</p>':'')
     +(res.els.requis?'<p class="ncPt" data-bad="0">contraintes ELS : '+((res.els.saiN&&res.els.saiM)?'N_ser et M_ser saisis':'N_ser et M_ser estimés à N_Ed/1,4 et M_Ed/1,4 (rapport ELU/ELS courant, livre p.491 : 1,41 à 1,43) : à remplacer par les valeurs ELS de la descente de charges')+' ; section fissurée élastique avec α_e = 15 (convention du livre p.497), à confirmer par un ingénieur. Fissuration et flèche non vérifiées.</p>':'<p class="ncPt" data-bad="0">classe '+res.els.classe+' : contraintes ELS non requises (requises en XD, XF, XS) ; fissuration et flèche non vérifiées.</p>')
-    +'<p class="ncPt" data-bad="0">flexion biaxiale et résistance au feu non calculées.</p>'
+    +'<p class="ncPt" data-bad="0">flexion biaxiale non calculée.</p>'
+    +(res.feu.etat==='na'?'<p class="ncPt" data-bad="0">résistance au feu non demandée (durée de stabilité au feu non choisie dans le bloc « Résistance au feu ») : non vérifiée.</p>'
+     :'<p class="ncPt" data-bad="0">résistance au feu : méthode tabulée de type BAEL/DTU feu reprise du classeur 011, pas l\'EN 1992-1-2 : à confirmer par un ingénieur. Domaine du classeur : section rectangulaire, compression centrée, durées 0,5 ; 1 ; 1,5 ; 2 ; 3 ; 4 h, M = périmètre/aire entre 0,05 et 0,25 cm⁻¹, θm et θi entre 200 et 990 °C ; hors domaine : non vérifié. Les quatre faces sont supposées exposées. '+(res.feu.etat==='nf'?'Ici : '+esc(res.feu.motif)+'.':'N_fi '+(res.feu.src.Nfi?'saisi':'estimé à N_Ed/1,4 (rapport usuel entre effort ELU et effort en situation d\'incendie ; le classeur ne donne pas la combinaison accidentelle) : à remplacer par la valeur de la combinaison accidentelle')+'.')+'</p>')
     +(g.rect?'':'<p class="ncPt" data-bad="0">section circulaire : interaction N-M par intégration du diagramme parabole-rectangle avec 8 barres équivalentes sur le cercle des armatures ; à confirmer par un ingénieur.'+(res.second&&res.dCour_mm?' Second ordre : hauteur utile de la courbure d = h/2 + i_s = '+fC(res.dCour_mm/10,1)+' cm (Maîtrise p.107, rayon de giration i_s des armatures), plus petite que h − d1 : M2 plus grand, côté sécurité.':'')+'</p>');
    const eN=res.enrNom;
    const hypRows=[
@@ -27144,6 +27206,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     ['Élancement limite','A = '+(res.phiSaisi?'1/(1+0,2·φ<sub>ef</sub>) = '+fC(res.A,3):'0,7')+' · B = '+fC(res.B)+(res.omega!=null&&res.B>1.1?' (ω = '+fC(res.omega,3)+')':' (ω inconnu)')+' · C = 1,7 − r<sub>m</sub> = '+fC(res.C)+' ('+esc(res.rmCas)+')',(res.phiSaisi?'φ<sub>ef</sub> saisi (livre p.152) ; B, C par défaut':'Valeurs par défaut (livre p.152)')],
     ...(res.second&&!g.rect&&res.dCour_mm?[['Courbure 1/r<sub>0</sub>','ε<sub>yd</sub>/(0,45·d) avec d = h/2 + i<sub>s</sub> = '+fC(res.dCour_mm/10,1)+' cm','Section circulaire (Maîtrise p.107)']]:[]),
     ['Excentricités','e<sub>i</sub> = l<sub>0</sub>/400 = '+fC(res.ei_mm,1)+' mm · Δe<sub>0</sub> = max(20 mm ; h/30) = '+fC(res.De0_mm,1)+' mm (armatures symétriques)','EC2 5.2, livre p.445-446']];
+   if(res.feu.etat!=='na'){ const fe=res.feu, sv=x=>x?'saisi':'par défaut';
+    hypRows.push(['Résistance au feu','Durée de stabilité '+fC(fe.dur,1)+' h · k = '+fC(fe.k,2)+' ('+sv(fe.src.k)+') · A<sub>v</sub> = '+fC(fe.Av,2)+' cm² ('+sv(fe.src.Av)+') · θ<sub>i</sub> = '+fC(fe.thI,0)+' °C ('+sv(fe.src.thI)+') · N<sub>fi</sub> = '+fC(fe.Nfi,1)+' kN ('+sv(fe.src.Nfi)+(fe.src.Nfi?'':', N<sub>Ed</sub>/1,4')+')'+(fe.etat==='nf'?'':' · N<sub>r</sub> = '+fC(fe.Nr,1)+' kN (classeur : N<sub>r</sub> en t = 100·MN)'),'Méthode tabulée BAEL/DTU feu du classeur 011, pas l\'EN 1992-1-2 ; saisie ou valeurs par défaut']); }
    if(dp.dcGprim_kN!=null) hypRows.push(['Descente de charges','N<sub>Ed</sub> reporté de la descente de charges : g′ pris en compte (g′ cumulé = '+fC(dp.dcGprim_kN,1)+' kN avant 1,35), N<sub>Ed</sub> = 1,35·Σ(g + g′) + 1,5·Σ(a<sub>n</sub>·q + q′)','Saisie (descente de charges, classeur 152)']);
    const hypo='<h4>Hypothèses</h4><table class="pcNCt"><thead><tr><th>Paramètre</th><th>Valeur retenue</th><th>Origine</th></tr></thead><tbody>'+hypRows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('')+'</tbody></table>';
    const dr=(S,lab,cap)=>'<div class="pcDraw">'+fplSceneSvg(S,{label:lab})+'</div><p class="pcSchemaCap">'+esc(cap)+'</p>';
@@ -27558,8 +27622,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    else dp[k]=(typeof sp.def==='number')?+el.value:el.value;
    redraw();
   }
-  document.addEventListener('toggle',ev=>{ const d=ev.target; if(!d||!d.matches||!d.matches('details.pcEls')) return; const t=taskById(d.dataset.elsId); if(!t) return; const dp=d.dataset.elsKind==='pc'?t.dimPC:(d.dataset.elsKind==='pt'?t.dimPT:t.dimDL); if(dp&&dp._elsOpen!==d.open){ dp._elsOpen=d.open; try{persist();}catch(_){ } } },true);
-  document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('[data-els-reset]'); if(!b) return; const d=b.closest('details.pcEls'); if(!d) return; const id=d.dataset.elsId, kind=d.dataset.elsKind, t=taskById(id); if(!t) return; const dp=kind==='pc'?t.dimPC:(kind==='pt'?t.dimPT:t.dimDL); if(!dp) return;
+  document.addEventListener('toggle',ev=>{ const d=ev.target; if(!d||!d.matches||!d.matches('details.pcEls')) return; const t=taskById(d.dataset.elsId); if(!t) return; const dp=d.dataset.elsKind==='pc'?t.dimPC:((d.dataset.elsKind==='pt'||d.dataset.elsKind==='ptf')?t.dimPT:t.dimDL); const ok=d.dataset.elsKind==='ptf'?'_feuOpen':'_elsOpen'; if(dp&&dp[ok]!==d.open){ dp[ok]=d.open; try{persist();}catch(_){ } } },true);
+  document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('[data-els-reset]'); if(!b) return; const d=b.closest('details.pcEls'); if(!d) return; const id=d.dataset.elsId, kind=d.dataset.elsKind, t=taskById(id); if(!t) return; const dp=kind==='pc'?t.dimPC:((kind==='pt'||kind==='ptf')?t.dimPT:t.dimDL); if(!dp) return;
+   if(kind==='ptf'){ ['feu_duree_h','feu_k','feu_Av_cm2','feu_thetaI','feu_Nfi_kN'].forEach(q=>{ delete dp[q]; }); dp._feuOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
    if(kind==='pt'){ delete dp.N_ser_kN; delete dp.M_ser_kNm; delete dp.phi_ef; dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
    ELS_SPEC.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } if(kind==='pc') beamRender(id); else dleRender(id); });
   /* ===== Poinçonnement : contours de contrôle, u0, β des poteaux intérieur, de rive et d'angle (Maîtrise p.246-266) — fonction PURE, mm ===== */
