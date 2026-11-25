@@ -6474,6 +6474,24 @@ function miniAsk(msg, yesLbl, noLbl, yesCb, noCb){
    dimensionnement (Poutre continue, Poteau, Dalle, Semelle, Pieu, Mur de soutènement...).
    dp.statut vaut 'a_calculer' (par défaut, données modifiables, bouton « ✓ Valider ») ou 'calcule'
    (données grisées, bouton « ↻ Recalculer l'ouvrage »). Demandé par Moustapha le 23/11/2026. */
+/* ===================== Validation commune des saisies (tous modules) : dimValidate ===================== */
+/* règles : [{key, nom (ex. « La portée L1 »), value, min, max, strict (min exclu), unit, req (défaut true), fem (nom féminin pour « renseignée »)}]
+   renvoie {ok, errors:[{key,msg}]} ; message en français sous la forme « La portée L1 doit être > 0 m. » ; jamais de repli silencieux. */
+function dimFmtNum(n){ return String(Math.round(n*1000)/1000).replace('.',','); }
+function dimValidate(rules){
+ const errors=[];
+ (rules||[]).forEach(r=>{ const raw=r.value; const n=(raw===null||raw===undefined||raw===''||typeof raw==='boolean')?NaN:+raw; const u=r.unit?' '+r.unit:''; let m=null;
+  if(isNaN(n)||!isFinite(n)){ if(r.req!==false) m=(r.nom||'La valeur')+' doit être '+(r.fem===false?'renseigné':'renseignée')+' (nombre).'; }
+  else if(r.min!=null&&(r.strict?n<=r.min:n<r.min)) m=(r.nom||'La valeur')+' doit être '+(r.strict?'>':'≥')+' '+dimFmtNum(r.min)+u+'.';
+  else if(r.max!=null&&n>r.max) m=(r.nom||'La valeur')+' doit être ≤ '+dimFmtNum(r.max)+u+'.';
+  if(m) errors.push({key:r.key,msg:m}); });
+ return {ok:!errors.length,errors};
+}
+/* Bloc de messages (sous le schéma) + marquage des champs en erreur (attr = nom de l'attribut portant la clé, ex. 'data-pc-i') */
+function dimErrBoxHtml(errors){ return (errors&&errors.length)?'<div class="dimErrBox" role="alert" aria-live="polite"><b>Données à corriger avant le calcul</b><ul>'+errors.map(e=>'<li>'+esc(e.msg)+'</li>').join('')+'</ul></div>':''; }
+function dimMarkInvalid(root,errors,attr){ if(!root) return; root.querySelectorAll('[aria-invalid="true"]').forEach(el=>{ el.removeAttribute('aria-invalid'); });
+ (errors||[]).forEach(e=>{ root.querySelectorAll('['+attr+'="'+e.key+'"]').forEach(el=>{ el.setAttribute('aria-invalid','true'); el.setAttribute('title',e.msg); }); }); }
+function dimValidateMsg(errors){ return 'Calcul refusé : '+errors[0].msg+(errors.length>1?' (+ '+(errors.length-1)+' autre'+(errors.length>2?'s':'')+')':''); }
 function dimStatut(dp){ return dp.statut||(dp.resultats?'calcule':'a_calculer'); }
 function dimLockedClass(dp){ return dimStatut(dp)==='calcule' ? ' dimLocked' : ''; }
 /* Bouton « Calculer / Recalculer » placé en haut à droite de la fiche, aligné au bouton du module (en-tête .pcModHead). */
@@ -20198,6 +20216,10 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pcDimWrap{display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:var(--ink-soft,#777);gap:3px}
 .pcDimIn{width:auto;min-width:44px;min-height:24px;text-align:center;font-size:var(--ds-fs-md);border:none;border-bottom:1.5px solid var(--ds-line);border-radius:0;background:transparent;color:var(--ink);padding:2px 3px;box-sizing:border-box;-webkit-appearance:none;appearance:none;-moz-appearance:textfield}
 .pcDimIn:focus{outline:none;border-bottom-color:var(--ds-accent)}
+.pcDimIn[aria-invalid="true"],.pcFldIn[aria-invalid="true"],.pjBeamRoot input[aria-invalid="true"]{border-bottom-color:var(--ds-danger,#c0392b)!important;color:var(--ds-danger,#c0392b)}
+.dimErrBox{margin:8px 0 12px;padding:10px 14px;border:1.5px solid var(--ds-danger,#c0392b);border-radius:12px;background:transparent;color:var(--ds-danger,#c0392b);font-size:15px}
+.dimErrBox ul{margin:6px 0 0;padding-left:20px}
+.dimErrBox li{margin:2px 0}
 .pcUnit{font-style:normal;font-size:var(--ds-fs-sm,12px);color:var(--ds-ink-soft,#777);margin-left:2px}
 .pcRmSpan{opacity:.85}
 .pcAddSpan{width:100%;height:100%;min-height:0;border-radius:50%;padding:0;line-height:1;border:none;background:transparent;color:var(--ink-soft,#777);cursor:pointer;box-sizing:border-box;display:flex;align-items:center;justify-content:center}
@@ -24924,6 +24946,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjBeamRoot'); const t=taskById(id); if(!wrap||!t) return;
    const st=beamState(id);
    wrap.innerHTML = st.view==='grid' ? beamGridHtml() : st.view==='note' ? pcNoteViewHtml(t) : st.view==='wizard' ? pcWizardHtml(id,t,st.step) : pcFormHtml(id,t);
+   try{ dimMarkInvalid(wrap,pcValidate(pcData(t)).errors,'data-pc-i'); }catch(_){ }
   }
   function pcNoteViewHtml(t){
    const dp=pcData(t); const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]);
@@ -24954,6 +24977,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const okBtn=e.target.closest('[data-pc-act="validerForm"]'); if(okBtn){
     const t=taskById(id); if(!t) return; const dp=pcData(t);
     if(!pcMatCalc(dp)){ try{clipToast(PC_MAT_MSG);}catch(_){ } return; }
+    const vld=pcValidate(dp); if(!vld.ok){ try{clipToast(dimValidateMsg(vld.errors));}catch(_){ } try{ const bx=document.querySelector('.pjBeamRoot .dimErrBox'); if(bx&&bx.scrollIntoView) bx.scrollIntoView({block:'nearest'}); }catch(_){ } return; }
     dimValiderClick(dp,
      ()=>{ beamRender(id); },
      ()=>{ dimRunCalcul(dp,()=>pcCompute(t),()=>pcCreerDocumentsDimensionnement(t,dp),()=>beamRender(id),'✓ Ouvrage recalculé.'); },
@@ -25136,6 +25160,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   }
   function pcCompute(t){
    const dp=t.dimPC; if(!dp) return null;
+   const vld=pcValidate(dp); if(!vld.ok){ const er=new Error(dimValidateMsg(vld.errors)); er.dimErrors=vld.errors; throw er; }
    const choice=pcChooseEngine(dp);
    const res = choice.engine==='charge_roulante' ? pcComputeChargeRoulante(dp,choice) : pcComputePoutreContinue(dp,choice);
    res._gammaG=(dp.eluComb==='610b')?1.25:1.35; // combinaison ELU 6.10b (1,25 G) en option ; défaut 1,35 G
@@ -25152,10 +25177,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcPoidsPropreCharge(dp){ if(dp.poidsPropre!==true) return null; const g=(elsSaisi(dp,'gammaBeton')?+dp.gammaBeton:25)*((+dp.b_cm||20)/100)*((+dp.h_cm||50)/100); return {type:'G',forme:'repartie',repere:'global',nu_gauche_m:0,valeur_gauche:g}; }
   function pcPoidsPropreInfo(dp){ const g=(elsSaisi(dp,'gammaBeton')?+dp.gammaBeton:25)*((+dp.b_cm||20)/100)*((+dp.h_cm||50)/100); return {inclus:dp.poidsPropre===true,g_kNm:+g.toFixed(2)}; }
   function pcComputePoutreContinue(dp,choice){
-   const spans=dp.travees.map(tr=>+tr.portee_m||0.01);
+   const spans=dp.travees.map(tr=>+tr.portee_m); /* validé par pcValidate : aucun repli silencieux */
    const classe=dp.classeGlobale||'C25/30', terme=dp.termeGlobal||'court';
    const Eg=pcE(classe,terme,2);
-   const bcm=+dp.b_cm||20, hcm=+dp.h_cm||50;
+   const bcm=+dp.b_cm, hcm=+dp.h_cm;
    const Ig=(bcm/100)*Math.pow(hcm/100,3)/12;
    const EIarr=spans.map(()=>Eg*1000*Ig); // E (MPa=MN/m2 -> kN/m2: *1000), I (m4) -> EI en kN.m2
    const supports=dp.appuis;
@@ -25237,6 +25262,27 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   const pcF1=v=>String(Math.round(v*10)/10).replace('.',',');
   function pcData(t){ if(!t.dimPC) t.dimPC=pcDefaultData(t); if(!t.dimPC.materiau) t.dimPC.materiau='beton_arme'; if(t.quoi&&String(t.quoi).trim()&&t.dimPC.nom!==t.quoi) t.dimPC.nom=t.quoi; if(!PC_EXPO[t.dimPC.classeExposition]) t.dimPC.classeExposition='XC1'; t.dimPC.enrobageNomMin_cm=pcEnrobageNom(t.dimPC).cnomCm; if(!t.dimPC._maxStep) t.dimPC._maxStep=(t.dimPC.resultats?PC_NSTEPS:1); return t.dimPC; }
   function pcSyncAppuis(dp){ const need=dp.travees.length+1; while(dp.appuis.length<need) dp.appuis.push({raideur_kN_m:null,blocage_rotation:false}); while(dp.appuis.length>need) dp.appuis.pop(); }
+  /* Validation de la poutre : portées, section, enrobage, charges ; utilisée à la saisie (messages), au clic « Calculer » et dans pcCompute (refus). */
+  const PC_LIM={L:{min:0.1,max:60},b:{min:5,max:300},h:{min:5,max:500},c:{min:1,max:10}};
+  function pcValidate(dp){
+   const R=[]; const tr=dp.travees||[];
+   const posOk=v=>{ const n=(v===null||v===undefined||v==='')?NaN:+v; return n>0; };
+   if(!tr.length) R.push({key:'travees',nom:'Le nombre de travées',value:0,min:1,unit:''});
+   tr.forEach((x,i)=>{ const k='travees.'+i+'.portee_m'; const nm='La portée L'+(i+1);
+    R.push({key:k,nom:nm,value:x.portee_m,min:0,strict:true,unit:'m'});
+    if(posOk(x.portee_m)) R.push({key:k,nom:nm,value:x.portee_m,min:PC_LIM.L.min,max:PC_LIM.L.max,unit:'m'}); });
+   R.push({key:'b_cm',nom:'La largeur b',value:dp.b_cm,min:0,strict:true,unit:'cm'}); if(posOk(dp.b_cm)) R.push({key:'b_cm',nom:'La largeur b',value:dp.b_cm,min:PC_LIM.b.min,max:PC_LIM.b.max,unit:'cm'});
+   R.push({key:'h_cm',nom:'La hauteur h',value:dp.h_cm,min:0,strict:true,unit:'cm'}); if(posOk(dp.h_cm)) R.push({key:'h_cm',nom:'La hauteur h',value:dp.h_cm,min:PC_LIM.h.min,max:PC_LIM.h.max,unit:'cm'});
+   if(dp.enrobage_cm!==undefined){ const cmax=Math.min(PC_LIM.c.max,posOk(dp.h_cm)?(+dp.h_cm)/4:PC_LIM.c.max); R.push({key:'enrobage_cm',nom:'L\'enrobage',value:dp.enrobage_cm,min:PC_LIM.c.min,max:cmax,unit:'cm'}); }
+   (dp.charges||[]).forEach((c,i)=>{ const p='charges.'+i+'.'; const couple=c.forme==='couple'; const nm=' de la charge '+(i+1)+' ('+(c.type==='Q'?'Q':'G')+')';
+    R.push({key:p+'valeur_gauche',nom:'La valeur'+nm,value:c.valeur_gauche,fem:true,min:couple?-1e9:0,unit:couple?'kN·m':(c.forme==='ponctuelle'?'kN':'kN/m')});
+    if(c.valeur_droite!==null&&c.valeur_droite!==undefined&&c.valeur_droite!=='') R.push({key:p+'valeur_droite',nom:'La valeur à droite'+nm,value:c.valeur_droite,min:0,unit:'kN/m'});
+    if(c.longueur_m!==null&&c.longueur_m!==undefined&&c.longueur_m!=='') R.push({key:p+'longueur_m',nom:'La longueur'+nm,value:c.longueur_m,min:0,unit:'m'});
+    if(c.nu_gauche_m!==null&&c.nu_gauche_m!==undefined&&c.nu_gauche_m!=='') R.push({key:p+'nu_gauche_m',nom:'Le début'+nm,value:c.nu_gauche_m,min:0,unit:'m'});
+    if(c.ponderation!==null&&c.ponderation!==undefined&&c.ponderation!=='') R.push({key:p+'ponderation',nom:'La pondération'+nm,value:c.ponderation,min:0,strict:true,unit:''}); });
+   /* une seule erreur par champ (la première, la plus parlante) */
+   const v=dimValidate(R); const seen={}; v.errors=v.errors.filter(e=>seen[e.key]?false:(seen[e.key]=true)); v.ok=!v.errors.length; return v;
+  }
   function pcStepValid(dp,step){
    if(step===1){ if(!dp.travees.length||dp.travees.some(tr=>!(+tr.portee_m>0))||!(+dp.b_cm>0)||!(+dp.h_cm>0)) return {ok:false,msg:'Les données de « Géométrie » n\'ont pas été saisies (travées, portées ou section manquantes).'}; return {ok:true}; }
    if(step===2){ if(!dp.classeGlobale) return {ok:false,msg:'Les données de « Matériau » n\'ont pas été saisies.'}; return {ok:true}; }
@@ -25274,6 +25320,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('poutre','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Poutre continue (RDM)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+dimCalcHeadBtnHtml(dp,'pc',pcMatCalc(dp),typeof PC_MAT_MSG!=='undefined'?PC_MAT_MSG:'')+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pc="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw pcBeamDraw">'+pcBeamSvg(dp,4)+'</div>'
+    +dimErrBoxHtml(pcValidate(dp).errors)
     +'</div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
     +'<div class="pcNav pcFormNav">'+pcValiderBtnHtml(dp)+'</div>'
@@ -25645,7 +25692,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const dimHtml='<g class="dimCote">'+supX.map(xs=>'<line class="dimAtt" x1="'+xs+'" y1="'+attY+'" x2="'+xs+'" y2="'+(dimY+4)+'"/>').join('')
     +spans.map((L,i)=>{ const a=supX[i], b=supX[i+1];
      const fy=dimShort[i]?dimY+34+dimRow[i]*82:dimY-14, ty=dimShort[i]?fy+61:dimY+47;
-     const fld=window.dimField?window.dimField({x:dimMid[i]-dimFw[i]/2,y:fy,label:'L'+(i+1),val:L||'',unit:'m',attr:'min="0.1" data-pc-i="travees.'+i+'.portee_m"',title:'Portée travée '+(i+1)+' (m)'}).svg:'';
+     const fld=window.dimField?window.dimField({x:dimMid[i]-dimFw[i]/2,y:fy,label:'L'+(i+1),val:(dp.travees[i].portee_m==null?'':dp.travees[i].portee_m),unit:'m',attr:'min="0.1" data-pc-i="travees.'+i+'.portee_m"',title:'Portée travée '+(i+1)+' (m)'}).svg:'';
      return '<line class="dimLn" x1="'+a+'" y1="'+dimY+'" x2="'+b+'" y2="'+dimY+'"/><line class="dimTk" x1="'+(a-4)+'" y1="'+(dimY+4)+'" x2="'+(a+4)+'" y2="'+(dimY-4)+'"/><line class="dimTk" x1="'+(b-4)+'" y1="'+(dimY+4)+'" x2="'+(b+4)+'" y2="'+(dimY-4)+'"/>'
       +fld+'<text x="'+dimMid[i]+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="var(--ink-soft,#777)">Travée '+(i+1)+'</text>'; }).join('')+'</g>';
    const xTot=padL+beamW;
@@ -25670,8 +25717,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const SDX=7, SDY=-7;
    const secHtml='<text x="'+secX+'" y="'+(secCY-sh/2-34)+'" text-anchor="middle" font-size="11" fill="var(--ink-soft,#777)">Section</text>'
     +pcBox3d(mat,secX-sw/2,secCY-sh/2,sw,sh,SDX,SDY,true)
-    +'<foreignObject x="'+(secX-60)+'" y="'+(secCY-sh/2-32)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">b =</span><input type="number" min="5" step="any" class="pcDimIn" style="width:'+pcChW(bcm,3)+'" data-pc-i="b_cm" value="'+bcm+'" title="Largeur b (cm)" aria-label="Largeur b (cm)"><i class="pcUnit">cm</i></div></foreignObject>'
-    +'<foreignObject x="'+(secX+sw/2+4)+'" y="'+(secCY-16)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">h =</span><input type="number" min="5" step="any" class="pcDimIn" style="width:'+pcChW(hcm,3)+'" data-pc-i="h_cm" value="'+hcm+'" title="Hauteur h (cm)" aria-label="Hauteur h (cm)"><i class="pcUnit">cm</i></div></foreignObject>';
+    +'<foreignObject x="'+(secX-60)+'" y="'+(secCY-sh/2-32)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">b =</span><input type="number" min="5" step="any" class="pcDimIn" style="width:'+pcChW(bcm,3)+'" data-pc-i="b_cm" value="'+(dp.b_cm==null?'':dp.b_cm)+'" title="Largeur b (cm)" aria-label="Largeur b (cm)"><i class="pcUnit">cm</i></div></foreignObject>'
+    +'<foreignObject x="'+(secX+sw/2+4)+'" y="'+(secCY-16)+'" width="120" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="pcDimWrap dimLbl"><span class="dimNm">h =</span><input type="number" min="5" step="any" class="pcDimIn" style="width:'+pcChW(hcm,3)+'" data-pc-i="h_cm" value="'+(dp.h_cm==null?'':dp.h_cm)+'" title="Hauteur h (cm)" aria-label="Hauteur h (cm)"><i class="pcUnit">cm</i></div></foreignObject>';
    return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+Math.round(H*1.35)+'" class="pcSvg" role="img" aria-label="Schéma de la poutre">'
     +'<defs><marker id="pcArr" markerWidth="7" markerHeight="7" refX="2.3" refY="3.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L6,3.5 L0,7 Z" fill="currentColor"/></marker>'+pcMatDefs(mat)+'</defs>'
     +rectHtml.join('')+chgHtml+supHtml.join('')+apBtnHtml.join('')+addBtns+dimHtml+totDim+apPanel+secHtml
@@ -26671,7 +26718,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(beTypeStructureNom(t.typeStructureId)!==BEAM_TYPE_NOM){ skipTypeN++; continue; }
     const dp=pcData(t);
     if(!pcMatCalc(dp)){ matN++; continue; } /* seul le béton armé (EC2) a un calcul */
-    const geomOk=dp.travees&&dp.travees.some(tr=>+tr.portee_m>0)&&(+dp.b_cm>0)&&(+dp.h_cm>0);
+    const geomOk=dp.travees&&pcValidate(dp).ok;
     const hasChg=dp.charges&&dp.charges.length&&dp.charges.some(c=>+c.valeur_gauche);
     const hasConvoi=dp.convoiActif&&(dp.convoi||[]).some(a=>+a.P);
     if(!geomOk||(!hasChg&&!hasConvoi)){ incomplets.push(id); continue; }
@@ -33085,7 +33132,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(el.matches('[data-pc="termeGlobal"]')){ dp.termeGlobal=el.value; beamRender(id); return; }
    if(el.matches('[data-pc="classeAcier"]')){ dp.classeAcier=el.value; beamRender(id); return; }
    if(el.matches('[data-pc="classeExposition"]')){ dp.classeExposition=PC_EXPO[el.value]?el.value:'XC1'; dp.enrobageNomMin_cm=pcEnrobageNom(dp).cnomCm; beamRender(id); return; }
-   if(el.matches('[data-pc="enrobage_cm"]')){ dp.enrobage_cm=el.value===''?3:+el.value; beamRender(id); return; }
+   if(el.matches('[data-pc="enrobage_cm"]')){ dp.enrobage_cm=el.value===''?null:+el.value; beamRender(id); return; }
    if(el.matches('[data-pc="sens"]')){ dp.sens=el.value; beamRender(id); return; }
    const ii=el.dataset.pcI;
    if(ii){
@@ -33121,7 +33168,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const del=e.target.closest('[data-pc-act="delChg"]'); if(del){ dp.charges.splice(+del.dataset.pcIdx,1); beamRender(id); return; }
    const addA=e.target.closest('[data-pc-act="addAxle"]'); if(addA){ dp.convoi=dp.convoi||[]; const lastDx=dp.convoi.length?Math.max(...dp.convoi.map(a=>+a.dx||0)):0; dp.convoi.push({dx:+(lastDx+1.5).toFixed(2),P:50}); beamRender(id); return; }
    const delA=e.target.closest('[data-pc-act="delAxle"]'); if(delA){ dp.convoi.splice(+delA.dataset.pcIdx,1); beamRender(id); return; }
-   const run=e.target.closest('[data-pc-act="run"]'); if(run){ if(!pcMatCalc(dp)){ try{clipToast(PC_MAT_MSG);}catch(_){ } return; } try{ dp.resultats=pcCompute(t); dp.statut='calcule'; dp._maxStep=Math.max(dp._maxStep||1,PC_NSTEPS); beamState(id).step=PC_NSTEPS; beamRender(id); try{persist();}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } return; }
+   const run=e.target.closest('[data-pc-act="run"]'); if(run){ if(!pcMatCalc(dp)){ try{clipToast(PC_MAT_MSG);}catch(_){ } return; } const vld=pcValidate(dp); if(!vld.ok){ try{clipToast(dimValidateMsg(vld.errors));}catch(_){ } return; } try{ dp.resultats=pcCompute(t); dp.statut='calcule'; dp._maxStep=Math.max(dp._maxStep||1,PC_NSTEPS); beamState(id).step=PC_NSTEPS; beamRender(id); try{persist();}catch(_){ } }catch(err){ console.error(err); try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } } return; }
    const vue=e.target.closest('[data-pc-act="vue"]'); if(vue){ dp.vueCombo=vue.dataset.pcVue; beamRender(id); return; }
    const addSp=e.target.closest('[data-pc-act="addSpan"]'); if(addSp){ pcAddSpan(dp,addSp.dataset.pcSide); beamRender(id); return; }
    const rmSp=e.target.closest('[data-pc-act="removeSpan"]'); if(rmSp){ const ok=pcRemoveSpan(dp,rmSp.dataset.pcSide); if(!ok){ try{clipToast('Il doit rester au moins une travée.');}catch(_){ } return; } beamRender(id); return; }
