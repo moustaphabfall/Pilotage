@@ -25136,6 +25136,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcPlanVerifs(dp,res){
    const fr=res&&res.ferraillage, P=res&&res.plan; if(!fr||!P||!fr.verifs) return; const V=fr.verifs, f1=(x,n)=>(+x).toFixed(n==null?1:n).replace('.',','), rv=P.rive||{};
    const org=k=>elsSaisi(dp,k)?'saisi':'par défaut';
+   /* une seule source pour l'acier supérieur de rive : le tableau « Ferraillage » de la note reprend la valeur du plan (β1 × moment de travée), pas A_s,min de M = 0 */
+   (rv.haut||[]).forEach(h=>{ const ap=fr.appuis&&fr.appuis[h.appui]; if(!ap||!fr.materiaux) return; const bm=fr.materiaux.b, dd=fr.d, fck=fr.materiaux.fck, K=h.Mreq/1000/(bm*dd*dd*fck), z=Math.min(0.95*dd,dd*(0.5+Math.sqrt(Math.max(0,0.25-K/1.3333))));
+    ap.Mreq=h.Mreq; ap.beta1=rv.beta1; ap.ferrSup=Object.assign({},ap.ferrSup,{As:h.AsReq/100,K,mu:K,z,Mkn:h.Mreq,source:'beta1'}); });
    (rv.haut||[]).forEach(h=>V.push({zone:'Appui '+h.appui,nom:'Appui de rive — armature supérieure',formule:'M ≥ β1·M_travée (encastrement partiel, EC2 9.2.1.2(1) ; guide p.83) ; A_s posée ≥ A_s requise',
     calcul:'M_travée voisine = '+f1(h.Mtrav)+' kN·m ; β1 = '+f1(rv.beta1*100,0)+' % ('+org('beta1Rive')+') ; M retenu = max(M_appui '+f1(h.Mface)+' ; β1·M_travée) = '+f1(h.Mreq)+' kN·m ; A_s requise = '+f1(h.AsReq/100,2)+' cm² ; posée = '+f1(h.AsPose/100,2)+' cm²',limite:'A_s posée ≥ A_s requise',etat:h.AsPose>=h.AsReq-1e-6?'ok':'ko'}));
    (rv.bas||[]).forEach(q=>{ const pc=q.nTot?q.nA/q.nTot:0, okP=pc>=rv.pctInf/100-1e-9;
@@ -25850,7 +25853,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function pcFerraillageHtml(res){
    const fr=res.ferraillage; if(!fr) return '';
    const f2=(x,n)=>(+x).toFixed(n==null?2:n).replace('.',',');
-   const flexRow=(zone,M,f)=>'<tr><td>'+zone+'</td><td>'+f2(Math.abs(M),1)+' kN·m</td><td>'+f2(f.K,3)+'</td><td>'+(f.z?f2(f.z*100,1)+' cm':'—')+'</td><td>'+(f.As==null?'<b>Non calculé</b>':f2(f.As)+' cm²'+(f.As<=fr.AsMin+1e-6?' (= A_s,min)':''))+'</td></tr>';
+   const flexRow=(zone,M,f)=>'<tr><td>'+zone+(f.source==='beta1'?' <small>(β1 × M travée)</small>':'')+'</td><td>'+f2(Math.abs(f.source==='beta1'?f.Mkn:M),1)+' kN·m</td><td>'+f2(f.K,3)+'</td><td>'+(f.z?f2(f.z*100,1)+' cm':'—')+'</td><td>'+(f.As==null?'<b>Non calculé</b>':f2(f.As)+' cm²'+(f.As<=fr.AsMin+1e-6?' (= A_s,min)':''))+'</td></tr>';
    const rows=fr.travees.map(tr=>flexRow('Travée '+(tr.e+1)+' (inf.)',tr.Mtravee,tr.ferrInf)).join('')+fr.appuis.map(ap=>flexRow('Appui '+ap.i+' (sup.)',ap.Mappui,ap.ferrSup)).join('');
    const cad=fr.cadres.map(c=>'<tr><td>Travée '+(c.e+1)+'</td><td>'+f2(c.VEd*1000,1)+' kN</td><td>'+f2(c.VEd0*1000,1)+' kN</td><td>'+f2(c.VRdc*1000,1)+' kN</td><td>'+f2(fr.shear.VRdMax*1000,1)+' kN</td><td>'+f2(c.AswS)+' cm²/m</td></tr>').join('');
    return '<div class="pcDimBox"><b>Ferraillage (EC2 simplifié)</b>'
