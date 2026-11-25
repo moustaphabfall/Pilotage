@@ -6589,21 +6589,39 @@ function dimDiffEntrees(dp){
   add(sec,lab+' : '+fa+' → '+fb); });
  return L;
 }
-function dimResumeModifs(L,onOk,onCancel){
+function dimResumeModifs(L,onOk,onCancel,nextInd){ nextInd=nextInd||'';
  const ov=document.createElement('div'); ov.className='dimDiffOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Modifications depuis le dernier calcul');
  const ORD=['Géométrie et options','Chargement','Matériau','Paramètres avancés'], MAX=12; let all=false;
  const body=()=>{ const sh=all?L:L.slice(0,MAX); let h=''; ORD.forEach(s=>{ const it=sh.filter(x=>x.sec===s); if(!it.length) return; h+='<h4>'+esc(s)+'</h4><ul>'+it.map(x=>'<li>'+esc(x.txt)+'</li>').join('')+'</ul>'; });
   if(!all&&L.length>MAX) h+='<button type="button" class="ghost dimDiffMore" data-dd="more">+ '+(L.length-MAX)+' autre'+(L.length-MAX>1?'s':'')+'</button>'; return h; };
- ov.innerHTML='<div class="dimDiffBox"><h3>Modifications depuis le dernier calcul</h3><div class="dimDiffList">'+body()+'</div><div class="dimDiffBtns"><button type="button" class="primary" data-dd="ok">Valider et recalculer</button><button type="button" class="ghost" data-dd="no">Annuler</button></div></div>';
+ ov.innerHTML='<div class="dimDiffBox"><h3>Modifications depuis le dernier calcul</h3><div class="dimDiffList">'+body()+'</div><p class="dimDiffInd">'+esc(nextInd)+'</p><div class="dimDiffBtns"><button type="button" class="primary" data-dd="ok">Valider et recalculer</button><button type="button" class="ghost" data-dd="no">Annuler</button></div></div>';
  document.body.appendChild(ov); let kd=null; const close=()=>{ if(kd) window.removeEventListener('keydown',kd,true); ov.remove(); };
  kd=e=>{ if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); onCancel&&onCancel(); } }; window.addEventListener('keydown',kd,true);
  ov.addEventListener('click',e=>{ if(e.target===ov){ close(); onCancel&&onCancel(); return; } const b=e.target.closest('[data-dd]'); if(!b) return; const w=b.dataset.dd;
   if(w==='more'){ all=true; ov.querySelector('.dimDiffList').innerHTML=body(); return; } close(); if(w==='ok') onOk&&onOk(); else onCancel&&onCancel(); });
  const f=ov.querySelector('[data-dd="ok"]'); if(f) f.focus();
 }
+/* ===== Indice de révision des documents (tous les modules) : un indice commun à la note de calcul et au plan de ferraillage de l'ouvrage (dp.indiceDoc, format numérique 0, 1, 2…
+   comme les documents de l'étude), incrémenté à chaque recalcul dont les données d'entrée ont changé ; l'ancienne version (PDF joint) reste dans doc.versions, marquée obsolète. ===== */
+function dimIndiceDoc(t,dp){
+ try{
+  const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[])||[], docs=L.filter(d=>d&&t&&d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage'));
+  let ind=dp.indiceDoc; if(ind==null||ind===''){ const n=docs.map(d=>parseInt(d.indice,10)).filter(x=>isFinite(x)); ind=String(n.length?Math.max(...n):0); }
+  let L2=null; try{ L2=dimDiffEntrees(dp); }catch(_){ }
+  if(L2&&L2.length) ind=String((parseInt(ind,10)||0)+1);
+  dp.indiceDoc=ind; docs.forEach(d=>dimDocApply(d,dp)); dimSnap(dp);
+ }catch(err){ console.error(err); }
+}
+function dimDocApply(doc,dp){
+ const ind=dp&&dp.indiceDoc; if(ind==null||!doc||doc.indice===ind) return;
+ if(doc.contenuHtml||doc.fichierRef){ doc.versions=doc.versions||[]; doc.versions.push({indice:doc.indice,date:doc.date,fichier:doc.fichier,taille:doc.taille,fichierRef:doc.fichierRef,obsolete:true}); }
+ doc.indice=ind; doc.date=(typeof todayISO==='function'?todayISO():doc.date);
+}
+function dimIndSuffix(doc){ return (doc&&doc.indice!=null&&doc.indice!=='')?' – Ind. '+doc.indice:''; }
+function dimIndFile(taskId,type){ try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; const d=L.find(x=>x.ouvrageTaskId===taskId&&x.docType===type&&!x.sub); return d&&d.indice!=null?'_Ind-'+d.indice:''; }catch(_){ return ''; } }
 function dimRunCalcul(dp,computeFn,creerDocsFn,renderFn,okMsg){
  let L=null; try{ L=dimDiffEntrees(dp); }catch(err){ console.error(err); }
- if(L&&L.length){ dimResumeModifs(L,()=>dimRunCalcul0(dp,computeFn,creerDocsFn,renderFn,okMsg),()=>{ try{ renderFn&&renderFn(); }catch(_){ } }); return; }
+ if(L&&L.length){ dimResumeModifs(L,()=>dimRunCalcul0(dp,computeFn,creerDocsFn,renderFn,okMsg),()=>{ try{ renderFn&&renderFn(); }catch(_){ } },dp.indiceDoc!=null?'Les documents passeront à l\'indice '+((parseInt(dp.indiceDoc,10)||0)+1)+'.':'Les documents passeront à l\'indice suivant.'); return; }
  dimRunCalcul0(dp,computeFn,creerDocsFn,renderFn,okMsg);
 }
 function dimRunCalcul0(dp,computeFn,creerDocsFn,renderFn,okMsg){
@@ -6613,7 +6631,6 @@ function dimRunCalcul0(dp,computeFn,creerDocsFn,renderFn,okMsg){
   try{
    dp.resultats=computeFn();
    dp.statut='calcule';
-   dimSnap(dp);
    if(creerDocsFn) docs=await creerDocsFn();
   }catch(err){ console.error(err); ok=false; try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } }
   try{persist();}catch(_){ }
@@ -19877,6 +19894,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .dimDiffList h4{margin:10px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--ds-ink-soft,var(--ink-soft,#6b7280))}
 .dimDiffList ul{margin:0;padding-left:18px}
 .dimDiffList li{margin:3px 0;line-height:1.35}
+.dimDiffInd{margin:10px 0 0;font-size:13px;color:var(--ds-ink-soft,var(--ink-soft,#6b7280))}
 .dimDiffMore{margin-top:8px;min-height:44px}
 .dimDiffBtns{display:flex;gap:10px;margin-top:12px}
 .dimDiffBtns button{flex:1;min-height:48px;font-size:15px}
@@ -24946,7 +24964,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(!v){ const prev=dp.nom||t.quoi||''; el.value=prev; if(prev){ try{clipToast('Une désignation est nécessaire : l\'ancienne est conservée.');}catch(_){ } } return; }
    t.quoi=v; t.nom=v; dp.nom=v;
    try{ const q=document.getElementById('e-quoi'); if(q) q.value=v; const ti=document.getElementById('e-titre'); if(ti&&!ti.querySelector('input')) ti.textContent=v; }catch(_){ }
-   try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; L.forEach(d=>{ if(d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage')){ d.nom=d.docType+' '+v+(d.sub?' – poutre porteuse'+(d.subSuffixe||''):''); d.ouvrage=v; } }); }catch(_){ }
+   try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; L.forEach(d=>{ if(d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage')){ d.nom=d.docType+' '+v+(d.sub?' – poutre porteuse'+(d.subSuffixe||''):'')+dimIndSuffix(d); d.ouvrage=v; } }); }catch(_){ }
    try{persist();}catch(_){ }
    try{ if(window.pjDbRefresh) window.pjDbRefresh(); }catch(_){ }
   }
@@ -26388,7 +26406,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(t.dimDL&&t.dimDL.resultats&&!(t.dimPC&&t.dimPC.resultats)) return dlPlanExportPdf(t,fmt); /* plan de dalle */ const dp=pcData(t); const res=dp&&dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la poutre.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await pcPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=String(dp.nom||t.nom||'Poutre').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Poutre';
-   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const fn='Plan-ferraillage_'+nom+dimIndFile(t.id,'Plan de ferraillage')+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
    return {blob,fn};
   };
@@ -26537,7 +26555,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   window.ncDocPdfBlob=ncDocPdfBlob;
   window.ncExportPdf=async function(docu,fmt){
    const {blob,nom,f}=await ncDocPdfBlob(docu,fmt);
-   const fn='Note-de-calcul_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'.pdf';
+   const fn='Note-de-calcul_'+nom+(docu&&docu.indice!=null?'_Ind-'+docu.indice:'')+'_'+todayISO()+'_'+f.toUpperCase()+'.pdf';
    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
    return {blob,fn};
   };
@@ -26548,18 +26566,17 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      N+1 seulement si les données de calcul ont changé depuis l'émission précédente (signature calcSig). */
   function pcDocVersion(doc,dp){
    let sig=''; try{ const r=dp.resultats||{}; const str=JSON.stringify([dp.nom,dp.travees,dp.b_cm,dp.h_cm,dp.charges,dp.poidsPropre,dp.convoi,dp.convoiActif,dp.classeGlobale,dp.classeAcier,dp.enrobage_cm,r.plan&&r.plan.nomenclature,r.plan&&r.plan.poidsTotal,r.ferraillage&&r.ferraillage.travees]); let h=5381; for(let i=0;i<str.length;i++) h=((h<<5)+h+str.charCodeAt(i))|0; sig=String(h); }catch(_){ }
-   if(doc.contenuHtml&&doc.calcSig&&sig&&doc.calcSig!==sig) doc.indice=String((parseInt(doc.indice,10)||0)+1);
-   doc.calcSig=sig;
+      doc.calcSig=sig;
   }
   function pcCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
    pcDocVersion(doc,dp);
    let html; try{ html=fplHtml(t,dp,res); }catch(err){ console.error(err); html='<div class="pcNC ncDoc"><h3 class="ncH1">Plan de ferraillage non disponible</h3><p class="pcNote">Erreur lors de la génération du plan. Relancer le calcul de la poutre.</p></div>'; }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ }
    return doc;
@@ -26696,8 +26713,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const res=dp.resultats; if(!res) return null; const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&d.sub==='porteuse'+k);
    if(!pcPorteuseInfo(dp,res,k)){ if(doc){ const i=L.indexOf(doc); if(i>=0) L.splice(i,1); } return null; }
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',sub:'porteuse'+k,nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.push(doc); }
-   doc.subSuffixe=suffixe||''; doc.nom='Plan de ferraillage '+dimOuvrageNom(t,dp)+' – poutre porteuse'+doc.subSuffixe; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',sub:'porteuse'+k,nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.push(doc); }
+   doc.subSuffixe=suffixe||''; dimDocApply(doc,dp); doc.nom='Plan de ferraillage '+dimOuvrageNom(t,dp)+' – poutre porteuse'+doc.subSuffixe+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=pcPorteuseHtml(t,dp,res,k);
    try{persist();}catch(_){ }
    return doc;
@@ -26709,7 +26726,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return docs;
   }
   async function pcCreerDocumentsDimensionnement(t,dp){
-   dimSnap(dp);
+   dimIndiceDoc(t,dp);
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
    const res=dp.resultats;
    const docNote=pcCreerNoteCalcul(t,dp);
@@ -28283,8 +28300,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -28294,8 +28311,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -28384,12 +28401,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const dp=ptData(t), res=dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul du poteau.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await ptPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=dimOuvrageNom(t,dp).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Poteau';
-   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const fn='Plan-ferraillage_'+nom+dimIndFile(t.id,'Plan de ferraillage')+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
    return {blob,fn};
   }
   async function ptCreerDocumentsDimensionnement(t,dp){
-   dimSnap(dp);
+   dimIndiceDoc(t,dp);
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null}; // seul le béton armé (EC2) a un calcul
    const res=dp.resultats; const docNote=ptCreerNoteCalcul(t,dp); const docPlan=ptCreerPlanFerraillage(t,dp);
    if(res&&(docNote||docPlan)){ window.pjPdfPending=window.pjPdfPending||new Set(); [docNote,docPlan].forEach(d=>{ if(d) window.pjPdfPending.add(d.id); });
@@ -29639,7 +29656,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const dp=dlData(t), res=dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la dalle.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await dlPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=dimOuvrageNom(t,dp).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Dalle';
-   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const fn='Plan-ferraillage_'+nom+dimIndFile(t.id,'Plan de ferraillage')+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
    return {blob,fn};
   }
@@ -29649,8 +29666,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -29660,13 +29677,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
   async function dlCreerDocumentsDimensionnement(t,dp){
-   dimSnap(dp);
+   dimIndiceDoc(t,dp);
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null}; // seul le béton armé (EC2) a un calcul
    const res=dp.resultats; const docNote=dlCreerNoteCalcul(t,dp); const docPlan=dlCreerPlanFerraillage(t,dp);
    if(res&&(docNote||docPlan)){ window.pjPdfPending=window.pjPdfPending||new Set(); [docNote,docPlan].forEach(d=>{ if(d) window.pjPdfPending.add(d.id); });
@@ -30305,8 +30322,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -30447,8 +30464,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -30496,12 +30513,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const dp=smData(t), res=dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la semelle.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await smPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=dimOuvrageNom(t,dp).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Semelle';
-   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const fn='Plan-ferraillage_'+nom+dimIndFile(t.id,'Plan de ferraillage')+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
    return {blob,fn};
   }
   async function smCreerDocumentsDimensionnement(t,dp){
-   dimSnap(dp);
+   dimIndiceDoc(t,dp);
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
    const res=dp.resultats; const docNote=smCreerNoteCalcul(t,dp); const docPlan=smCreerPlanFerraillage(t,dp);
    if(res&&(docNote||docPlan)){ window.pjPdfPending=window.pjPdfPending||new Set(); [docNote,docPlan].forEach(d=>{ if(d) window.pjPdfPending.add(d.id); }); pcPdfEnArriere(t,dp,res,docNote,docPlan,{note:async()=>(await ncDocPdfBlob(docNote,'a4')).blob,plan:smPlanFerraillagePdf}).catch(err=>console.error(err)); }
@@ -31203,7 +31220,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const dp=puData(t), res=dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la tête de pieux.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await puPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=dimOuvrageNom(t,dp).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Tete-de-pieux';
-   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const fn='Plan-ferraillage_'+nom+dimIndFile(t.id,'Plan de ferraillage')+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
    return {blob,fn};
   }
@@ -31212,8 +31229,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -31223,8 +31240,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
@@ -31233,7 +31250,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return await ncPdfNote(puNoteCalculHtml(t,dp,res),dimOuvrageNom(t,dp),{format:'a4'});
   }
   async function puCreerDocumentsDimensionnement(t,dp){
-   dimSnap(dp);
+   dimIndiceDoc(t,dp);
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null}; /* seul le béton armé (EC2) a un calcul */
    const res=dp.resultats; const docNote=puCreerNoteCalcul(t,dp); const docPlan=puCreerPlanFerraillage(t,dp);
    if(res&&(docNote||docPlan)){ window.pjPdfPending=window.pjPdfPending||new Set(); [docNote,docPlan].forEach(d=>{ if(d) window.pjPdfPending.add(d.id); });
@@ -31751,13 +31768,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const html=ppNoteCalculHtml(t,dp,dp.resultats), nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
   async function ppCreerDocumentsDimensionnement(t,dp){
-   dimSnap(dp);
+   dimIndiceDoc(t,dp);
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
    const res=dp.resultats, docNote=ppCreerNoteCalcul(t,dp);
    if(res&&docNote){ window.pjPdfPending=window.pjPdfPending||new Set(); window.pjPdfPending.add(docNote.id);
@@ -32060,7 +32077,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return pdoc.output('blob');
   }
   async function muCreerDocumentsDimensionnement(t,dp){
-   dimSnap(dp);
+   dimIndiceDoc(t,dp);
    const res=dp.resultats; const docNote=muCreerNoteCalcul(t,dp); const docPlan=muCreerPlanFerraillage(t,dp);
    try{
     if(docNote&&res){ const blob=await muNoteCalculPdf(t,dp,res); await pcAttacherPdf(docNote,blob,docNote.nom); }
@@ -32437,11 +32454,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     return h+'<p class="pcNote">⚠ Note de calcul générée automatiquement à partir des données saisies. À vérifier et valider par un ingénieur géotechnicien avant exécution.</p></div>';
    }
    function gtCreerNoteCalcul(t,dp){
-    const html=gtNoteCalculHtml(t,dp,dp.resultats), nom='Note de calcul '+dimOuvrageNom(t,dp);
+    dimIndiceDoc(t,dp); const html=gtNoteCalculHtml(t,dp,dp.resultats), nom='Note de calcul '+dimOuvrageNom(t,dp);
     const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
     let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
-    doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+    if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+    dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
     doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
     try{ persist(); }catch(_){ } return doc;
    }
@@ -33235,10 +33252,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:'0',format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
    pcDocVersion(doc,dp);
    const html=pcNoteCalculHtml(t,dp,dp.resultats);
-   doc.nom=nom; doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ }
    return doc;
