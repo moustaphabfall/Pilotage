@@ -20136,6 +20136,12 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pjPoteauRoot .pcFormNav .primary{min-height:52px;padding:0 40px;font:700 16px var(--ds-font-title);border-radius:12px}
 .pjPoteauRoot .pcFormHint{font-size:var(--ds-fs-help);margin-top:10px}
 .pjPoteauRoot .pcFormPanel{padding-top:18px}
+.pjPoteauRoot .pcFeuSw{display:flex;align-items:center;gap:12px;min-height:44px;width:100%;padding:6px 12px;margin:0 0 8px;border:1px solid var(--ds-line);border-radius:12px;background:transparent;color:var(--ds-ink);font-size:15px;font-weight:600;text-align:left;cursor:pointer}
+.pjPoteauRoot .pcFeuKnob{flex:0 0 40px;height:24px;border-radius:999px;border:1px solid var(--ds-line);background:var(--line);position:relative}
+.pjPoteauRoot .pcFeuKnob::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--ds-ink-soft);transition:transform .15s}
+.pjPoteauRoot .pcFeuSw[aria-checked="true"] .pcFeuKnob{border-color:var(--ds-accent);background:var(--ds-accent)}
+.pjPoteauRoot .pcFeuSw[aria-checked="true"] .pcFeuKnob::after{transform:translateX(16px);background:var(--ds-ink)}
+.pjPoteauRoot .pcFeuDesc .pcNote{margin:0 0 8px}
 .pjPoteauRoot .pcEls>summary,.pjPoteauRoot .pcElsSub>summary{min-height:44px;display:flex;align-items:center;gap:8px;cursor:pointer}
 .pjPoteauRoot .pcElsSub[data-th="ka"] .pcElsBody label{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;margin:0 0 6px}
 .pjPoteauRoot .pcElsSub[data-th="ka"] .pcElsLbl{grid-column:1/-1;font-size:15px!important;font-weight:600;line-height:1.3}
@@ -26288,7 +26294,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      avertissement. Un tableau ou une figure n'est jamais coupé s'il tient sur une page. */
   const NC_FMT_W={a4:210,a3:297,a2:420,a1:594,a0:841};
   const NC_YEL=[242,169,0], NC_RED=[180,40,30], NC_GRN=[30,120,60];
-  const NC_PDFSYM=s=>FPL_PDFSYM(String(s==null?'':s).replace(/·/g,'\u0001').replace(/[\u202f\u2009\u2007]/g,' ').replace(/Φ/g,'Ø').replace(/φ/g,'phi').replace(/λ/g,'lambda').replace(/τ/g,'tau').replace(/σ/g,'sigma').replace(/γ/g,'gamma').replace(/ε/g,'eps').replace(/μ/g,'µ').replace(/ρ/g,'rho').replace(/Δ/g,'Delta').replace(/ν/g,'nu').replace(/ω/g,'omega').replace(/✓/g,'')).replace(/\u0001/g,'·');
+  const NC_PDFSYM=s=>FPL_PDFSYM(String(s==null?'':s).replace(/·/g,'\u0001').replace(/[\u202f\u2009\u2007]/g,' ').replace(/Φ/g,'Ø').replace(/φ/g,'phi').replace(/λ/g,'lambda').replace(/τ/g,'tau').replace(/σ/g,'sigma').replace(/γ/g,'gamma').replace(/ε/g,'eps').replace(/μ/g,'µ').replace(/ρ/g,'rho').replace(/Δ/g,'Delta').replace(/ν/g,'nu').replace(/ω/g,'omega').replace(/ψ/g,'psi').replace(/β/g,'beta').replace(/⁻¹/g,'^-1').replace(/✓/g,'')).replace(/\u0001/g,'·');
   /* texte d'un nœud : <br> et blocs = retours à la ligne, espaces HTML réduits */
   function ncTxt(n){ let s=''; const nl=()=>{ if(s&&!/\n$/.test(s)) s+='\n'; };
    (function w(x){ if(x.nodeType===3){ s+=x.textContent.replace(/\s+/g,' '); return; } if(x.nodeType!==1) return; const tg=x.tagName.toUpperCase(); if(tg==='BR'){ s+='\n'; return; } if(/^(SVG|SCRIPT|STYLE)$/.test(tg)) return;
@@ -26560,6 +26566,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function ptData(t){
    if(!t.dimPT) t.dimPT=ptDefaultData(t); const d=t.dimPT;
    if(!PC_EXPO[d.classeExposition]) d.classeExposition='XC1';
+   if(d.feu_on===undefined) d.feu_on=(+d.feu_duree_h>0); /* anciens ouvrages : calcul au feu déjà choisi = actif ; sinon désactivé par défaut */
    if(d.mode_l0===undefined) d.mode_l0='isole';          // anciens ouvrages : table d'élément isolé conservée
    if(!d.planFlexion) d.planFlexion='h'; if(!d.materiau) d.materiau='beton_arme';
    if(!d.poidsPropre) d.poidsPropre='ajoute';
@@ -26609,49 +26616,57 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      k ≥ 0,1 ; même module E pour poutres et poteaux (E s'élimine) ; poutres supposées rectangulaires. Résultat arrondi par excès à 0,01 (côté sécurité). */
   const PT_KA_END=[['haut','Extrémité haute (tête)','k2','k_haut','au-dessus'],['bas','Extrémité basse (pied)','k1','k_bas','en dessous']];
   const PT_KA_FISS={k:'fiss',lbl:'Fissuration des poutres',t:'sel',min:0.5,max:1,opts:[[0.5,'Fissurées à l\'ELU (EI × 0,5)'],[1,'Non fissurées (EI × 1)']],def:()=>0.5,aide:'EC2 5.8.3.2 (5) : fissuration à prendre en compte sauf poutres non fissurées à l\'ELU ; 0,5 = côté sécurité (k plus grand).'};
+  const PT_KA_E={k:'E',g:1,lbl:'Module E des poutres et des poteaux',t:'sel',min:0,max:1,opts:[[0,'Identique partout'],[1,'Différent (hors périmètre)']],def:()=>0,aide:'L\'aide suppose le même module E partout (E s\'élimine) ; poutres préfabriquées ou béton différent : k à calculer par l\'ingénieur.'};
+  PT_KA_FISS.g=1;
   const PT_KA_F=[
    {k:'nb',lbl:'Nombre de poutres au nœud',min:0,max:4,step:1,unit:'',def:()=>2,aide:'Poutres identiques arrivant dans le plan de flexion ; 0 = aucune retenue (k infini, extrémité articulée).'},
    {k:'bb',lbl:'Poutre : largeur b',min:10,max:1000,step:1,unit:'cm',def:()=>30,aide:'Section rectangulaire, table de compression négligée (côté sécurité) ; dalle : bande de largeur b.'},
    {k:'hb',lbl:'Poutre : hauteur h',min:10,max:300,step:1,unit:'cm',def:()=>50,aide:'Inertie I = b·h³/12 (EC2 5.8.3.2 ; guide ch.5 p.35-37).'},
    {k:'lb',lbl:'Poutre : portée l',min:1,max:20,step:0.1,unit:'m',def:()=>5,aide:'Rigidité en EI/l : une poutre plus longue retient moins le poteau.'},
+   {k:'fb',lbl:'Forme des poutres',t:'sel',min:0,max:1,opts:[[0,'Rectangulaire'],[1,'En T ou non rectangulaire (hors périmètre)']],def:()=>0,aide:'Seules les poutres rectangulaires sont traitées ; poutre en T, section orientée ou variable : k à calculer par l\'ingénieur.'},
    {k:'far',lbl:'Autre extrémité des poutres',t:'sel',min:3,max:4,opts:[[4,'Encastrée ou continue (4·EI/l)'],[3,'Articulée (3·EI/l)']],def:()=>4,aide:'Rigidité de rotation d\'une poutre : 4·EI/l si l\'autre bout est bloqué, 3·EI/l s\'il est articulé.'},
    {k:'nv',lbl:'Poteau voisin au nœud',t:'sel',min:0,max:1,opts:[[0,'Aucun'],[1,'Oui']],def:()=>0,aide:'Poteau continu de l\'autre côté du nœud : son EI/l s\'ajoute à celui de ce poteau (EC2 5.8.3.2 (4)).'},
+   {k:'vf',lbl:'Forme du poteau voisin',t:'sel',min:0,max:1,opts:[[0,'Rectangulaire'],[1,'Circulaire ou autre (hors périmètre)']],def:()=>0,aide:'Seuls les poteaux voisins rectangulaires sont traités ; circulaire ou section non rectangulaire : k à calculer par l\'ingénieur.',only:'nv'},
    {k:'vp',lbl:'Poteau voisin : dimension dans le plan',min:10,max:200,step:1,unit:'cm',def:dp=>ptGeom(dp).prof,aide:'Par défaut la section de ce poteau (cercle : diamètre).',only:'nv'},
-   {k:'vl',lbl:'Poteau voisin : dimension perpendiculaire',min:10,max:200,step:1,unit:'cm',def:dp=>ptGeom(dp).larg,aide:'Par défaut la section de ce poteau.',only:'nv',rect:true},
+   {k:'vl',lbl:'Poteau voisin : dimension perpendiculaire',min:10,max:200,step:1,unit:'cm',def:dp=>ptGeom(dp).larg,aide:'Par défaut la section de ce poteau.',only:'nv'},
    {k:'vh',lbl:'Poteau voisin : hauteur libre',min:1,max:20,step:0.1,unit:'m',def:dp=>+dp.L_m||3,aide:'Par défaut la hauteur libre de ce poteau.',only:'nv'}
   ];
   function ptKaEns(dp){ if(!dp.ka) dp.ka={}; if(!dp.ka.haut) dp.ka.haut={}; if(!dp.ka.bas) dp.ka.bas={}; return dp.ka; }
-  function ptKaGet(dp,e,f){ const a=f.k==='fiss'?dp.ka:(dp.ka&&dp.ka[e]); const v=a&&a[f.k]; const ok=(v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=f.min-1e-12&&+v<=f.max+1e-12); return {v:ok?+v:f.def(dp),saisi:ok}; }
+  function ptKaGet(dp,e,f){ const a=f.g?dp.ka:(dp.ka&&dp.ka[e]); const v=a&&a[f.k]; const ok=(v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=f.min-1e-12&&+v<=f.max+1e-12); return {v:ok?+v:f.def(dp),saisi:ok}; }
   function ptKaFmt(x,n){ return isFinite(x)?(+x).toFixed(n).replace('.',','):'∞'; }
   function ptKaEnd(dp,e,g){
    const V={}; PT_KA_F.forEach(f=>{ V[f.k]=ptKaGet(dp,e,f).v; });
-   const fiss=ptKaGet(dp,e,PT_KA_FISS).v, Lc=+dp.L_m||3;
+   const fiss=ptKaGet(dp,e,PT_KA_FISS).v, Eh=ptKaGet(dp,e,PT_KA_E).v, Lc=+dp.L_m||3;
    const Ic=g.rect?g.larg*Math.pow(g.prof,3)/12:Math.PI*Math.pow(g.D,4)/64;
-   const In=V.nv?(g.rect?V.vl*Math.pow(V.vp,3)/12:Math.PI*Math.pow(V.vp,4)/64):0;
+   const In=V.nv?V.vl*Math.pow(V.vp,3)/12:0;
+   const motifs=[]; if(V.fb===1) motifs.push('poutre en T ou non rectangulaire'); if(V.nv&&V.vf===1) motifs.push('poteau voisin circulaire ou non rectangulaire'); if(Eh===1) motifs.push('module E différent');
    const sc=Ic/Lc+(V.nv?In/V.vh:0);
    const sb=V.nb>0?fiss*V.nb*V.far*(V.bb*Math.pow(V.hb,3)/12)/V.lb:0;
    const raw=sb>0?sc/sb:Infinity;
-   return Object.assign(V,{fiss,Ic,In,sc,sb,raw,clamp:isFinite(raw)&&raw<0.1,kUp:isFinite(raw)?Math.max(0.1,Math.ceil(raw*100-1e-9)/100):Infinity});
+   return Object.assign(V,{fiss,hors:motifs.length>0,motifs,Ic,In,sc,sb,raw,clamp:isFinite(raw)&&raw<0.1,kUp:isFinite(raw)?Math.max(0.1,Math.ceil(raw*100-1e-9)/100):Infinity});
   }
   function ptKaCalc(dp){
    const g=ptGeom(dp), o={haut:ptKaEnd(dp,'haut',g),bas:ptKaEnd(dp,'bas',g),mode:dp.mode_l0||'isole'};
    o.l0cur=ptL0(dp);
    if(o.mode!=='isole'){ const t2=Object.assign({},dp);
-    PT_KA_END.forEach(([e,,,kf])=>{ const kk=o[e].kUp; if(isFinite(kk)){ t2[kf]=kk; } else { t2[e==='bas'?'appuiBas':'appuiHaut']='articule'; } });
+    PT_KA_END.forEach(([e,,,kf])=>{ const kk=o[e].kUp; if(o[e].hors) return; if(isFinite(kk)){ t2[kf]=kk; } else { t2[e==='bas'?'appuiBas':'appuiHaut']='articule'; } });
     o.l0new=ptL0(t2); }
    return o;
   }
   /* F lu à 2 décimales, comme le tableau 4 du guide (contreventé) : F de l'éq. 5.15 arrondi ; hors tableau si k > 9 */
   function ptKaTab4(c){ if(c.mode!=='portique_contreve'||!c.l0new) return ''; const big=PT_KA_END.some(([e])=>isFinite(c[e].kUp)&&c[e].kUp>9); return big?'au-delà du tableau 4 (k > 9)':'tableau 4 : F ≈ '+ptKaFmt(c.l0new.f,2); }
   /* Résumé repris dans la note de calcul (Hypothèses et Points à confirmer) : uniquement si les k ont été reportés par l'aide */
+  /* Extrémités dont la situation sort du périmètre de l'aide (poutre non rectangulaire, voisin circulaire, E différent) : k saisi par l'ingénieur */
+  function ptKaHors(dp){ if(!dp.ka) return null; const g=ptGeom(dp), L=[]; PT_KA_END.forEach(([e,,kn])=>{ const r=ptKaEnd(dp,e,g); if(r.hors) L.push({kn,e,motifs:r.motifs}); }); return L.length?{hors:L}:null; }
   function ptKaNote(dp){
-   const a=dp.ka&&dp.ka.app; if(!a) return null;
+   const por0=(dp.mode_l0||'isole')!=='isole';
+   const a=dp.ka&&dp.ka.app; if(!a) return (dp.ka&&por0)?ptKaHors(dp):null;
    const por=(dp.mode_l0||'isole')!=='isole';
    const ends=PT_KA_END.filter(([e])=>a[e]).map(([e,lbl,kn,kf])=>({e,lbl,kn,kf,s:a[e],kUsed:+dp[kf],ok:Math.abs((+dp[kf])-a[e].kUp)<1e-9}));
-   return {por,ends,fiss:a.fiss,F:a.F,tab4:a.tab4,l0:a.l0_m,l0cur:a.l0cur_m};
+   return Object.assign({por,ends,fiss:a.fiss,F:a.F,tab4:a.tab4,l0:a.l0_m,l0cur:a.l0cur_m},ptKaHors(dp)||{});
   }
   function ptKaFieldHtml(dp,e,f,err){
-   const r=ptKaGet(dp,e,f), key=f.k==='fiss'?'fiss':e+'.'+f.k;
+   const r=ptKaGet(dp,e,f), key=f.g?f.k:e+'.'+f.k;
    const tag='<span class="pcElsTag'+(r.saisi?' on':'')+'">'+(r.saisi?'saisi':'par défaut')+'</span>';
    const inp=f.t==='sel'?'<select data-ka="'+key+'" aria-label="'+f.lbl+'">'+f.opts.map(o=>'<option value="'+o[0]+'"'+(String(o[0])===String(r.v)?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>'
     :'<input type="number" inputmode="decimal" step="'+f.step+'" min="'+f.min+'" max="'+f.max+'" data-ka="'+key+'" value="'+r.v+'" aria-label="'+f.lbl+'">';
@@ -26661,8 +26676,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function ptKaBlockHtml(dp,id,open){
    const c=ptKaCalc(dp), err=(window._elsErr||{})[id], a=dp.ka&&dp.ka.app, por=c.mode!=='isole', g=ptGeom(dp);
    const endHtml=PT_KA_END.map(([e,lbl,kn,kf,pos])=>{
-    const r=c[e], fl=PT_KA_F.filter(f=>(!f.only||r.nv)&&(!f.rect||g.rect)).map(f=>Object.assign({},f,{lbl:f.k==='nv'?'Poteau voisin '+pos+' du nœud':(f.k==='vp'&&!g.rect?'Poteau voisin : diamètre':f.lbl)}));
-    const res=!isFinite(r.raw)?'<b>'+kn+' : infini</b> — aucune poutre : le nœud ne retient pas le poteau. Choisir « Articulé » pour cette extrémité à l\'étape 3 (aucune valeur reportée).'
+    const r=c[e], fl=PT_KA_F.filter(f=>(!f.only||r.nv)).map(f=>Object.assign({},f,{lbl:f.k==='nv'?'Poteau voisin '+pos+' du nœud':(f.k==='vp'&&!g.rect?'Poteau voisin : dimension dans le plan (cercle : diamètre)':f.lbl)}));
+    const res=r.hors?'<b>⚠ Hors périmètre de l\'aide ('+r.motifs.join(', ')+').</b> '+kn+' non calculé : calcul de k par l\'ingénieur ; saisir '+kn+' directement à l\'étape 3 (champ « '+(e==='haut'?'Souplesse k2 (tête)':'Souplesse k1 (pied)')+' »).':!isFinite(r.raw)?'<b>'+kn+' : infini</b> — aucune poutre : le nœud ne retient pas le poteau. Choisir « Articulé » pour cette extrémité à l\'étape 3 (aucune valeur reportée).'
      :'<b>'+kn+' = '+ptKaFmt(r.kUp,2)+'</b> ('+(r.clamp?'minimum 0,1 ; ':'')+'k brut '+ptKaFmt(r.raw,3)+' = '+ptKaFmt(r.sc,0)+' / '+ptKaFmt(r.sb,0)+', rigidités en cm⁴/m : poteau'+(r.nv?'x':'')+' / poutres, arrondi par excès à 0,01)';
     return '<div class="pcKaEnd"><h6>'+lbl+' → '+kn+' ('+kf+')</h6>'+fl.map(f=>ptKaFieldHtml(dp,e,f,err)).join('')+'<p class="pcKaRes" role="status">'+res+'</p></div>';
    }).join('');
@@ -26673,10 +26688,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const f0=ptCoefSaisi(dp,'c_l0f')?'<p class="pcNote">Le coefficient l₀/l saisi dans « Second ordre et flambement » remplace ce calcul : à vider pour utiliser k1 et k2.</p>':'';
    const stale=a&&PT_KA_END.some(([e])=>a[e]&&Math.abs(a[e].kUp-c[e].kUp)>1e-9)?'<p class="pcNote pcElsErr" role="status">Les données de l\'aide ont changé depuis le dernier report : reporter à nouveau pour mettre à jour k1 et k2.</p>':'';
    const done=a?'<p class="pcNote" role="status">✓ Reporté : '+PT_KA_END.filter(([e])=>a[e]).map(([e,,kn])=>kn+' = '+ptKaFmt(a[e].kUp,2)).join(' · ')+' (modifiables à l\'étape 3 ; repris dans la note, Hypothèses et Points à confirmer).</p>':'';
-   const can=por&&PT_KA_END.some(([e])=>isFinite(c[e].kUp));
+   const can=por&&PT_KA_END.some(([e])=>isFinite(c[e].kUp)&&!c[e].hors);
    return '<details class="pcElsSub" data-els-id="'+id+'" data-th="ka"'+(open?' open':'')+'><summary>Calcul de k aux extrémités (EC2 5.8.3.2)'+(a?' <span class="pcElsTag on">reporté</span>':'')+'</summary><div class="pcElsBody">'
+    +'<p class="pcNote pcKaScope"><b>Périmètre : poutres et poteaux voisins rectangulaires seulement, même E partout, pas de section orientée ni non rectangulaire.</b> Hors de ce périmètre, l\'aide ne calcule pas : saisir k1 et k2 à l\'étape 3 (calcul de k par l\'ingénieur).</p>'
     +'<p class="pcNote">Aide au choix de k1 (pied) et k2 (tête) : k = Σ(EI/l) des poteaux du nœud / Σ(α·EI/l) des poutres, α = 4 ou 3, poutres fissurées × 0,5 (EC2 5.8.3.2 ; guide ch.5 p.35-37 ; livre p.154-156). Même béton pour poutres et poteaux. Rien n\'est modifié tant qu\'on ne reporte pas.</p>'
-    +ptKaFieldHtml(dp,null,PT_KA_FISS,err)+endHtml+l0+f0+stale+done
+    +ptKaFieldHtml(dp,null,PT_KA_FISS,err)+ptKaFieldHtml(dp,null,PT_KA_E,err)+endHtml+l0+f0+stale+done
     +'<div class="pcKaBtns"><button type="button" class="ghost" data-ka-act="apply"'+(can?'':' disabled aria-disabled="true"')+'>Reporter dans k1 et k2</button><button type="button" class="ghost" data-ka-act="reset">Rétablir l\'aide</button></div>'
     +'</div></details>';
   }
@@ -26988,7 +27004,14 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const L0=ptL0(dp), k=isFinite(L0.f)?L0.f:null, r=res||dp.resultats;
    return {k, Av:(r&&r.AsReelle_cm2!=null)?Math.round(r.AsReelle_cm2*100)/100:null, th:800, N:(r&&r.NEd_kN!=null)?Math.round(r.NEd_kN/1.4*10)/10:null};
   }
-  function ptFeu(dp,res){
+  const PT_FEU_DESC=[
+   'Méthode simplifiée du classeur 011 « Justification au feu des poteaux », de type règles françaises BAEL/DTU feu ; ce n\'est pas l\'EN 1992-1-2 (aucune norme vérifiable fournie).',
+   'θm, température moyenne du béton, lue dans une table selon M = périmètre/aire de la section et la durée de stabilité.',
+   'F_b(θm) réduit la section de béton ; F_i(θi) réduit l\'acier (θi, température des armatures).',
+   'N_r = α/0,85·(B_q·f_c28/1,17 + A_v·F_i·f_e), comparé à N_fi, effort normal en situation d\'incendie.',
+   'Tables du classeur numérotées VIII.1, IV.1 et IV.2, source non indiquée. Domaine : section rectangulaire, compression centrée, M de 0,05 à 0,25 par cm, durées de 0,5 à 4 h ; hors domaine : non vérifié.'];
+  function ptFeu(dp,res){ if(!dp.feu_on) return {etat:'na',dur:0,off:true}; const r=ptFeu0(dp,res); r.on=true; return r; }
+  function ptFeu0(dp,res){
    const dur=+dp.feu_duree_h||0; if(!(dur>0)) return {etat:'na',dur:0};
    const D=ptFeuDefaults(dp,res), g=res.geom, h=+dp.L_m||3;
    const sa=k=>dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''&&isFinite(+dp[k]);
@@ -27060,7 +27083,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(res.bi&&res.bi.etat!=='na') add('Poteau','Flexion déviée','(M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a ≤ 1, a = '+f(res.bi.a,2)+' (guide Tab.5 ; EC2 5.8.9)','M_Edz = '+f(res.bi.MEdz,1)+' / M_Rdz = '+f(res.bi.MRz,1)+' ; M_Edy = '+f(res.bi.MEdy,1)+' / M_Rdy = '+f(res.bi.MRy,1)+' kN·m → '+f(res.bi.ratio,2),'≤ 1',res.bi.etat);
    else add('Poteau','Flexion déviée','EC2 §5.8.9','non calculée : M_Ed de l\'autre plan à renseigner dans les paramètres avancés','—','nf');
    { const fe=res.feu, ref='méthode tabulée de type BAEL/DTU feu (classeur 011), pas l\'EN 1992-1-2';
-     if(fe.etat==='na') add('Feu','Résistance au feu',ref,'durée de stabilité au feu non demandée','—','nf');
+     if(fe.off){ }
+     else if(fe.etat==='na') add('Feu','Résistance au feu',ref,'durée de stabilité au feu non demandée','—','nf');
      else if(fe.etat==='nf') add('Feu','Résistance au feu ('+f(fe.dur,1)+' h)',ref,'hors domaine du classeur : '+fe.motif,'—','nf');
      else add('Feu','N_fi ≤ N_r ('+f(fe.dur,1)+' h)',ref+' : N_r = α/0,85·(B_q·f_c28/1,17 + A_v·F_i·f_e) ; θm = '+f(fe.thM,0)+' °C, F_b = '+f(fe.Fb,3)+', θi = '+f(fe.thI,0)+' °C, F_i = '+f(fe.Fi,3)+', λ = '+f(fe.lam,1)+', α = '+f(fe.alpha,3),'N_fi = '+f(fe.Nfi,0)+' kN ; N_r = '+f(fe.Nr,0)+' kN','N_fi ≤ N_r',fe.etat); }
    return V;
@@ -27167,8 +27191,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const specs=PT_COEF.filter(sp=>sp.th===t).map(sp=>Object.assign({},sp,{def:sp.defFn?sp.defFn(dp):sp.def}));
     const nT=specs.filter(sp=>ptCoefSaisi(dp,sp.k)).length; /* lecture seule : jamais comptée */
     const intro=t==='els'?'<p class="pcNote">'+(req?'Classe '+cls+' : contraintes ELS vérifiées (σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk).':'Classe '+cls+' : contraintes ELS non requises (requises en XD, XF, XS) ; ces valeurs ne servent alors à rien.')+'</p>'
-     :(t==='feu'?'<p class="pcNote">Méthode tabulée de type BAEL/DTU feu reprise du classeur 011 (pas l\'EN 1992-1-2). Domaine : section rectangulaire, compression centrée (moments nuls), M = périmètre/aire de 0,05 à 0,25 cm⁻¹, durées 0,5 à 4 h ; hors domaine : non vérifié. f_c28 = f_ck, f_e = f_yk, h = hauteur du poteau, a = petit côté, quatre faces exposées.</p>':'');
-    return '<details class="pcElsSub" data-els-id="'+id+'" data-th="'+t+'"'+(th[t]?' open':'')+'><summary>'+tl+(nT?' <span class="pcElsTag on">'+nT+' saisi'+(nT>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'+intro+specs.map(sp=>sp.ro?ptRoHtml(sp):elsFieldHtml(sp,dp,err)).join('')+'</div></details>';
+     :(t==='feu'?'<button type="button" class="pcFeuSw" role="switch" aria-checked="'+(dp.feu_on?'true':'false')+'" data-pt-act="feuToggle"><span class="pcFeuKnob" aria-hidden="true"></span><span>Calcul au feu : intégrer la méthode du classeur 011 <b>('+(dp.feu_on?'activé':'désactivé')+')</b></span></button>'+'<div class="pcFeuDesc">'+PT_FEU_DESC.map(x=>'<p class="pcNote">'+esc(x)+'</p>').join('')+(dp.feu_on?'<p class="pcNote">f_c28 = f_ck, f_e = f_yk, h = hauteur du poteau, a = petit côté, quatre faces exposées.</p>':'<p class="pcNote">Désactivé : aucun calcul ni aucune ligne au feu dans la note.</p>')+'</div>':'');
+    return '<details class="pcElsSub" data-els-id="'+id+'" data-th="'+t+'"'+(th[t]?' open':'')+'><summary>'+tl+(nT?' <span class="pcElsTag on">'+nT+' saisi'+(nT>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'+intro+(t==='feu'&&!dp.feu_on?'':specs.map(sp=>sp.ro?ptRoHtml(sp):elsFieldHtml(sp,dp,err)).join(''))+'</div></details>';
    }).join('');
    return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="pt"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés (second ordre, ELS, feu…)'+(nS?' <span class="pcElsTag on">'+nS+' saisi'+(nS>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'
     +'<p class="pcNote">Coefficients du calcul du poteau : la valeur par défaut est affichée dans le champ ; vide ou hors bornes, la valeur par défaut est utilisée. Les valeurs saisies sont reprises dans la note de calcul (Hypothèses et Points à confirmer).</p>'
@@ -27247,10 +27271,34 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   DC_COEF.forEach(sp=>{ if(sp.k==='gG'||sp.k==='gQ') sp.ro=true; });
   function dcCoef(dd,k){ const sp=DC_COEF.find(x=>x.k===k); if(sp.ro) return sp.def; const v=dd&&dd[k]; return (v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=sp.min-1e-12&&+v<=sp.max+1e-12)?+v:sp.def; }
   function dcSaisi(dd,k){ return Math.abs(dcCoef(dd,k)-DC_COEF.find(x=>x.k===k).def)>1e-12; }
+  /* Dégression des charges d'exploitation (choix du bureau) : défaut EN 1991-1-1 §6.3.1.2(11), α_n = (2 + (n−2)·ψ0)/n pour n > 2 niveaux chargés de même catégorie ;
+     option BAEL / NF P06-001 : (3+n)/(2n) à partir du 5e niveau ; option « aucune » : a_n saisi par niveau (comportement d'origine, 1 par défaut).
+     n = nombre de niveaux portant une charge q > 0, du haut vers le niveau considéré (toiture comprise) ; q′ (cloisons mobiles) n'est jamais réduit. Texte de la norme non fourni : à confirmer. */
+  const DC_CAT=[['A','A — habitation, résidentiel',0.7],['B','B — bureaux',0.7],['C','C — lieux de réunion',0.7],['D','D — commerces',0.7],['E','E — stockage',1]];
+  const DC_DEG=[['en1991','EN 1991-1-1 §6.3.1.2(11) : α_n = (2 + (n−2)·ψ0)/n, n > 2'],['bael','BAEL / NF P06-001 : (3+n)/(2n) à partir du 5e étage'],['aucune','Aucune dégression (a_n saisi par niveau)']];
+  function dcDeg(dd){ const v=dd&&dd.deg; if(DC_DEG.some(x=>x[0]===v)) return v; return (dd&&dd.niveaux&&dd.niveaux.some(n=>n.an!==''&&n.an!=null&&+n.an!==1))?'aucune':'en1991'; }
+  function dcCat(dd){ const c=dd&&dd.cat; return DC_CAT.some(x=>x[0]===c)?c:'A'; }
+  function dcPsiDef(dd){ return DC_CAT.find(x=>x[0]===dcCat(dd))[2]; }
+  function dcPsiSaisi(dd){ const v=dd&&dd.psi0; return v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=0.5-1e-12&&+v<=1+1e-12; }
+  function dcPsi(dd){ return dcPsiSaisi(dd)?+dd.psi0:dcPsiDef(dd); }
+  function dcAlpha(mode,n,psi0){ if(mode==='en1991') return n>2?(2+(n-2)*psi0)/n:1; if(mode==='bael') return n>=5?(3+n)/(2*n):1; return 1; }
+  function dcDegBlockHtml(dd,err){
+   const mode=dcDeg(dd), cat=dcCat(dd), sa=dd.deg!==undefined&&dd.deg!==null&&mode!=='en1991', tag=x=>'<span class="pcElsTag'+(x?' on':'')+'">'+(x?'saisi':'par défaut')+'</span>';
+   const sel=(key,opts,val)=>'<select data-dc-d="'+key+'" aria-label="'+key+'">'+opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===val?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+   let h='<label><span class="pcElsLbl">Dégression des charges d\'exploitation</span><span class="pcElsCtl">'+sel('deg',DC_DEG,mode)+'</span>'+tag(sa)+'</label>'
+    +'<p class="pcNote">Défaut : EN 1991-1-1 §6.3.1.2(11) ; n = niveaux portant une charge q (toiture comprise) ; q′ jamais réduit. Texte de la norme et annexe nationale non fournis : à confirmer.</p>';
+   if(mode==='en1991'){ const sc=dd.cat!==undefined&&dd.cat!==null&&cat!=='A', sp=dcPsiSaisi(dd);
+    h+='<label><span class="pcElsLbl">Catégorie d\'usage (charges d\'exploitation)</span><span class="pcElsCtl">'+sel('cat',DC_CAT.map(x=>[x[0],x[1]]),cat)+'</span>'+tag(sc)+'</label><p class="pcNote">La dégression ne vaut que pour des niveaux de même catégorie ; la catégorie fixe le ψ0 par défaut.</p>'
+     +'<label><span class="pcElsLbl">ψ0 de la catégorie</span><span class="pcElsCtl"><input type="number" inputmode="decimal" step="0.05" min="0.5" max="1" data-dc-d="psi0" value="'+dcPsi(dd)+'"></span>'+tag(sp)+'</label>'
+     +(err&&err.key==='psi0'?'<p class="pcNote pcElsErr" role="alert">'+esc(err.msg)+'</p>':'')+'<p class="pcNote">α_n = (2 + (n−2)·ψ0)/n : 0,7 pour A à D, 1,0 pour E (EN 1990 tab. A1.1, à confirmer) ; borné de 0,5 à 1,0. Vide : valeur de la catégorie.</p>'; }
+   if(mode==='aucune') h+='<p class="pcNote">Aucune réduction automatique : le coefficient a_n de la colonne « an » du tableau s\'applique à q de chaque niveau (1 par défaut).</p>';
+   return h;
+  }
   function dcCoefBlockHtml(dd,id){
-   const err=(window._dcErr||{})[id], nS=DC_COEF.filter(sp=>dcSaisi(dd,sp.k)).length;
+   const err=(window._dcErr||{})[id], nS=DC_COEF.filter(sp=>dcSaisi(dd,sp.k)).length+(dd.deg!==undefined&&dcDeg(dd)!=='en1991'?1:0)+(dcCat(dd)!=='A'&&dcDeg(dd)==='en1991'?1:0)+(dcPsiSaisi(dd)&&dcDeg(dd)==='en1991'?1:0);
    return '<div class="pcDcBlk"><details class="pcEls" data-dc-blk="1" data-els-id="'+id+'"'+(dd._open?' open':'')+'><summary>Paramètres avancés (descente de charges)'+(nS?' <span class="pcElsTag on">'+nS+' saisi'+(nS>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'
     +'<p class="pcNote">Valeur par défaut affichée dans le champ ; vide ou hors bornes, la valeur par défaut est utilisée. Les valeurs saisies sont reprises dans la note du poteau. Le coefficient de dégression a_n se saisit par niveau dans le tableau (1 par défaut ; règle de dégression à confirmer). γ_G et γ_Q sont normatifs : lecture seule.</p>'
+    +dcDegBlockHtml(dd,err)
     +DC_COEF.map(sp=>{ const sa=dcSaisi(dd,sp.k), v=dcCoef(dd,sp.k);
       if(sp.ro) return '<label class="pcElsRo"><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsRoVal">'+String(v).replace('.',',')+'</span><span class="pcElsTag">normatif, non modifiable</span></label><p class="pcNote">'+sp.aide.replace(/ Le coefficient de dégression.*$/,'')+'</p>';
       return '<label><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsCtl"><input type="number" inputmode="decimal" step="'+sp.step+'" min="'+sp.min+'" max="'+sp.max+'" data-dc-c="'+sp.k+'" value="'+v+'">'+(sp.unit?'<span class="pcUnitEls">'+sp.unit+'</span>':'')+'</span><span class="pcElsTag'+(sa?' on':'')+'">'+(sa?'saisi':'par défaut')+'</span></label>'
@@ -27259,6 +27307,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function dcCompute(dd){
    const k=dcCoef(dd,'k'), gG=dcCoef(dd,'gG'), gQ=dcCoef(dd,'gQ'), rho=dcCoef(dd,'rho'); let Gcum=0,Qcum=0,Qdgcum=0; const lignes=[];
+   const mode=dcDeg(dd), psi0=dcPsi(dd); let nq=0, Qq=0, Qp=0;
    for(const n of dd.niveaux){
     const hdalle=+n.dalle.h||0;
     const {aire,vol:volDalle}=dcVolDalle(n);
@@ -27266,14 +27315,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const Gdalle=volDalle*rho*k, Gox=volOx*rho*k, Goy=volOy*rho*k, Gpot=volPot*rho, Gdiv=+n.divers_kN||0;
     const Gprim=(+n.gprime||0)*aire*k, Gniv=Gdalle+Gox+Goy+Gpot+Gdiv+Gprim;   // g' (permanentes hors poids propre) : NEd = 1,35·Σ(g+g') comme l'en-tête du classeur 152
     const an=(n.an===''||n.an==null)?1:+n.an, q=+n.q||0, qprime=+n.qprime||0;
-    const Qniv=(q+qprime)*aire*k, Qdgniv=(q*an+qprime)*aire*k;
-    Gcum+=Gniv; Qcum+=Qniv; Qdgcum+=Qdgniv;
+    const Qniv=(q+qprime)*aire*k; let Qdgniv=(q*an+qprime)*aire*k, alpha=1;
+    Gcum+=Gniv; Qcum+=Qniv;
+    if(mode==='aucune'){ Qdgcum+=Qdgniv; } else { if(q>0) nq++; Qq+=q*aire*k; Qp+=qprime*aire*k; alpha=dcAlpha(mode,nq,psi0); const nv=alpha*Qq+Qp; Qdgniv=nv-Qdgcum; Qdgcum=nv; }
     const NEd=gG*Gcum+gQ*Qdgcum;
     const bpot_mm=(+n.poteau.b||0)*1000, hpot_mm=(+n.poteau.h||0)*1000; // b,h du poteau en mètres ici (cf. dcNivDefaut)
     const sigma=(bpot_mm*hpot_mm>0)? NEd*1000/(bpot_mm*hpot_mm) : 0;
-    lignes.push({nom:n.nom,aire,Gprim,Gniv,Qniv,Qdgniv,Gcum,Qcum,Qdgcum,NEd,sigma});
+    lignes.push({nom:n.nom,aire,Gprim,Gniv,Qniv,Qdgniv,Gcum,Qcum,Qdgcum,NEd,sigma,alpha,nq});
    }
-   return {k,lignes};
+   return {k,lignes,deg:mode,psi0,cat:dcCat(dd)};
   }
   function dcRowHtml(n,i){
    const F=(f,v,w)=>'<input type="number" step="0.01" style="width:'+(w||50)+'px" data-dc-i="'+i+'" data-dc-f="'+f+'" value="'+(v??0)+'">';
@@ -27290,22 +27340,22 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function dcFormHtml(id,t){
    const dd=dcData(t);
-   const head=['Niveau','an','Dalle b','h','L','Poutre Ox b','h','L','Poutre Oy b','h','L','Poteau b','h','L','Divers kN','g′','q','q′',''];
+   const head=['Niveau','an (si aucune)','Dalle b','h','L','Poutre Ox b','h','L','Poutre Oy b','h','L','Poteau b','h','L','Divers kN','g′','q','q′',''];
    const tbl='<div style="overflow-x:auto"><table class="pcDcTbl" style="font-size:11px;border-collapse:collapse;width:100%"><thead><tr>'
     +head.map(h=>'<th style="padding:3px 4px;text-align:left;color:var(--ink-soft,#888);white-space:nowrap">'+h+'</th>').join('')
     +'</tr></thead><tbody>'+dd.niveaux.map((n,i)=>dcRowHtml(n,i)).join('')+'</tbody></table></div>';
    let res='';
    if(dd.resultats){
-    const rh=['Niveau','G niv. (kN)','G cum. (kN)','Q cum. (kN)','Qdg cum. (kN)','NEd,ELU (kN)','σc,pot (MPa)'];
+    const rh=['Niveau','G niv. (kN)','G cum. (kN)','Q cum. (kN)','α dég.','Qdg cum. (kN)','NEd,ELU (kN)','σc,pot (MPa)'];
     res='<div class="pcDimBox" style="margin-top:10px"><b>Résultats (cumulés, du haut vers le bas)</b>'
      +'<div style="overflow-x:auto"><table style="font-size:11px;border-collapse:collapse;width:100%"><thead><tr>'
      +rh.map(h=>'<th style="padding:3px 4px;text-align:left;white-space:nowrap">'+h+'</th>').join('')+'</tr></thead><tbody>'
-     +dd.resultats.lignes.map(l=>'<tr><td>'+esc(l.nom)+'</td><td>'+l.Gniv.toFixed(2)+'</td><td>'+l.Gcum.toFixed(2)+'</td><td>'+l.Qcum.toFixed(2)+'</td><td>'+l.Qdgcum.toFixed(2)+'</td><td>'+l.NEd.toFixed(2)+'</td><td>'+l.sigma.toFixed(2)+'</td></tr>').join('')
+     +dd.resultats.lignes.map(l=>'<tr><td>'+esc(l.nom)+'</td><td>'+l.Gniv.toFixed(2)+'</td><td>'+l.Gcum.toFixed(2)+'</td><td>'+l.Qcum.toFixed(2)+'</td><td>'+(l.alpha==null?'—':l.alpha.toFixed(3))+'</td><td>'+l.Qdgcum.toFixed(2)+'</td><td>'+l.NEd.toFixed(2)+'</td><td>'+l.sigma.toFixed(2)+'</td></tr>').join('')
      +'</tbody></table></div>'
      +'<button type="button" class="primary pcBtnSm" style="margin-top:8px" data-dc-act="report">↳ Reporter NEd (dernier niveau) sur ce poteau</button></div>';
    }
    return '<div class="pjBeam-top pcNCTop"><button type="button" class="back-x" data-beam-back="form" aria-label="Retour" title="Retour">‹</button><h4 class="pjBeam-ttl">📥 Descente de charges</h4></div>'
-    +'<p class="pcNote">Classeur 152 (H. Thonier) — un niveau par ligne, du haut (terrasse) vers le bas. Toutes les dimensions (b, h, L) sont en <b>mètres</b> ici, comme dans le classeur source (à la différence du reste du module Poteau, en cm). Poids propre de la dalle/poutres/poteau calculé automatiquement (volume × 25 kN/m³) ; dalle et poutres majorées par le coefficient k (continuité) ; poteau non majoré. g′ (permanentes hors poids propre : finitions, cloisons fixes…) est pris en compte : G = poids propre + g′·aire·k, comme l\'indique l\'en-tête du classeur (NEd = 1,35·Σ(g + g′) + 1,5·Σ(an·q + q′)). an = coefficient de dégression verticale de q (à saisir par niveau) ; q′ (cloisons mobiles) n\'est jamais réduit par an.</p>'
+    +'<p class="pcNote">Classeur 152 (H. Thonier) — un niveau par ligne, du haut (terrasse) vers le bas. Toutes les dimensions (b, h, L) sont en <b>mètres</b> ici, comme dans le classeur source (à la différence du reste du module Poteau, en cm). Poids propre de la dalle/poutres/poteau calculé automatiquement (volume × 25 kN/m³) ; dalle et poutres majorées par le coefficient k (continuité) ; poteau non majoré. g′ (permanentes hors poids propre : finitions, cloisons fixes…) est pris en compte : G = poids propre + g′·aire·k, comme l\'indique l\'en-tête du classeur (NEd = 1,35·Σ(g + g′) + 1,5·Σ(an·q + q′)). Dégression des charges d\'exploitation : voir « Paramètres avancés (descente de charges) » (défaut EN 1991-1-1 §6.3.1.2(11)) ; la colonne an ne sert qu\'avec « Aucune dégression » ; q′ (cloisons mobiles) n\'est jamais réduit.</p>'
     +dcCoefBlockHtml(dd,id)
     +tbl
     +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="ghost pcBtnSm" data-dc-act="add">＋ Niveau</button><button type="button" class="primary pcBtnSm" data-dc-act="calc">🤖 Calculer</button></div>'
@@ -27362,11 +27412,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     );
     return;
    }
+   const fSw=e.target.closest('[data-pt-act="feuToggle"]'); if(fSw){ const t1=taskById(id); if(!t1) return; const d1=ptData(t1); d1.feu_on=!d1.feu_on; d1._thOpen=d1._thOpen||{}; d1._thOpen.feu=true; d1._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
    const kaB=e.target.closest('[data-ka-act]'); if(kaB){
     const t0=taskById(id); if(!t0) return; const dp0=ptData(t0); const act=kaB.dataset.kaAct;
     if(act==='reset'){ delete dp0.ka; window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp0._thOpen=dp0._thOpen||{}; dp0._thOpen.ka=true; dp0._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
     if(act==='apply'){ const c=ptKaCalc(dp0); if(c.mode==='isole') return; const ka=ptKaEns(dp0); const app={fiss:c.haut.fiss,F:c.l0new&&c.l0new.f,tab4:ptKaTab4(c),l0_m:c.l0new&&isFinite(c.l0new.l0_cm)?c.l0new.l0_cm/100:null,l0cur_m:isFinite(c.l0cur.l0_cm)?c.l0cur.l0_cm/100:null};
-     PT_KA_END.forEach(([en,,,kf])=>{ const r=c[en]; if(!isFinite(r.kUp)) return; dp0[kf]=r.kUp; app[en]={kUp:r.kUp,raw:r.raw,nb:r.nb,bb:r.bb,hb:r.hb,lb:r.lb,far:r.far,nv:r.nv,vp:r.vp,vl:r.vl,vh:r.vh,fiss:r.fiss,sc:r.sc,sb:r.sb,clamp:r.clamp}; });
+     PT_KA_END.forEach(([en,,,kf])=>{ const r=c[en]; if(!isFinite(r.kUp)||r.hors) return; dp0[kf]=r.kUp; app[en]={kUp:r.kUp,raw:r.raw,nb:r.nb,bb:r.bb,hb:r.hb,lb:r.lb,far:r.far,nv:r.nv,vp:r.vp,vl:r.vl,vh:r.vh,fiss:r.fiss,sc:r.sc,sb:r.sb,clamp:r.clamp}; });
      ka.app=app; dp0._thOpen=dp0._thOpen||{}; dp0._thOpen.ka=true; dp0._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
     return; }
    const pn=e.target.closest('[data-pt-act="printNote"]'); if(pn){ pteState(id).view='note'; pteRender(id); return; }
@@ -27388,13 +27439,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const t2=taskById(id);
    const dcAdd=e.target.closest('[data-dc-act="add"]'); if(dcAdd&&t2){ const dd=dcData(t2); dd.niveaux.push(dcNivDefaut(dd.niveaux.length)); try{persist();}catch(_){ } pteRender(id); return; }
    const dcDel=e.target.closest('[data-dc-act="del"]'); if(dcDel&&t2){ const dd=dcData(t2); const i=+dcDel.dataset.i; if(dd.niveaux.length>1) dd.niveaux.splice(i,1); try{persist();}catch(_){ } pteRender(id); return; }
-   const dcRst=e.target.closest('[data-dc-reset]'); if(dcRst&&t2){ const dd=dcData(t2); DC_COEF.forEach(sp=>{ delete dd[sp.k]; }); dd.k=1.15; dd._open=true; dd.resultats=null; window._dcErr=window._dcErr||{}; delete window._dcErr[id]; try{persist();}catch(_){ } pteRender(id); return; }
+   const dcRst=e.target.closest('[data-dc-reset]'); if(dcRst&&t2){ const dd=dcData(t2); DC_COEF.forEach(sp=>{ delete dd[sp.k]; }); delete dd.deg; delete dd.cat; delete dd.psi0; dd.k=1.15; dd._open=true; dd.resultats=null; window._dcErr=window._dcErr||{}; delete window._dcErr[id]; try{persist();}catch(_){ } pteRender(id); return; }
    const dcCalc=e.target.closest('[data-dc-act="calc"]'); if(dcCalc&&t2){ const dd=dcData(t2); dd.resultats=dcCompute(dd); try{persist();}catch(_){ } pteRender(id); return; }
    const dcRep=e.target.closest('[data-dc-act="report"]'); if(dcRep&&t2){
     const dd=dcData(t2), dp2=ptData(t2);
     if(dd.resultats&&dd.resultats.lignes.length){
      const last=dd.resultats.lignes[dd.resultats.lignes.length-1];
-     dp2.N_kN=Math.round(last.NEd*100)/100; dp2.poidsPropre='inclus'; dp2.dcInfo=DC_COEF.map(sp=>({k:sp.k,lbl:sp.lbl.replace(/ — .*$/,'').replace(/^k$/,'k'),val:dcCoef(dd,sp.k),saisi:dcSaisi(dd,sp.k)})); dp2.dcGprim_kN=Math.round(dd.resultats.lignes.reduce((a,l)=>a+(l.Gprim||0),0)*100)/100;
+     dp2.N_kN=Math.round(last.NEd*100)/100; dp2.poidsPropre='inclus'; dp2.dcInfo=DC_COEF.map(sp=>({k:sp.k,lbl:sp.lbl.replace(/ — .*$/,'').replace(/^k$/,'k'),val:dcCoef(dd,sp.k),saisi:dcSaisi(dd,sp.k)})); dp2.dcGprim_kN=Math.round(dd.resultats.lignes.reduce((a,l)=>a+(l.Gprim||0),0)*100)/100; dp2.dcDeg={mode:dd.resultats.deg||'aucune',cat:dd.resultats.cat,psi0:dd.resultats.psi0,psiSaisi:dcPsiSaisi(dd),n:last.nq||0,alpha:last.alpha==null?1:last.alpha};
      try{persist();}catch(_){ } try{clipToast('✓ N = '+dp2.N_kN+' kN reporté sur ce poteau — relancer « 🤖 Dimensionner » pour recalculer le ferraillage.');}catch(_){ }
      pteState(id).view='form'; pteRender(id);
     }
@@ -27403,6 +27454,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function pteChange(e,id){
    const t=taskById(id); if(!t) return; const el=e.target;
+   if(el.dataset.dcD){ const dd=dcData(t), k=el.dataset.dcD; window._dcErr=window._dcErr||{}; delete window._dcErr[id];
+    if(k==='psi0'){ if(el.value===''){ delete dd.psi0; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<0.5||x>1) window._dcErr[id]={key:'psi0',msg:'ψ0 : valeur comprise entre 0,5 et 1,0.'}; else dd.psi0=x; } }
+    else if(k==='cat'){ dd.cat=el.value; delete dd.psi0; }
+    else if(k==='deg'){ dd.deg=el.value; }
+    dd.resultats=null; try{persist();}catch(_){ } pteRender(id); return; }
    if(el.dataset.dcC){ const dd=dcData(t), k=el.dataset.dcC, sp=DC_COEF.find(x=>x.k===k); window._dcErr=window._dcErr||{}; delete window._dcErr[id];
     if(!sp||sp.ro) return; if(el.value===''){ delete dd[k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max){ window._dcErr[id]={key:k,msg:sp.lbl.replace(/ [—(].*$/,'')+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; } else dd[k]=x; }
     dd.resultats=null; try{persist();}catch(_){ } pteRender(id); return; }
@@ -27418,7 +27474,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(sp.t==='sel'){ dp[k]=+el.value; try{persist();}catch(_){ } pteRender(id); return; }
     if(el.value===''){ delete dp[k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max) window._elsErr[id]={key:k,msg:sp.lbl.replace(/ [—(].*$/,'')+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; else dp[k]=x; }
     try{persist();}catch(_){ } pteRender(id); return; }
-   if(el.dataset.ka){ const kp=el.dataset.ka.split('.'), k=kp[kp.length-1], e=kp.length>1?kp[0]:null, sp=(k==='fiss')?PT_KA_FISS:PT_KA_F.find(x=>x.k===k); if(!sp) return; window._elsErr=window._elsErr||{}; delete window._elsErr[id];
+   if(el.dataset.ka){ const kp=el.dataset.ka.split('.'), k=kp[kp.length-1], e=kp.length>1?kp[0]:null, sp=(k==='fiss')?PT_KA_FISS:(k==='E'&&!e?PT_KA_E:PT_KA_F.find(x=>x.k===k)); if(!sp) return; window._elsErr=window._elsErr||{}; delete window._elsErr[id];
     const ka=ptKaEns(dp), tgt=e?ka[e]:ka;
     if(sp.t==='sel'){ const x=+el.value; if(x===sp.def(dp)) delete tgt[k]; else tgt[k]=x; }
     else if(el.value===''){ delete tgt[k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max) window._elsErr[id]={key:el.dataset.ka,msg:sp.lbl+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; else tgt[k]=x; }
@@ -27427,7 +27483,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const key=el.dataset.pt; if(key){
     if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
     else dp[key]=el.value===''?null:+el.value;
-    if(key==='N_kN'||key==='poidsPropre'){ delete dp.dcGprim_kN; delete dp.dcInfo; }
+    if(key==='N_kN'||key==='poidsPropre'){ delete dp.dcGprim_kN; delete dp.dcInfo; delete dp.dcDeg; }
     pteRender(id); return;
    }
   }
@@ -27516,7 +27572,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function ptLegendScene(){ return fplLegendScene(); }
   function ptShapeScenes(P){
    const out=[]; const S1=fplNewScene(300,100); fplL(S1,20,40,280,40,'bar'); fplHD(S1,20,280,70,'développée '+fplF(P.bLen)+' m (L + l₀)',40,40); fplT(S1,20,24,P.nTot+' HA'+P.phi,'ts','start'); out.push({rep:'Lo1',scene:S1,txt:P.nTot+' HA'+P.phi+' — droit, L + l₀ = '+fplF(P.bLen)+' m'});
-   const S2=fplNewScene(300,150); const w=P.rect?Math.min(160,(P.larg/Math.max(P.larg,P.prof))*140+20):120, h=P.rect?Math.min(120,(P.prof/Math.max(P.larg,P.prof))*140+20):120, x=60, y=20;
+   const w=P.rect?Math.min(160,(P.larg/Math.max(P.larg,P.prof))*140+20):120, h=P.rect?Math.min(120,(P.prof/Math.max(P.larg,P.prof))*140+20):120, x=60, y=20; const S2=fplNewScene(300,Math.max(150,y+h+46));
    fplR(S2,x,y,w,h,'cads',6); fplL(S2,x+w,y+10,x+w-18,y+26,'cads'); fplL(S2,x+w-4,y+4,x+w-24,y+18,'cads');
    fplHD(S2,x,x+w,y+h+20,P.rect?fplF((P.larg*10-2*P.c)/10,0)+' cm hors-tout':'cercle Ø '+fplF((P.D*10-2*P.c)/10,0)+' cm',y+h,y+h); fplT(S2,x+w+14,y+30,'crochet 135°, retour '+P.tail+' mm','ts','start'); out.push({rep:'Ca1',scene:S2,txt:P.nCad+' HA'+P.phiT+' — développée '+fplF(P.cadLen)+' m'});
    if(P.nEp>0){ const S3=fplNewScene(300,110); fplL(S3,40,30,40,80,'cads'); fplL(S3,40,30,24,40,'cads'); fplL(S3,40,80,24,70,'cads'); fplL(S3,40,55,200,55,'cads'); fplT(S3,56,48,'épingle, crochets 135°','ts','start'); out.push({rep:'Ep1',scene:S3,txt:P.nEp*P.nCad+' HA'+P.phiT+' — développée '+fplF(P.epLen)+' m'}); }
@@ -27545,11 +27601,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +(res.shear.reduit?'<p class="ncPt" data-bad="0">espacement des cadres réduit à '+fC(res.shear.sRet/10,1)+' cm (au lieu de '+fC(res.shear.sCour0/10,1)+' cm) pour reprendre l\'effort tranchant V_Ed = '+fC(res.shear.VEd,1)+' kN.</p>':'')
     +(res.shear.src&&res.shear.etat!=='na'&&!(dp.V_kN!=null&&dp.V_kN!=='')?'<p class="ncPt" data-bad="0">effort tranchant V_Ed déduit des moments d\'extrémité ELU : V_Ed = (M02 − M01)/l ; en présence de charges horizontales le saisir.</p>':'')
     +(res.els.requis?'<p class="ncPt" data-bad="0">contraintes ELS : '+((res.els.saiN&&res.els.saiM)?'N_ser et M_ser saisis':'N_ser et M_ser estimés à N_Ed/1,4 et M_Ed/1,4 (rapport ELU/ELS courant, livre p.491 : 1,41 à 1,43) : à remplacer par les valeurs ELS de la descente de charges')+' ; section fissurée élastique avec α_e = 15 (convention du livre p.497), à confirmer par un ingénieur. Fissuration et flèche non vérifiées.</p>':'<p class="ncPt" data-bad="0">classe '+res.els.classe+' : contraintes ELS non requises (requises en XD, XF, XS) ; fissuration et flèche non vérifiées.</p>')
-    +(res.kAide&&res.kAide.por?'<p class="ncPt" data-bad="0">k<sub>1</sub> et k<sub>2</sub> proposés par l\'aide de calcul (EC2 5.8.3.2) : poutres supposées rectangulaires (table de compression négligée), même béton que le poteau, rigidité de rotation 4·EI/l ou 3·EI/l selon l\'autre extrémité, '+(res.kAide.fiss<1?'poutres fissurées (EI × 0,5)':'poutres non fissurées (EI × 1, à justifier : EC2 5.8.3.2 (5))')+', valeurs arrondies par excès à 0,01 et au moins 0,1'+(res.kAide.ends.some(en=>!en.ok)?' ; pour '+res.kAide.ends.filter(en=>!en.ok).map(en=>en.kn).join(' et ')+', la valeur saisie à l\'étape 3 diffère de l\'aide et a été retenue':'')+' : à confirmer par un ingénieur.</p>':'')
+    +(dp.dcGprim_kN!=null&&dp.dcDeg&&dp.dcDeg.mode!=='aucune'?'<p class="ncPt" data-bad="0">dégression des charges d\'exploitation ('+(dp.dcDeg.mode==='en1991'?'EN 1991-1-1 §6.3.1.2(11)':'BAEL / NF P06-001')+') : à confirmer, texte de la norme et annexe nationale non fournis ; n compté en niveaux portant une charge q, toiture comprise.</p>':(dp.dcGprim_kN!=null&&dp.dcDeg?'<p class="ncPt" data-bad="0">descente de charges sans dégression des charges d\'exploitation (choix saisi) : sécuritaire, à confirmer.</p>':''))
+    +(res.kAide&&res.kAide.hors?'<p class="ncPt" data-bad="0">'+res.kAide.hors.map(x=>'k<sub>'+x.kn.slice(1)+'</sub> ('+x.motifs.join(', ')+')').join(' ; ')+' : situation hors du périmètre de l\'aide de calcul de k (poutres et poteaux voisins rectangulaires seulement, même E partout) ; k saisi directement par l\'ingénieur à l\'étape 3, à confirmer par un ingénieur.</p>':'')
+    +(res.kAide&&res.kAide.por&&res.kAide.ends?'<p class="ncPt" data-bad="0">k<sub>1</sub> et k<sub>2</sub> proposés par l\'aide de calcul (EC2 5.8.3.2) : poutres supposées rectangulaires (table de compression négligée), même béton que le poteau, rigidité de rotation 4·EI/l ou 3·EI/l selon l\'autre extrémité, '+(res.kAide.fiss<1?'poutres fissurées (EI × 0,5)':'poutres non fissurées (EI × 1, à justifier : EC2 5.8.3.2 (5))')+', valeurs arrondies par excès à 0,01 et au moins 0,1'+(res.kAide.ends.some(en=>!en.ok)?' ; pour '+res.kAide.ends.filter(en=>!en.ok).map(en=>en.kn).join(' et ')+', la valeur saisie à l\'étape 3 diffère de l\'aide et a été retenue':'')+' : à confirmer par un ingénieur.</p>':'')
     +(res.coefSaisis&&res.coefSaisis.length?'<p class="ncPt" data-bad="0">coefficients modifiés par l\'ingénieur dans les paramètres avancés : '+res.coefSaisis.map(c=>esc(c.lbl)).join(' ; ')+' : valeurs saisies, à confirmer par un ingénieur.</p>':'')
     +(res.bi&&res.bi.etat!=='na'?'<p class="ncPt" data-bad="0">flexion déviée : M<sub>Rd</sub> de l\'autre plan calculé avec les armatures supposées réparties aux faces de ce plan (approché) ; M<sub>Ed</sub> de l\'autre plan saisi, supposé total (imperfections et second ordre inclus) : à confirmer par un ingénieur.</p>':'<p class="ncPt" data-bad="0">flexion déviée non calculée (M<sub>Ed</sub> de l\'autre plan non renseigné dans les paramètres avancés).</p>')
     +(res.ecarts||[]).map(e=>'<p class="ncPt" data-bad="0">option « '+e.lbl+' » retenue : A<sub>s</sub> = '+fC(e.As)+' cm² contre '+fC(e.AsDef)+' cm² avec la valeur par défaut (écart '+(e.As>=e.AsDef?'+':'−')+fC(Math.abs(e.As-e.AsDef))+' cm²) ; M<sub>Ed</sub> = '+fC(e.MEd,1)+' contre '+fC(e.MEdDef,1)+' kN·m. À confirmer.</p>').join('')
-    +(res.feu.etat==='na'?'<p class="ncPt" data-bad="0">résistance au feu non demandée (durée de stabilité au feu non choisie dans le bloc « Résistance au feu ») : non vérifiée.</p>'
+    +(res.feu.off?'':res.feu.etat==='na'?'<p class="ncPt" data-bad="0">résistance au feu non demandée (durée de stabilité au feu non choisie dans le bloc « Résistance au feu ») : non vérifiée.</p>'
      :'<p class="ncPt" data-bad="0">résistance au feu : méthode tabulée de type BAEL/DTU feu reprise du classeur 011, pas l\'EN 1992-1-2 : à confirmer par un ingénieur. Domaine du classeur : section rectangulaire, compression centrée, durées 0,5 ; 1 ; 1,5 ; 2 ; 3 ; 4 h, M = périmètre/aire entre 0,05 et 0,25 cm⁻¹, θm et θi entre 200 et 990 °C ; hors domaine : non vérifié. Les quatre faces sont supposées exposées. '+(res.feu.etat==='nf'?'Ici : '+esc(res.feu.motif)+'.':'N_fi '+(res.feu.src.Nfi?'saisi':'estimé à N_Ed/1,4 (rapport usuel entre effort ELU et effort en situation d\'incendie ; le classeur ne donne pas la combinaison accidentelle) : à remplacer par la valeur de la combinaison accidentelle')+'.')+'</p>')
     +(g.rect?'':'<p class="ncPt" data-bad="0">section circulaire : interaction N-M par intégration du diagramme parabole-rectangle avec 8 barres équivalentes sur le cercle des armatures ; à confirmer par un ingénieur.'+(res.second&&res.dCour_mm?' Second ordre : hauteur utile de la courbure d = h/2 + i_s = '+fC(res.dCour_mm/10,1)+' cm (Maîtrise p.107, rayon de giration i_s des armatures), plus petite que h − d1 : M2 plus grand, côté sécurité.':'')+'</p>');
    const eN=res.enrNom;
@@ -27569,10 +27627,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    (res.ecarts||[]).forEach(e=>{ hypRows.push([esc(e.lbl),(e.k==='c_KrMode'?'K<sub>r</sub> calculé : M<sub>2</sub> = '+fC(e.M2,1)+' kN·m (K<sub>r</sub> = 1 : '+fC(e.M2Def,1)+' kN·m)':(e.centree?'σ<sub>s</sub> = '+fC(e.sigC,0)+' MPa (défaut '+fC(e.sigCDef,0)+' MPa)':'ε de calcul '+fC(res.epsC,2)+' ‰ (sans effet sur ce cas : pas de compression centrée)')),'Saisi (paramètres avancés) · A<sub>s</sub> = '+fC(e.As)+' cm² contre '+fC(e.AsDef)+' cm² par défaut']); });
    if(res.bi&&res.bi.etat!=='na') hypRows.push(['Flexion déviée','a = '+fC(res.bi.a,2)+(res.bi.aSaisi?' (saisi)':' (table 5 du guide, N<sub>Ed</sub>/N<sub>Rd</sub> = '+fC(res.bi.r,2)+')')+' · M<sub>Edy</sub> = '+fC(res.bi.MEdy,1)+' kN·m (autre plan) · M<sub>Rdz</sub> = '+fC(res.bi.MRz,1)+', M<sub>Rdy</sub> = '+fC(res.bi.MRy,1)+' kN·m','Saisi (M<sub>Edy</sub>, paramètres avancés) · guide ch.5 p.38, Tab.5 p.41']);
    hypRows.push(['Valeurs normatives (non modifiables)','γ<sub>C</sub> = 1,5 · γ<sub>S</sub> = 1,15 · α<sub>cc</sub> = 1,0 · γ<sub>G</sub> = 1,35 (poids propre) · σ<sub>c</sub> ≤ 0,6·f<sub>ck</sub> et σ<sub>s</sub> ≤ 0,8·f<sub>yk</sub> (ELS) · A<sub>s,max</sub> = 0,04·A<sub>c</sub> · A<sub>s,min</sub> = max(0,10·N<sub>Ed</sub>/f<sub>yd</sub> ; 0,002·A<sub>c</sub>) · k<sub>1</sub> = 0,15 · z = 0,9·d · 1 ≤ cotθ ≤ 2,5 · ρ<sub>w,min</sub> = 0,08√f<sub>ck</sub>/f<sub>yk</sub> · s<sub>l,max</sub> = 0,75·d · α<sub>6</sub> = 1,5 · σ<sub>s</sub> = 400 MPa en compression centrée · ν<sub>1</sub>, C<sub>Rd,c</sub>, β, ε<sub>c2</sub>, ε<sub>cu2</sub>, f<sub>ctd</sub>, f<sub>bd</sub> · réduction ×0,6 des cadres aux extrémités','Normatif (EC2, livre p.152-173, 309-319, 449) : lecture seule dans les paramètres avancés']);
-   if(res.kAide&&res.kAide.por) hypRows.push(['Aide au calcul de k (EC2 5.8.3.2)',res.kAide.ends.map(en=>{ const s=en.s; return 'k<sub>'+en.kn.slice(1)+'</sub> ('+(en.e==='haut'?'tête':'pied')+') = '+fC(s.kUp,2)+(en.ok?' retenu':' proposé, valeur retenue '+fC(en.kUsed,2)+' (saisie)')+' : '+s.nb+' poutre'+(s.nb>1?'s':'')+' '+fC(s.bb,0)+' × '+fC(s.hb,0)+' cm, l = '+fC(s.lb,1)+' m, autre extrémité '+(s.far===4?'encastrée':'articulée')+(s.nv?', poteau voisin '+fC(s.vp,0)+(s.vl!=null&&g.rect?' × '+fC(s.vl,0):'')+' cm, hauteur '+fC(s.vh,1)+' m':'')+' (k brut '+fC(s.raw,3)+(s.clamp?', ramené au minimum 0,1':'')+')'; }).join(' · ')+(res.kAide.l0!=null?' · l<sub>0</sub> avec ces k = '+fC(res.kAide.l0,2)+' m (F = '+fC(res.kAide.F,3)+(res.kAide.tab4?' ; '+esc(res.kAide.tab4):'')+')':''),'Saisi (aide au calcul de k, paramètres avancés) · EC2 5.8.3.2 ; guide ch.5 p.35-37 ; livre p.154-156 · '+(res.kAide.fiss<1?'poutres fissurées × 0,5':'poutres non fissurées')]);
+   if(res.kAide&&res.kAide.por&&res.kAide.ends) hypRows.push(['Aide au calcul de k (EC2 5.8.3.2)',res.kAide.ends.map(en=>{ const s=en.s; return 'k<sub>'+en.kn.slice(1)+'</sub> ('+(en.e==='haut'?'tête':'pied')+') = '+fC(s.kUp,2)+(en.ok?' retenu':' proposé, valeur retenue '+fC(en.kUsed,2)+' (saisie)')+' : '+s.nb+' poutre'+(s.nb>1?'s':'')+' '+fC(s.bb,0)+' × '+fC(s.hb,0)+' cm, l = '+fC(s.lb,1)+' m, autre extrémité '+(s.far===4?'encastrée':'articulée')+(s.nv?', poteau voisin '+fC(s.vp,0)+(s.vl!=null&&g.rect?' × '+fC(s.vl,0):'')+' cm, hauteur '+fC(s.vh,1)+' m':'')+' (k brut '+fC(s.raw,3)+(s.clamp?', ramené au minimum 0,1':'')+')'; }).join(' · ')+(res.kAide.l0!=null?' · l<sub>0</sub> avec ces k = '+fC(res.kAide.l0,2)+' m (F = '+fC(res.kAide.F,3)+(res.kAide.tab4?' ; '+esc(res.kAide.tab4):'')+')':''),'Saisi (aide au calcul de k, paramètres avancés) · EC2 5.8.3.2 ; guide ch.5 p.35-37 ; livre p.154-156 · '+(res.kAide.fiss<1?'poutres fissurées × 0,5':'poutres non fissurées')]);
    if(res.coefSaisis&&res.coefSaisis.length) hypRows.push(['Coefficients saisis (paramètres avancés)',res.coefSaisis.map(c=>esc(c.lbl)+' = '+fC(c.val,3).replace(/,?0+$/,'')+(c.unit?' '+esc(c.unit):'')+(c.def!=null?' (défaut '+String(c.def).replace('.',',')+')':' (défaut : règle de calcul)')).join(' · '),'Saisi par l\'ingénieur']);
+   if(res.feu.on) hypRows.push(['Calcul au feu : méthode appliquée',PT_FEU_DESC.map(esc).join(' '),'Option activée par l\'ingénieur (bloc « Résistance au feu ») · classeur 011']);
    if(res.feu.etat!=='na'){ const fe=res.feu, sv=x=>x?'saisi':'par défaut';
     hypRows.push(['Résistance au feu','Durée de stabilité '+fC(fe.dur,1)+' h · k = '+fC(fe.k,2)+' ('+sv(fe.src.k)+') · A<sub>v</sub> = '+fC(fe.Av,2)+' cm² ('+sv(fe.src.Av)+') · θ<sub>i</sub> = '+fC(fe.thI,0)+' °C ('+sv(fe.src.thI)+') · N<sub>fi</sub> = '+fC(fe.Nfi,1)+' kN ('+sv(fe.src.Nfi)+(fe.src.Nfi?'':', N<sub>Ed</sub>/1,4')+')'+(fe.etat==='nf'?'':' · N<sub>r</sub> = '+fC(fe.Nr,1)+' kN (classeur : N<sub>r</sub> en t = 100·MN)'),'Méthode tabulée BAEL/DTU feu du classeur 011, pas l\'EN 1992-1-2 ; saisie ou valeurs par défaut']); }
+   if(dp.dcGprim_kN!=null&&dp.dcDeg){ const d=dp.dcDeg;
+    hypRows.push(['Dégression des charges d\'exploitation',d.mode==='en1991'?'EN 1991-1-1 §6.3.1.2(11) : α<sub>n</sub> = (2 + (n − 2)·ψ<sub>0</sub>)/n pour n > 2 niveaux chargés de même catégorie ; catégorie '+esc(d.cat)+', ψ<sub>0</sub> = '+fC(d.psi0,2)+' ('+(d.psiSaisi?'saisi':'par défaut')+') ; n = '+d.n+' niveaux chargés, α<sub>n</sub> = '+fC(d.alpha,3)+' sur les charges d\'exploitation cumulées ; q′ non réduit'
+     :(d.mode==='bael'?'Loi BAEL / NF P06-001 : coefficient (3 + n)/(2n) à partir du 5e étage ; n = '+d.n+' niveaux chargés, coefficient '+fC(d.alpha,3)+' sur les charges d\'exploitation cumulées ; q′ non réduit':'Aucune dégression automatique (a<sub>n</sub> saisi par niveau, 1 par défaut)'),
+     (d.mode==='en1991'?'Défaut de la descente de charges':'Option saisie dans les paramètres avancés de la descente de charges')+' · texte EN 1991-1-1 et annexe nationale non fournis']); }
    if(dp.dcGprim_kN!=null) hypRows.push(['Descente de charges','N<sub>Ed</sub> reporté de la descente de charges : g′ pris en compte (g′ cumulé = '+fC(dp.dcGprim_kN,1)+' kN avant 1,35), N<sub>Ed</sub> = γ<sub>G</sub>·Σ(g + g′) + γ<sub>Q</sub>·Σ(a<sub>n</sub>·q + q′)'+(dp.dcInfo?' · k = '+fC(dp.dcInfo[0].val,2)+', γ<sub>G</sub> = '+fC(dp.dcInfo[1].val,2)+', γ<sub>Q</sub> = '+fC(dp.dcInfo[2].val,2)+', γ<sub>béton</sub> = '+fC(dp.dcInfo[3].val,1)+' kN/m³ ; a<sub>n</sub> saisi par niveau':''),'Saisie (descente de charges, classeur 152)'+(dp.dcInfo&&dp.dcInfo.some(c=>c.saisi)?' · coefficients saisis : '+dp.dcInfo.filter(c=>c.saisi).map(c=>c.k).join(', '):' · coefficients par défaut')]);
    const hypo='<h4>Hypothèses</h4><table class="pcNCt"><thead><tr><th>Paramètre</th><th>Valeur retenue</th><th>Origine</th></tr></thead><tbody>'+hypRows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('')+'</tbody></table>';
    const dr=(S,lab,cap)=>'<div class="pcDraw">'+fplSceneSvg(S,{label:lab})+'</div><p class="pcSchemaCap">'+esc(cap)+'</p>';
@@ -27607,7 +27670,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      effort_normal:{ned_mn:+(res.NEd_kN/1000).toFixed(4)},moment:{med_mnm:+(res.MEd/1000).toFixed(4)},flambement:{l0_m:isFinite(res.l0_cm)?+(res.l0_cm/100).toFixed(2):null,lambda:+res.lambda.toFixed(1),lambda_lim:+res.lambdaLim.toFixed(1)},
      cadres:{diametre_mm:res.phiCadre,espacement_courant_mm:Math.round(res.sCourant_mm),espacement_zone_extremite_mm:Math.round(res.sExtrem_mm),longueur_zone_extremite_mm:Math.round(res.hZoneExtrem_mm)},ancrages:{l0_mm:Math.round(res.lb_mm)}};
    const jsonBlk='<details class="ncJson"><summary>Données transmises au plan de ferraillage (JSON « résultat de calcul »)</summary><pre>'+esc(JSON.stringify(jsonO,null,1))+'</pre></details>';
-   return '<div class="pcNC"><h3>Note de calcul — '+nomO+'</h3>'
+   return '<div class="pcNC" data-norme="Eurocode 2 · EN 1992-1-1 + AN française"><h3>Note de calcul — '+nomO+'</h3>'
     +'<p class="pcNote">Poteau (Eurocode 2 — EN 1992-1-1, Annexe Nationale française) · '+todayStr()+'</p><div class="ncConstat" style="display:none">'+constat+'</div>'
     +hypo+dons+sol+verifTbl+fer+pts+jsonBlk
     +'<p class="pcNote">⚠ Cette note de calcul est générée automatiquement à partir des données saisies et de la méthode Eurocode 2 (EN 1992-1-1, Annexe Nationale française). Elle doit être vérifiée et validée par un ingénieur structure (bureau d\'études béton armé) avant toute utilisation pour l\'exécution. Elle ne remplace pas une étude signée par un bureau d\'études qualifié.</p>'
@@ -28079,7 +28142,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   document.addEventListener('toggle',ev=>{ const d=ev.target; if(d&&d.matches&&d.matches('details.pcElsSub')){ const t=taskById(d.dataset.elsId); if(d.dataset.th){ const dpt=t&&t.dimPT; if(!dpt) return; dpt._thOpen=dpt._thOpen||{}; if(!!dpt._thOpen[d.dataset.th]!==d.open){ dpt._thOpen[d.dataset.th]=d.open; try{persist();}catch(_){ } } return; } const dp=t&&(d.dataset.elsKind==='pc'?t.dimPC:(d.dataset.elsKind==='sm'?t.dimSM:t.dimDL)); if(dp){ dp._elsGrp=dp._elsGrp||{}; if(!!dp._elsGrp[d.dataset.elsGrp]!==d.open){ dp._elsGrp[d.dataset.elsGrp]=d.open; try{persist();}catch(_){ } } } return; } if(!d||!d.matches||!d.matches('details.pcEls')) return; const t=taskById(d.dataset.elsId); if(!t) return; if(d.dataset.dcBlk){ const dd=dcData(t); if(dd._open!==d.open){ dd._open=d.open; try{persist();}catch(_){ } } return; } const dp=d.dataset.elsKind==='pc'?t.dimPC:(d.dataset.elsKind==='pt'?t.dimPT:(d.dataset.elsKind==='sm'?t.dimSM:t.dimDL)); if(dp&&dp._elsOpen!==d.open){ dp._elsOpen=d.open; try{persist();}catch(_){ } } },true);
   document.addEventListener('click',ev=>{ const b=ev.target.closest&&ev.target.closest('[data-els-reset]'); if(!b) return; const d=b.closest('details.pcEls'); if(!d) return; const id=d.dataset.elsId, kind=d.dataset.elsKind, t=taskById(id); if(!t) return; const dp=kind==='pc'?t.dimPC:((kind==='pt'||kind==='ptf')?t.dimPT:(kind==='sm'?t.dimSM:t.dimDL)); if(!dp) return;
  if(kind==='sm'){ SM_SPEC.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } smeRender(id); return; }
-   if(kind==='pt'){ PT_COEF.forEach(q=>{ delete dp[q.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
+   if(kind==='pt'){ PT_COEF.forEach(q=>{ delete dp[q.k]; }); dp.feu_on=false; window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
    ELS_SPEC.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } if(kind==='pc') beamRender(id); else dleRender(id); });
   /* ===== Poinçonnement : contours de contrôle, u0, β des poteaux intérieur, de rive et d'angle (Maîtrise p.246-266) — fonction PURE, mm ===== */
   /* P={type:'int'|'rive'|'angle', forme:'rect'|'circ', c1,c2 (mm), D, aA,aB (mm : distance du nu du poteau au(x) bord(s) libre(s)), d, mode:'simple'|'detail', epar (mm), eperExt (bool)}
