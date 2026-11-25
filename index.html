@@ -6400,7 +6400,7 @@ function openModal(html, backTo){
   document.getElementById('overlay').classList.add('open'); window._modalT = Date.now();
 }
 function modalBack(){ const f=window._modalBackTo; window._modalBackTo=null; if(f) f(); else closeModal(); }
-function closeModal(){ window._modalBackTo=null; document.getElementById('overlay').classList.remove('open'); document.getElementById('modalBody').innerHTML=''; }
+function closeModal(){ try{ localStorage.removeItem('pg_lastFiche'); }catch(_){ } window._modalBackTo=null; document.getElementById('overlay').classList.remove('open'); document.getElementById('modalBody').innerHTML=''; }
 /* La fenêtre ne se ferme que sur un vrai appui hors de la fenêtre (appui ET relâché sur le fond), jamais par un clic parasite juste après l'ouverture */
 let _ovDown = false;
 document.getElementById('overlay').addEventListener('pointerdown', e=>{ _ovDown = (e.target.id==='overlay') && (Date.now()-(window._modalT||0) > 700); });
@@ -6519,7 +6519,9 @@ function dimValiderBtnHtml(dp,prefix){
 }
 /* Désignation de l'ouvrage (nom donné par l'utilisateur) pour nommer note de calcul / plan / PDF : nom saisi dans le module,
    sinon intitulé « Quoi ? » de l'ouvrage, sinon repli explicite. */
-function dimOuvrageNom(t,dp){ return String((dp&&dp.nom)||(t&&t.nom)||(t&&t.quoi)||'').trim()||'Ouvrage sans nom'; }
+/* Nom propre pour documents et fichiers : espaces de bord supprimés, espaces multiples réduits à un seul (tous modules) */
+function dimNomNorm(x){ return String(x==null?'':x).replace(/\s+/g,' ').trim(); }
+function dimOuvrageNom(t,dp){ return dimNomNorm((dp&&dp.nom)||(t&&t.nom)||(t&&t.quoi)||'')||'Ouvrage sans nom'; }
 /* Migration douce : les anciens documents générés nommés avec un mot générique (« Note de calcul P-auto », « Plan de ferraillage Poutre »…)
    prennent la désignation de l'ouvrage ; rien n'est supprimé, le fichier PDF joint garde son nom jusqu'au prochain calcul. */
 function dimMigrerNomsDocs(){
@@ -8384,7 +8386,7 @@ async function ficheExportPdf(id, mode){
   await saveFile(filename, blob);
   try{ clipToast(mode==='sms'?'PDF prêt : dans le menu de partage, choisissez « Messages »':'PDF prêt : dans le menu de partage, choisissez « Mail »'); }catch(e){}
 }
-function openTaskDetail(id){ window._ficheIaId=id; openTaskDetail0(id); try{ const mb=document.getElementById('modalBody'); if(mb && !mb.querySelector('.fiche-exp-bar')){ const bar=document.createElement('div'); bar.className='fiche-exp-bar'; bar.innerHTML=`<button type="button" class="tf-exp" onclick="ficheExportAsk('${String(id).replace(/'/g,'')}')" title="Exporter la fiche" aria-label="Exporter la fiche">📤</button>`; const x=mb.querySelector('.close-x'); if(x && x.nextSibling) mb.insertBefore(bar, x.nextSibling); else mb.prepend(bar); const br=mb.querySelector('h3 .td-brush[onclick^="brushOpen"]'); if(br){ br.classList.add('td-brush-bar'); bar.appendChild(br); } } }catch(e){ console.error(e); } { const bd=document.querySelector('#modalBody .modal-date-etat'); if(bd) bd.remove(); } setTimeout(()=>{ const q=document.getElementById("e-quoi"); if(q) bibAttach(q); try{ tpRender(id); }catch(e){ console.error(e); } },0); }
+function openTaskDetail(id){ window._ficheIaId=id; try{ localStorage.setItem('pg_lastFiche',String(id)); }catch(_){ } openTaskDetail0(id); try{ const mb=document.getElementById('modalBody'); if(mb && !mb.querySelector('.fiche-exp-bar')){ const bar=document.createElement('div'); bar.className='fiche-exp-bar'; bar.innerHTML=`<button type="button" class="tf-exp" onclick="ficheExportAsk('${String(id).replace(/'/g,'')}')" title="Exporter la fiche" aria-label="Exporter la fiche">📤</button>`; const x=mb.querySelector('.close-x'); if(x && x.nextSibling) mb.insertBefore(bar, x.nextSibling); else mb.prepend(bar); const br=mb.querySelector('h3 .td-brush[onclick^="brushOpen"]'); if(br){ br.classList.add('td-brush-bar'); bar.appendChild(br); } } }catch(e){ console.error(e); } { const bd=document.querySelector('#modalBody .modal-date-etat'); if(bd) bd.remove(); } setTimeout(()=>{ const q=document.getElementById("e-quoi"); if(q) bibAttach(q); try{ tpRender(id); }catch(e){ console.error(e); } },0); }
 /* ===== Mini-plan dans la fiche : seule la pastille de l’ouvrage, à placer ou déplacer ===== */
 var tpZoom = 1, tpPlanSel = {};
 function tpPinShape(t){ const p=t.pos||{}, f=p.forme, z=p.sz; if(!f||f==='rond'||f==='libre') return ''; const c=tpColor(t); const base='margin:0;transform:translate(-50%,-50%);'; if(f==='cercle'&&z) return base+'background:transparent !important;border:3px solid '+c+';width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='rect'&&z) return base+'border-radius:3px;width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='ligne'&&z) return base+'border-radius:2px;height:5px;width:'+z.w*100+'%;'; if(f==='tri') return base+'border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%);'; return ''; }
@@ -15545,6 +15547,12 @@ function renderActions(){ const w=document.getElementById('actWrap'); if(!w) ret
      return `<div class="act-grp"><h4>${esc(ty)} <small>(${g.length})</small></h4>${lots.map(l=>`<div style="margin:4px 0"><b>${esc(actLotName(l))}</b>${g.filter(x=>x.lotId===l).map(x=>{ const t=taskById(x.taskId); return `<div class="act-it"><span class="q" onclick="openTaskDetail('${esc(t.id)}')">${actLate(t)?'<span class="lt">⏰</span> ':''}${esc(t.id)} — ${esc(t.quoi||'')} <small style="color:#8B958F">${esc(t.niveau||'')}</small></span><button type="button" onclick="actRm('${esc(x.id)}')" title="Retirer">✕</button></div>`}).join('')}</div>`).join('')}</div>`; }).join('')+
    (L.length?`<div class="tf-a"><button type="button" class="primary" onclick="actLaunch()">🚀 Lancer les actions (${L.length})</button></div>`:''); }
 window.renderActions=renderActions;
+/* Rechargement : rouvre la fiche de l'ouvrage qui était ouverte (identifiant seulement, aucune donnée) ; repli silencieux sur le tableau de bord si l'ouvrage n'existe plus */
+(function(){ let essais=0; const tente=()=>{ let id=null; try{ id=localStorage.getItem('pg_lastFiche'); }catch(_){ } if(!id) return; essais++;
+ let t=null; try{ t=(state.tasks||[]).find(x=>String(x.id)===String(id)); }catch(_){ }
+ if(t&&typeof openTaskDetail==='function'&&!document.getElementById('overlay').classList.contains('open')){ try{ openTaskDetail(id); }catch(e){ console.error(e); try{ localStorage.removeItem('pg_lastFiche'); }catch(_){ } } return; }
+ if(essais<3) setTimeout(tente,2500); else { try{ localStorage.removeItem('pg_lastFiche'); }catch(_){ } } };
+ try{ window.addEventListener('load',()=>setTimeout(tente,1800)); }catch(_){ } })();
 function actSort(ts){ const rk=t=>actLate(t)?0:(t.etat==='encours'?1:2), lv=t=>t.niveau||'Sans niveau', dd=t=>String(t.butoir||t.dateFin||t.quand||'9999').slice(0,10);
   return ts.slice().sort((a,b)=>window.lvRank(lv(a))-window.lvRank(lv(b))||String(lv(a)).localeCompare(lv(b))||rk(a)-rk(b)||dd(a).localeCompare(dd(b))||String(a.id).localeCompare(String(b.id),undefined,{numeric:true})); }
 async function actPdfBlob(tasks, titre){ const JsPDF=await loadPdfLibs(); const doc=new JsPDF({unit:'mm',format:'a4'}), W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=14;
@@ -24925,7 +24933,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Désignation de l'ouvrage : source unique = t.quoi (« Quoi ? » de la fiche, liste des ouvrages), recopiée dans dp.nom
      et dans les documents générés (note, plan). */
   function dimSetDesignation(t,dp,el){
-   const v=String(el.value||'').trim();
+   const v=dimNomNorm(el.value);
    if(!v){ const prev=dp.nom||t.quoi||''; el.value=prev; if(prev){ try{clipToast('Une désignation est nécessaire : l\'ancienne est conservée.');}catch(_){ } } return; }
    t.quoi=v; t.nom=v; dp.nom=v;
    try{ const q=document.getElementById('e-quoi'); if(q) q.value=v; const ti=document.getElementById('e-titre'); if(ti&&!ti.querySelector('input')) ti.textContent=v; }catch(_){ }
@@ -25164,7 +25172,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    (rv.haut||[]).forEach(h=>V.push({zone:'Appui '+h.appui,nom:'Appui de rive — armature supérieure',formule:'M ≥ β1·M_travée (encastrement partiel, EC2 9.2.1.2(1) ; guide p.83) ; A_s posée ≥ A_s requise',
     calcul:'M_travée voisine = '+f1(h.Mtrav)+' kN·m ; β1 = '+f1(rv.beta1*100,0)+' % ('+org('beta1Rive')+') ; M retenu = max(M_appui '+f1(h.Mface)+' ; β1·M_travée) = '+f1(h.Mreq)+' kN·m ; A_s requise = '+f1(h.AsReq/100,2)+' cm² ; posée = '+f1(h.AsPose/100,2)+' cm²',limite:'A_s posée ≥ A_s requise',etat:h.AsPose>=h.AsReq-1e-6?'ok':'ko'}));
    (rv.bas||[]).forEach(q=>{ const pc=q.nTot?q.nA/q.nTot:0, okP=pc>=rv.pctInf/100-1e-9;
-    V.push({zone:'Appui '+q.appui,nom:'Appui de rive — armature inférieure ancrée',formule:'≥ '+f1(rv.pctInf,0)+' % de A_s de travée prolongé sur l\'appui, ancré pour F_E = |V_Ed|·a_l/z + N_Ed (EC2 9.2.1.4 ; guide p.83) ; avec σ_sd = f_yd = 435 MPa dans l_bd, F_E n\'a pas à être calculée',
+    V.push({zone:'Appui '+q.appui,nom:'Appui de rive — armature inférieure ancrée',formule:'≥ '+f1(rv.pctInf,0)+' % de A_s de travée prolongé sur l\'appui, ancré pour F_E = |V_Ed|·a_l/z + N_Ed (EC2 9.2.1.4 ; guide p.83) ; avec σ_sd = f_yd = 435 MPa dans l_bd, F_E n\'a pas à être calculée ; l_bd calculé pour la même forme d\'ancrage, les mêmes conditions d\'adhérence et les mêmes coefficients α que la valeur retenue',
      calcul:q.nA+' HA'+q.phi+' sur '+q.nTot+' ('+f1(100*pc,0)+' %, pourcentage '+org('pctInfRive')+') ; V_Ed = '+f1(q.V)+' kN ; F_E = '+f1(q.FE/1000)+' kN (N_Ed = 0) ; σ_sd = '+f1(q.sig,0)+' MPa ; l_bd = '+f1(q.lbd,0)+' mm ('+q.type+') pour '+f1(q.dispo,0)+' mm disponibles'+(q.fix?' (largeur du poteau prise comme longueur d\'ancrage disponible, à confirmer)':'')+' ; avec σ_sd = 435 MPa : l_bd = '+f1(q.lbdFyd,0)+' mm',
      limite:'≥ '+f1(rv.pctInf,0)+' % ; l_bd ancré ≤ longueur disponible (+ crochet)',etat:(okP&&!q.insuffisant)?'ok':'ko'}); });
    (P.torsion||[]).forEach(q=>{ const pf=P.peauTorsion;
@@ -26051,7 +26059,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     fplT(S,x+13,T0-10,sc.n,'tb','start'); fplT(S,x+13,bot+24,sc.n,'tb','start'); });
    /* cotes au-dessus : zones de cadres */
    const zs=[]; for(let e=g.a;e<g.b;e++){ const pos=fplCadrePos(P,e); (T[e].cadres&&T[e].cadres.zones||[]).forEach((z,i)=>{ const pz=pos.filter(q=>q.z===z); if(pz.length) zs.push({x0:pz[0].x,x1:pz[pz.length-1].x,z}); }); }
-   zs.forEach(q=>{ fplHD(S,X(q.x0),X(q.x1),rowC,q.z.nb+' × e = '+fplF(q.z.espCm,1).replace(',0','')+' cm',T0+inset,T0+inset); });
+   zs.forEach(q=>{ fplHD(S,X(q.x0),X(q.x1),rowC,'e = '+fplF(q.z.espCm,1).replace(',0','')+' cm',T0+inset,T0+inset); });
    const cadRep=T[g.a].cadres&&T[g.a].cadres.rep;
    /* chapeaux et recouvrements */
    aItems.forEach(it=>{ const y=rowC-30*(it.row+1);
@@ -26064,7 +26072,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    fplBub(S,X(xmin)-16,rowC-1,cadRep||'?',9); fplT(S,X(xmin)-32,rowC+3,'cadres HA'+par.phiCadre,'ts','end');
    /* cotes au-dessous : portées, arrêts, total */
    for(let e=g.a;e<g.b;e++) fplHD(S,X(T[e].x0),X(T[e].x1),rowP,'L'+(e+1)+' = '+fplF(T[e].L)+' m',bot+34,bot+34);
-   bItems.forEach(it=>{ const y=rowP+30*(it.row+1), yb=yOf(it.bar); fplHD(S,X(it.a),X(it.b2),y,it.bar.rep+' : '+fplF(Math.abs(it.x-it.nd.x))+' m',yb,bot+34); });
+   bItems.forEach(it=>{ const y=rowP+30*(it.row+1), yb=yOf(it.bar); fplHD(S,X(it.a),X(it.b2),y,'l'+it.bar.rep+' = '+fplF(Math.abs(it.x-it.nd.x))+' m',yb,bot+34); });
    fplHD(S,X(nodes[0].x),X(nodes[nodes.length-1].x),rowTot,'Entre axes = '+fplF(nodes[nodes.length-1].x-nodes[0].x)+' m'+(n>g.b-g.a?' (travées '+(g.a+1)+' à '+g.b+')':''),bot+34,bot+34);
    /* repères dans le corps de la poutre */
    const placed=[]; const secX=secs.map(s=>X(s.x));
@@ -26588,7 +26596,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   async function pcAttacherPdf(doc,blob,baseNom){
    if(!doc||!blob) return;
    try{
-    const filename=baseNom.replace(/[^A-Za-z0-9À-ÿ _-]+/g,'').slice(0,80)+'.pdf';
+    const filename=dimNomNorm(String(baseNom).replace(/[^A-Za-z0-9À-ÿ _-]+/g,'')).slice(0,80).trim()+'.pdf';
     const file=new File([blob],filename,{type:'application/pdf'});
     const ref=await (window.pjStoreFile?window.pjStoreFile(file):Promise.reject(new Error('pjStoreFile indisponible')));
     doc.fichier=filename; doc.taille=file.size; doc.fichierRef=ref; doc.format='PDF'; doc.indice=doc.indice||'0';
@@ -28652,6 +28660,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Flexion',k:'granulat_mm',lbl:'Granulat',t:'num',def:20,min:8,max:40,step:1,unit:'mm',only:'pc',aide:'d_g = 20 mm : espacement minimal entre barres max(Ø ; d_g + 5 ; 20 mm) (EC2 8.2).'},
    {grp:'Flexion',k:'delta',lbl:'δ — redistribution des moments',t:'num',def:1,min:0.7,max:1,step:0.01,unit:'',only:'pc',aide:'EC2 5.5 (Maîtrise p.29-32) : 1 = élastique pur ; moments d\'appui × δ et travées augmentées. Condition x_u/d ≤ 0,45 et δ ≥ 0,44 + 1,25·x_u/d (f_ck ≤ 50) ; ELU seulement, V non redistribué.'},
    {grp:'Flexion',k:'asMinFct',lbl:'f_ct pour A_s,min (9.1N)',t:'sel',def:'fctm',opts:[['fctm','f_ctm (EC2 9.2.1.1, guide p.31)'],['fl','f_ct,eff = max((1,6 − h/1000)·f_ctm ; f_ctm) (Maîtrise p.38)']],only:'pc',aide:'A_s,min = 0,26·f_ct/f_yk·b_t·d ≥ 0,0013·b_t·d : f_ctm par défaut (EC2 9.2.1.1) ; la formule de la Maîtrise (f_ct,eff, +10 % pour h = 500 mm) en option.'},
+   {grp:'Coefficients normatifs',k:'ro_gC',lbl:'γc — béton',ro:true,only:'pc',valFn:()=>'1,5',aide:'Coefficient partiel du béton (situation durable) ; fixé par le règlement.'},
+   {grp:'Coefficients normatifs',k:'ro_gS',lbl:'γs — acier',ro:true,only:'pc',valFn:()=>'1,15',aide:'Coefficient partiel de l\'acier (situation durable) ; fixé par le règlement.'},
+   {grp:'Coefficients normatifs',k:'ro_acc',lbl:'αcc — effet de longue durée',ro:true,only:'pc',valFn:()=>'1,0',aide:'Coefficient de longue durée sur la résistance en compression du béton ; fixé par le règlement.'},
+   {grp:'Coefficients normatifs',k:'ro_gG',lbl:'γG — actions permanentes',ro:true,only:'pc',valFn:dp=>dp.eluComb==='610b'?'1,25':'1,35',aide:'1,35 avec la combinaison 6.10 ; 1,25 si la combinaison 6.10b est choisie ci-dessus.'},
+   {grp:'Coefficients normatifs',k:'ro_gQ',lbl:'γQ — actions variables',ro:true,only:'pc',valFn:()=>'1,5',aide:'Coefficient partiel des actions variables ; fixé par le règlement.'},
    {grp:'Flexion',k:'faceRed',lbl:'Moment d\'appui réduit à la face',t:'bool',def:false,only:'pc',na:dp=>(dp.travees||[]).length<2?'Non applicable : la poutre n\'a qu\'une travée, donc aucun appui intermédiaire à réduire (voir l\'option des appuis de rive).':null,aide:'Réduction F_Ed,sup·t/8 (t = largeur d\'appui), jamais sous 0,65 × l\'encastrement parfait p·l²/12 (EC2 5.3.2.2(4), guide p.12) ; appuis intermédiaires, moments ELU ; défaut non (moments à l\'axe).'},
    {grp:'Flexion',k:'faceRedRive',lbl:'Réduction à la face aussi aux appuis de rive encastrés',t:'bool',def:false,only:'pc',na:dp=>pcRiveEncastree(dp)?null:'Non applicable : aucun appui de rive encastré. Un appui de rive simple (rotation libre) n\'a pas de moment à réduire ; son acier supérieur reste dimensionné sur β1 × le moment de la travée voisine, sans réduction à la face. Encastrer une rive (menu des appuis du schéma) pour activer cette option.',aide:'Appui de rive monolithique (rotation bloquée) : moment pris à la face, réduit de F_Ed,sup·t/8 mais jamais sous 0,65 × l\'encastrement parfait p·l²/12 de la travée voisine (EC2 5.3.2.2, guide p.12). Défaut non : appuis intermédiaires seulement. Un appui de rive sans retenue (rotation libre) n\'a pas de moment à réduire.'},
    {grp:'Appuis de rive et recouvrements',k:'beta1Rive',lbl:'β1 — moment d\'appui de rive (encastrement partiel)',t:'num',def:0.25,min:0.15,max:0.5,step:0.01,unit:'',only:'pc',aide:'Appui de rive : armature supérieure dimensionnée pour au moins β1 × le moment de la travée voisine (EC2 9.2.1.2(1), guide p.83). 25 % par défaut, sens de la sécurité (le module retenait 15 %, valeur recommandée EC2) ; valeur de l\'Annexe nationale française non vérifiée (à confirmer).'},
@@ -28701,6 +28714,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function elsFieldHtml(sp,dp,err){
    if(sp.t==='btn'){ const on=dp['planPort'+sp.i]===true; return '<div class="pcElsBtn"><span class="pcElsLbl">'+sp.lbl+'</span> <button type="button" class="ghost" data-pc-port="'+sp.i+'" aria-pressed="'+(on?'true':'false')+'" style="min-height:44px">'+(on?'Retirer le plan de la poutre porteuse':'Ajouter un plan pour la poutre porteuse')+'</button></div><p class="pcNote">'+sp.aide+(on?' Plan actif : voir le document dans l\'étude.':'')+'</p>'; }
+   if(sp.ro) return '<label class="pcElsRo"><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsRoVal">'+sp.valFn(dp)+'</span><span class="pcElsTag">normatif, non modifiable</span></label><p class="pcNote">'+sp.aide+'</p>';
    const naMsg=sp.na?sp.na(dp):null;
    if(naMsg) return '<label data-els-na="'+sp.k+'"><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsCtl"><select disabled aria-disabled="true"><option>Non applicable</option></select></span><span class="pcElsTag">non applicable</span></label><p class="pcNote pcElsNA" data-els-na-msg="'+sp.k+'">'+esc(naMsg)+'</p>';
    const v=elsVal(dp,sp), sa=elsSaisi(dp,sp.k), tag='<span class="pcElsTag'+(sa?' on':'')+'">'+(sa?'saisi':'par défaut')+'</span>';
@@ -28716,8 +28730,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const specs=ELS_SPEC.filter(sp=>(!sp.only||sp.only===kind)&&(!sp.needT||dp.sectionT===true)&&(!sp.cond||sp.cond(dp)));
    return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="'+kind+'"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés ELS</summary><div class="pcElsBody">'
     +'<p class="pcNote">Valeurs par défaut affichées dans les champs ; elles servent aux calculs (flexion, effort tranchant, poinçonnement, ELS) et sont reprises dans la note de calcul. Un champ vide ou « par défaut » laisse le calcul inchangé.</p>'
-    +['Flexion','Effort tranchant','Appuis de rive et recouvrements','Appuis indirects','Torsion','Poinçonnement','ELS','Dalle deux sens'].map(g=>{ const sg=specs.filter(sp=>sp.grp===g); if(!sg.length) return ''; const nS=sg.filter(sp=>elsSaisi(dp,sp.k)).length;
-      return '<details class="pcElsSub" data-els-id="'+id+'" data-els-kind="'+kind+'" data-els-grp="'+g+'"'+((dp._elsGrp&&dp._elsGrp[g])||(err&&sg.some(sp=>sp.k===err.key))?' open':'')+'><summary>'+g+' <span class="pcElsTag'+(nS?' on':'')+'">'+(nS?nS+' saisi'+(nS>1?'s':''):'par défaut')+'</span></summary>'+sg.map(sp=>elsFieldHtml(sp,dp,err)).join('')+'</details>'; }).join('')
+    +['Flexion','Effort tranchant','Appuis de rive et recouvrements','Appuis indirects','Torsion','Poinçonnement','ELS','Dalle deux sens','Coefficients normatifs'].map(g=>{ const sg=specs.filter(sp=>sp.grp===g); if(!sg.length) return ''; const nS=sg.filter(sp=>!sp.ro&&elsSaisi(dp,sp.k)).length;
+      return '<details class="pcElsSub" data-els-id="'+id+'" data-els-kind="'+kind+'" data-els-grp="'+g+'"'+((dp._elsGrp&&dp._elsGrp[g])||(err&&sg.some(sp=>sp.k===err.key))?' open':'')+'><summary>'+g+' <span class="pcElsTag'+(nS?' on':'')+'">'+(nS?nS+' saisi'+(nS>1?'s':''):(g==='Coefficients normatifs'?'lecture seule':'par défaut'))+'</span></summary>'+sg.map(sp=>elsFieldHtml(sp,dp,err)).join('')+'</details>'; }).join('')
     +'<button type="button" class="ghost" data-els-reset="1">Rétablir les valeurs par défaut</button></div></details>';
   }
   function elsChange(dp,el,kind,id){
@@ -32980,10 +32994,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    // ancrage aux appuis de rive : force à ancrer F = 0,5·V·cotθ (EC2 9.2.1.4) répartie sur les barres amenées à l'appui
    function ancrageRive(phi,nbA,V,gap,poor,kA){ const FE=0.5*V*1e3*cotTh(VcotRef,zS); /* ΔF = 0,5·V·cotθ (livre p.333) */ const sig=Math.min(fyd,FE/(nbA*Ab(phi)));
     const fixA=riveFix(kA), dispo=fixA?potW:aApp-c, st=ancrage(phi,Math.max(sig,1),poor,gap,false);
-    const hk=ancrage(phi,Math.max(sig,1),poor,gap,true), lbdFyd=ancrage(phi,fyd,poor,gap,false).lbd; /* lbdFyd : l_bd avec σ_sd = f_yd = 435 MPa (guide p.83 : F_E n'est alors pas à calculer) */
-    if(st.lbd<=dispo) return {type:'droit',lbd:st.lbd,dispo,sig,lb:st.lb,FE,lbdFyd,fix:fixA};
-    if(hk.lbd<=dispo+10*phi) return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,FE,lbdFyd,fix:fixA};
-    return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,insuffisant:true,FE,lbdFyd,fix:fixA}; }
+    const hk=ancrage(phi,Math.max(sig,1),poor,gap,true), fydD=ancrage(phi,fyd,poor,gap,false).lbd, fydH=ancrage(phi,fyd,poor,gap,true).lbd; /* l_bd avec σ_sd = f_yd = 435 MPa (F_E n'a alors pas à être calculée) : même forme d'ancrage (droit ou crochet) et mêmes coefficients que la valeur retenue, donc une seule longueur dans la note et dans le plan */
+    if(st.lbd<=dispo) return {type:'droit',lbd:st.lbd,dispo,sig,lb:st.lb,FE,lbdFyd:fydD,fix:fixA};
+    if(hk.lbd<=dispo+10*phi) return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,FE,lbdFyd:fydH,fix:fixA};
+    return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,insuffisant:true,FE,lbdFyd:fydH,fix:fixA}; }
    const Vf0=Vat(aApp/2000), VfN=Vat(Ltot-aApp/2000);
    for(let e=0;e<n;e++){
     const t=trav[e], ch=t.ch, phi=ch.phi; let nA=Math.max(2,Math.ceil(ch.n/2)), nB=ch.n-nA;
