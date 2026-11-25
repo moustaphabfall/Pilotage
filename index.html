@@ -27497,6 +27497,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {th:'bf',k:'c_bfDiag',lbl:'Diagramme du béton',t:'sel',def:0,min:0,max:1,opts:[[0,'Parabole-rectangle'],[1,'Desayi-Krishnan (un peu moins sévère)']],aide:'σ = f_bu·t·(2 − t) ou f_bu·2t/(1 + t²) avec t = ε/ε_u. À confirmer.'},
    {th:'bf',k:'c_bfEa',lbl:'Excentricité additionnelle minimale e_a',t:'num',def:2,min:0,max:10,step:0.5,unit:'cm',aide:'e_a = max(2 cm ; L/250), ajoutée à M/N. À confirmer.'},
    {th:'bf',k:'c_bfEaDiv',lbl:'e_a = L / ...',t:'num',def:250,min:150,max:500,step:10,unit:'',aide:'e_a = max(2 cm ; L/250). À confirmer.'},
+   {th:'bf',k:'c_bfCirc',lbl:'Section circulaire avec moment',t:'sel',def:0,min:0,max:2,opts:[[0,'Ne pas intégrer (non vérifié)'],[1,'Approche sécuritaire : section carrée inscrite'],[2,'Autre méthode : je saisis la valeur']],aide:'Sans effet pour une section rectangulaire. Choix 2 : flexion composée sur le carré de côté D/√2 avec l\'acier du cercle, à confirmer. Choix 3 : valeur saisie, non vérifiée par l\'application.'},
+   {th:'bf',k:'c_bfCircN',lbl:'Section circulaire : N_lim saisi',t:'num',def:null,min:0,max:10000000,step:1,unit:'kN',aide:'Utilisé avec le choix « je saisis la valeur » : N_Ed est comparé à cette valeur ; vide : non utilisé.'},
+   {th:'bf',k:'c_bfCircR',lbl:'Section circulaire : ratio de vérification saisi',t:'num',def:null,min:0,max:10,step:0.01,unit:'',aide:'Utilisé avec le choix « je saisis la valeur » : ratio sollicitation / résistance, conforme si ≤ 1 ; vide : non utilisé.'},
    {th:'bt',k:'c_btOn',lbl:'Effort tranchant',t:'sel',def:1,min:0,max:1,opts:[[1,'Intégrer la vérification'],[0,'Ne pas intégrer']],aide:'V déduit des moments d\'extrémité ou saisi à l\'étape Chargement. Section rectangulaire. À confirmer.'},
    {th:'bt',k:'c_btTau',lbl:'τ_u,lim = ... · f_c28 / γ_b',t:'num',def:0.15,min:0.05,max:0.2,step:0.01,unit:'',aide:'τ_u,lim = min(0,15·f_c28/γ_b ; 4 MPa) par défaut (fissuration préjudiciable, côté sécurité). À confirmer.'},
    {th:'bt',k:'c_btTauMax',lbl:'τ_u,lim maximal',t:'num',def:4,min:1,max:5,step:0.5,unit:'MPa',aide:'Plafond de τ_u,lim, 4 MPa par défaut. À confirmer.'},
@@ -27692,14 +27695,16 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const perim_m=rect?2*(geom.b+geom.h)/100:Math.PI*geom.D/100;
    const AsMin_mm2=Math.max(K('c_baAminP')*perim_m*100,K('c_baAmin02')*Ac_mm2), AsMax_mm2=K('c_baAmax')*Ac_mm2;
    const Mpv=Math.abs(+dp.M_pied_kNm||0), Mtv=Math.abs(+dp.M_tete_kNm||0), Mnz=Math.max(Mpv,Mtv)>1e-9;
-   const flexOn=K('c_bfOn')>=0.5, flexCalc=Mnz&&flexOn&&rect&&lfOk;
+   const flexOn=K('c_bfOn')>=0.5, circMode=rect?0:Math.round(K('c_bfCirc')), flexCalc=Mnz&&flexOn&&lfOk&&(rect||circMode===1);
+   const circMan=(!rect&&Mnz&&flexOn&&circMode===2)?{N:K('c_bfCircN'),R:K('c_bfCircR')}:null; if(circMan) circMan.def=(circMan.N!=null||circMan.R!=null);
+   const aSq=rect?0:geom.D*10/Math.SQRT2; /* côté du carré inscrit, mm */
    const d1Of=phi=>geom.enr*10+ptPhiCad(phi)+phi/2;
    const chooseFor=AsT=>{ let phiGuess=20, bars=null; for(let it=0;it<3;it++){ const d1mm=d1Of(phiGuess); geom.d1=d1mm/10; geom.d2=geom.prof-geom.d1; bars=ptChooseBars(dp,geom,AsT); if(bars.phi===phiGuess) break; phiGuess=bars.phi; } return bars; };
    let fl=null;
    if(flexCalc){
     const Mmax=Math.max(Mpv,Mtv)*1e6, e0=NEd_N>0?Mmax/NEd_N:0, ea=Math.max(K('c_bfEa')*10,Lm*1000/K('c_bfEaDiv'));
-    fl={M_kNm:Math.max(Mpv,Mtv),e0,ea,e1:e0+ea,eu:2*(1+2*K('c_bfNl')),dk:K('c_bfDiag')>=0.5};
-    const nl=(As,d1mm)=>{ const z0=geom.prof*10/2-d1mm; return ptFaessel({b:geom.larg*10,h:geom.prof*10,fc,fe,gb,gs,eu:fl.eu,dk:fl.dk,lf:lf_cm*10,e1:fl.e1,steel:[{z:-z0,A:As/2},{z:z0,A:As/2}]}); };
+    fl={M_kNm:Math.max(Mpv,Mtv),e0,ea,e1:e0+ea,eu:2*(1+2*K('c_bfNl')),dk:K('c_bfDiag')>=0.5,circ:rect?null:{a_cm:aSq/10,ratioA:aSq*aSq/(Math.PI*Math.pow(geom.D*10,2)/4)}};
+    const nl=(As,d1mm)=>{ const hF=rect?geom.prof*10:aSq, bF=rect?geom.larg*10:aSq, z0=hF/2-d1mm; return ptFaessel({b:bF,h:hF,fc,fe,gb,gs,eu:fl.eu,dk:fl.dk,lf:lf_cm*10,e1:fl.e1,steel:[{z:-z0,A:As/2},{z:z0,A:As/2}]}); };
     fl.nl=nl; const d1g=d1Of(20);
     if(nl(AsMin_mm2,d1g).Nlim>=NEd_N) AsReq_mm2=0;
     else if(nl(AsMax_mm2,d1g).Nlim<NEd_N) AsReq_mm2=AsMax_mm2*1.0001;
@@ -27716,14 +27721,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const ftj=K('c_bdFtjA')+K('c_bdFtjB')*Math.min(fc,60), tauSu=0.6*K('c_bdPsi')*K('c_bdPsi')*ftj, ls=phi*fe/(4*tauSu);
    const lOverH=Lm*100/geom.hmax, domOk=lOverH>=3&&(!rect||geom.hmax<4*geom.hmin);
    const enrSaisi=(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3;
-   const okNu=NEd_N<=NuLim_N+1e-6, okLam=lfOk&&lambda<=lamMax+1e-9;
+   const okNuMan=circMan&&circMan.def?((circMan.N==null||NEd_N/1000<=circMan.N+1e-9)&&(circMan.R==null||circMan.R<=1+1e-9)):null, okNu=okNuMan!=null?okNuMan:NEd_N<=NuLim_N+1e-6, okLam=lfOk&&lambda<=lamMax+1e-9;
    const res={norme:'BAEL',fck:fc,fyk:fe,fcd:fc/gb,fyd:fe/gs,geom,l0_cm:lf_cm,l0f:L0.f,l0desc:L0.desc,lambda,lambdaOther:lambda,lambdaLim:lamMax,second:false,centree:!flexCalc,n:NEd_N/(Ac_mm2*fc/gb),
     A:alpha,B:1,C:1,rm:1,rmCas:'BAEL',M0e:0,M2mom:0,MEd:flexCalc?fl.M_kNm:0,ei_mm:0,De0_mm:0,Mei:0,MDe:0,pp_kN:ppKN,sigmaC:fe/gs,FsC:0,l0secu:false,dCour_mm:null,phiEf:2,phiSaisi:false,omega:0,
-    inter:{As:AsReq_mm2,ok:okNu&&okLam&&(!Mnz||flexCalc),Mdispo:0}, AsMin_cm2:AsMin_mm2/100, AsMax_cm2:AsMax_mm2/100, AsTotal_cm2:AsTot_mm2/100, AsReelle_cm2:AsReel_mm2/100,
+    inter:{As:AsReq_mm2,ok:okNu&&okLam&&(!Mnz||flexCalc||!!(circMan&&circMan.def)),Mdispo:0}, AsMin_cm2:AsMin_mm2/100, AsMax_cm2:AsMax_mm2/100, AsTotal_cm2:AsTot_mm2/100, AsReelle_cm2:AsReel_mm2/100,
     depasse:AsTot_mm2>AsMax_mm2, barFace, nBars:barFace.n*2, espOk:bars.espOk, aLibre_mm:bars.free, aMin_mm:bars.aMin, pitch_mm:bars.pitch, nEpingles:bars.nEpingles,
     phiCadre:phiT, sCourant_mm:sC, sExtrem_mm:sC, hZoneExtrem_mm:ls, lb_mm:ls, lbrqd_mm:ls, sigmaSd:fe/gs,
     lOverH,domOk,enrNom:null,enrSaisi,Kr:1,KrMode:0,epsC:2,NEd_kN:NEd_N/1000,
-    bael:{lambda,beta,alpha,k:kk,fcU,fcj:fcjIn,fcjManque,Br_cm2:Br_mm2/100,Fb_kN:Fb/1000,NuLim_kN:NuLim_N/1000,NuReq_kN:NEd_N/1000,AsReq_cm2:AsReq_mm2/100,ftj,tauSu,ls_mm:ls,Mnz,okNu,okLam,lfOk,perim_m,gb,gs,flexOn,flex:fl,flexCirc:Mnz&&flexOn&&!rect},
+    bael:{lambda,beta,alpha,k:kk,fcU,fcj:fcjIn,fcjManque,Br_cm2:Br_mm2/100,Fb_kN:Fb/1000,NuLim_kN:(circMan&&circMan.N!=null?circMan.N:NuLim_N/1000),NuReq_kN:NEd_N/1000,AsReq_cm2:AsReq_mm2/100,ftj,tauSu,ls_mm:ls,Mnz,okNu,okLam,lfOk,perim_m,gb,gs,flexOn,flex:fl,flexCirc:Mnz&&flexOn&&!rect,circMode,circMan,Nlim009_kN:NuLim_N/1000},
     shear:{etat:'na'},els:{requis:false,classe:'—'},feu:{etat:'na'},bi:{etat:'na'},kAide:null,ecarts:[],cmpEc2:null};
    res.coefSaisis=PT_COEF.filter(sp=>!sp.legacy&&(['ba','pd','mat','bf','bt','bd','be','els'].indexOf(sp.th)>=0)&&ptCoefSaisi(dp,sp.k)).map(sp=>({k:sp.k,lbl:sp.lbl.replace(/ \(vide.*$/,''),val:+dp[sp.k],unit:sp.unit||'',def:sp.def}));
    res.bael.tr=ptBaelTranchant(dp,res);
@@ -27768,11 +27773,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const mTxt='M_pied = '+f(+dp.M_pied_kNm||0,1)+', M_tête = '+f(+dp.M_tete_kNm||0,1)+' kN·m';
    if(fl) add('Flexion composée','Excentricités','e1 = M/N_Ed + e_a ; e_a = max('+f(ptCoef(dp,'c_bfEa'),1)+' cm ; l/'+f(ptCoef(dp,'c_bfEaDiv'),0)+') ; e2 = courbure·l_f²/π²','M = '+f(fl.M_kNm,1)+' kN·m ; e0 = '+f(fl.e0/10,1)+' cm ; e_a = '+f(fl.ea/10,1)+' cm ; e1 = '+f(fl.e1/10,1)+' cm ; e2 = '+f(fl.e2/10,1)+' cm','à confirmer','ok');
    else if(b.Mnz&&!b.flexOn) add('Flexion composée','Moments non intégrés','Choix de l\'ingénieur (paramètres avancés)',mTxt+' : ignorés dans le calcul','à justifier','nf');
-   else if(b.Mnz) add('Flexion composée','Section circulaire : flexion composée non traitée','Calcul réservé à la section rectangulaire',mTxt+' : non couvert','M = 0','ko');
+   else if(b.Mnz&&b.circMode===2){ const cm=b.circMan; add('Flexion composée','Valeur saisie par l\'ingénieur (section circulaire)','Autre méthode : valeur saisie, non vérifiée par l\'application',mTxt+(cm.def?' ; '+(cm.N!=null?'N_lim saisi = '+f(cm.N,1)+' kN (N_Ed = '+f(b.NuReq_kN,1)+' kN)':'')+(cm.N!=null&&cm.R!=null?' ; ':'')+(cm.R!=null?'ratio saisi = '+f(cm.R,2):''):' : aucune valeur saisie'),cm.def?'N_Ed ≤ N_lim et ratio ≤ 1':'à saisir',cm.def?(b.okNu?'ok':'ko'):'nf'); }
+   else if(b.Mnz) add('Flexion composée','Section circulaire avec moment : non intégré','Choix de l\'ingénieur (paramètres avancés)',mTxt+' : non vérifié par l\'application','à justifier','nf');
    else add('Flexion composée','Compression centrée','Moments nuls','moments nuls','M = 0','ok');
    if(!b.lfOk) add('Flambement','Longueur de flambement','l_f selon les appuis','mécanisme (articulé-articulé non contreventé ou tête libre sans encastrement)','l_f fini','ko');
    else add('Flambement','Élancement λ ≤ 70','λ = l_f·√12/a (rectangle) ou 4·l_f/D ; l_f = '+f(res.l0f,2)+'·l','λ = '+f(b.lambda,1)+' ; β = '+f(b.beta,3)+' ; α = 0,85/β = '+f(b.alpha,3),'≤ '+f(res.lambdaLim,0),b.okLam?'ok':'ko');
-   if(fl) add('Charge ultime','N_Ed ≤ N_u,lim (flexion composée)','N_u,lim : équilibre des déformations internes, e1 + e2 = M_int/N_int','N_Ed = '+f(b.NuReq_kN,1)+' kN ; N_u,lim = '+f(b.NuLim_kN,1)+' kN (A adoptée = '+f(res.AsReelle_cm2)+' cm², ε_u = '+f(fl.eu,1)+' ‰)','N_Ed ≤ N_u,lim',b.okNu?'ok':'ko');
+   if(fl&&fl.circ) add('Flexion composée','Section carrée inscrite (approche sécuritaire)','Carré de côté D/√2 ; acier du cercle ramené au carré (deux lits à l\'enrobage) ; flexion composée appliquée au carré','a = '+f(fl.circ.a_cm,1)+' cm ; section du carré = '+f(fl.circ.ratioA*100,0)+' % de celle du cercle (perte de béton '+f((1-fl.circ.ratioA)*100,0)+' %)','à confirmer','ok');
+   if(b.circMan&&b.circMan.def){ }
+   else if(fl) add('Charge ultime','N_Ed ≤ N_u,lim (flexion composée)','N_u,lim : équilibre des déformations internes, e1 + e2 = M_int/N_int','N_Ed = '+f(b.NuReq_kN,1)+' kN ; N_u,lim = '+f(b.NuLim_kN,1)+' kN (A adoptée = '+f(res.AsReelle_cm2)+' cm², ε_u = '+f(fl.eu,1)+' ‰)','N_Ed ≤ N_u,lim',b.okNu?'ok':'ko');
    else add('Charge ultime','N_Ed ≤ N_u','N_u = [0,85·B_r·f_c/(0,9·γ_b) + 0,85·A·f_e/γ_s]/(k·β)','N_Ed = '+f(b.NuReq_kN,1)+' kN ; N_u = '+f(b.NuLim_kN,1)+' kN (B_r = '+f(b.Br_cm2,0)+' cm², k = '+f(b.k,2)+', A adoptée = '+f(res.AsReelle_cm2)+' cm²)','N_Ed ≤ N_u',b.okNu?'ok':'ko');
    add('Armatures','A_s ≥ A_min','A_min = max(4 cm²/m de périmètre ; 0,2 % B)','A_s adoptée = '+f(res.AsReelle_cm2)+' cm²','A_min = '+f(res.AsMin_cm2)+' cm²',res.AsReelle_cm2+1e-9>=res.AsMin_cm2?'ok':'ko');
    add('Armatures','A_s ≤ A_max','A_max = '+f(ptCoef(dp,'c_baAmax')*100,1)+' % B (à confirmer)','A_s adoptée = '+f(res.AsReelle_cm2)+' cm²','A_max = '+f(res.AsMax_cm2)+' cm²',res.AsReelle_cm2<=res.AsMax_cm2+1e-9&&!res.depasse?'ok':'ko');
@@ -28159,6 +28167,23 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
    document.body.appendChild(ov); const f=ov.querySelector('[data-feu-choix="c011"]'); if(f) f.focus();
   }
+  /* Fenêtre de présentation de l'approche sécuritaire pour la section circulaire avec moment (style feuille iPhone, comme le choix de la méthode feu) */
+  function ptCircModal(id){
+   const old=document.getElementById('pcFeuOv'); if(old) old.remove();
+   const ov=document.createElement('div'); ov.id='pcFeuOv'; ov.className='pcFeuOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','pcFeuOvT');
+   ov.innerHTML='<div class="pcFeuCard"><h4 id="pcFeuOvT">Section circulaire avec moment : approche sécuritaire</h4>'
+    +'<ul class="pcFeuUl"><li>La flexion composée est calculée sur la section carrée inscrite dans le cercle, de côté a = D/√2.</li>'
+    +'<li>L\'acier du cercle est ramené à ce carré, en deux lits à l\'enrobage ; la méthode est celle de la section rectangulaire (équilibre des déformations internes).</li>'
+    +'<li>Le carré ne représente que 64 % de la section du cercle : la capacité réelle est sous-estimée, c\'est le sens de la sécurité.</li>'
+    +'<li>Résultat à confirmer ; l\'hypothèse et la perte de capacité sont écrites dans la note de calcul.</li>'
+    +'<li>Choix réversible à tout moment dans les paramètres avancés.</li></ul>'
+    +'<button type="button" class="primary pcFeuBtn" data-circ-choix="1">Utiliser cette approche</button>'
+    +'<button type="button" class="ghost pcFeuBtn pcFeuCancel" data-circ-choix="">Annuler</button></div>';
+   ov.addEventListener('click',e=>{ const b=e.target.closest('[data-circ-choix]'); if(!b&&e.target!==ov) return; const c=b?b.dataset.circChoix:''; ov.remove();
+    if(!c) return; const t=taskById(id); if(!t) return; const dp=ptData(t); dp.c_bfCirc=1; dp._thOpen=dp._thOpen||{}; dp._thOpen.bf=true; dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); });
+   ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
+   document.body.appendChild(ov); const f=ov.querySelector('[data-circ-choix="1"]'); if(f) f.focus();
+  }
   function ptParamsBlockHtml(dp,id){
    const cls=pcEnrobageNom(dp).classe, req=/^XD/.test(cls), err=(window._elsErr||{})[id], th=dp._thOpen||{};
    const bael=dp.norme==='bael', thOk=t=>bael?['mat','ba','bf','bt','bd','be','els','pd'].indexOf(t)>=0:['ba','bf','bt','bd','be'].indexOf(t)<0;
@@ -28539,6 +28564,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    }
    const dp=ptData(t);
    if(el.dataset.els){ const k=el.dataset.els, sp=PT_COEF_BY[k]; if(!sp||sp.ro) return; window._elsErr=window._elsErr||{}; delete window._elsErr[id];
+    if(k==='c_bfCirc'&&+el.value===1&&+dp.c_bfCirc!==1){ pteRender(id); ptCircModal(id); return; }
     if(sp.t==='sel'){ dp[k]=+el.value; try{persist();}catch(_){ } pteRender(id); return; }
     if(el.value===''){ delete dp[k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max) window._elsErr[id]={key:k,msg:sp.lbl.replace(/ [—(].*$/,'')+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; else dp[k]=x; }
     try{persist();}catch(_){ } pteRender(id); return; }
@@ -28687,8 +28713,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const elTxt=el.etat==='off'?'non intégrées (choix de l\'ingénieur)':(el.etat==='nf'?'non vérifiées (pas d\'équilibre)':'σ<sub>bc</sub> = '+fm(el.sigc,1)+' MPa ≤ '+fm(el.lc,1)+(el.ls==null?' · σ<sub>s</sub> non limitée':' · σ<sub>s</sub> = '+fm(el.sigsTr,0)+' ≤ '+fm(el.ls,0)+' MPa')+(el.etat==='ok'?'':' ⚠ non conforme'));
    return '<h5>Résultats (BAEL 91)</h5>'
     +'<div class="pcDimBox"><b>Flambement</b><p class="pcNote">l<sub>f</sub> = '+(b.lfOk?fm(res.l0_cm/100):'∞')+' m ('+esc(res.l0desc)+') · λ = '+fm(b.lambda,1)+' ≤ '+fm(res.lambdaLim,0)+(fl?'':' · β = '+fm(b.beta,3)+' · α = 0,85/β = '+fm(b.alpha,3)+' · k = '+fm(b.k,2))+'</p></div>'
-    +(fl?'<div class="pcDimBox"><b>Flexion composée</b><p class="pcNote">M = '+fm(fl.M_kNm,1)+' kN·m · e<sub>0</sub> = '+fm(fl.e0/10,1)+' cm · e<sub>a</sub> = '+fm(fl.ea/10,1)+' cm · e<sub>2</sub> = '+fm(fl.e2/10,1)+' cm · N<sub>Ed</sub> = '+fm(res.NEd_kN,0)+' kN'+(res.pp_kN>0?' (dont poids propre '+fm(res.pp_kN,1)+' kN)':'')+' · N<sub>u,lim</sub> = '+fm(b.NuLim_kN,0)+' kN avec l\'acier adopté</p></div>'
-     :'<div class="pcDimBox"><b>Charge ultime</b><p class="pcNote">N<sub>Ed</sub> = '+fm(res.NEd_kN,0)+' kN'+(res.pp_kN>0?' (dont poids propre '+fm(res.pp_kN,1)+' kN)':'')+' · B<sub>r</sub> = '+fm(b.Br_cm2,0)+' cm² · N<sub>u</sub> = '+fm(b.NuLim_kN,0)+' kN avec l\'acier adopté'+(b.Mnz&&!b.flexOn?' · moments non intégrés (choix de l\'ingénieur)':(b.flexCirc?' · ⚠ moments non nuls : section circulaire non couverte':''))+'</p></div>')
+    +(fl?'<div class="pcDimBox"><b>Flexion composée'+(fl.circ?' (carré inscrit '+fm(fl.circ.a_cm,1)+' cm, à confirmer)':'')+'</b><p class="pcNote">M = '+fm(fl.M_kNm,1)+' kN·m · e<sub>0</sub> = '+fm(fl.e0/10,1)+' cm · e<sub>a</sub> = '+fm(fl.ea/10,1)+' cm · e<sub>2</sub> = '+fm(fl.e2/10,1)+' cm · N<sub>Ed</sub> = '+fm(res.NEd_kN,0)+' kN'+(res.pp_kN>0?' (dont poids propre '+fm(res.pp_kN,1)+' kN)':'')+' · N<sub>u,lim</sub> = '+fm(b.NuLim_kN,0)+' kN avec l\'acier adopté</p></div>'
+     :'<div class="pcDimBox"><b>Charge ultime</b><p class="pcNote">N<sub>Ed</sub> = '+fm(res.NEd_kN,0)+' kN'+(res.pp_kN>0?' (dont poids propre '+fm(res.pp_kN,1)+' kN)':'')+' · B<sub>r</sub> = '+fm(b.Br_cm2,0)+' cm² · N<sub>u</sub> = '+fm(b.NuLim_kN,0)+' kN avec l\'acier adopté'+(b.Mnz&&!b.flexOn?' · moments non intégrés (choix de l\'ingénieur)':(b.flexCirc?(b.circMode===2?' · valeur saisie par l\'ingénieur, non vérifiée par l\'application':' · moments non intégrés (section circulaire, non vérifié)'):''))+'</p></div>')
     +'<div class="pcDimBox"><b>Ferraillage longitudinal</b><p class="pcNote">A<sub>s</sub> requise = '+fm(b.AsReq_cm2)+' cm² · A<sub>min</sub> = '+fm(res.AsMin_cm2)+' cm² · A<sub>max</sub> = '+fm(res.AsMax_cm2)+' cm²'+(res.depasse?' ⚠ A<sub>s</sub> dépasse A<sub>max</sub> — revoir la section':'')+'</p>'
     +'<p class="pcNote"><b>'+res.nBars+' Φ'+res.barFace.phi+'</b> ('+res.barFace.n+' par face) = '+fm(res.AsReelle_cm2)+' cm²</p></div>'
     +'<div class="pcDimBox"><b>Cadres</b><p class="pcNote">Φ'+res.phiCadre+' — espacement '+fm(res.sCourant_mm/10,1)+' cm · recouvrement l<sub>r</sub> ≈ '+fm(res.lb_mm/10,0)+' cm (à confirmer)</p></div>'
@@ -28707,7 +28733,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const fl=b.flex, tr=b.tr, el=b.els, f1=(x,d)=>fC(x,d);
    const trOn=tr.etat!=='off'&&tr.etat!=='nf', elOn=el.etat!=='off'&&el.etat!=='nf';
    const meth=(fl?'flexion composée (équilibre des déformations internes)':'compression centrée')+' : charge ultime, élancement, A_min/A_max et cadres vérifiés'+(trOn?', effort tranchant':'')+(elOn?', contraintes ELS':'');
-   const nonV=['feu','flexion déviée','enrobage'].concat(trOn?[]:['effort tranchant']).concat(elOn?[]:['ELS']).concat(b.Mnz&&!fl?['moments (non intégrés)']:[]);
+   const nonV=['feu','flexion déviée','enrobage'].concat(trOn?[]:['effort tranchant']).concat(elOn?[]:['ELS']).concat(b.Mnz&&!fl&&!(b.circMan&&b.circMan.def)?['moments (non intégrés)']:[]);
    const constat=nomO+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(res.nBars+' Φ'+res.barFace.phi+', A_s '+fC(res.AsReelle_cm2)+' cm²'))+' — BAEL 91, '+meth+' ; '+nonV.join(', ')+' NON vérifiés';
    const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>').join('')
     +'<p class="ncPt" data-bad="0">Méthode BAEL du module ('+(fl?'équilibre des déformations internes en flexion composée':'charge ultime en compression centrée avec α, β, B<sub>r</sub> et k')+') : à confirmer par un ingénieur.</p>'
@@ -28716,6 +28742,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +(fl?'<p class="ncPt" data-bad="0">Flexion composée (à confirmer) : M = max(|M<sub>pied</sub>| ; |M<sub>tête</sub>|) = '+fC(fl.M_kNm,1)+' kN·m (côté sécurité) ; e<sub>a</sub> = max('+fC(ptCoef(dp,'c_bfEa'),1)+' cm ; l/'+fC(ptCoef(dp,'c_bfEaDiv'),0)+') ; ε<sub>u</sub> = 2·(1 + 2·'+fC(ptCoef(dp,'c_bfNl'),2)+') = '+fC(fl.eu,1)+' ‰ (part de N de longue durée '+(cSa('c_bfNl')?'saisie':'par défaut, courte durée')+') ; diagramme du béton '+(fl.dk?'Desayi-Krishnan':'parabole-rectangle')+' ; flexion dans le plan de h = '+fC(g.prof,0)+' cm, λ vérifié sur le petit côté ; deux lits d\'armatures symétriques.</p>':'')
     +(tr.etat==='ok'||tr.etat==='ko'?'<p class="ncPt" data-bad="0">Effort tranchant (à confirmer, valeurs de règle saisissables) : V<sub>Ed</sub> '+esc(tr.src)+' ; τ<sub>u</sub> = V<sub>Ed</sub>/(b·d) comparé à min('+fC(ptCoef(dp,'c_btTau'),2)+'·f<sub>c28</sub>/γ<sub>b</sub> ; '+fC(ptCoef(dp,'c_btTauMax'),1)+' MPa)'+(tr.reduit?' ; espacement des cadres réduit à '+fC(tr.sRet/10,1)+' cm':'')+'.</p>':'')
     +(elOn?'<p class="ncPt" data-bad="0">Contraintes ELS (à confirmer) : section fissurée linéaire élastique, α<sub>e</sub> = '+fC(ptCoef(dp,'c_aE'),0)+', N<sub>ser</sub> = '+fC(el.Nser,0)+' kN '+(el.saiN?'(saisi)':'(N<sub>Ed</sub>/'+fC(el.gam,2)+')')+', M<sub>ser</sub> = '+fC(el.Mser,1)+' kN·m '+(el.saiM?'(saisi)':'(M<sub>Ed</sub>/'+fC(el.gam,2)+')')+' ; fissuration '+(['peu préjudiciable','préjudiciable','très préjudiciable'][el.fiss])+'.</p>':'')
+    +(!g.rect&&b.Mnz&&b.flexOn?'<p class="ncPt" data-bad="0">Section circulaire avec moment ('+(b.circMode===1&&fl&&fl.circ?'approche sécuritaire, à confirmer) : flexion composée appliquée à la section carrée inscrite de côté a = D/√2 = '+fC(fl.circ.a_cm,1)+' cm, soit '+fC(fl.circ.ratioA*100,0)+' % de la section du cercle (perte de béton '+fC((1-fl.circ.ratioA)*100,0)+' %), avec l\'acier du cercle ('+fC(res.AsReelle_cm2)+' cm²) ramené à ce carré en deux lits à l\'enrobage : la capacité réelle du cercle est sous-estimée.':(b.circMode===2?'valeur saisie par l\'ingénieur) : '+(b.circMan&&b.circMan.def?(b.circMan.N!=null?'N<sub>lim</sub> = '+fC(b.circMan.N,1)+' kN ':'')+(b.circMan.R!=null?'ratio = '+fC(b.circMan.R,2)+' ':'')+': repris tel quel, saisi par l\'ingénieur, non vérifié par l\'application.':'aucune valeur saisie : flexion non vérifiée.'):'non intégré, choix par défaut) : le moment saisi n\'est pas vérifié par l\'application.'))+'</p>':'')
     +'<p class="ncPt" data-bad="0">Longueur de flambement l<sub>f</sub> d\'élément isolé (0,5 · 0,7 · 1 · 2 × l) et λ pris sur le petit côté (côté sécurité) ; seules les barres des deux faces dessinées sont comptées ; enrobage non vérifié ; feu et flexion déviée non traités.</p>'
     +(res.cmpEc2?'<p class="ncPt" data-bad="0">Comparaison avec l\'Eurocode 2 (information, hors de cette note) : pour la même section et le même N<sub>Ed</sub> ('+(fl?'mêmes moments':'moments nuls')+'), le calcul EC2 donne A<sub>s</sub> = '+fC(res.cmpEc2.As)+' cm² ('+(res.cmpEc2.centree?'compression centrée':(res.cmpEc2.second?'second ordre avec e<sub>i</sub> et Δe<sub>0</sub>':'imperfections'))+', λ<sub>lim</sub> = '+fC(res.cmpEc2.lambdaLim,1)+') contre '+fC(res.AsTotal_cm2)+' cm² en BAEL (A<sub>min</sub> = '+fC(res.AsMin_cm2)+' cm²). Écarts de méthode : le BAEL réduit la section (B<sub>r</sub>, 1 cm de chaque côté) et applique α = 0,85/(1+0,2(λ/35)²) avec 0,9·γ<sub>b</sub> sur le béton et k en compression centrée, ou l\'équilibre des déformations internes en flexion composée ; l\'EC2 prend f<sub>cd</sub> = '+fC(res.cmpEc2.fcd)+' MPa et traite le second ordre par courbure nominale avec les excentricités e<sub>i</sub> et Δe<sub>0</sub> ; A<sub>min</sub> diffère (4 cm²/m et 0,2 % B contre 0,10·N<sub>Ed</sub>/f<sub>yd</sub> et 0,2 % A<sub>c</sub>). Les deux règlements ne se mélangent pas : choisir celui du marché.</p>':'')
     +(res.coefSaisis&&res.coefSaisis.length?'<p class="ncPt" data-bad="0">coefficients modifiés par l\'ingénieur dans les paramètres avancés : '+res.coefSaisis.map(c=>esc(c.lbl)).join(' ; ')+' : valeurs saisies, à confirmer par un ingénieur.</p>':'');
@@ -28729,6 +28756,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    hypRows.push(['Poids propre',res.pp_kN>0?'Ajouté à N : '+fC(ptCoef(dp,'c_gG'))+' × '+fC(ptCoef(dp,'c_rho'),1)+' kN/m³ × '+fC(g.Ac/1e4,4)+' m² × '+fC(dp.L_m,2)+' m = '+fC(res.pp_kN)+' kN':'Déjà inclus dans N saisi','Choix du formulaire']);
    hypRows.push(['Longueur de flambement',esc(res.l0desc)+' → l<sub>f</sub> = '+(b.lfOk?fC(res.l0_cm/100):'∞')+' m','Saisie des appuis ; élément isolé']);
    hypRows.push(['Élancement','λ = '+(g.rect?'l<sub>f</sub>·√12/a (a = '+fC(g.hmin,0)+' cm, petit côté)':'4·l<sub>f</sub>/D')+' = '+fC(b.lambda,1)+(fl?'':' ; β = '+fC(b.beta,3)+' ; α = 0,85/β = '+fC(b.alpha,3))+' ; λ ≤ 70','Calculé']);
+   if(!g.rect&&b.Mnz&&b.flexOn) hypRows.push(['Section circulaire avec moment',['Non intégré : moment non vérifié par l\'application','Approche sécuritaire : carré inscrit a = D/√2'+(fl&&fl.circ?' = '+fC(fl.circ.a_cm,1)+' cm ('+fC(fl.circ.ratioA*100,0)+' % de la section, perte de béton '+fC((1-fl.circ.ratioA)*100,0)+' %), acier du cercle ramené au carré':''),'Valeur saisie par l\'ingénieur'+(b.circMan&&b.circMan.def?' : '+(b.circMan.N!=null?'N<sub>lim</sub> = '+fC(b.circMan.N,1)+' kN ':'')+(b.circMan.R!=null?'ratio = '+fC(b.circMan.R,2):''):' (aucune valeur)')][b.circMode]||'—',org('c_bfCirc','c_bfCircN','c_bfCircR')]);
    if(fl) hypRows.push(['Flexion composée','e<sub>0</sub> = M/N<sub>Ed</sub> = '+fC(fl.e0/10,1)+' cm ; e<sub>a</sub> = max('+fC(ptCoef(dp,'c_bfEa'),1)+' cm ; l/'+fC(ptCoef(dp,'c_bfEaDiv'),0)+') = '+fC(fl.ea/10,1)+' cm ; e<sub>2</sub> = '+fC(fl.e2/10,1)+' cm ; ε<sub>u</sub> = '+fC(fl.eu,1)+' ‰ ; béton '+(fl.dk?'Desayi-Krishnan':'parabole-rectangle'),org('c_bfNl','c_bfDiag','c_bfEa','c_bfEaDiv','c_bfOn')]);
    else hypRows.push(['Section réduite','B<sub>r</sub> = '+(g.rect?'(b − 2 cm)(h − 2 cm)':'π(D − 2 cm)²/4')+' = '+fC(b.Br_cm2,1)+' cm²','Calculé']);
    hypRows.push(['Armatures minimales / maximales','A<sub>min</sub> = max(4 cm²/m × '+fC(b.perim_m,2)+' m ; 0,2 % B) = '+fC(res.AsMin_cm2)+' cm² · A<sub>max</sub> = '+fC(ptCoef(dp,'c_baAmax')*100,1)+' % B = '+fC(res.AsMax_cm2)+' cm²','A<sub>min</sub> : règle ; A<sub>max</sub> : '+(cSa('c_baAmax')?'saisi':'par défaut, à confirmer')]);
