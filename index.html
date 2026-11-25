@@ -6557,8 +6557,52 @@ function dimProposerDocs(docNote,docPlan){
 }
 /* computeFn : () => résultats (synchrone, assigné à dp.resultats). creerDocsFn : () => Promise<{docNote,
    docPlan}> (optionnel). renderFn : redessine la fiche (désormais verrouillée). */
+/* ===== Vue compacte pendant le calcul : miniature du schéma à gauche + résumé du formulaire en une ligne par section ; dépliée à la fin du calcul.
+   Mécanisme commun à tous les modules (le conteneur de la fiche reçoit la classe dimCompact). DIM_COMPACT_MODE : 'calcul' = compact dès le clic sur Calculer et pendant le calcul ; 'off' = désactivé. */
+const DIM_COMPACT_MODE='calcul';
+function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return mb?mb.querySelector('.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot'):null; }
+function dimCompactSections(root){
+ const panel=root.querySelector('.pcPanel'); if(!panel) return [];
+ const secs=[]; let cur={t:'',v:[]};
+ [...panel.children].forEach(el=>{
+  if(el.tagName==='H5'){ if(cur.v.length||cur.t) secs.push(cur); cur={t:el.textContent.trim(),v:[]}; return; }
+  if(el.tagName==='HR'||el.tagName==='DETAILS') return;
+  const labs=el.tagName==='LABEL'?[el]:[...el.querySelectorAll('label')];
+  labs.forEach(l=>{ if(l.closest('details')) return; const f=l.querySelector('select,input'); if(!f) return; const c=l.cloneNode(true); c.querySelectorAll('select,input,button,small,.pcElsTag').forEach(x=>x.remove());
+   const lb=c.textContent.replace(/\s+/g,' ').trim(); let v=f.tagName==='SELECT'?((f.options[f.selectedIndex]||{}).text||''):f.value; if(v==='') return; cur.v.push((lb?lb+' : ':'')+v.trim()); });
+ });
+ if(cur.v.length||cur.t) secs.push(cur); return secs;
+}
+function dimCompactOn(root){
+ if(!root||DIM_COMPACT_MODE==='off'||root.classList.contains('dimCompact')) return null;
+ const mb=document.getElementById('modalBody'), title=((root.querySelector('.pjBeam-ttl-in')||{}).value||'').trim(), mod=((root.querySelector('.pcModName')||{}).textContent||'').replace('▾','').trim();
+ const secs=dimCompactSections(root), all=[]; secs.forEach(x=>x.v.forEach(z=>all.push(z)));
+ let fig=''; const sv=root.querySelector('.pcDraw svg'); if(sv){ const c=sv.cloneNode(true); c.querySelectorAll('foreignObject,button').forEach(x=>x.remove()); c.removeAttribute('data-dim-done'); c.setAttribute('aria-hidden','true'); c.setAttribute('width','100%'); c.removeAttribute('height'); c.style.height='auto'; c.style.pointerEvents='none'; fig='<div class="dimMiniFig">'+c.outerHTML+'</div>'; }
+ const cotes=sv?[...sv.querySelectorAll('foreignObject .pcDimWrap')].slice(0,6).map(w=>{ const nm=((w.querySelector('.dimNm')||{}).textContent||'').replace('=','').trim(), i=w.querySelector('input'), u=((w.querySelector('.pcUnit')||{}).textContent||'').trim(); return i&&i.value!==''?nm+' '+i.value+(u?' '+u:''):''; }).filter(Boolean):[]; if(cotes.length) all.unshift('Cotes : '+cotes.join(' · '));
+ const key=all.filter(z=>/mat[ée]riau|port[ée]e|section|b[ée]ton|essai|type|configuration|diam/i.test(z)).slice(0,1), pick=(cotes.length?[all[0]]:[]).concat(key.length?key:all.slice(cotes.length?1:0,2));
+ const mini=document.createElement('div'); mini.className='dimMini'; mini.setAttribute('role','status');
+ mini.innerHTML=fig+'<div class="dimMiniTx"><b>'+esc(title||'Ouvrage')+'</b><span>'+esc(mod)+'</span>'+pick.map(z=>'<span>'+esc(z)+'</span>').join('')+'<span class="dimMiniBusy"><i class="dimCalcSpin" aria-hidden="true"></i>Calcul en cours…</span></div>';
+ const sum=document.createElement('div'); sum.className='dimCSum';
+ sum.innerHTML=secs.map(x=>'<div class="dimCSec"><b>'+esc(x.t||'Données')+'</b><span>'+esc(x.v.join(' · ')||'—')+'</span></div>').join('');
+ const panel=root.querySelector('.pcPanel'), head=root.querySelector('.pcFormSticky'), btn=root.querySelector('.pcModCalc button');
+ const st={mini,sum,btn,btnHtml:btn?btn.innerHTML:'',scroll:mb?mb.scrollTop:0};
+ if(head&&head.parentNode===root) root.insertBefore(mini,panel||head.nextSibling); else root.insertBefore(mini,root.firstChild);
+ mini.after(sum);
+ if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<i class="dimCalcSpin dimCalcSpinSm" aria-hidden="true"></i>Calcul en cours…'; }
+ root.classList.add('dimCompact'); return st;
+}
+function dimCompactOff(root,st){
+ if(!root) return; root.classList.remove('dimCompact'); if(st){ try{ st.mini.remove(); st.sum.remove(); }catch(_){ } }
+ root.classList.add('dimExpand'); setTimeout(()=>root.classList.remove('dimExpand'),260);
+ const mb=document.getElementById('modalBody'); if(mb) mb.scrollTop=0; const md=mb&&mb.closest('.modal'); if(md) md.scrollTop=0;
+ try{ const b=root.querySelector('.pcModCalc button'); if(b&&!b.disabled) b.focus({preventScroll:true}); }catch(_){ }
+}
+window.dimCompactOn=dimCompactOn; window.dimCompactOff=dimCompactOff;
+/* computeFn : () => résultats (synchrone, assigné à dp.resultats). creerDocsFn : () => Promise<{docNote,
+   docPlan}> (optionnel). renderFn : redessine la fiche (désormais verrouillée). */
 function dimRunCalcul(dp,computeFn,creerDocsFn,renderFn,okMsg){
- dimCalcOverlayShow();
+ const root=dimFicheRoot(), cmp=dimCompactOn(root); if(!cmp) dimCalcOverlayShow();
+ const t0=Date.now();
  setTimeout(async ()=>{
   let ok=true, docs=null;
   try{
@@ -6567,8 +6611,10 @@ function dimRunCalcul(dp,computeFn,creerDocsFn,renderFn,okMsg){
    if(creerDocsFn) docs=await creerDocsFn();
   }catch(err){ console.error(err); ok=false; try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } }
   try{persist();}catch(_){ }
+  if(cmp){ const w=450-(Date.now()-t0); if(w>0) await new Promise(r=>setTimeout(r,w)); }
   dimCalcOverlayHide();
   try{ renderFn&&renderFn(); }catch(err){ console.error(err); }
+  if(cmp) dimCompactOff(dimFicheRoot()||root,cmp);
   if(ok){
    try{clipToast(okMsg||'✓ Ouvrage calculé.');}catch(_){ }
    if(docs) dimProposerDocs(docs.docNote,docs.docPlan);
@@ -20261,6 +20307,22 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .gtT input,.gtT select{width:100%;min-width:64px;min-height:36px;font:inherit;font-size:16px;box-sizing:border-box}
 .gtT .gtDel{min-width:44px;min-height:44px;border:0;background:none;color:var(--ds-ink-soft);cursor:pointer;font-size:16px}
 .gtAdd{min-height:44px;margin:4px 0 8px}
+.dimCompact .pcDraw,.dimCompact .pcPanel,.dimCompact .pcFormHint,.dimCompact .pcFormNav{display:none!important}
+.dimMini{display:flex;gap:14px;align-items:flex-start;margin:8px 0;padding:10px 12px;border:1px dashed var(--ds-accent);border-radius:12px;animation:dimFadeIn .2s ease-out}
+.dimMiniFig{flex:0 0 150px;width:150px}
+.dimMiniFig svg{display:block;width:100%;height:auto;max-height:110px}
+.dimMiniTx{min-width:0;display:flex;flex-direction:column;gap:3px;font-size:var(--ds-fs-label,15px);color:var(--ds-ink)}
+.dimMiniTx span{color:var(--ds-ink-soft);overflow-wrap:anywhere}
+.dimMiniBusy{display:flex;align-items:center;gap:8px;margin-top:4px;font-weight:600;color:var(--ds-ink)!important}
+.dimCalcSpinSm{display:inline-block;width:14px;height:14px;border-width:2px;margin-right:8px;vertical-align:-2px}
+.dimCSum{display:flex;flex-direction:column;gap:6px;margin:6px 0 12px;animation:dimFadeIn .2s ease-out}
+.dimCSec{display:flex;gap:10px;align-items:baseline;min-height:30px;padding:6px 10px;border-bottom:1px solid var(--ds-line);font-size:var(--ds-fs-label,15px)}
+.dimCSec b{flex:0 0 auto;max-width:42%;font-weight:600}
+.dimCSec span{min-width:0;color:var(--ds-ink-soft);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dimExpand .pcFormSticky,.dimExpand .pcPanel{animation:dimFadeIn .22s ease-out}
+@keyframes dimFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.dimMini,.dimCSum,.dimExpand .pcFormSticky,.dimExpand .pcPanel{animation:none}}
+@media (max-width:600px){.dimMiniFig{flex-basis:104px;width:104px}.dimMini{gap:10px}.dimCSec{flex-direction:column;gap:2px}.dimCSec b{max-width:none}}
 .ppSeg{display:flex;gap:6px;margin:6px 0 2px}.ppSeg button{flex:1;min-height:44px}.ppSeg button.on{border-color:var(--ds-accent);font-weight:600}
 .pcNC h3{margin:4px 0 10px;font:700 17px system-ui,sans-serif}
 .pcNC h4{margin:16px 0 6px;font:700 13px system-ui,sans-serif;border-bottom:1px solid var(--line);padding-bottom:4px}
