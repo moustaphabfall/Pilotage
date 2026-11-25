@@ -29280,6 +29280,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Dalle deux sens',k:'kMySup',lbl:'M_y d\'appui = … × M_y de travée',t:'num',def:0.5,min:0.2,max:1,step:0.05,unit:'',only:'dl',cond:dp=>dp.sens==='deux'&&dlAlpha(dp)>=0.5&&dp.contY!=='simple',aide:'M_y,appui = coefficient × M_y (travée simplement appuyée), 0,5 comme la forfaitaire en x (hypothèse, à confirmer)..'},
    {grp:'Poinçonnement',k:'coefVRdmax',lbl:'Coefficient de v_Rd,max',t:'num',def:0.5,min:0.4,max:0.5,step:0.01,unit:'',only:'dl',cond:dp=>!!dp.poincon,aide:'v_Rd,max = coefficient·ν·f_cd, 0,5 (EN 6.4.5(3)). À confirmer.'},
    {grp:'Poinçonnement',k:'betaAngle',lbl:'β poteau d\'angle (simplifié)',t:'num',def:1.5,min:1,max:2.5,step:0.01,unit:'',only:'dl',cond:dp=>!!dp.poincon,aide:'1,5 sous les mêmes conditions.'},
+   {grp:'Poinçonnement',k:'aswCalc',lbl:'Armatures de poinçonnement',t:'sel',def:'oui',opts:[['oui','Calculées si v_Ed > v_Rd,c (défaut)'],['non','Non calculées : signalées « non vérifié »']],only:'dl',cond:dp=>!!dp.poincon,aide:'Choix de l\'ingénieur : dimensionner et dessiner les cadres verticaux, ou ne pas les intégrer.'},
+   {grp:'Poinçonnement',k:'aswSr',lbl:'Pas radial s_r des armatures (× d)',t:'num',def:0.75,min:0.3,max:0.75,step:0.05,unit:'× d',only:'dl',cond:dp=>!!dp.poincon&&dp.aswCalc!=='non',aide:'s_r ≤ 0,75·d ; à confirmer.'},
+   {grp:'Poinçonnement',k:'aswSt',lbl:'Pas tangentiel s_t (× d)',t:'num',def:1.5,min:0.5,max:2,step:0.1,unit:'× d',only:'dl',cond:dp=>!!dp.poincon&&dp.aswCalc!=='non',aide:'1,5·d dans le contour de 2·d, 2·d au-delà ; 1,5 retenu partout (à confirmer).'},
+   {grp:'Poinçonnement',k:'aswA1',lbl:'Premier cours à … × d du nu',t:'num',def:0.5,min:0.3,max:0.5,step:0.05,unit:'× d',only:'dl',cond:dp=>!!dp.poincon&&dp.aswCalc!=='non',aide:'Premier cours entre 0,3·d et 0,5·d du nu du poteau (à confirmer).'},
+   {grp:'Poinçonnement',k:'aswMin',lbl:'Vérifier la section minimale A_sw,min',t:'sel',def:'oui',opts:[['oui','Oui (défaut)'],['non','Non']],only:'dl',cond:dp=>!!dp.poincon&&dp.aswCalc!=='non',aide:'A_sw,min·(1,5·sinα + cosα)/(s_r·s_t) ≥ 0,08·√f_ck/f_yk (à confirmer).'},
+   {grp:'Poinçonnement',k:'aswPhi',lbl:'Diamètre imposé des cadres de poinçonnement',t:'sel',def:'auto',opts:[['auto','Automatique'],['8','8'],['10','10'],['12','12'],['14','14'],['16','16'],['20','20']],only:'dl',cond:dp=>!!dp.poincon&&dp.aswCalc!=='non',aide:'Automatique : plus petit diamètre courant qui convient.'},
+   {grp:'Poinçonnement',k:'aswCoefVc',lbl:'Coefficient de v_Rd,c dans A_sw (0,75)',t:'num',def:0.75,min:0.5,max:1,step:0.05,unit:'',only:'dl',cond:dp=>!!dp.poincon,aide:'A_sw/s_r ≥ (v_Ed − 0,75·v_Rd,c)·u1/(1,5·f_ywd,ef) ; à confirmer.'},
+   {grp:'Poinçonnement',k:'aswKmax',lbl:'Plafond k_max de v_Ed / v_Rd,c avec armatures',t:'num',def:1.5,min:1,max:2.5,step:0.1,unit:'',only:'dl',cond:dp=>!!dp.poincon,aide:'v_Ed(u1) ≤ k_max·v_Rd,c quand des armatures de poinçonnement sont requises ; 1,5 par défaut, à confirmer.'},
+   {grp:'Poinçonnement',k:'aswFywd',lbl:'f_ywd,ef saisi (remplace le calcul)',t:'num',def:null,min:150,max:435,step:5,unit:'MPa',ph:'calculé',only:'dl',cond:dp=>!!dp.poincon,aide:'Vide : min(250 + 0,25·d ; f_yd).'},
    {grp:'Poinçonnement',k:'rhoLmax',lbl:'Plafond de ρl',t:'num',def:0.02,scale:100,min:0.5,max:4,step:0.1,unit:'%',only:'dl',cond:dp=>!!dp.poincon,aide:'ρl = min(√(ρlx·ρly) ; 0,02) (EC2).'},
    {grp:'ELS',k:'KFleche',lbl:'K de la flèche l/d',t:'num',def:null,defFn:dp=>((+dp.nTravees||1)<=1?1.0:(dp.position==='rive'?1.3:1.5)),min:0.4,max:1.6,step:0.1,unit:'',only:'dl',aide:'Coefficient de système structural du tableau (1,0 appuis simples, 1,3 travée de rive, 1,5 intermédiaire).'},
    {grp:'ELS',k:'rhoFleche',lbl:'ρ de la flèche l/d',t:'sel',def:'pose',opts:[['pose','Acier posé'],['requis','Acier requis']],only:'dl',aide:'Le module prend l\'acier posé par défaut.'},
@@ -29641,7 +29650,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function dlPoinconAswTxt(pc){
    if(!pc.asw) return '';
    const a=pc.asw, n=(x,k)=>(+x).toFixed(k==null?2:k).replace('.',',');
-   return 'armatures de poinçonnement requises (v_Ed(u1) > v_Rd,c) : A_sw/s_r ≥ '+n(a.AswSr_mm2_par_mm,2)+' mm²/mm (α = 90°, f_ywd,ef = '+n(a.fywdef,0)+' MPa), soit A_sw ≥ '+n(a.Asw_cours_mm2,0)+' mm² par cours pour s_r = 0,75·d = '+n(a.sr_mm,0)+' mm ; zone armée jusqu\'à u_out,ef = '+n(a.uOut_mm/10,1)+' cm (environ '+n(a.aOut_mm/10,1)+' cm du nu du poteau, dernier cours à 1,5·d au plus à l\'intérieur) ; espacement tangentiel, A_sw,min et dessin non traités';
+   return 'armatures de poinçonnement requises (v_Ed(u1) > v_Rd,c) : A_sw/s_r ≥ '+n(a.AswSr_mm2_par_mm,2)+' mm²/mm (α = 90°, f_ywd,ef = '+n(a.fywdef,0)+' MPa), soit A_sw ≥ '+n(a.Asw_cours_mm2,0)+' mm² par cours pour s_r = 0,75·d = '+n(a.sr_mm,0)+' mm ; zone armée jusqu\'à u_out,ef = '+n(a.uOut_mm/10,1)+' cm (environ '+n(a.aOut_mm/10,1)+' cm du nu du poteau, dernier cours à 1,5·d au plus à l\'intérieur)'+(a.off?' ; calcul des armatures désactivé (paramètres avancés) : non vérifié':(a.design?' ; retenu : '+a.design.nC+' cours de cadres verticaux HA'+a.design.phi+', premier cours à '+n(a.design.a1/10,1)+' cm du nu, pas radial '+n(a.design.sr/10,1)+' cm, '+a.design.nLegs+' branches au total (pas tangentiel ≤ '+n(a.design.st/10,1)+' cm)'+(a.design.minOn?', A_sw,min vérifiée':', A_sw,min non appliquée')+(a.design.insuff?' ; DIAMÈTRE INSUFFISANT : section par branche requise '+n(a.design.reqLeg,0)+' mm²':''):''));
   }
   function dlPoinconNoteHtml(pc){
    const f=(x,k)=>(+x).toFixed(k==null?2:k).replace('.',',');
@@ -29686,9 +29695,20 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       contour au-delà duquel elles ne sont plus exigées : u_out,ef = β·V_Ed/(v_Rd,c·d), distance a_out du nu du poteau déduite de la forme du contour (même réduction par le bord libre que u1) */
    let asw=null;
    if(vEd1>vRdc&&VEd_N>0){
-    const fywdef=Math.min(250+0.25*d_mm,fyk/1.15), AswSr=(vEd1-0.75*vRdc)*u1_mm/(1.5*fywdef), srMax=0.75*d_mm;
-    const uOut=beta*VEd_N/(vRdc*d_mm), aOut=(uOut-G.uOf(0))/(G.uOf(1)-G.uOf(0)); // u(a) est affine en a : u(0) + a·(u(1) − u(0))
-    asw={fywdef,AswSr_mm2_par_mm:AswSr,sr_mm:srMax,Asw_cours_mm2:AswSr*srMax,uOut_mm:uOut,aOut_mm:aOut,aOutEstSup:aOut>2*d_mm};
+    const num=(k,dflt)=>elsSaisi(dp,k)?+dp[k]:dflt, srC=num('aswSr',0.75), stC=num('aswSt',1.5), a1C=num('aswA1',0.5), cVc=num('aswCoefVc',0.75);
+    const fywdef=elsSaisi(dp,'aswFywd')?+dp.aswFywd:Math.min(250+0.25*d_mm,fyk/1.15), AswSr=Math.max(0,(vEd1-cVc*vRdc))*u1_mm/(1.5*fywdef), srMax=srC*d_mm;
+    const uOut=beta*VEd_N/(vRdc*d_mm), aOut=(uOut-G.uOf(0))/(G.uOf(1)-G.uOf(0)); /* u(a) est affine en a : u(0) + a·(u(1) − u(0)) */
+    asw={fywdef,AswSr_mm2_par_mm:AswSr,sr_mm:srMax,Asw_cours_mm2:AswSr*srMax,uOut_mm:uOut,aOut_mm:aOut,aOutEstSup:aOut>2*d_mm,coefVc:cVc,kmax:num('aswKmax',1.5)};
+    if(dp.aswCalc==='non'){ asw.off=true; }
+    else {
+     /* cours de cadres verticaux : premier cours à a1·d du nu, pas radial s_r, dernier cours à au plus 1,5·d à l'intérieur de u_out,ef ; nombre de branches par cours : pas tangentiel ≤ s_t·d ; Ø commun choisi pour tous les cours */
+     const a1=a1C*d_mm, st=stC*d_mm, aLast=Math.max(a1,aOut-1.5*d_mm), nC=Math.max(2,Math.ceil((aLast-a1)/srMax-1e-9)+1), fck_=res.fck, minOn=dp.aswMin!=='non', rhoMin=0.08*Math.sqrt(fck_)/fyk;
+     const courses=[]; for(let i=0;i<nC;i++){ const a=a1+i*srMax, u=G.uOf(a), n=Math.max(4,Math.ceil(u/st-1e-9)); courses.push({a,u,n,st:u/n}); }
+     const AswCours=AswSr*srMax; let reqLeg=0; courses.forEach(c=>{ const need=Math.max(AswCours/c.n,minOn?rhoMin*srMax*c.st/1.5:0); c.need=need; reqLeg=Math.max(reqLeg,need); });
+     const PH=[8,10,12,14,16,20,25], imp=dp.aswPhi&&dp.aswPhi!=='auto'?+dp.aswPhi:null; let phi=imp||PH.find(q=>Math.PI/4*q*q>=reqLeg-1e-9); const insuff=!phi||(imp&&Math.PI/4*imp*imp<reqLeg-1e-9); if(!phi) phi=PH[PH.length-1];
+     const Aleg=Math.PI/4*phi*phi, nLegs=courses.reduce((q,c)=>q+c.n,0), hLeg=Math.max(100,res.h_cm*10-2*res.enr*10);
+     asw.design={a1,st,sr:srMax,nC,courses,phi,Aleg,nLegs,hLeg,reqLeg,rhoMin,minOn,insuff,drawn:pos==='int'&&rect};
+    }
    }
    /* β : 1,15 poteau intérieur (1,4 rive, 1,5 angle) valable seulement si structure contreventée (stabilité latérale indépendante du portique dalle-poteaux)
       ET portées voisines telles que 0,8 ≤ l_i/l_(i+1) ≤ 1,25 ; sinon formule détaillée */
@@ -30024,7 +30044,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    else if(res.poincon){ const pc=res.poincon; V.push({zone:'Poteau',nom:'Poinçonnement — u0',formule:'v_Ed(u0) ≤ v_Rd,max',calcul:'v_Ed = '+f2(pc.vEd0)+' MPa',limite:'v_Rd,max = '+f2(pc.vRdmax)+' MPa',etat:pc.ok_max?'ok':'ko'});
     V.push({zone:'Poteau',nom:'Poinçonnement — u1 (2d)',formule:'v_Ed(u1) ≤ v_Rd,c ('+dlPoinconTypeTxt(pc).replace(/ \(.*$/,'')+', β = '+f2(pc.beta)+')',calcul:'v_Ed = '+f2(pc.vEd1)+' MPa ; u1 = '+f2(pc.u1_mm/1000)+' m',limite:'v_Rd,c = '+f2(pc.vRdc)+' MPa',etat:pc.ok_c?'ok':(pc.asw?'cad':'ko')});
     if(pc.asw) V.push({zone:'Poteau',nom:'Poinçonnement — armatures',formule:'A_sw/s_r ≥ (v_Ed − 0,75·v_Rd,c)·u1/(1,5·f_ywd,ef) ; u_out,ef = β·V_Ed/(v_Rd,c·d)',calcul:'A_sw/s_r ≥ '+f2(pc.asw.AswSr_mm2_par_mm)+' mm²/mm ; A_sw ≥ '+f2(pc.asw.Asw_cours_mm2,0)+' mm² par cours (s_r = 0,75 d) ; u_out,ef = '+f2(pc.asw.uOut_mm/1000)+' m',limite:'dernier cours à ≤ 1,5·d de u_out,ef ; s_r ≤ 0,75·d',etat:'cad'});
-    V.push({zone:'Poteau',nom:'Poinçonnement — hypothèses',formule:'β '+(pc.betaDetail?'détaillé (6.44/6.46)':'forfaitaire (1,15 intérieur, 1,4 rive, 1,5 angle ; structure contreventée, portées voisines 0,8 à 1,25)'),calcul:'moment transmis '+(pc.betaDetail?'pris par e_par':'non pris en compte')+' ; ρl uniforme par mètre ; armatures de poinçonnement non dessinées',limite:'—',etat:'nf'}); }
+    if(pc.asw) V.push({zone:'Poteau',nom:'Poinçonnement — plafond avec armatures',formule:'v_Ed(u1) ≤ k_max·v_Rd,c, k_max = '+f2(pc.asw.kmax),calcul:'v_Ed = '+f2(pc.vEd1)+' MPa',limite:'k_max·v_Rd,c = '+f2(pc.asw.kmax*pc.vRdc)+' MPa',etat:pc.vEd1<=pc.asw.kmax*pc.vRdc+1e-9?'ok':'ko'});
+    if(pc.asw&&pc.asw.design) V.push({zone:'Poteau',nom:'Poinçonnement — armatures retenues',formule:'n branches par cours (pas tangentiel ≤ s_t·d), Ø commun : A_leg ≥ max(A_sw par cours/n ; A_sw,min)',calcul:pc.asw.design.nC+' cours × '+pc.asw.design.courses.map(c=>c.n).join(' + ')+' branches HA'+pc.asw.design.phi+' (A_leg = '+f2(pc.asw.design.Aleg,0)+' mm² ; requis '+f2(pc.asw.design.reqLeg,0)+' mm²)',limite:'A_leg ≥ requis',etat:pc.asw.design.insuff?'ko':'ok'});
+    else if(pc.asw&&pc.asw.off) V.push({zone:'Poteau',nom:'Poinçonnement — armatures retenues',formule:'Calcul des armatures désactivé',calcul:'v_Ed(u1) > v_Rd,c : armatures non dimensionnées',limite:'—',etat:'nf'});
+    V.push({zone:'Poteau',nom:'Poinçonnement — hypothèses',formule:'β '+(pc.betaDetail?'détaillé (6.44/6.46)':'forfaitaire (1,15 intérieur, 1,4 rive, 1,5 angle ; structure contreventée, portées voisines 0,8 à 1,25)'),calcul:'moment transmis '+(pc.betaDetail?'pris par e_par':'non pris en compte')+' ; ρl uniforme par mètre'+(pc.asw&&pc.asw.design&&!pc.asw.design.drawn?' ; dessin des armatures de poinçonnement de rive ou d\'angle non traité':''),limite:'—',etat:'nf'}); }
    if(res.fissuration&&res.fissuration.contraintes) res.fissuration.contraintes.zones.forEach(z=>V.push(fcContraintesLigne('Dalle — '+z.nom,z)));
    else V.push({zone:'Dalle',nom:'ELS contraintes',formule:'EC2',calcul:'non calculable (ferraillage non calculé)',limite:'—',etat:'nf'});
    [['Armatures de répartition (secondaires)','EC2 : ≥ 20 % de A_s principal (confirmé)'],['Charges localisées','Pigeaud / Westergaard']].forEach(a=>V.push({zone:'Dalle',nom:a[0],formule:a[1],calcul:'—',limite:'—',etat:'nf'}));
@@ -30178,11 +30201,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(chap.length){ const asSup=(elsSaisi(dp,'pctRepart')?+dp.pctRepart/100:0.2)*Math.max(...chap.map(q=>q.bar.As)); bRs=dlChooseBars(asSup,Math.min(3.5*hmm,450)); repRs=nr(); const zone=chap.reduce((s,q)=>s+(q.rive?q.xs:2*q.xs),0);
     nom.push({rep:repRs,designation:'Armatures de répartition supérieures (≥ 20 % des chapeaux — confirmé)',nb:Math.ceil(zone*1000/bRs.s)+chap.length,diam:bRs.phi,s:bRs.s,AsReel:bRs.As/100,AsReq:asSup/100,longueur:r2(Math.max(0.3,W-2*c/1000)),faconnage:'Droit',poids:0,zone:'sup'});
     verifs.push({zone:'Répartition supérieure (confirmé)',barres:'HA'+bRs.phi+' e='+bRs.s+' mm ('+repRs+')',reel:bRs.As/100,req:asSup/100}); }
-   nom.forEach(r=>{ r.poids=r2(r.nb*wkg(r.diam,r.longueur),1); }); const poidsTotal=r2(nom.reduce((s,r)=>s+r.poids,0),1);
+   let punch=null; { const pcA=res.poincon&&res.poincon.asw&&res.poincon.asw.design; if(pcA){ const rp=nr(); punch={rep:rp,d:pcA,pc:res.poincon}; nom.push({rep:rp,designation:'Armatures de poinçonnement — cadres verticaux ('+pcA.nC+' cours)',nb:pcA.nLegs,diam:pcA.phi,s:null,AsReel:null,AsReq:null,longueur:r2(pcA.hLeg/1000),faconnage:'Cadre ou épingle vertical ancré (crochets 135°) entre les nappes ; à confirmer',poids:0,zone:'poin'}); } }
+    nom.forEach(r=>{ r.poids=r2(r.nb*wkg(r.diam,r.longueur),1); }); const poidsTotal=r2(nom.reduce((s,r)=>s+r.poids,0),1);
    if(res.shear&&!res.shear.ok) warn.push('Effort tranchant : V_Ed0 = '+r2(res.shear.VEd0,1)+' kN/m > V_Rd,c = '+r2(res.shear.VRdc,1)+' kN/m — armatures d\'effort tranchant non couvertes, augmenter l\'épaisseur.');
    if(res.poincon&&res.poincon.nonGere) warn.push('Poinçonnement non calculé : '+res.poincon.message);
    else if(res.poincon&&!res.poincon.ok_max) warn.push('Poinçonnement : bielle de compression non vérifiée (v_Ed(u0) > v_Rd,max) — épaisseur, béton ou aire chargée à revoir.');
-   else if(res.poincon&&!res.poincon.ok_c) warn.push('Poinçonnement : armatures de poinçonnement requises, '+(res.poincon.asw?'A_sw/s_r ≥ '+res.poincon.asw.AswSr_mm2_par_mm.toFixed(2).replace('.',',')+' mm²/mm jusqu\'à u_out,ef = '+(res.poincon.asw.uOut_mm/10).toFixed(1).replace('.',',')+' cm':'à dimensionner')+' (voir la note de calcul) — non dessinées ici.');
+   else if(res.poincon&&!res.poincon.ok_c&&!(res.poincon.asw&&res.poincon.asw.design)) warn.push('Poinçonnement : armatures de poinçonnement requises, '+(res.poincon.asw?'A_sw/s_r ≥ '+res.poincon.asw.AswSr_mm2_par_mm.toFixed(2).replace('.',',')+' mm²/mm jusqu\'à u_out,ef = '+(res.poincon.asw.uOut_mm/10).toFixed(1).replace('.',',')+' cm':'à dimensionner')+' (voir la note de calcul) — '+(res.poincon.asw&&res.poincon.asw.off?'calcul des armatures désactivé : non vérifié.':'non dessinées ici.'));
+   if(res.poincon&&res.poincon.asw&&res.poincon.vEd1>res.poincon.asw.kmax*res.poincon.vRdc+1e-9) warn.push('Poinçonnement : v_Ed(u1) dépasse k_max·v_Rd,c avec armatures ('+res.poincon.vEd1.toFixed(2).replace('.',',')+' MPa > '+(res.poincon.asw.kmax*res.poincon.vRdc).toFixed(2).replace('.',',')+' MPa) — épaisseur, béton ou ferraillage supérieur à revoir ; les armatures dessinées ne suffisent pas.');
    hyp.push('Norme : Eurocode 2 (EN 1992-1-1), béton '+(dp.classeGlobale||'C25/30')+', acier fyk = '+res.fyk+' MPa, γc = 1,5, γs = 1,15, α_cc = 1,0 ; enrobage nominal c = '+r2(res.enr,1)+' cm (barres extérieures), entre-barres libres ≥ max(Ø ; 20 mm ; d_g + 5 mm).');
    hyp.push('Chapeaux : épure des moments (forfaitaire) décalée de a_l = d = '+r2(d,0)+' mm (EC2, dalle sans armatures d\'effort tranchant), puis prolongement de l_bd au-delà du point de moment nul décalé (au lieu du forfait l/4).');
    hyp.push('Ancrage des barres inférieures sur appui : force à ancrer F_E = V_Ed·a_l/z (a_l = d, z = 0,9d), σ_sd = F_E/A_s ( β2 = 0) ; toutes les barres inférieures sont prolongées jusqu\'aux appuis (pas de réduction à 50 %).');
@@ -30191,8 +30216,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      const tFl='flèche vérifiée par l/d ('+(res.fleche&&!res.fleche.nonCalculee?(res.fleche.ok?'dispense acquise':'dispense non acquise'):'non calculée')+') et par la courbure ('+(fc?E[fc.etat]+', f = '+r2(fc.f_mm,1)+' mm pour l/250 = '+r2(fc.l250,1)+' mm':'non calculée')+')';
      const tFi='fissuration '+(!fz.length?'non calculée':(fz.every(z=>z.dispense)?'DISPENSÉE ('+fz[0].motif+')':fz.map(z=>z.nom+' '+E[z.etat]).join(', ')));
      hyp.push('États ELS (détail dans la note de calcul) : '+tFl+' ; '+tFi+'. À confirmer par un ingénieur : appuis de dalle (EC2), charges localisées ; contraintes ELS vérifiées (EC2, voir la note).'); }
-   hyp.push('Non dessiné : treillis soudés, trémies et renforts, armatures de poinçonnement, recouvrements, cales d\'enrobage, détail aux appuis. Poids = Ø²/162,2 kg/m sur longueurs développées, chutes non comptées.');
-   return {lx:res.lx,L:Lm,W,sensDeux:res.sensDeux,hmm,c,d,aApp,b1,la1,L1,rep1,bR,repR,LR,bRs,repRs,chap,chapY,nomenclature:nom,poidsTotal,verifs,avertissements:[...new Set(warn)],hypotheses:hyp,
+   hyp.push('Non dessiné : treillis soudés, trémies et renforts, '+(punch&&punch.d.drawn?'':'armatures de poinçonnement, ')+'recouvrements, cales d\'enrobage, détail aux appuis. Poids = Ø²/162,2 kg/m sur longueurs développées, chutes non comptées.');
+   return {lx:res.lx,L:Lm,W,sensDeux:res.sensDeux,hmm,c,d,aApp,b1,la1,L1,rep1,bR,repR,LR,bRs,repRs,chap,chapY,punch,nomenclature:nom,poidsTotal,verifs,avertissements:[...new Set(warn)],hypotheses:hyp,
     parametres:{fck:res.fck,fyk:res.fyk,h:res.h_cm,enrobage:res.enr,appui:aApp/10,aL:r2(d,0),lx:res.lx,ly:W,sens:res.sensDeux?'deux':'un'}};
   }
   /* ---- scènes ---- */
@@ -30231,6 +30256,20 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    fplHD(S,x0,x0+wpx,y0+hpx+60,'lx = '+fplF(P.L)+' m',y0+hpx,y0+hpx); fplVD(S,x0+wpx+26,y0,y0+hpx,(P.sensDeux?'ly = '+fplF(P.W)+' m':'bande de 1 m'),x0+wpx,x0+wpx,-6);
    return S;
   }
+  /* vue en plan des cadres de poinçonnement (poteau intérieur rectangulaire) : contour du poteau, cours de cadres (tireté) et branches (points) */
+  function dlScenePunch(P){
+   const q=P.punch, d=q.d, c1=q.pc.c1_mm, c2=q.pc.c2_mm, aMax=d.courses[d.courses.length-1].a, W0=c1+2*aMax, H0=c2+2*aMax, s=Math.min(360/W0,240/H0), OX=70, OY=36, S=fplNewScene(OX+W0*s+170,OY+H0*s+86);
+   const cx=OX+W0*s/2, cy=OY+H0*s/2;
+   fplR(S,cx-c1*s/2,cy-c2*s/2,c1*s,c2*s,'bet');
+   d.courses.forEach((c,i)=>{ const w=c1+2*c.a, h=c2+2*c.a; fplR(S,cx-w*s/2,cy-h*s/2,w*s,h*s,'cad'); const P2=2*(w+h);
+    for(let k=0;k<c.n;k++){ let t=(k+0.5)*P2/c.n, x,y; if(t<w){ x=-w/2+t; y=-h/2; } else if(t<w+h){ x=w/2; y=-h/2+(t-w); } else if(t<2*w+h){ x=w/2-(t-w-h); y=h/2; } else { x=-w/2; y=h/2-(t-2*w-h); } fplC(S,cx+x*s,cy+y*s,Math.max(2.2,d.phi*s/2),'dot'); } });
+   fplL(S,cx+(c1/2+d.courses[0].a)*s,cy-(c2/2+d.courses[0].a)*s,OX+W0*s+22,OY-12,'lead'); fplBub(S,OX+W0*s+30,OY-18,q.rep,9); fplT(S,OX+W0*s+46,OY-14,d.nLegs+' HA'+d.phi+' ('+d.nC+' cours)','ts','start');
+   fplHD(S,cx-c1*s/2,cx+c1*s/2,OY+H0*s+30,'c1 = '+fplF(c1/10,1)+' cm',cy+c2*s/2,cy+c2*s/2);
+   fplHD(S,cx-c1*s/2-d.courses[0].a*s,cx-c1*s/2,OY-14,'a1 = '+fplF(d.courses[0].a/10,1)+' cm',OY,OY);
+   fplVD(S,OX-26,cy-c2*s/2,cy+c2*s/2,'c2 = '+fplF(c2/10,1)+' cm',cx-c1*s/2,cx-c1*s/2,-6);
+   fplT(S,OX,OY+H0*s+66,'pas radial s_r = '+fplF(d.sr/10,1)+' cm · pas tangentiel ≤ '+fplF(d.st/10,1)+' cm','ts','start',0,false);
+   return S;
+  }
   function dlSceneSection(P,support){
    const k=0.5, Wm=Math.min(1000,P.W*1000), S=fplNewScene(Wm*k+140,P.hmm*k+110), x0=60, y0=34, yB=y0+P.hmm*k, ck=P.c*k;
    fplR(S,x0,y0,Wm*k,P.hmm*k,'bet');
@@ -30249,7 +30288,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    DL_LEG.forEach((r,i)=>{ const y=i*30+14; if(r[0]==='dot') fplC(S,40,y,4,'dot'); else if(r[0]==='bub') fplBub(S,40,y,'1',9); else if(r[0]==='cote'){ fplL(S,6,y,76,y,'cote'); fplL(S,2,y+4,10,y-4,'cote'); fplL(S,72,y+4,80,y-4,'cote'); } else fplL(S,6,y,76,y,r[0]); fplT(S,92,y+4,r[1],'t','start',0,false); });
    return S; }
   function dlShapeScenes(P){
-   return P.nomenclature.map(r=>{ const S=fplNewScene(250,100), ch=P.chap.find(q=>q.rep===r.rep), hook=ch&&ch.rive; const y=hook?30:40, pts=[]; if(hook) pts.push([20,y+34]); pts.push([20,y],[230,y]); fplP(S,pts,'bar');
+   return P.nomenclature.filter(r=>r.zone!=='poin').map(r=>{ const S=fplNewScene(250,100), ch=P.chap.find(q=>q.rep===r.rep), hook=ch&&ch.rive; const y=hook?30:40, pts=[]; if(hook) pts.push([20,y+34]); pts.push([20,y],[230,y]); fplP(S,pts,'bar');
     fplHD(S,20,230,y+(hook?58:30),'développée '+fplF(r.longueur)+' m',y,y); if(hook) fplT(S,28,y+22,'retour 90° ('+fplF(ch.hook,0)+' mm)','ts','start');
     return {rep:r.rep,scene:S,txt:r.nb+' HA'+r.diam+' e='+r.s+' mm — '+r.faconnage}; });
   }
@@ -30271,7 +30310,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +(P.chap.length?'<div>'+dr(dlSceneSection(P,true),'Coupe transversale B-B sur appui','Coupe B-B sur appui : chapeaux (repère '+P.chap[0].rep+') et nappe inférieure')+'</div>':'')+'</div>';
    const nom=P.nomenclature;
    const nomHtml='<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb × Ø</th><th>A<sub>s</sub> réel / requis (cm²/m)</th><th>Long. unit. (m)</th><th>Façonnage</th><th>Poids (kg)</th></tr>'
-    +nom.map(r=>'<tr><td>'+esc(r.rep)+'</td><td>'+esc(r.designation)+'</td><td style="white-space:nowrap">'+r.nb+' × HA'+r.diam+' e='+r.s+'</td><td style="white-space:nowrap">'+fplF(r.AsReel)+(r.AsReq?' / '+fplF(r.AsReq):'')+'</td><td>'+fplF(r.longueur)+'</td><td>'+esc(r.faconnage)+'</td><td>'+fplF(r.poids,1)+'</td></tr>').join('')
+    +nom.map(r=>'<tr><td>'+esc(r.rep)+'</td><td>'+esc(r.designation)+'</td><td style="white-space:nowrap">'+r.nb+' × HA'+r.diam+(r.s?' e='+r.s:'')+'</td><td style="white-space:nowrap">'+(r.AsReel!=null?fplF(r.AsReel)+(r.AsReq?' / '+fplF(r.AsReq):''):'—')+'</td><td>'+fplF(r.longueur)+'</td><td>'+esc(r.faconnage)+'</td><td>'+fplF(r.poids,1)+'</td></tr>').join('')
     +'<tr><td colspan="6" style="text-align:right"><b>Total</b></td><td><b>'+fplF(P.poidsTotal,1)+' kg</b></td></tr></table>'
     +'<p class="pcSchemaCap">Enrobage '+fplF(par.enrobage,1)+' cm · a<sub>l</sub> = d = '+par.aL+' mm · l<sub>bd</sub> inférieur '+fplF(P.la1,0)+' mm · '+(P.sensDeux?'panneau '+fplF(P.L)+' × '+fplF(P.W)+' m':'bande de 1 m de largeur')+'.</p>';
    const shapes='<div class="fplShapes">'+dlShapeScenes(P).map(q=>'<div class="fplShape">'+fplSceneSvg(q.scene,{label:'Façonnage repère '+q.rep})+'<p class="pcSchemaCap"><b>'+esc(q.rep)+'</b> — '+esc(q.txt)+'</p></div>').join('')+'</div>';
@@ -30283,6 +30322,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<section class="ncSec"><h4>Coupe longitudinale</h4>'+dr(dlSceneLong(P),'Coupe longitudinale du ferraillage','Coupe longitudinale (sens lx) · épaisseur non à l\'échelle · chapeaux décalés de a_l = d puis ancrés de l_bd')+'</section>'
     +'<section class="ncSec"><h4>Vue en plan</h4>'+dr(dlScenePlan(P),'Vue en plan du ferraillage','Vue en plan (nappes inférieure en trait fin, chapeaux en trait fort jaune'+(P.sensDeux?'':' ; bande de 1 m')+') · trait de coupe A-A')+'</section>'
     +'<section class="ncSec"><h4>Coupes transversales</h4>'+secs+'</section>'
+    +(P.punch&&P.punch.d.drawn?'<section class="ncSec"><h4>Armatures de poinçonnement</h4>'+dr(dlScenePunch(P),'Vue en plan des armatures de poinçonnement','Vue en plan autour du poteau : cours de cadres verticaux (repère '+P.punch.rep+'), branches en points ; cotes en centimètres')+'</section>':'')
     +'<section class="ncSec"><h4>Nomenclature des aciers</h4>'+nomHtml+'</section>'
     +'<section class="ncSec"><h4>Schémas de façonnage</h4>'+shapes+'</section>'
     +'<section class="ncSec"><h4>Vérification des sections par zone</h4>'+ver+'</section>'
@@ -30312,6 +30352,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(V===0) page();
    { const B=dlSceneSection(P,false), C=P.chap.length?dlSceneSection(P,true):null, w2=(PW-2*M)*0.46, kB=sc(B,w2,PH*0.30); need(Math.max(B.h,C?C.h:0)*kB+14); const y0=y; fplPdfScene(doc,B,M,y0,kB); if(C) fplPdfScene(doc,C,M+w2+10,y0,kB); y=y0+B.h*kB+3;
      doc.setFontSize(8); doc.setTextColor(110); doc.text('Coupes transversales A-A (mi-travee)'+(C?' et B-B (appui)':'')+' a l\'echelle reelle',M,y+2); doc.setTextColor(0); y+=8; }
+   if(P.punch&&P.punch.d.drawn){ const S=dlScenePunch(P), k=sc(S,(PW-2*M)*0.5,PH*0.34); need(S.h*k+16); const y0=y; fplPdfScene(doc,S,M,y0,k); y=y0+S.h*k+3; doc.setFontSize(8); doc.setTextColor(110); doc.text('Armatures de poinconnement - vue en plan autour du poteau - cotes en cm',M,y+2); doc.setTextColor(0); y+=8; }
    if(V===1) page(); const NP0=SEG();
    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Nomenclature des aciers',M,y); y+=2;
    const HW=PW/2-M-4, AT={styles:{fontSize:8.5,cellPadding:1.6,lineColor:[242,169,0],lineWidth:0.2},headStyles:{fillColor:[255,255,255],textColor:[0,0,0],lineColor:[242,169,0],lineWidth:0.3},margin:{left:M,right:PW/2+4},tableWidth:HW};
@@ -30321,12 +30362,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     yL=doc.lastAutoTable.finalY+5;
     doc.autoTable(Object.assign({startY:yL,head:[['Zone','Barres','As reel (cm2/m)','As requis (cm2/m)','Rapport','Etat']],body:P.verifs.map(r=>[FPL_PDFSYM(r.zone),FPL_PDFSYM(r.barres),fplF(r.reel),fplF(r.req),r.req>0?'x'+fplF(r.reel/r.req):'-',r.reel+1e-6>=r.req?'Conforme':'Non conforme'])},AT));
     yL=doc.lastAutoTable.finalY+6; }
-   { const shapes=dlShapeScenes(P), ncol=3, kk=Math.min(0.26,(HW/ncol-2)/250), sx0=PW/2+4; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0); doc.text('Schemas de faconnage',sx0,y); let yR=y+4;
+   let yRend=0; { const shapes=dlShapeScenes(P), ncol=3, kk=Math.min(0.26,(HW/ncol-2)/250), sx0=PW/2+4; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0); doc.text('Schemas de faconnage',sx0,y); let yR=y+4;
     shapes.forEach((q,i)=>{ const col=i%ncol, row=Math.floor(i/ncol); const gx=sx0+col*(250*kk+2), gy=yR+row*(100*kk+7); fplPdfScene(doc,q.scene,gx,gy,kk); doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(60); doc.text(FPL_PDFSYM(q.rep+' - '+q.txt),gx,gy+100*kk+3,{maxWidth:250*kk}); doc.setTextColor(0); });
-    }
+    yRend=yR+Math.ceil(shapes.length/ncol)*(100*kk+7); }
+   const NPs=doc.getNumberOfPages();
    if(V>0&&(doc.getNumberOfPages()!==NP0||doc.__over)&&opts) opts.bad=true; doc.__lim=null; y=yL; if(y>PH-M-46) page(); doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Notes generales',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
    DL_NOTES.forEach((x,i)=>{ const L=doc.splitTextToSize((i+1)+'. '+FPL_PDFSYM(x),HW-4); if(y+L.length*3.8>PH-M-18){ page(); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); } doc.text(L,M,y); y+=L.length*3.8+1; });
-   y+=3; if(y>PH-M-40) page(); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Points a confirmer',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+   y+=3; if(doc.getNumberOfPages()===NPs&&y<yRend+3) y=yRend+3; if(y>PH-M-40) page(); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Points a confirmer',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
    P.avertissements.map(a=>({bad:true,t:a})).concat(P.hypotheses.map(a=>({bad:false,t:a}))).forEach(a=>{ const L=doc.splitTextToSize((a.bad?'Bloquant : ':'A confirmer : ')+FPL_PDFSYM(a.t),PW-2*M-6); if(y+L.length*3.8>PH-M-18){ page(); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); } doc.setDrawColor(...(a.bad?[180,40,30]:[242,169,0])); doc.setLineWidth(0.8); doc.line(M-1,y-3,M-1,y+L.length*3.8-3); doc.setTextColor(0); doc.text(L,M+1,y); y+=L.length*3.8+1.5; });
    doc.setPage(doc.getNumberOfPages());
    doc.setDrawColor(242,169,0); doc.setLineWidth(0.6); const aw=PW-2*M; const WL=doc.splitTextToSize(FPL_PDFSYM('Avertissement. Plan genere automatiquement a partir des sections d\'acier calculees et des dispositions constructives courantes (Eurocode 2). A recouper par un ingenieur structure avant execution ; ne remplace pas une etude signee par un bureau d\'etudes qualifie.'),aw-8); const ah=WL.length*4+6, ay=PH-M-ah; doc.roundedRect(M,ay,aw,ah,2,2,'S'); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.text(WL,M+4,ay+5); doc.setTextColor(0);
