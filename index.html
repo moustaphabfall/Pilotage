@@ -29685,15 +29685,18 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function smData(t){ if(!t.dimSM) t.dimSM=smDefaultData(t); if(!t.dimSM.solMode) t.dimSM.solMode='els'; return t.dimSM; }
   /* ===== Paramètres avancés de la semelle (règle permanente : tout coefficient incertain, approché ou de choix d'ingénieur est saisissable ; aucun γ ni formule normative n'est modifiable) ===== */
-  const SM_GRP=['Sol et excentricité','Charges complémentaires','Géométrie','Flexion','Enrobage','Effort tranchant et poinçonnement','Ancrage','Dispositions constructives'];
+  const smNfMode=dp=>dp.solMode==='nf';
+  const SM_GRP=['Portance (NF P 94-261)','Sol et excentricité','Charges complémentaires','Géométrie','Flexion','Enrobage','Effort tranchant et poinçonnement','Ancrage','Dispositions constructives'];
   const smQuMode=dp=>dp.solMode==='qu';
   const SM_SPEC=[
+   {grp:'Portance (NF P 94-261)',k:'De_m',lbl:'Encastrement équivalent De',t:'num',def:0,min:0,max:10,step:0.1,unit:'m',cond:dp=>smNfMode(dp)&&(dp.nfMeth==='pressio'||dp.nfMeth==='penetro'||!dp.nfMeth),aide:'0 par défaut (aucun gain d\'encastrement) ; à calculer par l\'ingénieur à partir du profil de sol au-dessus de la base ; k est limité à De/B = 2.'},
+   {grp:'Portance (NF P 94-261)',k:'psi2',lbl:'ψ2 pour l\'ELS quasi-permanent',t:'num',def:null,ph:'à fournir',min:0,max:1,step:0.05,unit:'',cond:smNfMode,aide:'Vide : ELS quasi-permanent non vérifié. N_QP = G + ψ2·Q avec la même excentricité que M_ser ; valeur à fournir par l\'ingénieur (0 à 1).'},
    {grp:'Sol et excentricité',k:'gammaU',lbl:'Coefficient ELU de la résistance ultime qu',t:'num',def:2,min:1,max:5,step:0.1,unit:'',cond:smQuMode,aide:'q_ELU = qu/2 : valeur du classeur « Calcul capacité portante méthode pénétrométrique » (coefficient partiel ELU). Source EN 1997-1 / NF P94-261 / Fascicule 62 non fournie : à confirmer.'},
    {grp:'Sol et excentricité',k:'gammaS',lbl:'Coefficient ELS de la résistance ultime qu',t:'num',def:3,min:1,max:6,step:0.1,unit:'',cond:smQuMode,aide:'q_ELS = qu/3 : valeur du même classeur (coefficient partiel ELS). Source normative non fournie : à confirmer.'},
-   {grp:'Sol et excentricité',k:'refCharge',lbl:'Charge comparée à l\'admissible',t:'sel',def:'els',opts:[['els','ELS (N_ser) — usage BAEL'],['elu','ELU (N_u) — ancien comportement du module']],cond:dp=>!smQuMode(dp),aide:'Un admissible ELS se compare à N_ser (défaut). Le classeur « isolée+filante » comparait N_u à q.sol : choisir « ELU » pour retrouver ce comportement (plus sécuritaire, ×1,4 environ).'},
-   {grp:'Sol et excentricité',k:'coefExc',lbl:'Majoration admise de la contrainte maximale',t:'num',def:1.33,min:1,max:2,step:0.01,unit:'',aide:'σ_max ≤ 1,33·q avec excentricité (usage DTU 13.12 / BAEL) ; norme non fournie : à confirmer.'},
-   {grp:'Sol et excentricité',k:'pctCompMin',lbl:'Surface comprimée minimale',t:'num',def:100,min:10,max:100,step:5,unit:'%',aide:'100 % = e ≤ L/6 (section entièrement comprimée). Un critère moins sévère (ex. 75 % ou 10 %) dépend de la norme : à confirmer.'},
-   {grp:'Sol et excentricité',k:'eluDiag',lbl:'Diagramme de pression à l\'ELU',t:'sel',def:'trap',opts:[['trap','Trapèze ou triangle (défaut)'],['rect','Rectangle P/(L − 2e) (guide)']],cond:dp=>dp.sens!=='filante'&&!!dp.excentrique,aide:'Guide EC2 ch.6 p.46 : à l\'ELU la pression est rectangulaire sur la largeur réduite L − 2e (comparée à q_ELU sans majoration 1,33) ; défaut trapézoïdal plus sécuritaire ; à confirmer.'},
+   {grp:'Sol et excentricité',k:'refCharge',lbl:'Charge comparée à l\'admissible',t:'sel',def:'els',opts:[['els','ELS (N_ser) — usage BAEL'],['elu','ELU (N_u) — ancien comportement du module']],cond:dp=>!smQuMode(dp)&&!smNfMode(dp),aide:'Un admissible ELS se compare à N_ser (défaut). Le classeur « isolée+filante » comparait N_u à q.sol : choisir « ELU » pour retrouver ce comportement (plus sécuritaire, ×1,4 environ).'},
+   {grp:'Sol et excentricité',k:'coefExc',lbl:'Majoration admise de la contrainte maximale',t:'num',def:1.33,min:1,max:2,step:0.01,unit:'',cond:dp=>!smNfMode(dp),aide:'σ_max ≤ 1,33·q avec excentricité (usage DTU 13.12 / BAEL) ; norme non fournie : à confirmer.'},
+   {grp:'Sol et excentricité',k:'pctCompMin',lbl:'Surface comprimée minimale',t:'num',def:100,min:10,max:100,step:5,unit:'%',cond:dp=>!smNfMode(dp),aide:'100 % = e ≤ L/6 (section entièrement comprimée). Un critère moins sévère (ex. 75 % ou 10 %) dépend de la norme : à confirmer.'},
+   {grp:'Sol et excentricité',k:'eluDiag',lbl:'Diagramme de pression à l\'ELU',t:'sel',def:'trap',opts:[['trap','Trapèze ou triangle (défaut)'],['rect','Rectangle P/(L − 2e) (guide)']],cond:dp=>dp.sens!=='filante'&&!!dp.excentrique&&!smNfMode(dp),aide:'Guide EC2 ch.6 p.46 : à l\'ELU la pression est rectangulaire sur la largeur réduite L − 2e (comparée à q_ELU sans majoration 1,33) ; défaut trapézoïdal plus sécuritaire ; à confirmer.'},
    {grp:'Sol et excentricité',k:'excSens',lbl:'Moment selon la dimension',t:'sel',def:'B',opts:[['B','B (grand côté)'],['A','A (petit côté)']],cond:dp=>dp.sens!=='filante'&&!!dp.excentrique,aide:'Dimension de la semelle dans le plan du moment M_ser transmis.'},
    {grp:'Sol et excentricité',k:'Mu_kNm',lbl:'Moment ultime M_u',t:'num',def:null,min:0,max:100000,step:1,unit:'kN·m',cond:dp=>dp.sens!=='filante'&&!!dp.excentrique,aide:'Vide : M_u = M_ser × N_u/N_ser (même excentricité). À saisir si le moment est connu à l\'ELU.'},
    {grp:'Charges complémentaires',k:'Dass_m',lbl:'Profondeur d\'assise D',t:'num',def:0,min:0,max:10,step:0.1,unit:'m',aide:'0 = poids des terres sur la semelle non pris en compte (signalé dans la note). Sinon P_terres = γ·D·(A·B − a·b).'},
@@ -29740,11 +29743,78 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const G=+dp.G_kN, Q=+dp.Q_kN;
    if(!isFinite(G)||G<0||!isFinite(Q)||Q<0||dp.G_kN===''||dp.Q_kN===''||dp.G_kN==null||dp.Q_kN==null) e.push('Charges G et Q manquantes ou négatives : les régler sur le schéma.');
    else if(G+Q<=0) e.push('Charges G et Q toutes deux nulles : saisir au moins une charge.');
-   if(smQuMode(dp)){ if(!pos(dp.qu_MPa)) e.push('Résistance ultime du sol qu nulle ou manquante.'); }
+   if(smNfMode(dp)){ const m=dp.nfMeth||'pressio', num=k=>(dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''&&isFinite(+dp[k]))?+dp[k]:null, H=(num('H_G_kN')||0)+(num('H_Q_kN')||0);
+    if(m==='pressio'||m==='penetro'){ if(!pos(dp[m==='pressio'?'ple_MPa':'qce_MPa'])) e.push(m==='pressio'?'Pression limite nette équivalente p*le manquante.':'Résistance de pointe équivalente qce manquante.'); if(!SM_NF_CAT[dp.solCat]) e.push('Catégorie de sol à choisir.'); if(H>0&&!(num('iDelta')>0&&num('iDelta')<=1)) e.push('Coefficient d\'inclinaison iδ à saisir (entre 0 et 1) : charge horizontale non nulle.'); }
+    else if(m==='analyt'){ if(dp.anCond==='undrained'){ if(!pos(dp.cu_kPa)) e.push('Cohésion non drainée cu manquante.'); } else { if(num('c_kPa')==null||num('c_kPa')<0) e.push('Cohésion effective c\' manquante (0 si nulle).'); if(num('phi_deg')==null||num('phi_deg')<0||num('phi_deg')>50) e.push('Angle de frottement φ\' manquant (0 à 50°).'); if(!pos(dp.gamSol_kN)) e.push('Poids volumique effectif du sol sous la base γ\' manquant.'); } }
+    else if(m==='saisie'){ if(!pos(dp.qdELU_MPa)) e.push('Résistance de calcul ELU qd manquante.'); if(!pos(dp.qdELS_MPa)) e.push('Résistance de calcul ELS qd manquante.'); }
+    if(H>0){ if(dp.glCond==='undrained'){ if(!pos(dp.glCu_kPa)) e.push('Glissement : cohésion non drainée cu manquante.'); } else if(!pos(dp.glPhi_deg)) e.push('Glissement : angle de frottement de la base δa manquant.'); } }
+   else if(smQuMode(dp)){ if(!pos(dp.qu_MPa)) e.push('Résistance ultime du sol qu nulle ou manquante.'); }
    else if(!pos(dp.qsol_MPa)) e.push('Contrainte admissible du sol nulle ou manquante : saisir la valeur de l\'étude géotechnique.');
    if(dp.excentrique&&isolee&&!isFinite(+dp.Mser_kNm)) e.push('Moment de service M_ser manquant.');
    return e;
   }
+  /* ===== Portance, excentrement et glissement de la semelle selon la NF P 94-261 (juin 2013 + A1 2017) =====
+     R_v,d = A'·q_net/(γ_Rd·γ_Rv) ; V_d − R_0 ≤ R_v,d ; γ_Rv = 1,4 (ELU), 2,3 (ELS) ; γ_Rd = 1,2 (pressiométrique, pénétrométrique, analytique non drainé), 2,0 (analytique drainé).
+     q_net = k_p·p*le·i_δ (pressiométrique) ; k_c·q_ce·i_δ (pénétrométrique) ; analytique : (π+2)·c_u·b·s·i (non drainé) ou c'N_c b s i + q'0(N_q b s i − 1) + ½γ'B'N_γ b s i (drainé).
+     k = k0 + (a + b·De/B)(1 − e^(−c·De/B)), De/B ≤ 2, interpolé entre filante (B/L = 0) et carrée (B/L = 1) ; A' = (A − 2e_A)(B − 2e_B). Excentrement : A'/A ≥ 1/15 (ELU), 1/2 (ELS caractéristique), 2/3 (ELS quasi-permanent).
+     Glissement : H_d ≤ R_h,d ; drainé R_h,d = V_d·tanδ_a/(1,1·1,1) ; non drainé min(A'·c_u/(1,1·1,1) ; 0,4·V_d). Non traités : tassement, talus (i_β = 1), rocher, sismique. */
+  const SM_NF_CAT={
+   argile:{lbl:'Argiles et limons',p:{fil:[0.2,0.02,1.3,0.8],car:[0.3,0.02,1.5,0.8]},c:{fil:[0.07,0.007,1.3,0.27],car:[0.1,0.007,1.5,0.27]}},
+   sable:{lbl:'Sables et graves',p:{fil:[0.3,0.05,2,1],car:[0.22,0.18,5,1]},c:{fil:[0.04,0.006,2,0.09],car:[0.03,0.02,5,0.09]}},
+   craie:{lbl:'Craies',p:{fil:[0.28,0.22,2.8,0.8],car:[0.35,0.31,3,0.8]},c:{fil:[0.04,0.03,3,0.11],car:[0.05,0.04,3,0.11]}},
+   marne:{lbl:'Marnes, marno-calcaires et roches altérées',p:{fil:[0.2,0.2,3,0.8],car:[0.2,0.3,3,0.8]},c:{fil:[0.04,0.03,3,0.11],car:[0.05,0.04,3,0.11]}}};
+  const SM_NF_METH=[['pressio','Pressiométrique (p*le)'],['penetro','Pénétrométrique (q_ce)'],['analyt','Analytique (c, φ ou c_u)']];
+  function smNfK(par,x){ x=Math.min(Math.max(x,0),2); return par[3]+(par[0]+par[1]*x)*(1-Math.exp(-par[2]*x)); }
+  function smNfKShape(cat,meth,xDeB,BsL){ const P=SM_NF_CAT[cat][meth==='penetro'?'c':'p']; return smNfK(P.fil,xDeB)*(1-BsL)+smNfK(P.car,xDeB)*BsL; }
+  /* Analytique : toutes les contraintes en MPa, angles en degrés en entrée */
+  function smNfAnalyt(p){
+   const r=p.Bp/Math.max(p.Lp,1e-9), Lr=isFinite(p.Lp)?r:0;
+   if(p.cond==='undrained'){
+    const sc=1+0.2*Lr, lim=p.Ap*p.cu, h=Math.min(p.H,lim), ic=0.5*(1+Math.sqrt(Math.max(0,1-h/Math.max(lim,1e-12))));
+    return {qnet:(Math.PI+2)*p.cu*sc*ic,sc,ic,Nc:Math.PI+2,hOk:p.H<=lim+1e-12};
+   }
+   const ph=p.phi*Math.PI/180, tn=Math.tan(ph), Nq=ph<1e-6?1:Math.exp(Math.PI*tn)*Math.pow(Math.tan(Math.PI/4+ph/2),2), Nc=ph<1e-6?Math.PI+2:(Nq-1)/tn, Ng=2*(Nq-1)*tn;
+   const sq=1+Lr*Math.sin(ph), sg=1-0.3*Lr, sc=Nq>1+1e-9?(sq*Nq-1)/(Nq-1):1+0.2*Lr;
+   const mB=(2+Lr)/(1+Lr), m=mB, den=p.V+p.Ap*p.c*(tn>1e-9?1/tn:0), x=Math.max(0,1-p.H/Math.max(den,1e-12)), iq=Math.pow(x,m), ig=Math.pow(x,m+1), ic=tn>1e-9?iq-(1-iq)/(Nc*tn):iq;
+   const qnet=p.c*Nc*sc*ic+p.q0*(Nq*sq*iq-1)+0.5*p.gam*p.Bp*Ng*sg*ig;
+   return {qnet:Math.max(0,qnet),Nq,Nc,Ng,sq,sg,sc,iq,ig,ic,m};
+  }
+  function smNfPush(st,push,f,kp,isolee){
+   st.forEach(x=>{ const kN=v=>f(v*1000,0)+' kN', thr=x.thr===1/15?'1/15':(x.thr===0.5?'1/2':'2/3');
+    push('Sol','Portance '+x.nom,'V_d − R_0 ≤ R_v,d = A\'·q_net/(γ_Rd·γ_Rv) ; A\' = '+f(x.Ap,2)+' m²'+(isolee?'':' par ml'),'V_d − R_0 = '+kN(x.Vd-x.R0)+' ; R_v,d = '+kN(x.Rvd)+' (q_net = '+kp(x.qnet)+')','≤ R_v,d',x.okS?'ok':'ko');
+    push('Sol','Excentrement '+x.nom,'A\'/A ≥ '+thr+' (A\' = surface effective)','A\'/A = '+f(x.ratio,3)+' (e = '+f(x.e,3)+' m)','≥ '+f(x.thr,3),x.ratio>=x.thr-1e-12?'ok':'ko');
+    if(x.sl) push('Sol','Glissement '+x.nom,x.sl.cond==='undrained'?'H_d ≤ R_h,d = min(A\'·c_u/(1,1·1,1) ; 0,4·V_d)':'H_d ≤ R_h,d = V_d·tanδ_a/(1,1·1,1)','H_d = '+kN(x.sl.H)+' ; R_h,d = '+kN(x.sl.Rh)+' (V_d = '+kN(x.sl.Vsl)+')','H_d ≤ R_h,d',x.sl.ok?'ok':'ko'); });
+  }
+  /* Lignes d'hypothèses et points à confirmer propres à la méthode de la norme (aucune référence de source : formules et valeurs seulement) */
+  function smNfHypRows(res,dp,f){
+   const nf=res.nf, st0=res.st[0]||{}, info=st0.info||{}, rows=[], pc=x=>f(x*1000,1)+' kPa';
+   const lbl=nf.meth==='saisie'?'Valeur saisie par l\'ingénieur':(SM_NF_METH.find(m=>m[0]===nf.meth)||[0,''])[1];
+   rows.push(['Portance du sol','NF P 94-261, méthode : '+lbl+' · V_d − R_0 ≤ R_v,d'+(nf.meth==='saisie'?' avec R_v,d = A\'·q_d (q_d saisi, coefficients partiels inclus)':' = A\'·q_net/(γ_Rd·γ_Rv) · γ_Rv = 1,4 (ELU), 2,3 (ELS) · γ_Rd = '+f(info.gRd||1.2,1)+' (non modifiables)'),nf.meth==='saisie'?'Saisi par l\'ingénieur, non vérifié par l\'application':'Saisie · coefficients normatifs en lecture seule']);
+   if(nf.meth==='pressio'||nf.meth==='penetro'){
+    rows.push([nf.meth==='pressio'?'Pression limite nette équivalente':'Résistance de pointe équivalente',(nf.meth==='pressio'?'p*_le = ':'q_ce = ')+f(info.base,3)+' MPa · catégorie : '+esc((SM_NF_CAT[dp.solCat]||{}).lbl||'—')+' · D_e = '+f(nf.De,2)+' m','Saisi']);
+    rows.push(['Facteur de portance',(nf.meth==='pressio'?'k_p':'k_c')+' = k_0 + (a + b·D_e/B)(1 − e^(−c·D_e/B)) interpolé entre semelle filante et carrée selon B\'/L\' ; ELU : '+f(info.k,3)+' · q_net = k·'+(nf.meth==='pressio'?'p*_le':'q_ce')+'·i_δ = '+pc(st0.qnet||0)+(info.iD!=null?' (i_δ = '+f(info.iD,2)+')':''),'Calculé']);
+   } else if(nf.meth==='analyt'){
+    rows.push(['Caractéristiques du sol',(dp.anCond==='undrained'?'Non drainé : c_u = '+f(+dp.cu_kPa,1)+' kPa':'Drainé : c\' = '+f(+dp.c_kPa,1)+' kPa · φ\' = '+f(+dp.phi_deg,1)+'° · γ\' = '+f(+dp.gamSol_kN,1)+' kN/m³')+' · base horizontale et rugueuse','Saisi']);
+    rows.push(['Capacité portante analytique',dp.anCond==='undrained'?'q_net = (π + 2)·c_u·s_c·i_c = '+pc(st0.qnet||0):'q_net = c\'·N_c·s_c·i_c + q\'_0·(N_q·s_q·i_q − 1) + ½·γ\'·B\'·N_γ·s_γ·i_γ = '+pc(st0.qnet||0)+' (N_q = '+f(info.Nq,2)+', N_c = '+f(info.Nc,2)+', N_γ = '+f(info.Ng,2)+')','Calculé']);
+   }
+   rows.push(['Surface effective et excentrement','A\' = (A − 2e_A)(B − 2e_B) ; A\'/A ≥ 1/15 (ELU), 1/2 (ELS caractéristique), 2/3 (ELS quasi-permanent)','Valeurs normatives (non modifiables)']);
+   rows.push(['Charges horizontales',(nf.HG||nf.HQ)?'H_G = '+f(nf.HG,1)+' kN · H_Q = '+f(nf.HQ,1)+' kN → H_d = '+f(nf.Hu*1000,1)+' kN (ELU)':'Aucune (H = 0)','Saisi']);
+   if(nf.HG+nf.HQ>0){ const sl=(res.st.find(x=>x.sl)||{}).sl; rows.push(['Glissement',sl?((sl.cond==='undrained'?'Non drainé : c_u = '+f(+dp.glCu_kPa,1)+' kPa':'Drainé : δ_a = '+f(+dp.glPhi_deg,1)+'°')+' · γ_Rh = 1,1 et γ_Rd,h = 1,1 (non modifiables) · V_d = G + P_p + P_terres (charges permanentes, coefficient 1,0)'):'—','Saisi']); }
+   rows.push(['Poids des terres R_0','R_0 = A·γ·D (poids du volume de sol remplacé) ; D = '+f(res.Dass,2)+' m','Saisi (paramètres avancés)']);
+   if(nf.psi2!=null) rows.push(['ELS quasi-permanent','ψ_2 = '+f(nf.psi2,2)+' : N_QP = G + ψ_2·Q, même excentricité que M_ser','Saisi (paramètres avancés)']);
+   return rows;
+  }
+  function smNfPts(res,dp,f){
+   const nf=res.nf, P=t=>'<p class="ncPt" data-bad="0">'+t+'</p>', out=[];
+   out.push(P('portance : valeurs de calcul R_v,d selon la méthode choisie ; '+(nf.meth==='saisie'?'résistance de calcul saisie par l\'ingénieur, non vérifiée par l\'application ; ':(nf.meth==='analyt'?'base supposée horizontale et rugueuse, fondation éloignée de tout talus (i_β = 1), caractéristiques du sol à justifier par l\'étude géotechnique ; ':'valeur équivalente à calculer sur la tranche de sol sous la base (épaisseur h_r selon l\'excentrement et la combinaison), non recalculée ici ; fondation éloignée de tout talus (i_β = 1) ; '))+'à confirmer par un ingénieur géotechnicien.'));
+   if((nf.meth==='pressio'||nf.meth==='penetro')&&nf.HG+nf.HQ>0) out.push(P('coefficient d\'inclinaison i_δ = '+f(+dp.iDelta,2)+' saisi par l\'ingénieur (non calculé par l\'application) : à confirmer.'));
+   if(nf.meth==='pressio'||nf.meth==='penetro') out.push(P('D_e (encastrement équivalent) = '+f(nf.De,2)+' m '+(smElsSaisiSM(dp,'De_m')?'saisi':'par défaut')+' ; B\'/L\' pris pour la forme de la semelle (plus défavorable que B/L) : à confirmer.'));
+   if(nf.psi2==null) out.push(P('ELS quasi-permanent non vérifié (ψ_2 à fournir dans les paramètres avancés) ; ELS fréquent non vérifié ; seule la combinaison caractéristique G + Q est contrôlée à l\'ELS.'));
+   out.push(P('poids des terres R_0 = A·γ·D avec D = '+f(res.Dass,2)+' m'+(res.Dass>0?'':' (aucun encastrement pris en compte)')+' ; sous-pression éventuelle déduite : à confirmer.'));
+   if(nf.HG+nf.HQ>0) out.push(P('glissement : résistance frontale ou tangentielle du terrain R_p,d non prise en compte ; V_d = charges permanentes (coefficient 1,0) ; angle de frottement de la base ou cohésion non drainée saisi : à confirmer.'));
+   return out.join('');
+  }
+  function smElsSaisiSM(dp,k){ return dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''; }
   /* Calcul de la semelle : fonction pure (dp -> résultats). Unités : m, MN, MPa. */
   function smCalc(dp){
    const err=smValidate(dp); if(err.length){ const x=new Error(err[0]); x.smErrors=err; throw x; }
@@ -29775,8 +29845,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const fctd=0.7*fctm/1.5, fbd=2.25*eta1*1*fctd;
    const k_=d=>Math.min(1+Math.sqrt(0.2/d),2), vmin=d=>0.035*Math.pow(k_(d),1.5)*Math.sqrt(fck);
    const nu_=0.6*(1-fck/250), vRdMax=0.5*nu_*fcd;
-   const checks=[]; if(qELS!=null) checks.push({nom:'ELS',q:qELS,N:'ser'}); if(qELU!=null) checks.push({nom:'ELU',q:qELU,N:'u'});
-   const Sreq0=Math.max.apply(null,checks.map(c=>(c.N==='ser'?Nser:Nu)/c.q));
+   const nf=smNfMode(dp), nfMeth=dp.nfMeth||'pressio', numF=k=>smN(dp[k]);
+   const HG=nf?(numF('H_G_kN')||0):0, HQ=nf?(numF('H_Q_kN')||0):0, Hu=(1.35*HG+1.5*HQ)/1000, Hs=(HG+HQ)/1000, psi2=nf?smN(P('psi2')):null;
+   const checks=[];
+   if(!nf){ if(qELS!=null) checks.push({nom:'ELS',q:qELS,N:'ser'}); if(qELU!=null) checks.push({nom:'ELU',q:qELU,N:'u'}); }
+   else { checks.push({nom:'ELU',kind:'elu',N:Nu,M:MuMN,fact:1.35,H:Hu,gRv:1.4,thr:1/15},{nom:'ELS caractéristique',kind:'els',N:Nser,M:MserMN,fact:1,H:Hs,gRv:2.3,thr:1/2});
+    if(psi2!=null){ const Nqp=(G+psi2*Q)/1000; checks.push({nom:'ELS quasi-permanent',kind:'qp',N:Nqp,M:Nser>1e-12?MserMN*Nqp/Nser:0,fact:1,H:(HG+psi2*HQ)/1000,gRv:2.3,thr:2/3}); } }
+   const Sreq0=nf?Math.max(0.25,Nser/0.5):Math.max.apply(null,checks.map(c=>(c.N==='ser'?Nser:Nu)/c.q));
    const gb=0.025; // MN/m³ poids volumique du béton armé (25 kN/m³)
    const ancre=(phi,AsReq,AsProv,L,l)=>{ // longueur d'ancrage et règle de crochets
     const sigSd=fyd*Math.min(1,AsReq/Math.max(AsProv,1e-9)), lbrqd=(phi/1000/4)*sigSd/fbd, lbmin=Math.max(0.3*lbrqd,10*phi/1000,0.1);
@@ -29902,7 +29977,28 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    }
    // boucle de dimensionnement : surface jusqu'à ce que tous les contrôles du sol (poids propre inclus) passent
    let res=null, S=Sreq0, ok=false, it=0;
-   const stress=(d,qchk)=>{ // contraintes pour un contrôle (ELS ou ELU)
+   const nfStress=(d,chk)=>{
+    const A=d.A, B=d.B, S=A*B, Vd=chk.N+chk.fact*(d.Pp+d.Ptr), q0=Math.max(0,gT*D-uplift), R0=S*q0, e=Vd>1e-12?chk.M/Vd:0;
+    let Bp,Lp,Ap,ratio,Ldim;
+    if(isolee){ const eA=excSensB?0:e, eB=excSensB?e:0, a1=A-2*eA, b1=B-2*eB; Ldim=excSensB?B:A; if(a1<=0||b1<=0){ Bp=0; Lp=0; Ap=0; ratio=0; } else { Bp=Math.min(a1,b1); Lp=Math.max(a1,b1); Ap=a1*b1; ratio=Ap/S; } }
+    else { Ldim=B; Bp=Math.max(B-2*e,0); Lp=Infinity; Ap=Bp; ratio=Bp/B; }
+    const Bw=isolee?Math.min(A,B):B, BsL=(isolee&&Lp>0)?Bp/Lp:0;
+    let qnet=0, Rvd=0, info={};
+    if(Ap>0){
+     if(nfMeth==='saisie'){ const qd=chk.kind==='elu'?+dp.qdELU_MPa:+dp.qdELS_MPa; Rvd=Ap*qd; qnet=qd; info={saisie:true,gRd:1}; }
+     else { let gRd=1.2;
+      if(nfMeth==='analyt'){ const und=dp.anCond==='undrained', an=smNfAnalyt({cond:und?'undrained':'drained',cu:(+dp.cu_kPa||0)/1000,c:(+dp.c_kPa||0)/1000,phi:+dp.phi_deg||0,gam:(+dp.gamSol_kN||0)/1000,q0,Bp,Lp,Ap,H:chk.H,V:Vd}); qnet=an.qnet; info=an; gRd=und?1.2:2.0; }
+      else { const base=nfMeth==='pressio'?+dp.ple_MPa:+dp.qce_MPa, k=smNfKShape(dp.solCat,nfMeth,(+P('De_m')||0)/Bw,BsL), iD=chk.H>1e-12?(+dp.iDelta||0):1; qnet=k*base*iD; info={k,iD,base}; }
+      info.gRd=gRd; Rvd=Ap*qnet/(gRd*chk.gRv); } }
+    const net=Vd-R0, okP=Ap>0&&net<=Rvd+1e-12, okE=Ap>0&&ratio>=chk.thr-1e-12;
+    let sl=null;
+    if(chk.kind==='elu'&&chk.H>1e-12){ const Vsl=G/1000+d.Pp+d.Ptr;
+     if(dp.glCond==='undrained'){ const cu=(+dp.glCu_kPa||0)/1000; sl={Rh:Math.min(Ap*cu/1.21,0.4*Vsl),Vsl,H:chk.H,cond:'undrained'}; }
+     else { sl={Rh:Vsl*Math.tan((+dp.glPhi_deg||0)*Math.PI/180)/1.21,Vsl,H:chk.H,cond:'drained'}; }
+     sl.ok=chk.H<=sl.Rh+1e-12; }
+    return {nom:chk.nom,N:Vd,q:Ap>0?Rvd/Ap:0,qm:Ap>0?net/Ap:Infinity,e,L:Ldim,sigMax:Ap>0?net/Ap:Infinity,lim:Ap>0?Rvd/Ap:0,pct:ratio*100,okS:okP,okP:okE&&(!sl||sl.ok),ok:okP&&okE&&(!sl||sl.ok),exc:false,nf:true,Vd,R0,Rvd,qnet,Ap,Bp,Lp,ratio,thr:chk.thr,info,sl,H:chk.H,kind:chk.kind};
+   };
+   const stress=(d,qchk)=>{ if(nf) return nfStress(d,qchk); // contraintes pour un contrôle (ELS ou ELU)
     const factPp=qchk.N==='ser'?1:1.35, Nv=(qchk.N==='ser'?Nser:Nu)+factPp*(d.Pp+d.Ptr);
     const L=isolee?(excSensB?d.B:d.A):d.B, W=isolee?(excSensB?d.A:d.B):1, Ssol=d.A*d.B;
     const Mk=exc?(qchk.N==='ser'?MserMN:MuMN):0, e=Nv>1e-12?Mk/Nv:0;
@@ -29918,12 +30014,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const okS=sigMax<=lim+1e-12, okP=!exc||rectU||pct>=pctMin-1e-9;
     return {nom:qchk.nom,N:Nv,q:qchk.q,qm,e,L,sigMax,lim,pct,okS,okP,ok:okS&&okP,exc};
    };
-   for(it=0;it<400;it++){
+   for(it=0;it<(nf?900:400);it++){
     res=build(S);
     const st=checks.map(c=>stress(res,c)); res.st=st;
     if(st.every(x=>x.ok)&&res.dimOk){ ok=true; break; }
     if(res.A>12||res.B>12) break;
-    S=S*1.01;
+    S=S*(nf?1.02:1.01);
    }
    res.itSol=it; res.sol=ok;
    const stG=res.st; const stR=stG.find(x=>x.nom==='ELS')||stG[0];
@@ -29940,13 +30036,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     ancX:res.ancX,ancY:res.ancY,punch:res.punch,shX:res.shX,shY:res.shY,sh:res.sh,
     punchRatio:res.punchRatio,shearRatio:res.shearRatio,rigidOk:res.rigidOk,rigidLim:res.rigidLim,dRig:res.dRig,
     Dass:D,gT:gT*1000,zNappe:zN,uplift,fctm,fctd,fbd,vRdMax,Ccrd,k1:0.1,asMinOn,
-    qpELU_ancien:qpLegacy,Mser:MserMN,Mu:MuMN,MuDefaut:MuSaisi==null};
+    qpELU_ancien:qpLegacy,Mser:MserMN,Mu:MuMN,MuDefaut:MuSaisi==null,
+    nf:nf?{meth:nfMeth,De:+P('De_m')||0,psi2,HG,HQ,Hu,Hs}:null};
    if(exc&&stG.length){ const x=stG.find(y=>y.nom==='ELS')||stG[0]; out.exc={e:x.e,qmax:x.sigMax,ok:x.ok,pct:x.pct}; }
    if(isolee){ out.dEff=out.dMoy; } else { out.dEff=res.dd; out.d=res.dd; }
    /* tableau des vérifications (Vérification · Formule · Calcul · Limite · État) */
    const V=[], f=(x,d)=>(+x).toFixed(d==null?2:d).replace('.',','), kp=x=>f(x*1000,1)+' kPa';
    const push=(zone,nom,formule,calcul,limite,etat)=>V.push({zone,nom,formule,calcul,limite,etat});
-   stG.forEach(x=>{ push('Sol','Contrainte sur le sol '+x.nom,'σ = (N'+(x.nom==='ELS'?'ser':'u')+' + '+(x.nom==='ELS'?'':'1,35·')+'(P_p + P_terres))/(A·B)'+(uplift>0?' − u':''),kp(x.qm),'q_'+x.nom+' = '+kp(x.q),x.qm<=x.q+1e-12?'ok':'ko');
+   if(nf) smNfPush(stG,push,f,kp,isolee);
+   (nf?[]:stG).forEach(x=>{ push('Sol','Contrainte sur le sol '+x.nom,'σ = (N'+(x.nom==='ELS'?'ser':'u')+' + '+(x.nom==='ELS'?'':'1,35·')+'(P_p + P_terres))/(A·B)'+(uplift>0?' − u':''),kp(x.qm),'q_'+x.nom+' = '+kp(x.q),x.qm<=x.q+1e-12?'ok':'ko');
     if(x.exc){ push('Sol','Excentricité '+x.nom,'e = M/N = '+f(x.e,3)+' m ; L/6 = '+f(x.L/6,3)+' m ; surface comprimée '+f(x.pct,0)+' %','σ_max = '+kp(x.sigMax),'≤ '+f(coefExc)+'·q = '+kp(coefExc*x.q)+' ; ≥ '+f(pctMin,0)+' % comprimé',x.ok?'ok':'ko'); } });
    push('Géométrie','Rigidité (bielles)','d ≥ (B − b)/4','d = '+f(res.dRig*100,1)+' cm','≥ '+f(res.rigidLim*100,1)+' cm',res.rigidOk?'ok':'ko');
    if(isolee){
@@ -29965,8 +30063,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(res.ancY) push('Ancrage','Ancrage des barres transversales (Ø'+res.ancY.phi+')','l_bd = α·l_b,rqd ≥ l_b,min','l_bd = '+f(res.ancY.lbUse*100,0)+' cm ('+res.ancY.mode+')','l disponible = '+f(res.ancY.lav*100,0)+' cm',res.ancY.ok?'ok':'ko');
     push('Effort tranchant','Section à d du nu','V_Ed = q_net·(porte-à-faux − d) ≤ V_Rd,c','V_Ed = '+f(res.sh.VEd*1000,0)+' kN/ml','V_Rd,c = '+f(res.sh.VRd*1000,0)+' kN/ml',res.sh.ratio<=1+1e-9?'ok':'ko');
    }
-   push('Sol','Portance du sol (q.sol)','calcul pressiométrique ou pénétrométrique (Fascicule 62 titre V, DTU 13.12, NF P94-261)','donnée d\'entrée de l\'étude géotechnique','—','nf');
-   push('Sol','Soulèvement biaxial, charge inclinée, semelle partiellement soulevée','classeurs 023, 024, 128 du pack','non codé','—','nf');
+   if(!nf) push('Sol','Portance du sol (q.sol)','calcul pressiométrique ou pénétrométrique (Fascicule 62 titre V, DTU 13.12, NF P94-261)','donnée d\'entrée de l\'étude géotechnique','—','nf');
+   push('Sol','Soulèvement biaxial, charge inclinée, semelle partiellement soulevée','calcul spécifique de la surface comprimée','non codé','—','nf');
    push('Tassement','Tassement de la semelle','module « Tassements & géotechnique » (ouvrage distinct)','non calculé ici','—','nf');
    push('ELS','Fissuration et flèche de la semelle','EC2 7.3 / 7.4','non vérifiées','—','nf');
    out.verifs=V;
@@ -30067,8 +30165,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      +'<label>Classe de béton <select data-sm="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
      +'<label>Acier <select data-sm="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
      +'<label>Fissuration <select data-sm="fissuration"><option value="FP"'+(dp.fissuration!=='FTP'?' selected':'')+'>Peu préjudiciable (FP)</option><option value="FTP"'+(dp.fissuration==='FTP'?' selected':'')+'>Très préjudiciable (FTP)</option></select></label>'
-     +'<label>Donnée du sol <select data-sm="solMode"><option value="els"'+(!smQuMode(dp)?' selected':'')+'>Contrainte admissible à l\'ELS</option><option value="qu"'+(smQuMode(dp)?' selected':'')+'>Résistance ultime du sol qu</option></select></label>'
-     +(smQuMode(dp)
+     +'<label>Donnée du sol <select data-sm="solMode"><option value="els"'+(!smQuMode(dp)&&!smNfMode(dp)?' selected':'')+'>Contrainte admissible à l\'ELS</option><option value="qu"'+(smQuMode(dp)?' selected':'')+'>Résistance ultime du sol qu</option><option value="nf"'+(smNfMode(dp)?' selected':'')+'>NF P 94-261 (portance, excentrement, glissement)</option></select></label>'
+     +(smNfMode(dp)?smNfSoilHtml(dp,t):smQuMode(dp)
        ?('<label>Résistance ultime du sol qu <input type="number" step="0.01" min="0.01" data-sm="qu_MPa" value="'+(dp.qu_MPa??0.45)+'"> MPa</label>'
          +'<p class="pcNote">Admissible ELS = qu/'+smP(dp,'gammaS')+' = '+((+dp.qu_MPa||0)/smP(dp,'gammaS')).toFixed(3).replace('.',',')+' MPa · résistance de calcul ELU = qu/'+smP(dp,'gammaU')+' = '+((+dp.qu_MPa||0)/smP(dp,'gammaU')).toFixed(3).replace('.',',')+' MPa (coefficients modifiables dans « Paramètres avancés », source normative à confirmer).</p>')
        :('<label>Contrainte admissible du sol à l\'ELS q.sol <input type="number" step="0.01" min="0.01" data-sm="qsol_MPa" value="'+(dp.qsol_MPa??0.15)+'"> MPa</label>'
@@ -30080,8 +30178,61 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      +'<p class="pcNote">Charges G et Q : à régler directement sur le schéma ci-dessus.</p>'
      +(isolee?('<label>Excentricité (moment transmis) <select data-sm="excentrique"><option value=""'+(!dp.excentrique?' selected':'')+'>Non</option><option value="1"'+(dp.excentrique?' selected':'')+'>Oui</option></select></label>'
        +(dp.excentrique?'<p class="pcNote">Moment de service Mser : à régler directement sur le schéma ci-dessus.</p>':'')):'')
+     +(smNfMode(dp)?smNfLoadHtml(dp,t):'')
      +'<p class="pcNote">1 t = 10 kN. Nu = 1,35 G + 1,5 Q.</p>'+smAdvHtml(dp,t.id);
    }
+  }
+  /* Saisie du sol pour la méthode de la norme (valeurs à fournir par l'étude géotechnique : aucune valeur par défaut) */
+  function smNfFld(dp,k,l,u,step,min){ return '<label>'+l+' <input type="number" inputmode="decimal" step="'+step+'" min="'+min+'" data-sm="'+k+'" value="'+((dp[k]!==undefined&&dp[k]!==null)?dp[k]:'')+'" placeholder="à fournir"> '+u+'</label>'; }
+  function smNfSoilHtml(dp,t){
+   const m=dp.nfMeth||'pressio', lbl=m==='saisie'?'valeur saisie par l\'ingénieur':(SM_NF_METH.find(x=>x[0]===m)||[0,''])[1];
+   let h='<p class="pcNote"><b>Portance : NF P 94-261, méthode '+esc(lbl)+'.</b> Les données du sol sont à fournir par l\'étude géotechnique (aucune valeur par défaut).</p><button type="button" class="ghost pcBtnSm pcSmChg" data-sm-act="nfModal">Changer de méthode</button>';
+   const cat='<label>Catégorie de sol <select data-sm="solCat"><option value="">— à choisir —</option>'+Object.keys(SM_NF_CAT).map(c=>'<option value="'+c+'"'+(dp.solCat===c?' selected':'')+'>'+SM_NF_CAT[c].lbl+'</option>').join('')+'</select></label>';
+   if(m==='pressio') h+=smNfFld(dp,'ple_MPa','Pression limite nette équivalente p*le','MPa','0.01','0.01')+cat+'<p class="pcNote">Moyenne géométrique des pressions limites nettes sous la base, sur l\'épaisseur h_r (1,5·B à l\'ELS) : à calculer par l\'ingénieur ; q_net = k_p·p*le·i_δ.</p>';
+   else if(m==='penetro') h+=smNfFld(dp,'qce_MPa','Résistance de pointe équivalente q_ce','MPa','0.1','0.1')+cat+'<p class="pcNote">Résistance de pointe lissée et écrêtée à 1,3·q_cm sous la base : à calculer par l\'ingénieur ; q_net = k_c·q_ce·i_δ.</p>';
+   else if(m==='analyt'){
+    h+='<label>Conditions de calcul <select data-sm="anCond"><option value="drained"'+(dp.anCond!=='undrained'?' selected':'')+'>Drainées (c\', φ\')</option><option value="undrained"'+(dp.anCond==='undrained'?' selected':'')+'>Non drainées (c_u)</option></select></label>';
+    h+=(dp.anCond==='undrained'?smNfFld(dp,'cu_kPa','Cohésion non drainée c_u','kPa','1','1'):smNfFld(dp,'c_kPa','Cohésion effective c\'','kPa','1','0')+smNfFld(dp,'phi_deg','Angle de frottement effectif φ\'','°','0.5','0')+smNfFld(dp,'gamSol_kN','Poids volumique effectif sous la base γ\'','kN/m³','0.5','1'));
+    h+='<p class="pcNote">Base horizontale et rugueuse, fondation éloignée de tout talus ; caractéristiques à justifier par l\'étude géotechnique.</p>';
+   } else {
+    h+=smNfFld(dp,'qdELU_MPa','Résistance de calcul ELU q_d','MPa','0.01','0.01')+smNfFld(dp,'qdELS_MPa','Résistance de calcul ELS q_d','MPa','0.01','0.01')+'<p class="pcNote">Valeurs de l\'ingénieur, coefficients partiels déjà inclus : comparées à (V_d − R_0)/A\', non vérifiées par l\'application.</p>';
+   }
+   return h+(window._smFieldErr&&window._smFieldErr[t.id]?'':'');
+  }
+  function smNfLoadHtml(dp,t){
+   const m=dp.nfMeth||'pressio', num=k=>(dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''&&isFinite(+dp[k]))?+dp[k]:0, H=num('H_G_kN')+num('H_Q_kN'), u=dp.sens==='filante'?'kN/ml':'kN';
+   let h='<hr class="pcFormSep"><h5>Charges horizontales (facultatif)</h5>'
+    +'<label>Charge horizontale permanente H_G <input type="number" inputmode="decimal" step="1" min="0" data-sm="H_G_kN" value="'+((dp.H_G_kN!==undefined&&dp.H_G_kN!==null)?dp.H_G_kN:'')+'" placeholder="0"> '+u+'</label>'
+    +'<label>Charge horizontale variable H_Q <input type="number" inputmode="decimal" step="1" min="0" data-sm="H_Q_kN" value="'+((dp.H_Q_kN!==undefined&&dp.H_Q_kN!==null)?dp.H_Q_kN:'')+'" placeholder="0"> '+u+'</label>';
+   if(H>0){
+    if(m==='pressio'||m==='penetro') h+=smNfFld(dp,'iDelta','Coefficient d\'inclinaison de la charge i_δ','(0 à 1)','0.01','0.01')+'<p class="pcNote">À calculer par l\'ingénieur selon le comportement du sol : l\'application ne le détermine pas pour cette méthode.</p>';
+    h+='<label>Glissement : conditions <select data-sm="glCond"><option value="drained"'+(dp.glCond!=='undrained'?' selected':'')+'>Drainées (δ_a)</option><option value="undrained"'+(dp.glCond==='undrained'?' selected':'')+'>Non drainées (c_u)</option></select></label>'
+     +(dp.glCond==='undrained'?smNfFld(dp,'glCu_kPa','Cohésion non drainée c_u','kPa','1','1'):smNfFld(dp,'glPhi_deg','Angle de frottement de la base δ_a','°','0.5','0.5'))
+     +'<p class="pcNote">V_d du glissement = charges permanentes (coefficient 1,0) ; résistance frontale du terrain non prise en compte.</p>';
+   }
+   return h;
+  }
+  /* Fenêtre de choix de la méthode de portance (style feuille iPhone) */
+  function smNfModal(id){
+   const t=taskById(id); if(!t) return; const dp=smData(t);
+   const old=document.getElementById('pcNfOv'); if(old) old.remove();
+   const st={m:SM_NF_METH.some(x=>x[0]===dp.nfMeth)?dp.nfMeth:'pressio'};
+   const ov=document.createElement('div'); ov.id='pcNfOv'; ov.className='pcFeuOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','pcNfOvT');
+   const L=['<b>Principe</b> : V_d − R_0 ≤ R_v,d, avec R_v,d = A′·q_net/(γ_Rd·γ_Rv) ; γ_Rv = 1,4 à l\'ELU et 2,3 à l\'ELS ; γ_Rd = 1,2 (pressiométrique, pénétrométrique, analytique non drainé) ou 2,0 (analytique drainé).','<b>Surface effective et excentrement</b> : A′ = (A − 2e_A)(B − 2e_B) ; A′/A ≥ 1/15 (ELU), 1/2 (ELS caractéristique), 2/3 (ELS quasi-permanent).','<b>q_net</b> : pressiométrique k_p·p*le·i_δ ; pénétrométrique k_c·q_ce·i_δ ; analytique (π+2)·c_u·s_c·i_c (non drainé) ou c′N_c s_c i_c + q′0(N_q s_q i_q − 1) + ½γ′B′N_γ s_γ i_γ (drainé).','<b>Glissement</b> : H_d ≤ R_h,d ; drainé V_d·tanδ_a/(1,1·1,1) ; non drainé min(A′·c_u/(1,1·1,1) ; 0,4·V_d).','<b>Limites</b> : tassement, talus, rocher et séisme non traités ; données du sol à fournir par l\'étude géotechnique ; à valider par l\'ingénieur.'];
+   const draw=()=>{ ov.innerHTML='<div class="pcFeuCard"><h4 id="pcNfOvT">Portance du sol : quelle méthode ?</h4>'
+     +'<ul class="pcFeuUl">'+L.map(x=>'<li>'+x+'</li>').join('')+'</ul>'
+     +'<p class="pcNote">Méthode de calcul de q_net :</p><div class="pcDegSeg pcNfSeg">'+SM_NF_METH.map(x=>'<button type="button" class="ghost" data-nf-m="'+x[0]+'" aria-pressed="'+(st.m===x[0]?'true':'false')+'">'+x[1]+'</button>').join('')+'</div>'
+     +'<button type="button" class="primary pcFeuBtn" data-nf-ok="1">Utiliser la NF P 94-261</button>'
+     +'<button type="button" class="ghost pcFeuBtn" data-nf-saisie="1">Autre méthode : je saisis la valeur</button>'
+     +'<button type="button" class="ghost pcFeuBtn pcFeuCancel" data-nf-cancel="1">Annuler</button></div>'; };
+   const done=m=>{ const t1=taskById(id); if(!t1) return; const d=smData(t1); d.solMode='nf'; d.nfMeth=m; d._elsOpen=true; try{persist();}catch(_){ } ov.remove(); smeRender(id); };
+   ov.addEventListener('click',e=>{
+    const mb=e.target.closest('[data-nf-m]'); if(mb){ st.m=mb.dataset.nfM; draw(); return; }
+    if(e.target.closest('[data-nf-ok]')){ done(st.m); return; }
+    if(e.target.closest('[data-nf-saisie]')){ done('saisie'); return; }
+    if(e.target.closest('[data-nf-cancel]')||e.target===ov){ ov.remove(); } });
+   ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
+   draw(); document.body.appendChild(ov); const f=ov.querySelector('[data-nf-ok]'); if(f) f.focus();
   }
   function smFormHtml(id,t){
    const dp=smData(t);
@@ -30102,11 +30253,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    let h='<h5>Résultats</h5>'
     +(ko.length?'<div class="pcDimBox"><b>⚠ '+ko.length+' point'+(ko.length>1?'s':'')+' bloquant'+(ko.length>1?'s':'')+'</b>'+ko.map(v=>'<p class="pcNote">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>').join('')+'</div>':'')
     +'<div class="pcDimBox"><b>Dimensions</b><p class="pcNote">'+(res.isolee?('A = '+f(res.A)+' m × B = '+f(res.B)+' m'):('B = '+f(res.B)+' m par ml'+' · '+(res.petite?'petite dimension':'grande dimension')))+' · Ht = '+f(res.Ht*100,0)+' cm (d = '+f(res.d*100,1)+' cm) · enrobage '+f(res.cnom*1000,0)+' mm</p></div>'
-    +'<div class="pcDimBox"><b>Contrainte sur le sol</b>'+res.st.map(x=>'<p class="pcNote">'+x.nom+' : '+kp(x.qm)+' ≤ '+kp(x.q)+' → '+(x.qm<=x.q+1e-12?'✓ vérifiée':'⚠ non vérifiée')+(x.exc?(' · e = '+f(x.e,3)+' m, σ_max = '+kp(x.sigMax)+', '+f(x.pct,0)+' % comprimé → '+(x.ok?'✓':'⚠')):'')+'</p>').join('')+'</div>'
+    +'<div class="pcDimBox"><b>Contrainte sur le sol</b>'+res.st.map(x=>x.nf?('<p class="pcNote">'+x.nom+' : V_d − R_0 = '+f((x.Vd-x.R0)*1000,0)+' kN ≤ R_v,d = '+f(x.Rvd*1000,0)+' kN → '+(x.okS?'✓':'⚠')+' · A\'/A = '+f(x.ratio,3)+' ≥ '+f(x.thr,3)+' → '+(x.ratio>=x.thr-1e-12?'✓':'⚠')+(x.sl?(' · glissement H_d = '+f(x.sl.H*1000,0)+' kN ≤ R_h,d = '+f(x.sl.Rh*1000,0)+' kN → '+(x.sl.ok?'✓':'⚠')):'')+'</p>'):('<p class="pcNote">'+x.nom+' : '+kp(x.qm)+' ≤ '+kp(x.q)+' → '+(x.qm<=x.q+1e-12?'✓ vérifiée':'⚠ non vérifiée')+(x.exc?(' · e = '+f(x.e,3)+' m, σ_max = '+kp(x.sigMax)+', '+f(x.pct,0)+' % comprimé → '+(x.ok?'✓':'⚠')):'')+'</p>')).join('')+'</div>'
     +'<div class="pcDimBox"><b>Ferraillage ('+M+')</b>'+(res.isolee
       ?'<p class="pcNote">Nappe basse // '+(res.low==='X'?'B : '+res.barX.n+' Ø'+res.barX.phi:'A : '+res.barY.n+' Ø'+res.barY.phi)+' · nappe haute // '+(res.low==='X'?'A : '+res.barY.n+' Ø'+res.barY.phi:'B : '+res.barX.n+' Ø'+res.barX.phi)+'</p>'
       :('<p class="pcNote">Transversales : '+(res.barAy?('<b>Ø'+res.barAy.phi+' e='+res.barAy.s+' mm</b> ('+f(res.Ay_cm2)+' cm²/ml)'):'chaînage seul')+'</p><p class="pcNote">Longitudinales : <b>Ø'+res.barAx.phi+' e='+res.barAx.s+' mm</b> ('+f(res.Ax_cm2)+' cm²/ml)</p>'))+'</div>'
-    +'<div class="pcDimBox"><b>Autres vérifications</b>'+res.verifs.filter(v=>v.etat!=='nf'&&!/^Contrainte|^Excentricité|^Armatures/.test(v.nom)).map(v=>'<p class="pcNote">'+esc(v.nom)+' : '+esc(v.calcul)+' ('+esc(v.limite)+') → '+(v.etat==='ok'?'✓':'⚠')+'</p>').join('')+'<p class="pcNote">Non vérifiés : portance, soulèvement biaxial, tassement, ELS.</p></div>';
+    +'<div class="pcDimBox"><b>Autres vérifications</b>'+res.verifs.filter(v=>v.etat!=='nf'&&!/^Contrainte|^Excentricité|^Armatures/.test(v.nom)).map(v=>'<p class="pcNote">'+esc(v.nom)+' : '+esc(v.calcul)+' ('+esc(v.limite)+') → '+(v.etat==='ok'?'✓':'⚠')+'</p>').join('')+'<p class="pcNote">'+(res.nf?'Non vérifiés : tassement, soulèvement biaxial, talus, ELS fréquent.':'Non vérifiés : portance, soulèvement biaxial, tassement, ELS.')+'</p></div>';
    h+='<button type="button" class="ghost pcBtnSm" data-sm-act="printNote">🖶 Voir la note</button>'; return h;
   }
 
@@ -30151,6 +30302,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     );
     return;
    }
+   const nfb=e.target.closest('[data-sm-act="nfModal"]'); if(nfb){ smNfModal(id); return; }
    const pn=e.target.closest('[data-sm-act="printNote"]'); if(pn){ smeState(id).view='note'; smeRender(id); return; }
   }
   function smeChange(e,id){
@@ -30160,6 +30312,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
  const key=el.dataset.sm; if(key){
  window._smFieldErr=window._smFieldErr||{}; delete window._smFieldErr[id];
  if((key==='qsol_MPa'||key==='qu_MPa')&&!(+el.value>0)){ window._smFieldErr[id]='La contrainte du sol doit être strictement positive : valeur non prise en compte (l\'ancienne valeur est conservée).'; smeRender(id); return; }
+ if(key==='solMode'&&el.value==='nf'){ smNfModal(id); smeRender(id); return; }
  if(key==='materiau'){ dp.materiau=pcMatKey(el.value); try{persist();}catch(_){ } smeRender(id); return; }
  if(key==='excentrique') dp[key]=!!el.value;
     else if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
@@ -30176,15 +30329,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nKo=res.verifs.filter(v=>v.etat==='ko').length, M=res.methode==='bael'?'BAEL':'EC2';
    const dim=res.isolee?(f(res.A)+' × '+f(res.B)+' m'):('B = '+f(res.B)+' m par ml');
    const fer=res.isolee?(res.barX.n+' Ø'+res.barX.phi+' // B et '+res.barY.n+' Ø'+res.barY.phi+' // A'):((res.barAy?('Ø'+res.barAy.phi+' e='+res.barAy.s+' mm'):'chaînage seul')+' + Ø'+res.barAx.phi+' e='+res.barAx.s+' mm');
-   const constat=nomO+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(dim+', Ht = '+cm(res.Ht)+', '+fer))+' — sol, flexion ('+M+'), poinçonnement, tranchant et ancrage vérifiés ; portance, soulèvement biaxial, tassement et ELS NON vérifiés';
+   const constat=nomO+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(dim+', Ht = '+cm(res.Ht)+', '+fer))+(res.nf?' — portance, excentrement, glissement, flexion ('+M+'), poinçonnement, tranchant et ancrage vérifiés ; tassement et soulèvement biaxial NON vérifiés':' — sol, flexion ('+M+'), poinçonnement, tranchant et ancrage vérifiés ; portance, soulèvement biaxial, tassement et ELS NON vérifiés');
    const tab=(head,rows,cls)=>'<table'+(cls?' class="'+cls+'"':'')+'><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
    const q=res.punch;
    const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'.</p>').join('')
-    +'<p class="ncPt" data-bad="0">q.sol est une donnée d\'entrée'+(res.quMode?' (qu saisi ; q_ELS = qu/'+f(res.gS,1)+', q_ELU = qu/'+f(res.gU,1)+', coefficients du classeur pénétrométrique)':(res.refElu?' comparée à N_u (ancien comportement du module)':' (admissible ELS comparé à N_ser + poids propre)'))+' ; EN 1997-1, NF P 94-261 et Fasc. 62 titre V non fournis, non vérifiable.</p>'
+    +(res.nf?smNfPts(res,dp,f):'<p class="ncPt" data-bad="0">q.sol est une donnée d\'entrée'+(res.quMode?' (qu saisi ; q_ELS = qu/'+f(res.gS,1)+', q_ELU = qu/'+f(res.gU,1)+', coefficients du classeur pénétrométrique)':(res.refElu?' comparée à N_u (ancien comportement du module)':' (admissible ELS comparé à N_ser + poids propre)'))+' ; EN 1997-1, NF P 94-261 et Fasc. 62 titre V non fournis, non vérifiable.</p>')
     +'<p class="ncPt" data-bad="0">flexion '+(res.methode==='ec2'?'EC2 (classeur 097, EN 1992-1-1 9.8.2.2 hors des livres) ; la méthode BAEL est donnée à titre de comparaison':'BAEL (bielles, σst) ; la méthode EC2 est donnée à titre de comparaison')+' ; z = '+f(res.zF)+'·d. Les deux normes ne sont pas mélangées pour le ferraillage retenu.</p>'
     +'<p class="ncPt" data-bad="0">enrobage c_nom = '+f(res.cnom*1000,0)+' mm (classe '+res.cnomExpo.classe+' : '+f(res.cnomExpo.cnom,0)+' mm, '+(res.contactSol==='terre'?'directement contre terre':'sur béton de propreté')+' : '+f(res.cContact,0)+' mm, source EN 1992-1-1 4.4.1.3 hors des livres).</p>'
     +(res.isolee&&!(res.exc)?'':'')
-    +(res.exc?'<p class="ncPt" data-bad="0">excentricité'+(res.MuDefaut?' ; M_u = M_ser·N_u/N_ser (non saisi)':'')+', majoration '+f(res.coefExc)+' et surface comprimée minimale '+f(res.pctMin,0)+' % : norme non fournie.</p>':'')
+    +(res.exc&&!res.nf?'<p class="ncPt" data-bad="0">excentricité'+(res.MuDefaut?' ; M_u = M_ser·N_u/N_ser (non saisi)':'')+', majoration '+f(res.coefExc)+' et surface comprimée minimale '+f(res.pctMin,0)+' % : norme non fournie.</p>':'')
     +(res.Dass>0?'':'<p class="ncPt" data-bad="0">poids des terres sur la semelle et nappe non pris en compte (profondeur d\'assise D = 0) ; le saisir dans « Paramètres avancés » s\'il existe.</p>')
     +'<p class="ncPt" data-bad="0">A_s,min de flexion '+(res.asMinOn?'appliqué':'non appliqué')+' (EC2 9.2.1.1, applicabilité aux semelles) ; règle des crochets A/'+f(smP(dp,'ratioCrochets'),1)+' et A/'+f(smP(dp,'ratioDroites'),1)+' (Recommandations professionnelles non fournies) ; chaînage et espacement maximal '+f(smP(dp,'sMax_mm'),0)+' mm (choix constructifs).</p>'
     +(res.optsNonDef||[]).map(k=>{ const r=res.ref, o=res.refs&&res.refs[k]; if(!r||!o) return ''; const pc=(a,b)=>(b>1e-9?(' ('+(a>=b?'+':'−')+f(Math.abs(a/b-1)*100,0)+' %)'):'');
@@ -30193,13 +30346,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       if(k==='secCrit') return '<p class="ncPt" data-bad="0">Option « section critique du moment au nu du poteau » (guide ch.6 p.46) : A_s requis par la flexion'+(res.isolee?' // B':'')+' = '+f(As1)+' cm²'+(res.isolee?'':'/ml')+' contre '+f(As0)+' cm² avec 0,35·l par défaut'+pc(As1,As0)+'.</p>';
       if(k==='zMode') return '<p class="ncPt" data-bad="0">Option « bras de levier z calculé plafonné à 0,95 d » (guide ch.4 p.25-31, α_cc = 1) : A_s requis par la flexion'+(res.isolee?' // B':'')+' = '+f(As1)+' cm²'+(res.isolee?'':'/ml')+' contre '+f(As0)+' cm² avec z = 0,9 d par défaut'+pc(As1,As0)+'.</p>';
       return ''; }).join('')
-    +'<p class="ncPt" data-bad="0">Non vérifiés : portance du sol, soulèvement biaxial / partiel (classeurs 023, 024, 128), tassement (module Tassements & géotechnique), fissuration et flèche, semelle sur gros béton.</p>';
+    +(res.nf?'<p class="ncPt" data-bad="0">Non vérifiés : tassement (module Tassements & géotechnique), soulèvement biaxial ou partiel, talus, rocher, séisme, fissuration et flèche, semelle sur gros béton.</p>':'<p class="ncPt" data-bad="0">Non vérifiés : portance du sol, soulèvement biaxial / partiel (classeurs 023, 024, 128), tassement (module Tassements & géotechnique), fissuration et flèche, semelle sur gros béton.</p>');
    const hyp=[
     ['Béton',esc(dp.classeGlobale)+' · f<sub>ck</sub> = '+res.mat.fck+' MPa · f<sub>cd</sub> = '+f(res.mat.fcd)+' MPa · f<sub>ctm</sub> = '+f(res.fctm)+' MPa','Saisie · γ<sub>C</sub> = 1,5'],
     ['Acier',esc(dp.classeAcier)+' · f<sub>yk</sub> = '+res.mat.Fe+' MPa · f<sub>yd</sub> = '+f(res.mat.fyd,1)+' MPa','Saisie · γ<sub>S</sub> = 1,15'],
-    ['Donnée du sol',res.quMode?('qu = '+kp(res.qsolSaisi)+' → q_ELS = '+kp(res.qELS)+' · q_ELU = '+kp(res.qELU)):('q.sol = '+kp(res.qsolSaisi)+(res.refElu?' (comparée à N_u)':' (admissible ELS)')),'Saisie']
-   ].concat(smRowsHyp(dp).map(r=>[esc(r[0]),esc(r[1]),r[2]]));
-   let h='<div class="pcNC"><h3>Note de calcul — '+nomO+'</h3>'
+    ...(res.nf?[]:[['Donnée du sol',res.quMode?('qu = '+kp(res.qsolSaisi)+' → q_ELS = '+kp(res.qELS)+' · q_ELU = '+kp(res.qELU)):('q.sol = '+kp(res.qsolSaisi)+(res.refElu?' (comparée à N_u)':' (admissible ELS)')),'Saisie']])
+   ].concat(res.nf?smNfHypRows(res,dp,f):[]).concat(smRowsHyp(dp).map(r=>[esc(r[0]),esc(r[1]),r[2]]));
+   let h='<div class="pcNC"'+(res.nf?' data-norme="NF P 94-261 (juin 2013 + A1 2017) · Eurocode 2 (béton armé)"':'')+'><h3>Note de calcul — '+nomO+'</h3>'
     +'<p class="ncConstat">'+constat+'</p>'
     +'<p class="pcNote">Semelle '+(res.isolee?'isolée':'filante')+' · flexion '+M+(res.methode==='ec2'?' (classeur 097)':' (bielles)')+' · '+todayStr()+'</p>'
     +'<h5>Hypothèses</h5>'+tab(['Paramètre','Valeur','Origine'],hyp)
@@ -30208,7 +30361,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +tab(['Donnée','Valeur'],(res.isolee?[['Poteau a × b',cm(res.a)+' × '+cm(res.b)]]:[['Largeur du mur b',cm(res.b)]]).concat([['G / Q',f(+dp.G_kN,1)+' / '+f(+dp.Q_kN,1)+' kN'+(res.isolee?'':'/ml')],['N_ser = G + Q',f(res.Nser*1000,1)+' kN'],['N_u = 1,35 G + 1,5 Q',f(res.Nu*1000,1)+' kN']]).concat(res.isolee&&dp.excentrique?[['M_ser / M_u',f(res.Mser*1000,1)+' / '+f(res.Mu*1000,1)+' kN·m']]:[]))
     +'<h5>Dimensions de la semelle</h5>'
     +tab(['Grandeur','Formule','Valeur'],[
-      ['Surface minimale','S ≥ max(N/q) sans poids propre',f(res.Sreq0)+' m²'],
+      res.nf?['Surface','recherche de la plus petite surface (arrondie) satisfaisant portance, excentrement et glissement',f(res.S)+' m²']:['Surface minimale','S ≥ max(N/q) sans poids propre',f(res.Sreq0)+' m²'],
       ['Dimensions retenues (arrondi par excès)',res.isolee?'A × B':'B',dim+(res.isolee?' (débords '+cm(res.debordA)+' / '+cm(res.debordB)+')':'')],
       ['Hauteur','Ht,min = '+(res.isolee?'(B − b)/4 + marge':'(B − b)/4 + marge ou 2·(débord + marge)')+' = '+cm(res.HtMin)+' ; Ht retenue après poinçonnement et tranchant','Ht = '+cm(res.Ht)],
       ['Poids propre','P_p = A·B·Ht·25 kN/m³',f(res.Pp*1000,1)+' kN'],
