@@ -20046,6 +20046,10 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pcDcBlk .pcElsBody .pcNote{margin:0 0 12px}
 @media (max-width:600px){.pcDcBlk .pcElsBody label{grid-template-columns:minmax(0,1fr) auto}.pcDcBlk .pcElsLbl{grid-column:1/-1}}
 .pjBeamRoot .pcElsSub{border-top:1px solid var(--ds-line);padding:0}
+.pcElsRo{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:6px}
+.pcElsRo .pcElsLbl{flex:1 1 100%;font-weight:600}
+.pcElsRoVal{font-variant-numeric:tabular-nums;color:var(--ds-ink,#222)}
+@media (min-width:601px){.pjBeamRoot .pcEls label.pcElsRo,.pcDcBlk .pcElsBody label.pcElsRo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px) auto}.pcElsRo .pcElsLbl{flex:none}}
 .pjBeamRoot .pcElsSub>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body);color:var(--ds-ink);list-style:none}
 .pjBeamRoot .pcElsSub>summary::-webkit-details-marker{display:none}
 .pjBeamRoot .pcElsSub>summary::before{content:"▸";display:inline-block;transition:transform .15s}
@@ -26590,9 +26594,17 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {th:'feu',k:'feu_gc',lbl:'Coefficient du béton à chaud',t:'num',def:1.17,min:1,max:1.5,step:0.01,unit:'',aide:'N_r = α/0,85·(B_q·f_c28/1,17 + …) (classeur 011) ; à confirmer.'},
    {th:'feu',k:'feu_lamMax',lbl:'Élancement maximal du domaine',t:'num',def:70,min:50,max:120,step:5,unit:'',aide:'Le classeur 011 ne donne pas de limite ; 70 retenu (classeur 009). Au-delà : non vérifié.'}
   ];
+  /* Valeurs NORMATIVES et coefficients de SÉCURITÉ : affichées en lecture seule, jamais modifiables à l'écran (règle de l'utilisateur). */
+  ['c_gC','c_gS','c_acc','c_gG','c_lc','c_ls','c_rhoMax','c_rhoMin','c_nuMin','c_cotMax','c_rhoW','c_k1','c_z','c_sl','c_a6','c_sigC','c_cadExt','feu_gc','feu_lamMax'].forEach(k=>{ PT_COEF.find(x=>x.k===k).ro=true; });
+  [{th:'mat',t:'ν1 = 0,6·(1 − f_ck/250)',lbl:'ν1 (béton fissuré en cisaillement)',ref:'livre p.311'},
+   {th:'tr',t:'C_Rd,c = 0,18/γ_C ; v_min = 0,053/γ_C·k^(3/2)·√f_ck',lbl:'C_Rd,c et v_min',ref:'livre p.309-311'},
+   {th:'so',t:'β = 0,35 + f_ck/200 − λ/150 (K_φ = 1 + β·φ_ef)',lbl:'β de K_φ',ref:'EC2 5.8.8.3'},
+   {th:'arm',t:'ε_c2 = 2 ‰ ; ε_cu2 = 3,5 ‰ (béton ≤ C50)',lbl:'Déformations du béton',ref:'livre p.159, 451'},
+   {th:'arm',t:'f_ctm = 0,30·f_ck^(2/3) ; f_ctd = min(0,7·f_ctm ; 3,1)/γ_C ; f_bd = 2,25·f_ctd',lbl:'f_ctd et f_bd (adhérence)',ref:'livre p.162-163'}
+  ].forEach((o,i)=>{ PT_COEF.push({th:o.th,k:'i_'+i,lbl:o.lbl,ro:true,info:true,text:o.t,ref:o.ref,aide:o.ref}); });
   const PT_COEF_BY={}; PT_COEF.forEach(sp=>{ PT_COEF_BY[sp.k]=sp; });
-  function ptCoef(dp,k){ const sp=PT_COEF_BY[k]; if(!sp) return null; const v=dp&&dp[k]; if(v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=sp.min-1e-12&&+v<=sp.max+1e-12) return +v; return sp.def; }
-  function ptCoefSaisi(dp,k){ const sp=PT_COEF_BY[k]; const v=dp&&dp[k]; return !!(sp&&v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=sp.min-1e-12&&+v<=sp.max+1e-12); }
+  function ptCoef(dp,k){ const sp=PT_COEF_BY[k]; if(!sp) return null; if(sp.ro) return sp.def; const v=dp&&dp[k]; if(v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=sp.min-1e-12&&+v<=sp.max+1e-12) return +v; return sp.def; }
+  function ptCoefSaisi(dp,k){ const sp=PT_COEF_BY[k]; const v=dp&&dp[k]; return !!(sp&&!sp.ro&&v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=sp.min-1e-12&&+v<=sp.max+1e-12); }
   let _ptKdp=null;
   function ptPhiCad(phiL){ const need=Math.max(ptCoef(_ptKdp,'c_cadMin'),phiL/ptCoef(_ptKdp,'c_cadDiv')); return PT_PHICAD.find(p=>p>=need-1e-9)||16; }
   /* Calcul complet (Eurocode 2, livre « Pratique de l'EC2 » ch.6 et ch.11) :
@@ -26915,15 +26927,17 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   /* Bloc repliable unique « Paramètres avancés » du poteau : un sous-bloc repliable par thème (PT_TH), champs de PT_COEF.
      Valeur par défaut visible, étiquette « par défaut » / « saisi », aide d'une ligne, bornes, rétablir ; enregistré avec l'ouvrage. */
+  function ptRoHtml(sp){ const v=sp.info?sp.text:(String(sp.def).replace('.',',')+(sp.unit?' '+sp.unit:''));
+   return '<label class="pcElsRo"><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsRoVal">'+v+'</span><span class="pcElsTag">normatif, non modifiable</span></label><p class="pcNote">'+sp.aide+'</p>'; }
   function ptParamsBlockHtml(dp,id){
    const cls=pcEnrobageNom(dp).classe, req=/^XD/.test(cls), err=(window._elsErr||{})[id], th=dp._thOpen||{};
    const nS=PT_COEF.filter(sp=>ptCoefSaisi(dp,sp.k)).length;
    const sub=PT_TH.map(([t,tl])=>{
     const specs=PT_COEF.filter(sp=>sp.th===t).map(sp=>Object.assign({},sp,{def:sp.defFn?sp.defFn(dp):sp.def}));
-    const nT=specs.filter(sp=>ptCoefSaisi(dp,sp.k)).length;
+    const nT=specs.filter(sp=>ptCoefSaisi(dp,sp.k)).length; /* lecture seule : jamais comptée */
     const intro=t==='els'?'<p class="pcNote">'+(req?'Classe '+cls+' : contraintes ELS vérifiées (σ_c ≤ 0,6·f_ck, σ_s ≤ 0,8·f_yk).':'Classe '+cls+' : contraintes ELS non requises (requises en XD, XF, XS) ; ces valeurs ne servent alors à rien.')+'</p>'
      :(t==='feu'?'<p class="pcNote">Méthode tabulée de type BAEL/DTU feu reprise du classeur 011 (pas l\'EN 1992-1-2). Domaine : section rectangulaire, compression centrée (moments nuls), M = périmètre/aire de 0,05 à 0,25 cm⁻¹, durées 0,5 à 4 h ; hors domaine : non vérifié. f_c28 = f_ck, f_e = f_yk, h = hauteur du poteau, a = petit côté, quatre faces exposées.</p>':'');
-    return '<details class="pcElsSub" data-els-id="'+id+'" data-th="'+t+'"'+(th[t]?' open':'')+'><summary>'+tl+(nT?' <span class="pcElsTag on">'+nT+' saisi'+(nT>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'+intro+specs.map(sp=>elsFieldHtml(sp,dp,err)).join('')+'</div></details>';
+    return '<details class="pcElsSub" data-els-id="'+id+'" data-th="'+t+'"'+(th[t]?' open':'')+'><summary>'+tl+(nT?' <span class="pcElsTag on">'+nT+' saisi'+(nT>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'+intro+specs.map(sp=>sp.ro?ptRoHtml(sp):elsFieldHtml(sp,dp,err)).join('')+'</div></details>';
    }).join('');
    return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="pt"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés (second ordre, ELS, feu…)'+(nS?' <span class="pcElsTag on">'+nS+' saisi'+(nS>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'
     +'<p class="pcNote">Coefficients du calcul du poteau : la valeur par défaut est affichée dans le champ ; vide ou hors bornes, la valeur par défaut est utilisée. Les valeurs saisies sont reprises dans la note de calcul (Hypothèses et Points à confirmer).</p>'
@@ -26999,13 +27013,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {k:'gG',lbl:'γ_G — coefficient des charges permanentes',def:1.35,min:1,max:1.5,step:0.05,unit:'',aide:'N_Ed = γ_G·Σ(g + g′) + γ_Q·Σ(a_n·q + q′) ; 1,35 (livre p.169).'},
    {k:'gQ',lbl:'γ_Q — coefficient des charges d\'exploitation',def:1.5,min:1,max:1.6,step:0.05,unit:'',aide:'1,5 (livre p.169). Le coefficient de dégression a_n se saisit par niveau (colonne a_n du tableau, 1 par défaut ; règle de dégression à confirmer).'},
    {k:'rho',lbl:'Poids volumique du béton armé',def:25,min:20,max:28,step:0.5,unit:'kN/m³',aide:'25 kN/m³ (livre p.169).'}];
-  function dcCoef(dd,k){ const sp=DC_COEF.find(x=>x.k===k); const v=dd&&dd[k]; return (v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=sp.min-1e-12&&+v<=sp.max+1e-12)?+v:sp.def; }
+  DC_COEF.forEach(sp=>{ if(sp.k==='gG'||sp.k==='gQ') sp.ro=true; });
+  function dcCoef(dd,k){ const sp=DC_COEF.find(x=>x.k===k); if(sp.ro) return sp.def; const v=dd&&dd[k]; return (v!==undefined&&v!==null&&v!==''&&isFinite(+v)&&+v>=sp.min-1e-12&&+v<=sp.max+1e-12)?+v:sp.def; }
   function dcSaisi(dd,k){ return Math.abs(dcCoef(dd,k)-DC_COEF.find(x=>x.k===k).def)>1e-12; }
   function dcCoefBlockHtml(dd,id){
    const err=(window._dcErr||{})[id], nS=DC_COEF.filter(sp=>dcSaisi(dd,sp.k)).length;
    return '<div class="pcDcBlk"><details class="pcEls" data-dc-blk="1" data-els-id="'+id+'"'+(dd._open?' open':'')+'><summary>Paramètres avancés (descente de charges)'+(nS?' <span class="pcElsTag on">'+nS+' saisi'+(nS>1?'s':'')+'</span>':'')+'</summary><div class="pcElsBody">'
-    +'<p class="pcNote">Valeur par défaut affichée dans le champ ; vide ou hors bornes, la valeur par défaut est utilisée. Les valeurs saisies sont reprises dans la note du poteau.</p>'
+    +'<p class="pcNote">Valeur par défaut affichée dans le champ ; vide ou hors bornes, la valeur par défaut est utilisée. Les valeurs saisies sont reprises dans la note du poteau. Le coefficient de dégression a_n se saisit par niveau dans le tableau (1 par défaut ; règle de dégression à confirmer). γ_G et γ_Q sont normatifs : lecture seule.</p>'
     +DC_COEF.map(sp=>{ const sa=dcSaisi(dd,sp.k), v=dcCoef(dd,sp.k);
+      if(sp.ro) return '<label class="pcElsRo"><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsRoVal">'+String(v).replace('.',',')+'</span><span class="pcElsTag">normatif, non modifiable</span></label><p class="pcNote">'+sp.aide.replace(/ Le coefficient de dégression.*$/,'')+'</p>';
       return '<label><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsCtl"><input type="number" inputmode="decimal" step="'+sp.step+'" min="'+sp.min+'" max="'+sp.max+'" data-dc-c="'+sp.k+'" value="'+v+'">'+(sp.unit?'<span class="pcUnitEls">'+sp.unit+'</span>':'')+'</span><span class="pcElsTag'+(sa?' on':'')+'">'+(sa?'saisi':'par défaut')+'</span></label>'
        +(err&&err.key===sp.k?'<p class="pcNote pcElsErr" role="alert">'+esc(err.msg)+'</p>':'')+'<p class="pcNote">'+sp.aide+'</p>'; }).join('')
     +'<button type="button" class="ghost" data-dc-reset="1">Rétablir les valeurs par défaut</button></div></details></div>';
@@ -27150,7 +27166,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function pteChange(e,id){
    const t=taskById(id); if(!t) return; const el=e.target;
    if(el.dataset.dcC){ const dd=dcData(t), k=el.dataset.dcC, sp=DC_COEF.find(x=>x.k===k); window._dcErr=window._dcErr||{}; delete window._dcErr[id];
-    if(!sp) return; if(el.value===''){ delete dd[k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max){ window._dcErr[id]={key:k,msg:sp.lbl.replace(/ [—(].*$/,'')+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; } else dd[k]=x; }
+    if(!sp||sp.ro) return; if(el.value===''){ delete dd[k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max){ window._dcErr[id]={key:k,msg:sp.lbl.replace(/ [—(].*$/,'')+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; } else dd[k]=x; }
     dd.resultats=null; try{persist();}catch(_){ } pteRender(id); return; }
    if(el.dataset.dcI!=null&&el.dataset.dcF){
     const dd=dcData(t); const n=dd.niveaux[+el.dataset.dcI]; if(!n) return;
@@ -27160,7 +27176,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     return;
    }
    const dp=ptData(t);
-   if(el.dataset.els){ const k=el.dataset.els, sp=PT_COEF_BY[k]; if(!sp) return; window._elsErr=window._elsErr||{}; delete window._elsErr[id];
+   if(el.dataset.els){ const k=el.dataset.els, sp=PT_COEF_BY[k]; if(!sp||sp.ro) return; window._elsErr=window._elsErr||{}; delete window._elsErr[id];
     if(sp.t==='sel'){ dp[k]=+el.value; try{persist();}catch(_){ } pteRender(id); return; }
     if(el.value===''){ delete dp[k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max) window._elsErr[id]={key:k,msg:sp.lbl.replace(/ [—(].*$/,'')+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; else dp[k]=x; }
     try{persist();}catch(_){ } pteRender(id); return; }
@@ -27304,6 +27320,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     ['Élancement limite','A = '+(cSa('c_A')?fC(res.A,3)+' (saisi)':(res.phiSaisi?'1/(1+0,2·φ<sub>ef</sub>) = '+fC(res.A,3):'0,7'))+' · B = '+fC(res.B)+(cSa('c_B')?' (saisi)':(res.omega!=null&&res.B>1.1?' (ω = '+fC(res.omega,3)+')':' (ω inconnu)'))+' · C = '+(cSa('c_C')?fC(res.C)+' (saisi)':'1,7 − r<sub>m</sub> = '+fC(res.C)+' ('+esc(res.rmCas)+')'),(res.phiSaisi?'φ<sub>ef</sub> saisi (livre p.152) ; B, C par défaut':'Valeurs par défaut (livre p.152)')+(cAny(['c_A','c_B','c_C'])?' · A, B ou C saisi (paramètres avancés)':'')],
     ...(res.second&&!g.rect&&res.dCour_mm?[['Courbure 1/r<sub>0</sub>','ε<sub>yd</sub>/(0,45·d) avec d = h/2 + i<sub>s</sub> = '+fC(res.dCour_mm/10,1)+' cm','Section circulaire (Maîtrise p.107)']]:[]),
     ['Excentricités','e<sub>i</sub> = l<sub>0</sub>/'+cS('c_ei')+' = '+fC(res.ei_mm,1)+' mm · Δe<sub>0</sub> = max('+cS('c_De0min')+' mm ; h/'+cS('c_De0div')+') = '+fC(res.De0_mm,1)+' mm (armatures symétriques)','EC2 5.2, livre p.445-446'+(cAny(['c_ei','c_De0min','c_De0div'])?' · coefficient saisi':'')]];
+   hypRows.push(['Valeurs normatives (non modifiables)','γ<sub>C</sub> = 1,5 · γ<sub>S</sub> = 1,15 · α<sub>cc</sub> = 1,0 · γ<sub>G</sub> = 1,35 (poids propre) · σ<sub>c</sub> ≤ 0,6·f<sub>ck</sub> et σ<sub>s</sub> ≤ 0,8·f<sub>yk</sub> (ELS) · A<sub>s,max</sub> = 0,04·A<sub>c</sub> · A<sub>s,min</sub> = max(0,10·N<sub>Ed</sub>/f<sub>yd</sub> ; 0,002·A<sub>c</sub>) · k<sub>1</sub> = 0,15 · z = 0,9·d · 1 ≤ cotθ ≤ 2,5 · ρ<sub>w,min</sub> = 0,08√f<sub>ck</sub>/f<sub>yk</sub> · s<sub>l,max</sub> = 0,75·d · α<sub>6</sub> = 1,5 · σ<sub>s</sub> = 400 MPa en compression centrée · ν<sub>1</sub>, C<sub>Rd,c</sub>, β, ε<sub>c2</sub>, ε<sub>cu2</sub>, f<sub>ctd</sub>, f<sub>bd</sub> · réduction ×0,6 des cadres aux extrémités','Normatif (EC2, livre p.152-173, 309-319, 449) : lecture seule dans les paramètres avancés']);
    if(res.coefSaisis&&res.coefSaisis.length) hypRows.push(['Coefficients saisis (paramètres avancés)',res.coefSaisis.map(c=>esc(c.lbl)+' = '+fC(c.val,3).replace(/,?0+$/,'')+(c.unit?' '+esc(c.unit):'')+(c.def!=null?' (défaut '+String(c.def).replace('.',',')+')':' (défaut : règle de calcul)')).join(' · '),'Saisi par l\'ingénieur']);
    if(res.feu.etat!=='na'){ const fe=res.feu, sv=x=>x?'saisi':'par défaut';
     hypRows.push(['Résistance au feu','Durée de stabilité '+fC(fe.dur,1)+' h · k = '+fC(fe.k,2)+' ('+sv(fe.src.k)+') · A<sub>v</sub> = '+fC(fe.Av,2)+' cm² ('+sv(fe.src.Av)+') · θ<sub>i</sub> = '+fC(fe.thI,0)+' °C ('+sv(fe.src.thI)+') · N<sub>fi</sub> = '+fC(fe.Nfi,1)+' kN ('+sv(fe.src.Nfi)+(fe.src.Nfi?'':', N<sub>Ed</sub>/1,4')+')'+(fe.etat==='nf'?'':' · N<sub>r</sub> = '+fC(fe.Nr,1)+' kN (classeur : N<sub>r</sub> en t = 100·MN)'),'Méthode tabulée BAEL/DTU feu du classeur 011, pas l\'EN 1992-1-2 ; saisie ou valeurs par défaut']); }
