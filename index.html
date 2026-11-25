@@ -36320,4 +36320,144 @@ setInterval(()=>{ const pv=document.getElementById('sbProfView'); if(!pv||pv.que
 },700);
 })();</script>
 
+<script>
+/* Module Portique (lot 1) : solveur plan puis fiche et résultats */
+(function(){
+/* ===================== Portique plan : solveur matriciel des déplacements (poutres de Bernoulli) =====================
+   Unités : m, kN, kN/m² (module E), rad. Nœuds à 3 degrés de liberté (u, v, θ), barres à section constante, E, A, I par barre.
+   Appuis par nœud : « fixed » / « free » / raideur de ressort (kN/m ou kN·m/rad). Articulations d'extrémité de barre (rotation libérée) par condensation statique.
+   Charges : nœuds (Fx, Fy, M), barres : répartie (trapèze partiel), ponctuelle, couple ; directions globales (x, y), locales (t, n), répartie « projetée » (par m horizontal ou vertical).
+   Convention locale : t de i vers j, n = t tourné de +90° ; moment fléchissant positif = fibre inférieure tendue (sens de t vers la droite) ; effort tranchant V = somme des forces n à gauche ; N de traction positif. */
+const PF_GP=[[-0.9061798459386640,0.2369268850561891],[-0.5384693101056831,0.4786286704993665],[0,0.5688888888888889],[0.5384693101056831,0.4786286704993665],[0.9061798459386640,0.2369268850561891]];
+function pfShape(L,x){ const k=x/L; return {Nu:[1-k,k],Nb:[1-3*k*k+2*k*k*k,L*(k-2*k*k+k*k*k),3*k*k-2*k*k*k,L*(-k*k+k*k*k)],dNb:[(-6*k+6*k*k)/L,1-4*k+3*k*k,(6*k-6*k*k)/L,-2*k+3*k*k]}; }
+function pfLocalK(E,A,I,L){
+ const a=E*A/L, b=12*E*I/(L*L*L), c=6*E*I/(L*L), d=4*E*I/L, e=2*E*I/L;
+ return [[a,0,0,-a,0,0],[0,b,c,0,-b,c],[0,c,d,0,-c,e],[-a,0,0,a,0,0],[0,-b,-c,0,b,-c],[0,c,e,0,-c,d]];
+}
+/* charges de barre ramenées aux axes locaux : liste de {kind:'dist',s1,s2,qt1,qt2,qn1,qn2} | {kind:'point',s,Pt,Pn} | {kind:'couple',s,M} */
+function pfBarLoadsLocal(bar,geo,loads,gamma){
+ const c=geo.c, s=geo.s, L=geo.L, out=[];
+ const toLocal=(fx,fy)=>({t:fx*c+fy*s,n:-fx*s+fy*c});
+ if(gamma&&bar.A>0){ const q=toLocal(0,-gamma*bar.A); out.push({kind:'dist',s1:0,s2:L,qt1:q.t,qt2:q.t,qn1:q.n,qn2:q.n,poids:true}); }
+ (loads||[]).forEach(ld=>{
+  if(ld.kind==='dist'){
+   const s1=ld.s1==null?0:+ld.s1, s2=ld.s2==null?L:+ld.s2, q1=+ld.q1||0, q2=ld.q2==null?q1:+ld.q2, dir=ld.dir||'y';
+   const proj=!!ld.proj; let f=1; if(proj){ f=dir==='x'?Math.abs(s):(dir==='y'?Math.abs(c):1); }
+   let a1,a2;
+   if(dir==='n'||dir==='t'){ a1=dir==='t'?{t:q1*f,n:0}:{t:0,n:q1*f}; a2=dir==='t'?{t:q2*f,n:0}:{t:0,n:q2*f}; }
+   else if(dir==='x'){ a1=toLocal(q1*f,0); a2=toLocal(q2*f,0); } else { a1=toLocal(0,q1*f); a2=toLocal(0,q2*f); }
+   out.push({kind:'dist',s1,s2,qt1:a1.t,qt2:a2.t,qn1:a1.n,qn2:a2.n});
+  } else if(ld.kind==='point'){
+   const dir=ld.dir||'y', P=+ld.P||0; let v;
+   if(dir==='n') v={t:0,n:P}; else if(dir==='t') v={t:P,n:0}; else if(dir==='x') v=toLocal(P,0); else v=toLocal(0,P);
+   out.push({kind:'point',s:+ld.s||0,Pt:v.t,Pn:v.n});
+  } else if(ld.kind==='couple'){ out.push({kind:'couple',s:+ld.s||0,M:+ld.M||0}); }
+ });
+ return out;
+}
+/* forces nodales équivalentes (repère local) : f = ∫ Nᵀ q dx (Hermite : exactes pour les charges de barre usuelles) */
+function pfEquivLocal(L,loads){
+ const f=[0,0,0,0,0,0];
+ loads.forEach(ld=>{
+  if(ld.kind==='dist'){ const s1=ld.s1, s2=ld.s2, len=s2-s1; if(len<=0) return;
+   PF_GP.forEach(([g,w])=>{ const x=s1+(g+1)/2*len, t=(x-s1)/len, qt=ld.qt1+(ld.qt2-ld.qt1)*t, qn=ld.qn1+(ld.qn2-ld.qn1)*t, sh=pfShape(L,x), W=w*len/2;
+    f[0]+=sh.Nu[0]*qt*W; f[3]+=sh.Nu[1]*qt*W; f[1]+=sh.Nb[0]*qn*W; f[2]+=sh.Nb[1]*qn*W; f[4]+=sh.Nb[2]*qn*W; f[5]+=sh.Nb[3]*qn*W; });
+  } else if(ld.kind==='point'){ const sh=pfShape(L,ld.s); f[0]+=sh.Nu[0]*ld.Pt; f[3]+=sh.Nu[1]*ld.Pt; f[1]+=sh.Nb[0]*ld.Pn; f[2]+=sh.Nb[1]*ld.Pn; f[4]+=sh.Nb[2]*ld.Pn; f[5]+=sh.Nb[3]*ld.Pn; }
+  else if(ld.kind==='couple'){ const sh=pfShape(L,ld.s); f[1]+=sh.dNb[0]*ld.M; f[2]+=sh.dNb[1]*ld.M; f[4]+=sh.dNb[2]*ld.M; f[5]+=sh.dNb[3]*ld.M; }
+ });
+ return f;
+}
+function pfMatVec(M,v){ return M.map(r=>r.reduce((a,x,k)=>a+x*v[k],0)); }
+function pfTransform(c,s){ return [[c,s,0,0,0,0],[-s,c,0,0,0,0],[0,0,1,0,0,0],[0,0,0,c,s,0],[0,0,0,-s,c,0],[0,0,0,0,0,1]]; }
+function pfTranspose(M){ return M[0].map((_,j)=>M.map(r=>r[j])); }
+function pfMatMul(A,B){ return A.map(r=>B[0].map((_,j)=>r.reduce((a,x,k)=>a+x*B[k][j],0))); }
+/* élimination de Gauss avec pivot partiel ; lève une erreur si la structure est instable (mécanisme) */
+function pfGauss(A,b){
+ const n=b.length; let dmax=0; for(let i=0;i<n;i++) dmax=Math.max(dmax,Math.abs(A[i][i]));
+ for(let k=0;k<n;k++){
+  let p=k; for(let i=k+1;i<n;i++) if(Math.abs(A[i][k])>Math.abs(A[p][k])) p=i;
+  if(Math.abs(A[p][k])<1e-12*Math.max(dmax,1)){ const e=new Error('Structure instable : mécanisme ou appuis insuffisants.'); e.pfInstable=true; e.dof=k; throw e; }
+  if(p!==k){ const t=A[k]; A[k]=A[p]; A[p]=t; const tb=b[k]; b[k]=b[p]; b[p]=tb; }
+  for(let i=k+1;i<n;i++){ const m=A[i][k]/A[k][k]; if(m===0) continue; for(let j=k;j<n;j++) A[i][j]-=m*A[k][j]; b[i]-=m*b[k]; }
+ }
+ const x=new Array(n).fill(0);
+ for(let i=n-1;i>=0;i--){ let s=b[i]; for(let j=i+1;j<n;j++) s-=A[i][j]*x[j]; x[i]=s/A[i][i]; }
+ return x;
+}
+function pfSolve(model){
+ const nodes=model.nodes||[], bars=model.bars||[], idx={}; nodes.forEach((n,i)=>{ idx[n.id]=i; });
+ if(nodes.length<2||!bars.length){ const e=new Error('Modèle incomplet : au moins deux nœuds et une barre.'); throw e; }
+ const nd=nodes.length*3, K=Array.from({length:nd},()=>new Array(nd).fill(0)), F=new Array(nd).fill(0), Fn=new Array(nd).fill(0), mem=[];
+ bars.forEach((b,bi)=>{
+  const i=idx[b.i], j=idx[b.j]; if(i==null||j==null) throw new Error('Barre '+b.id+' : nœud inconnu.');
+  const dx=nodes[j].x-nodes[i].x, dy=nodes[j].y-nodes[i].y, L=Math.hypot(dx,dy); if(L<1e-9) throw new Error('Barre '+b.id+' de longueur nulle.');
+  const geo={L,c:dx/L,s:dy/L}, loads=pfBarLoadsLocal(b,geo,(model.barLoads||[]).filter(l=>l.bar===b.id),model.gamma?(b.gamma!=null?b.gamma:model.gamma):0);
+  let Kl=pfLocalK(b.E,b.A,b.I,L), fe=pfEquivLocal(L,loads), Kc=Kl, fc=fe, rel=[];
+  if(b.relI) rel.push(2); if(b.relJ) rel.push(5);
+  rel.forEach(r=>{ const krr=Kc[r][r]; const Kn=Kc.map((row,a)=>row.map((v,c)=>v-Kc[a][r]*Kc[r][c]/krr)); const fn=fc.map((v,a)=>v-Kc[a][r]*fc[r]/krr); Kc=Kn; fc=fn; });
+  const T=pfTransform(geo.c,geo.s), Kg=pfMatMul(pfTranspose(T),pfMatMul(Kc,T)), fg=pfMatVec(pfTranspose(T),fc);
+  const dof=[3*i,3*i+1,3*i+2,3*j,3*j+1,3*j+2];
+  for(let a=0;a<6;a++){ F[dof[a]]+=fg[a]; for(let c=0;c<6;c++) K[dof[a]][dof[c]]+=Kg[a][c]; }
+  mem.push({bar:b,i,j,geo,Kl,fe,Kc,fc,T,dof,rel,loads});
+ });
+ (model.nodal||[]).forEach(l=>{ const i=idx[l.node]; if(i==null) throw new Error('Charge nodale : nœud inconnu.'); const fx=+l.Fx||0, fy=+l.Fy||0, mm=+l.M||0; F[3*i]+=fx; F[3*i+1]+=fy; F[3*i+2]+=mm; Fn[3*i]+=fx; Fn[3*i+1]+=fy; Fn[3*i+2]+=mm; });
+ const fixed=new Array(nd).fill(false), spring=new Array(nd).fill(0);
+ (model.supports||[]).forEach(sp=>{ const i=idx[sp.node]; if(i==null) throw new Error('Appui : nœud inconnu.'); [['ux',0],['uy',1],['rz',2]].forEach(([k,o])=>{ const v=sp[k]; if(v==='fixed') fixed[3*i+o]=true; else if(typeof v==='number'&&v>0) spring[3*i+o]+=v; }); });
+ const Kf=K.map((r,a)=>r.slice()); for(let a=0;a<nd;a++) Kf[a][a]+=spring[a];
+ let kscale=0; for(let a=0;a<nd;a++) kscale=Math.max(kscale,Kf[a][a]); const orphan=[];
+ for(let a=0;a<nd;a++) if(!fixed[a]&&a%3===2&&Kf[a][a]<1e-9*kscale){ fixed[a]=true; orphan.push(a); } /* rotation d'un nœud dont toutes les barres sont articulées : sans effet, bloquée */
+ const free=[]; for(let a=0;a<nd;a++) if(!fixed[a]) free.push(a);
+ const A=free.map(a=>free.map(c=>Kf[a][c])), bvec=free.map(a=>F[a]);
+ const xs=free.length?pfGauss(A,bvec):[]; const d=new Array(nd).fill(0); free.forEach((a,k)=>{ d[a]=xs[k]; });
+ /* efforts d'extrémité (forces des nœuds sur la barre, repère local) et réactions */
+ const react=new Array(nd).fill(0), ends=[];
+ mem.forEach(m=>{
+  const dg=m.dof.map(a=>d[a]), dl=pfMatVec(m.T,dg); let full=dl.slice();
+  m.rel.forEach(r=>{ let s=m.fe[r]; for(let c=0;c<6;c++) if(c!==r) s-=m.Kl[r][c]*full[c]; full[r]=s/m.Kl[r][r]; });
+  const kd=pfMatVec(m.Kl,full), fend=kd.map((v,a)=>v-m.fe[a]);
+  const fgl=pfMatVec(pfTranspose(m.T),fend); for(let a=0;a<6;a++) react[m.dof[a]]+=fgl[a];
+  ends.push({bar:m.bar.id,L:m.geo.L,c:m.geo.c,s:m.geo.s,dLocal:full,fEnd:fend,loads:m.loads,E:m.bar.E,A:m.bar.A,I:m.bar.I,i:m.i,j:m.j});
+ });
+ const reactions=[]; nodes.forEach((n,i)=>{ const r={node:n.id,Fx:0,Fy:0,M:0,fx:false,fy:false,fm:false};
+  [0,1,2].forEach(o=>{ const a=3*i+o; if((fixed[a]&&!orphan.includes(a))||spring[a]>0){ const val=fixed[a]?(react[a]-Fn[a]):(-spring[a]*d[a]); if(o===0){ r.Fx=val; r.fx=true; } else if(o===1){ r.Fy=val; r.fy=true; } else { r.M=val; r.fm=true; } } });
+  if(r.fx||r.fy||r.fm) reactions.push(r); });
+ const disp=nodes.map((n,i)=>({node:n.id,u:d[3*i],v:d[3*i+1],th:d[3*i+2]}));
+ return {nodes:disp,reactions,ends,nDof:nd,nFree:free.length};
+}
+/* efforts internes N, V, M et flèche locale en des abscisses données d'une barre (résultat de pfSolve) */
+function pfSections(end,xsIn){
+ const L=end.L, fe=end.fEnd, loads=end.loads, out=[];
+ const lst=xsIn||[];
+ lst.forEach(x=>{
+  let N=-fe[0], V=fe[1], M=-fe[2]+fe[1]*x;
+  loads.forEach(ld=>{
+   if(ld.kind==='dist'){ const a=ld.s1, b=Math.min(x,ld.s2); if(b>a){ const len=ld.s2-ld.s1;
+     PF_GP.forEach(([g,w])=>{ const s=a+(g+1)/2*(b-a), t=(s-ld.s1)/len, qt=ld.qt1+(ld.qt2-ld.qt1)*t, qn=ld.qn1+(ld.qn2-ld.qn1)*t, W=w*(b-a)/2; N-=qt*W; V+=qn*W; M+=qn*(x-s)*W; }); } }
+   else if(ld.kind==='point'){ if(ld.s<x-1e-12){ N-=ld.Pt; V+=ld.Pn; M+=ld.Pn*(x-ld.s); } }
+   else if(ld.kind==='couple'){ if(ld.s<x-1e-12) M-=ld.M; }
+  });
+  out.push({x,N,V,M});
+ });
+ return out;
+}
+/* diagramme d'une barre : abscisses régulières + abscisses de charges (avant/après), flèche locale par double intégration de M/EI */
+function pfDiagram(end,n){
+ const L=end.L, pts=new Set(); const N=n||41; for(let k=0;k<=N;k++) pts.add(+(L*k/N).toFixed(9));
+ const brk=[]; end.loads.forEach(ld=>{ if(ld.kind==='dist'){ brk.push(ld.s1,ld.s2); } else brk.push(ld.s); });
+ brk.forEach(s=>{ if(s>1e-9&&s<L-1e-9) pts.add(+s.toFixed(9)); });
+ let xs=[...pts].sort((a,b)=>a-b); const xs2=[]; xs.forEach(x=>{ const near=brk.some(s=>Math.abs(s-x)<1e-8); if(near&&x>1e-9&&x<L-1e-9){ xs2.push(x-1e-9,x+1e-9); } else xs2.push(x); });
+ const sec=pfSections(end,xs2);
+ /* flèche : y(x) = v_i + θ_i·x + ∫ (x−s)·M(s)/EI ds, intégration de Simpson sur grille fine */
+ const EI=end.E*end.I, M=800, h=L/M, grid=pfSections(end,Array.from({length:2*M+1},(_,k)=>k*h/2));
+ const ys=[end.dLocal[1]]; let slope=end.dLocal[2], y=end.dLocal[1];
+ for(let k=1;k<=M;k++){ const k0=grid[2*k-2].M/EI, km=grid[2*k-1].M/EI, k1=grid[2*k].M/EI; y+=slope*h+(h*h/6)*(k0+2*km); slope+=h*(k0+4*km+k1)/6; ys.push(y); }
+ const yAt=x=>{ const t=x/h, k=Math.min(M-1,Math.max(0,Math.floor(t))), f=t-k; return ys[k]*(1-f)+ys[k+1]*f; };
+ sec.forEach(p=>{ p.v=yAt(p.x); });
+ let mMax=-Infinity,mMin=Infinity,vMax=0,nMax=0; sec.forEach(p=>{ mMax=Math.max(mMax,p.M); mMin=Math.min(mMin,p.M); vMax=Math.max(vMax,Math.abs(p.V)); nMax=Math.max(nMax,Math.abs(p.N)); });
+ return {bar:end.bar,pts:sec,Mmax:mMax,Mmin:mMin,Vmax:vMax,Nmax:nMax,vEnd:ys[M]};
+}
+
+window.PF={solve:pfSolve,diagram:pfDiagram,sections:pfSections};
+})();
+</script>
 </body></html>
