@@ -24632,10 +24632,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      else if(m==='pdl'&&res.min){ K.push({v:ncF(res.min.Rd)+' MPa',l:'R_d minimale (à '+ncF(res.min.z)+' m)'}); K.push({v:ncF(res.max.Rd)+' MPa',l:'R_d maximale (à '+ncF(res.max.z)+' m)'}); K.push({v:String(res.rows.length),l:'Mesures exploitées'}); fer='R_d min = '+ncF(res.min.Rd)+' MPa'; }
      else if(m==='battage'){ K.push({v:ncF(res.Rmin)+' kN',l:'Force portante la plus faible des formules'}); K.push({v:ncF(res.R.hollandais)+' kN',l:'Formule des Hollandais'}); fer='R min = '+ncF(res.Rmin)+' kN'; }
     } else if(kind==='pieu'){
-     K.push({v:ncF(res.surPieux)+' MPa',l:'Contrainte sur pieux',bad:!res.okSurPieux});
-     if(res.tau!=null) K.push({v:ncF(res.tau)+' ≤ '+ncF(res.limTau),l:'Cisaillement τ / τ_lim (MPa)',bad:!res.okTau});
-     K.push({v:ncF(res.Ai)+' cm²',l:'Nappe inférieure A_i'});
-     if(res.barAi) fer=res.barAi.n+' Φ'+res.barAi.phi;
+     const ec=res.methode!=='ccba', Rr=ec?res.Rels:res.Rccba, Rlim=ec?res.Rcd:res.Radm;
+     K.push({v:ncF(Rr,0)+' kN',l:'Charge par pieu ('+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[res.config]+(ec?', ELU':', CCBA')+')'+(Rlim!=null?' · admissible '+ncF(Rlim,0)+' kN':' · portance non renseignée'),bad:Rlim!=null&&Rr>Rlim});
+     if(res.config!=='simple') K.push({v:ncF(res.surPieux)+' / '+ncF(res.limPieux)+' MPa',l:'Contrainte du nœud sur pieux / limite',bad:!res.okSurPieux});
+     K.push({v:res.barInf.n+' Ø'+res.barInf.phi,l:'Tirants adoptés '+ncF(res.barInf.As/100)+' cm² / requis '+ncF(res.Ainf)+' cm²',bad:!!res.barInf.insuff});
+     if(res.qRaw!=null) K.push({v:ncF(res.qRaw,1)+'°',l:'Inclinaison de la bielle (45° à 55°)',bad:res.qRaw<45});
+     fer=res.barInf.n+' Ø'+res.barInf.phi;
     }
    }catch(e){ console.warn('ncKpis',kind,e); }
    return {K,fer};
@@ -28972,104 +28974,235 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      d'entrée (G+1,2Q) — voir skill dimensionnement-05-pieux pour les limites (portance du pieu,
      répartition rigoureuse entre pieux, frottement négatif, flambement, battage : hors périmètre). */
   const PIEU_TYPE_NOM='Pieux & fondations profondes';
-  const PU_BARDIAMS=[8,10,12,14,16,20,25,32];
-  function puChooseBarsTotal(AsReq_cm2,largeur_m){
-   const AsReq_mm2=Math.max(0,AsReq_cm2)*100;
-   const nMinEsp=Math.max(4,Math.ceil((Math.max(largeur_m,0.3)*1000)/250));
-   let best=null;
-   for(const phi of PU_BARDIAMS){
-    const a=Math.PI/4*phi*phi;
-    const n=Math.max(nMinEsp,Math.ceil(AsReq_mm2/a));
-    const As=n*a;
-    if(!best||As<best.As) best={phi,n,As};
-   }
+  /* Moteur « têtes de pieux » (audit 25/11/2026, skill 05) : deux méthodes jamais mélangées dans une même note.
+     EC2 (défaut) : bielles-tirants à l'ELU (EC2 6.5 ; Maîtrise p.33, 281-286 ; classeur 107 et Recommandations Professionnelles §9.8.1b), 1,35 G + 1,5 Q, f_yd.
+     CCBA 68 (au choix de l'ingénieur) : contraintes admissibles, P1 = G + 1,2 Q, σ_s = 2/3·f_e, formules du classeur « Dimensionnement tête de pieux.xlsx ».
+     Statique : T(2 pieux) = P(a' − a/2)/(4d) ; T(3 pieux, côté) = P(a' − a/2)/(9d) ; T(4 pieux, côté) = P(a' − a/2)/(8d) (équilibre de la bielle du quart de poteau ; le classeur n'a pas de formule pour 4 pieux). */
+  const PU_NOM={simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'}, PU_N={simple:1,double:2,triple:3,quadruple:4};
+  const PU_PHIS=[10,12,14,16,20,25,32,40], PU_STD_CAD=[6,8,10,12,14,16];
+  const puOpt=(dp,k,d)=>{ const v=dp[k]; return (v===undefined||v===null||v==='')?d:v; };
+  const puNumOpt=(dp,k,d)=>{ const v=puOpt(dp,k,null); return v==null?d:(+v); };
+  const puSaisi=(dp,k)=>dp[k]!==undefined&&dp[k]!==null&&dp[k]!=='';
+  function puRound5Up(v){ return Math.ceil(v/5-1e-9)*5; }
+  const puMeth=dp=>puOpt(dp,'methode','ec2')==='ccba'?'ccba':'ec2';
+  /* choix des barres d'une nappe : diamètre, nombre, lits, espacement (ni toujours Ø8, ni 189 barres) — espacement libre mini max(Ø ; 25 ; 20 mm), maxi saisissable */
+  function puChooseBars(AsReq_cm2,W_cm,c_cm,o){
+   o=o||{}; const req=Math.max(AsReq_cm2,0)*100, Wm=W_cm*10, cm=c_cm*10, smax=o.espMax||200; let best=null;
+   (o.phiImp?[o.phiImp]:PU_PHIS).forEach(phi=>{
+    const ab=Math.PI/4*phi*phi, sv=Math.max(o.espMin||0,phi,25,20), nPer=Math.max(1,Math.floor((Wm-2*cm+sv)/(phi+sv)));
+    let n=Math.max(2,Math.ceil(req/ab-1e-9)); const nSp=Math.ceil((Wm-2*cm-phi)/smax)+1; if(nSp>n&&nSp<=nPer) n=nSp;
+    const lits=Math.ceil(n/nPer); if(lits>3) return;
+    const As=n*ab, exc=req>0?As/req-1:0, esp=n>1?(Wm-2*cm-phi)/(Math.ceil(n/lits)-1):0, score=lits*1000+(phi<12?300:0)+exc*100+n*0.1;
+    if(!best||score<best.score) best={phi,n,As,lits,nPer,esp,sv,req,score};
+   });
+   if(!best){ const phi=o.phiImp||32, ab=Math.PI/4*phi*phi, n=Math.max(2,Math.ceil(req/ab)); best={phi,n,As:n*ab,lits:Math.ceil(n/Math.max(1,Math.floor((Wm-2*cm+25)/(phi+25)))),nPer:0,esp:0,sv:25,req,insuff:true}; }
    return best;
   }
-  function puRound5Up(v){ return Math.ceil(v/5)*5; }
+  /* positions des pieux (cm, repère centré sur le poteau, x // côté a, y // côté b) */
+  function puPilesXY(cfg,aP){
+   if(cfg==='double') return [[-aP/2,0],[aP/2,0]];
+   if(cfg==='triple'){ const R=aP/Math.sqrt(3); return [0,1,2].map(k=>{ const g=-Math.PI/2+k*2*Math.PI/3; return [R*Math.cos(g),R*Math.sin(g)]; }); }
+   if(cfg==='quadruple') return [[-aP/2,-aP/2],[aP/2,-aP/2],[-aP/2,aP/2],[aP/2,aP/2]];
+   return [[0,0]];
+  }
   function puDefaultData(t){
-   return { nom:t.nom||'', config:'simple',
+   return { nom:t.nom||'', config:'simple', methode:'ec2', poidsPropre:true, classeExposition:'XC2', contactSol:'proprete',
     a_cm:40, b_cm:40, F_cm:50, classeGlobale:'C25/30', classeAcier:'B500',
     G_kN:400, Q_kN:200, aPrime_cm:null, dChoisi_cm:null,
     resultats:null };
   }
   function puData(t){ if(!t.dimPU) t.dimPU=puDefaultData(t); return t.dimPU; }
+  /* anciens calculs : P1 = G + 1,2 Q (service CCBA), en tonnes ; sert aussi à l'affichage du schéma */
   function puP1_t(dp){ return ((+dp.G_kN||0)+1.2*(+dp.Q_kN||0))/10; } /* 1 t = 10 kN */
-  function puComputeSimple(dp,mat,P1){
-   const a=Math.min(+dp.a_cm||40,+dp.b_cm||40), b=Math.max(+dp.a_cm||40,+dp.b_cm||40);
-   const F=+dp.F_cm||50, fe=mat.Fe, fc28=mat.Fc28;
-   const e=Math.min(F/8,15), aPrime=F;
-   const hMin=F+2*e, h=puRound5Up(hMin);
-   const Ainf=((P1*0.01*3*(aPrime-a))/(8*0.9*h*2*fe))*10000;
-   const Asup=Math.max(0,((P1*0.01*3*(b-aPrime))/(8*0.9*h*2*fe))*10000);
-   const Attente=((1.335*P1*0.01-(1.1*0.85*fc28*b*a*0.0001)/1.5)/(fe/1.15))*10000;
-   const barInf=puChooseBarsTotal(Ainf,aPrime/100), barSup=Asup>0?puChooseBarsTotal(Asup,b/100):null;
-   return {config:'simple',a,b,F,e,aPrime,h,Ainf,Asup,Attente,barInf,barSup,P1};
+  /* Paramètres avancés : valeur par défaut visible, « par défaut / saisi », aide avec référence ou « à confirmer », bornes (règle permanente) */
+  const puDefMaj=dp=>({simple:1,double:puMeth(dp)==='ccba'?1.1:1.15,triple:1,quadruple:1})[dp.config]||1;
+  const puDefLim=dp=>({double:0.6,triple:0.75,quadruple:0.9})[dp.config]||0.6;
+  const PU_ADV=[
+   {grp:'Géométrie',k:'entraxeMinF',lbl:'Entraxe minimal des pieux (× F)',t:'num',def:2.5,min:2,max:5,step:0.1,unit:'× F',cond:dp=>dp.config!=='simple',aide:'Skill 05 et classeur : a\' ≥ 2,5·F. DTU 13.2 : 3·F en général pour les pieux flottants (de mémoire, à confirmer). Un entraxe saisi plus petit est relevé à cette valeur avec avertissement.'},
+   {grp:'Géométrie',k:'eTol_cm',lbl:'Tolérance d\'implantation des pieux',t:'num',def:1,min:0,max:10,step:0.5,unit:'cm',aide:'Classeur 107 (Recommandations EC2 §9.8.1b) : 1 cm ; largeur minimale de la tête B ≥ F + 2 × tolérance. À confirmer selon le cahier des charges du pieu.'},
+   {grp:'Géométrie',k:'enrobage_cm',lbl:'Enrobage nominal (remplace le calcul)',t:'num',def:null,min:2,max:12,step:0.5,unit:'cm',aide:'Vide : c_nom = c_min,dur + 10 mm selon la classe d\'exposition (Pratique p.77-79), 75 mm si le béton est coulé directement contre le sol (EC2 4.4.1.3, de mémoire : à confirmer).'},
+   {grp:'Bielles et tirants',k:'majTirant',lbl:'Majoration du tirant',t:'num',def:null,defFn:puDefMaj,min:1,max:1.5,step:0.01,unit:'',cond:dp=>true,aide:'2 pieux : 1,1 (classeur CCBA) ou 1,15 (Recommandations EC2 du classeur 107, charges inégales et tolérances) ; 1 pour 1, 3 et 4 pieux (statique, aucune majoration au classeur). À confirmer.'},
+   {grp:'Bielles et tirants',k:'ratioSup',lbl:'Aciers supérieurs / aciers inférieurs',t:'num',def:0.125,min:0.1,max:0.2,step:0.005,unit:'',cond:dp=>dp.config==='double',aide:'Classeur CCBA : A_s = A_i/10 ; Recommandations EC2 (classeur 107) : A_i/8 minimum, A_i/5 maximum. Défaut 1/8 (le classeur à 1/10 est sous le minimum de cette source). À confirmer.'},
+   {grp:'Bielles et tirants',k:'coefCerces',lbl:'Cerces / (cerces + médianes) — coefficient a',t:'num',def:0.7,min:0.667,max:0.8,step:0.01,unit:'',cond:dp=>dp.config==='triple',aide:'Classeur : 2/3 ≤ a ≤ 4/5, 0,7 par défaut (variante cerces + médianes de la tête à 3 pieux). Choix d\'ingénieur.'},
+   {grp:'Bielles et tirants',k:'quadrillage',lbl:'Quadrillage de répartition / cerces',t:'num',def:0.2,min:0.1,max:0.5,step:0.05,unit:'',cond:dp=>dp.config==='triple'||dp.config==='quadruple',aide:'Classeur (3 pieux) : 1/5 de la section des cerces dans chaque sens ; repris par analogie pour 4 pieux (à confirmer).'},
+   {grp:'Bielles et tirants',k:'k1Noeud',lbl:'k1 — nœud sous le poteau (EC2)',t:'num',def:1,min:1,max:1.1,step:0.05,unit:'',cond:dp=>puMeth(dp)==='ec2'&&dp.config!=='simple',aide:'Limite σ_Rd,max = k1·ν\'·f_cd, ν\' = 1 − f_ck/250 (EC2 6.5.4, de mémoire). 1,0 recommandé ; 1,1 si confinement (majoration 10 % optionnelle du classeur 107). Nœud sur pieux : 0,85·ν\'·f_cd (non modifiable).'},
+   {grp:'Bielles et tirants',k:'coefLimite',lbl:'Coefficient de limite des bielles (CCBA)',t:'num',def:null,defFn:puDefLim,min:0.3,max:1.2,step:0.05,unit:'× σ\'c28',cond:dp=>puMeth(dp)==='ccba'&&dp.config!=='simple',aide:'Classeur : 0,6 (2 pieux), 0,75 (3), 0,9 (4), appliqué à σ\'c28 = f_c28 + 3. Source CCBA 68 non fournie : à confirmer.'},
+   {grp:'Bielles et tirants',k:'surfaceControle',lbl:'Surface de contrôle de la contrainte sur pieux',t:'sel',def:'classeur',opts:[['classeur','Valeur du classeur (2 pieux)'],['reelle','Surface réelle (n pieux)']],cond:dp=>dp.config==='triple'||dp.config==='quadruple',aide:'Le classeur utilise la surface de 2 pieux pour 3 et 4 pieux (recopie de l\'onglet Double) : valeur conservatrice gardée par défaut. « Surface réelle » (n pieux) relâche la vérification : à choisir seulement après revalidation des limites.'},
+   {grp:'Armatures',k:'asMin',lbl:'Appliquer A_s,min de flexion aux tirants',t:'sel',def:'oui',opts:[['oui','Oui (par analogie)'],['non','Non']],aide:'A_s,min = 0,26·f_ctm/f_yk·b·d (EC2 9.2.1.1, Pratique p.226) appliqué à la bande sur pieux par analogie avec une poutre : source propre aux têtes de pieux non fournie, à confirmer.'},
+   {grp:'Armatures',k:'phiEst_mm',lbl:'Ø estimé des tirants (hauteur utile)',t:'num',def:25,min:10,max:40,step:1,unit:'mm',cond:dp=>puMeth(dp)==='ec2',aide:'Hauteur utile d = h − c_nom − Ø/2 ; recalculée avec le Ø retenu. 25 mm par défaut.'},
+   {grp:'Armatures',k:'phiImp',lbl:'Diamètre imposé des tirants',t:'sel',def:'auto',opts:[['auto','Automatique'],['10','10'],['12','12'],['14','14'],['16','16'],['20','20'],['25','25'],['32','32'],['40','40']],aide:'Automatique : plus petit nombre de lits, Ø ≥ 12 mm de préférence, espacements respectés.'},
+   {grp:'Armatures',k:'espMin_mm',lbl:'Espacement libre minimal des barres',t:'num',def:null,min:20,max:100,step:5,unit:'mm',aide:'Vide : max(Ø ; 25 ; 20 mm) (Pratique p.80).'},
+   {grp:'Armatures',k:'espMax_mm',lbl:'Espacement maximal des barres d\'un lit',t:'num',def:200,min:100,max:300,step:10,unit:'mm',aide:'Répartition des tirants sur la largeur de la bande sur pieux ; 200 mm usuel, à confirmer.'},
+   {grp:'Armatures',k:'cadreDiam',lbl:'Diamètre des cadres verticaux',t:'sel',def:'auto',opts:[['auto','Φ/3 (classeur)'],['6','6'],['8','8'],['10','10'],['12','12'],['14','14'],['16','16']],aide:'Classeur : Φ/3 du tirant, arrondi au diamètre courant supérieur. À confirmer (CCBA 68).'},
+   {grp:'Armatures',k:'cadreEsp_cm',lbl:'Espacement des cadres',t:'num',def:20,min:10,max:30,step:1,unit:'cm',aide:'Classeur : tous les 20 cm environ.'},
+   {grp:'Armatures',k:'etaAdh',lbl:'Conditions d\'adhérence (ancrage)',t:'sel',def:'1',opts:[['1','Bonnes (η1 = 1)'],['0.7','Médiocres (η1 = 0,7)']],cond:dp=>puMeth(dp)==='ec2',aide:'f_bd = 2,25·η1·η2·f_ctd (Pratique p.84-91). Tirants en face inférieure d\'une tête coulée à plat : bonnes conditions.'},
+   {grp:'Vérifications',k:'betaPoincon',lbl:'β — poinçonnement',t:'num',def:1.15,min:1,max:2,step:0.05,unit:'',cond:dp=>puMeth(dp)==='ec2',aide:'Poteau intérieur, charge centrée : 1,15 (Maîtrise p.262-263) ; plus si moment transmis ou poteau de rive.'},
+   {grp:'Vérifications',k:'portanceELS_kN',lbl:'Charge admissible par pieu (ELS)',t:'num',def:null,min:0,max:1e5,step:10,unit:'kN',aide:'Facultatif : donnée géotechnique (Fascicule 62 titre V, DTU 13.2, EC7 : non fournis). Comparée à la charge par pieu (G + Q + poids propre)/n. Vide : portance non vérifiée.'},
+   {grp:'Vérifications',k:'portanceELU_kN',lbl:'Résistance de calcul par pieu (ELU)',t:'num',def:null,min:0,max:1e5,step:10,unit:'kN',cond:dp=>puMeth(dp)==='ec2',aide:'Facultatif : R_c,d donnée par le géotechnicien (classeur 107 : N_Rd). Comparée à la charge ELU par pieu. Vide : non vérifiée.'}
+  ];
+  const puAdvOn=(sp,dp)=>(!sp.cond||sp.cond(dp));
+  const puAdvVal=(dp,k)=>{ const sp=PU_ADV.find(x=>x.k===k); const v=dp[k]; if(v!==undefined&&v!==null&&v!=='') return v; return sp?(sp.defFn?sp.defFn(dp):sp.def):null; };
+  const puAdvNum=(dp,k)=>{ const v=puAdvVal(dp,k); return v==null?null:+v; };
+  function puAdvBlockHtml(dp,id){
+   const err=(window._elsErr||{})[id];
+   const specs=PU_ADV.filter(sp=>puAdvOn(sp,dp));
+   return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="pu"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés</summary><div class="pcElsBody">'
+    +'<p class="pcNote">Valeurs par défaut affichées dans les champs ; elles servent au calcul et sont reprises dans la note (Hypothèses, colonne Origine, et Points à confirmer). Un champ vide ou « par défaut » laisse le calcul inchangé. Aucun coefficient de sécurité (γ) ni formule normative n\'est modifiable.</p>'
+    +['Géométrie','Bielles et tirants','Armatures','Vérifications'].map(g=>{ const sg=specs.filter(sp=>sp.grp===g); if(!sg.length) return ''; const nS=sg.filter(sp=>puSaisi(dp,sp.k)).length;
+      return '<details class="pcElsSub" data-els-id="'+id+'" data-els-kind="pu" data-els-grp="'+g+'"'+((dp._elsGrp&&dp._elsGrp[g])||(err&&sg.some(sp=>sp.k===err.key))?' open':'')+'><summary>'+g+' <span class="pcElsTag'+(nS?' on':'')+'">'+(nS?nS+' saisi'+(nS>1?'s':''):'par défaut')+'</span></summary>'+sg.map(sp=>elsFieldHtml(sp,dp,err)).join('')+'</details>'; }).join('')
+    +'<button type="button" class="ghost" data-els-reset="1">Rétablir les valeurs par défaut</button></div></details>';
   }
-  function puComputeDouble(dp,mat,P1){
-   const a=+dp.a_cm||40, b=+dp.b_cm||110, F=+dp.F_cm||72, fe=mat.Fe, fc28=mat.Fc28;
-   const e=Math.min(F/8,15), aPrimeMin=2.5*F;
-   const aPrime=Math.max(+dp.aPrime_cm||Math.round(3*F),aPrimeMin);
-   const bPrime=F+2*e;
-   const dMin=0.5*(aPrime-a/2), dMax=(aPrime-a/2)*0.7, dMoy=(dMin+dMax)/2;
-   const hCalc=dMoy/0.9, h=Math.max(20,Math.round(hCalc/5)*5);
-   const d=Math.round((h*0.9)/0.5)*0.5;
-   const Ai=((1.1*P1*(aPrime-a/2))/(4*d*(2/3)*fe))*100;
-   const As=Ai/10;
-   const qDeg=Math.min(Math.atan2(0.9*h,(aPrime/2-a/4))*180/Math.PI,55), qRad=qDeg*Math.PI/180;
-   const sPrimeC28=fc28+3, sC28=0.7+0.06*sPrimeC28;
-   const limSigma=0.6*sPrimeC28, limTau=1.2*sC28;
-   const sousPoteau=P1*100/((a*b)*Math.sin(qRad)*Math.sin(qRad));
-   const surPieux=P1*100/((2*(Math.PI*F*F/4))*Math.sin(qRad)*Math.sin(qRad));
-   const tau=P1*100/(2*bPrime*(7/8)*0.9*h);
-   const barAi=puChooseBarsTotal(Ai,aPrime/100), barAs=puChooseBarsTotal(As,aPrime/100);
-   return {config:'double',a,b,F,e,aPrime,aPrimeMin,bPrime,h,d,Ai,As,qDeg,sPrimeC28,sC28,
-    sousPoteau,surPieux,limSigma,okSousPoteau:sousPoteau<=limSigma,okSurPieux:surPieux<=limSigma,
-    tau,limTau,okTau:tau<=limTau,barAi,barAs,P1};
+  /* lignes « Hypothèses » : valeur et origine (saisi / par défaut) de chaque paramètre avancé en vigueur */
+  function puAdvRowsHyp(dp){
+   return PU_ADV.filter(sp=>puAdvOn(sp,dp)&&!['portanceELS_kN','portanceELU_kN','enrobage_cm'].includes(sp.k)).map(sp=>{ const sa=puSaisi(dp,sp.k), v=puAdvVal(dp,sp.k);
+    return [sp.lbl.replace(/ — .*/,''),(sp.t==='sel'?((sp.opts.find(o=>String(o[0])===String(v))||[0,String(v)])[1]):(v==null?'calculé':String(+(+v).toFixed(3)).replace('.',',')+(sp.unit?' '+sp.unit:''))),sa?'saisi':'par défaut']; });
   }
-  function puComputeTriple(dp,mat,P1){
-   const a=+dp.a_cm||60, b=+dp.b_cm||60, F=+dp.F_cm||67, fe=mat.Fe, fc28=mat.Fc28;
-   const aPrimeMin=2.5*F;
-   const aPrime=Math.max(+dp.aPrime_cm||Math.ceil((2.5*F)/10)*10,aPrimeMin);
-   const dMin=0.58*(aPrime-a/2), dCobt=0.825*(aPrime-a/2);
-   const d=Math.min(dCobt,Math.max(dMin,+dp.dChoisi_cm||Math.ceil(((dMin+dCobt)/2)/5)*5));
-   const qDeg=Math.min(Math.atan2(d,(aPrime*Math.sqrt(3)/3-a*0.3))*180/Math.PI,55), qRad=qDeg*Math.PI/180;
-   const sPrimeC28=fc28+3, sC28=0.7+0.06*sPrimeC28, limSigma=0.75*sPrimeC28;
-   const sousPoteau=P1*100/((a*b)*Math.sin(qRad)*Math.sin(qRad));
-   const surPieux=P1*100/((2*(Math.PI*F*F/4))*Math.sin(qRad)*Math.sin(qRad));
-   const NacTotal=P1*(aPrime-a/2)/(9*d), AacTotal=(NacTotal*3/(2*fe))*100;
-   const quadrillageMin=(1/5)*AacTotal;
-   const coefA=0.7, Nac=NacTotal*coefA, Aac=(Nac*3/(2*fe))*100;
-   const Nam=(1-coefA)*NacTotal*Math.sqrt(3), Aam=Nam*1.5*100/fe;
-   const barCerces=puChooseBarsTotal(AacTotal,aPrime/100), barQuad=puChooseBarsTotal(quadrillageMin,aPrime/100);
-   return {config:'triple',a,b,F,aPrime,aPrimeMin,d,dMin,dCobt,qDeg,sPrimeC28,limSigma,
-    sousPoteau,surPieux,okSousPoteau:sousPoteau<=limSigma,okSurPieux:surPieux<=limSigma,
-    NacTotal,AacTotal,quadrillageMin,coefA,Nac,Aac,Nam,Aam,barCerces,barQuad,P1};
+  function puAdvChange(dp,el,id){
+   const k=el.dataset.els, sp=PU_ADV.find(x=>x.k===k); if(!sp) return false;
+   window._elsErr=window._elsErr||{}; delete window._elsErr[id];
+   const redraw=()=>{ try{persist();}catch(_){ } pueRender(id); };
+   const bad=msg=>{ window._elsErr[id]={key:k,msg}; redraw(); };
+   if(sp.t==='num'){
+    if(el.value===''){ delete dp[k]; redraw(); return true; }
+    const x=+String(el.value).replace(',','.'); if(!isFinite(x)){ bad('Valeur numérique attendue.'); return true; }
+    if(x<sp.min||x>sp.max){ bad(sp.lbl.replace(/ — .*/,'')+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'); return true; }
+    dp[k]=x;
+   } else { if(el.value===String(sp.def)) delete dp[k]; else dp[k]=el.value; }
+   redraw(); return true;
   }
-  function puComputeQuadruple(dp,mat,P1){
-   const a=+dp.a_cm||100, b=+dp.b_cm||100, F=+dp.F_cm||85, fe=mat.Fe, fc28=mat.Fc28;
-   const aPrimeMin=2.5*F;
-   const aPrime=Math.max(+dp.aPrime_cm||Math.ceil((2.5*F)/10)*10,aPrimeMin); /* carré : a'=b' */
-   const hMin=0.71*(aPrime-a/2), hCobt=aPrime-a/2, h=puRound5Up(hCobt);
-   const d=0.9*h;
-   const qDeg=Math.min(Math.atan2(d,(aPrime/2-a/4)*Math.sqrt(2))*180/Math.PI,55), qRad=qDeg*Math.PI/180;
-   const sPrimeC28=fc28+3, sC28=0.7+0.06*sPrimeC28, limSigma=0.9*sPrimeC28;
-   const sousPoteau=P1*100/((a*b)*Math.sin(qRad)*Math.sin(qRad));
-   const surPieux=P1*100/((2*(Math.PI*F*F/4))*Math.sin(qRad)*Math.sin(qRad));
-   /* ⚠ pas de formule de ferraillage explicite pour 4 pieux dans le classeur source : approché
-      par analogie avec les cerces du cas triple (à signaler dans la note). */
-   const NacTotal=P1*(aPrime-a/2)/(9*d), AacTotal=(NacTotal*3/(2*fe))*100;
-   const barCerces=puChooseBarsTotal(AacTotal,aPrime/100);
-   return {config:'quadruple',a,b,F,aPrime,aPrimeMin,hMin,h,d,qDeg,sPrimeC28,limSigma,
-    sousPoteau,surPieux,okSousPoteau:sousPoteau<=limSigma,okSurPieux:surPieux<=limSigma,
-    NacTotal,AacTotal,barCerces,approche:true,P1};
-  }
+  /* ---------- calcul ---------- */
   function puCompute(t){
-   const dp=puData(t);
-   const fck=pcFck(dp.classeGlobale), Fe=PC_FYK[dp.classeAcier]||500;
-   const mat={Fc28:fck,Fe};
-   const P1=puP1_t(dp);
-   const fn={simple:puComputeSimple,double:puComputeDouble,triple:puComputeTriple,quadruple:puComputeQuadruple}[dp.config]||puComputeSimple;
-   return Object.assign({mat},fn(dp,mat,P1));
+   const dp=puData(t), meth=puMeth(dp), cfg=PU_N[dp.config]?dp.config:'simple', n=PU_N[cfg];
+   const fck=pcFck(dp.classeGlobale), fe=PC_FYK[dp.classeAcier]||500, fyd=fe/1.15, fcd=fck/1.5, nu=1-fck/250, fctm=0.3*Math.pow(fck,2/3);
+   const mat={Fc28:fck,Fe:fe};
+   let a=+dp.a_cm||40, b=+dp.b_cm||40; const F=+dp.F_cm||50; if(cfg==='simple'){ const a0=a,b0=b; a=Math.min(a0,b0); b=Math.max(a0,b0); }
+   const e=Math.min(F/8,15), bPrime=F+2*e;
+   const warn=[], verifs=[];
+   /* entraxe */
+   const kEnt=puAdvNum(dp,'entraxeMinF')||2.5, aPrimeMin=kEnt*F; let aPrime=cfg==='simple'?F:null, aSaisi=null, aReleve=false;
+   if(cfg!=='simple'){
+    const sug=cfg==='double'?Math.round(3*F):Math.ceil((2.5*F)/10)*10; aSaisi=puSaisi(dp,'aPrime_cm')?+dp.aPrime_cm:null; const want=aSaisi!=null?aSaisi:sug;
+    aPrime=Math.max(want,aPrimeMin); if(aSaisi!=null&&aSaisi+1e-9<aPrimeMin){ aReleve=true; warn.push('Entraxe saisi a\' = '+aSaisi.toFixed(0)+' cm relevé à '+aPrimeMin.toFixed(0)+' cm ('+String(kEnt).replace('.',',')+' × F).'); }
+   }
+   /* enrobage */
+   const expo=pcEnrobageNom({classeExposition:dp.classeExposition||'XC2'}), direct=puOpt(dp,'contactSol','proprete')==='direct';
+   const cnomMm=puSaisi(dp,'enrobage_cm')?(+dp.enrobage_cm*10):(direct?75:expo.cnom), c=cnomMm/10; /* cm */
+   const phiEst=puAdvNum(dp,'phiEst_mm')||25, phiImp=(dp.phiImp&&dp.phiImp!=='auto')?+dp.phiImp:null, espMin=puSaisi(dp,'espMin_mm')?+dp.espMin_mm:0, espMax=puAdvNum(dp,'espMax_mm')||200;
+   const dEff=(h,phi)=>meth==='ccba'?0.9*h:(h-c-phi/20);
+   /* hauteur de tête selon la configuration */
+   let h, dFix=null, dMin=null, dMax=null, lever, hMin=null;
+   if(cfg==='simple'){ hMin=F+2*e; h=puRound5Up(hMin); }
+   else if(cfg==='double'){
+    dMin=0.5*(aPrime-a/2); dMax=0.7*(aPrime-a/2); const dMoy=(dMin+dMax)/2;
+    h=meth==='ccba'?Math.max(20,Math.round((dMoy/0.9)/5)*5):Math.max(20,Math.round((dMoy+c+phiEst/20)/5)*5);
+    lever=aPrime/2-a/4;
+   } else if(cfg==='triple'){
+    dMin=0.58*(aPrime-a/2); dMax=0.825*(aPrime-a/2); dFix=Math.min(dMax,Math.max(dMin,(+dp.dChoisi_cm)||Math.ceil(((dMin+dMax)/2)/5)*5));
+    h=meth==='ccba'?Math.max(20,Math.ceil(dFix/0.9/5)*5):Math.max(20,puRound5Up(dFix+c+phiEst/20)); lever=aPrime*Math.sqrt(3)/3-a*0.3;
+   } else { hMin=0.71*(aPrime-a/2); h=puRound5Up(aPrime-a/2); lever=(aPrime/2-a/4)*Math.sqrt(2); }
+   /* dimensions de la tête et poids propre */
+   const Rc=aPrime/Math.sqrt(3), dimA=cfg==='simple'?bPrime:aPrime+F+2*e, dimB=cfg==='simple'?bPrime:(cfg==='double'?bPrime:(cfg==='triple'?1.5*Rc+F+2*e:aPrime+F+2*e));
+   const Gcap=25*dimA*dimB*h/1e6, inclPP=dp.poidsPropre!==false; /* kN ; 25 kN/m³ */
+   const G=(+dp.G_kN||0)+(inclPP?Gcap:0), Q=+dp.Q_kN||0;
+   const P1=(G+1.2*Q)/10, NEd=(1.35*G+1.5*Q)/10; /* t */
+   const P=meth==='ccba'?P1:NEd, sig=meth==='ccba'?(2/3)*fe:fyd;
+   const maj=puAdvNum(dp,'majTirant')||1;
+   const coefA=puAdvNum(dp,'coefCerces')||0.7, ratioSup=puAdvNum(dp,'ratioSup')||0.125, quad=puAdvNum(dp,'quadrillage')||0.2;
+   /* tirants, itérés sur le Ø retenu (hauteur utile EC2) */
+   let phi=phiEst, d=null, T=null, Ainf=0, Asup=0, bar=null, R={};
+   for(let it=0;it<4;it++){
+    if(cfg==='simple') d=dEff(h,phi); else if(cfg==='double') d=meth==='ccba'?Math.round((h*0.9)/0.5)*0.5:dEff(h,phi); else if(cfg==='triple') d=meth==='ccba'?dFix:dEff(h,phi)>dMax?dMax:dEff(h,phi); else d=dEff(h,phi);
+    if(cfg==='simple'){ const Ti=P*(aPrime-a)/(8*d), Ts=Math.max(0,P*(b-aPrime)/(8*d)); T=Ti; Ainf=Ti*100/sig; Asup=Ts*100/sig; }
+    else if(cfg==='double'){ T=maj*P*(aPrime-a/2)/(4*d); Ainf=T*100/sig; Asup=Ainf*ratioSup; }
+    else if(cfg==='triple'){ T=P*(aPrime-a/2)/(9*d)*maj; Ainf=T*100/sig; }
+    else { T=P*(aPrime-a/2)/(8*d)*maj; Ainf=T*100/sig; }
+    const AsMin=0.26*fctm/fe*(bPrime*10)*(d*10)/100; /* cm² : 0,26·f_ctm/f_yk·b·d, par analogie (EC2 9.2.1.1) */
+    const AsReq=Math.max(Ainf,puAdvVal(dp,'asMin')==='non'?0:AsMin), o={phiImp,espMin,espMax};
+    bar=puChooseBars(AsReq,bPrime,c,o); R.AsMin=AsMin;
+    if(bar.phi===phi||meth==='ccba') break; phi=bar.phi;
+   }
+   if(meth==='ccba'&&!phiImp) phi=bar.phi;
+   const barInf=bar;
+   const barSup=Asup>0?puChooseBars(Math.max(Asup,0),bPrime,c,{phiImp:null,espMin,espMax,phiMin:10}):null;
+   /* angle de bielle et contraintes */
+   let qDeg=null, qRaw=null;
+   if(cfg==='double') qRaw=Math.atan2(meth==='ccba'?0.9*h:d,lever)*180/Math.PI; else if(cfg==='triple'||cfg==='quadruple') qRaw=Math.atan2(d,lever)*180/Math.PI;
+   if(qRaw!=null) qDeg=Math.min(qRaw,55);
+   const qRad=qDeg!=null?qDeg*Math.PI/180:null, s2=qRad!=null?Math.sin(qRad)*Math.sin(qRad):1, Ap=Math.PI*F*F/4;
+   const nCtrl=(puOpt(dp,'surfaceControle','classeur')==='reelle'&&(cfg==='triple'||cfg==='quadruple'))?n:2;
+   if(nCtrl!==2&&(cfg==='triple'||cfg==='quadruple')) warn.push('Contrainte sur pieux calculée avec la surface réelle de '+n+' pieux (choix de l\'ingénieur) : le classeur utilise la surface de 2 pieux ; vérification moins sévère, limites à revalider (CCBA 68 / EC2 6.5.4).');
+   let sousPoteau=null, surPieux=null, limPot=null, limPieux=null, sPrimeC28=null, limSigma=null, tau=null, limTau=null, sC28=null;
+   if(cfg!=='simple'){
+    sousPoteau=P*100/((a*b)*s2); surPieux=P*100/((nCtrl*Ap)*s2);
+    if(meth==='ccba'){ sPrimeC28=fck+3; sC28=0.7+0.06*sPrimeC28; limSigma=(puAdvNum(dp,'coefLimite')||puDefLim(dp))*sPrimeC28; limPot=limSigma; limPieux=limSigma;
+     if(cfg==='double'){ tau=P1*100/(2*bPrime*(7/8)*0.9*h); limTau=1.2*sC28; } }
+    else { const k1=puAdvNum(dp,'k1Noeud')||1; limPot=k1*nu*fcd; limPieux=0.85*nu*fcd; limSigma=limPot; }
+   }
+   /* effort par pieu */
+   const Rser=(G+Q)/n, Rels=(1.35*G+1.5*Q)/n, Rccba=(G+1.2*Q)/n, Radm=puAdvNum(dp,'portanceELS_kN'), Rcd=puAdvNum(dp,'portanceELU_kN');
+   /* aciers complémentaires */
+   let AacTotal=null, NacTotal=null, Aac=null, Aam=null, Nam=null, Nac=null, quadrillageMin=null, barCerces=null, barQuad=null, barMed=null;
+   if(cfg==='triple'||cfg==='quadruple'){
+    NacTotal=T; AacTotal=Ainf; quadrillageMin=quad*AacTotal; barCerces=barInf; barQuad=puChooseBars(quadrillageMin,bPrime,c,{espMin,espMax});
+    if(cfg==='triple'){ Nac=NacTotal*coefA; Aac=Nac*100/sig; Nam=(1-coefA)*NacTotal*Math.sqrt(3); Aam=Nam*100/sig; barMed=puChooseBars(Aam,bPrime,c,{espMin,espMax}); }
+   }
+   /* attente du pieu (cas simple, EC2 seulement : part de N_Ed excédant la capacité du béton a × b) */
+   let Attente=null, attenteNote='';
+   if(cfg==='simple'){ if(meth==='ec2'){ const capKN=a*b*fcd/10, ex=NEd*10-capKN; Attente=Math.max(0,ex)*10/fyd; attenteNote=ex>0?'':'non requise : le béton de la section a × b reprend N_Ed ('+(capKN).toFixed(0)+' kN ≥ '+(NEd*10).toFixed(0)+' kN)'; } else attenteNote='non calculée avec la méthode CCBA 68 (formule du classeur mêlant ELU BAEL et ELS, retirée : source à fournir)'; }
+   /* cadres verticaux */
+   const phiCadAuto=PU_STD_CAD.find(x=>x>=barInf.phi/3-1e-9)||16, phiCad=puSaisi(dp,'cadreDiam')&&dp.cadreDiam!=='auto'?+dp.cadreDiam:phiCadAuto, espCad=puAdvNum(dp,'cadreEsp_cm')||20;
+   /* ancrage des tirants (EC2) : l_bd (α = 1) comparé à la longueur disponible F + e − c depuis le nu intérieur du pieu */
+   let anc=null;
+   if(meth==='ec2'){ const eta1=+puAdvVal(dp,'etaAdh')||1, fctd=0.7*fctm/1.5, eta2=barInf.phi<=32?1:(132-barInf.phi)/100, fbd=2.25*eta1*eta2*fctd, lb=barInf.phi/4*fyd/fbd/10, dispo=F+e-c; anc={lb,fbd,dispo,ok:lb<=dispo+1e-9,fctd}; }
+   /* cisaillement et poinçonnement EC2 sur les réactions réparties (pieux centrés) */
+   const piles=puPilesXY(cfg,aPrime), Dq=F*Math.sqrt(Math.PI)/2, betaP=puAdvNum(dp,'betaPoincon')||1.15, dmm=d*10;
+   let shear=null, punch=null;
+   if(meth==='ec2'){
+    const kk=Math.min(1+Math.sqrt(200/dmm),2), CRdc=0.18/1.5, vmin=0.035*Math.pow(kk,1.5)*Math.sqrt(fck);
+    const rhoOf=(AsProvMm2,bw)=>Math.min(AsProvMm2/(bw*10*dmm),0.02), vRdcOf=rho=>Math.max(CRdc*kk*Math.pow(100*rho*fck,1/3),vmin);
+    const Rk=NEd*10/n; /* kN par pieu */
+    const secs=[]; [['x',a],['y',b]].forEach(([ax,dim])=>{ [1,-1].forEach(sg=>{ const idx=ax==='x'?0:1, oth=ax==='x'?1:0; const beyond=piles.filter(p=>sg*p[idx]>dim/2+1e-9); if(!beyond.length) return;
+      const V=beyond.length*Rk, av=Math.min(...beyond.map(p=>sg*p[idx]-Dq/2-dim/2)), ys=beyond.map(p=>p[oth]), bw=(Math.max(...ys)-Math.min(...ys))+F+2*e;
+      const avc=Math.max(av,0.5*d), beta=avc<=2*d?avc/(2*d):1, Ved=V*beta, AsP=barInf.As, rho=rhoOf(AsP,bw), vRd=vRdcOf(rho), VRd=vRd*bw*10*dmm/1000, VRdmax=0.5*nu*fcd*bw*10*dmm/1000;
+      secs.push({ax,sg,V,av:avc,beta,Ved,bw,rho,VRd,VRdmax,u:Ved/VRd}); }); });
+    if(secs.length){ shear=secs.reduce((p,q)=>q.u>p.u?q:p); shear.ok=shear.Ved<=shear.VRd+1e-9&&shear.V<=shear.VRdmax+1e-9; }
+    const u0=2*(a+b)*10;
+    const u1r=(2*(a+b)+2*Math.PI*2*d)*10;
+    const inside=piles.filter(p=>{ const dx=Math.max(0,Math.abs(p[0])-a/2), dy=Math.max(0,Math.abs(p[1])-b/2); return Math.hypot(dx,dy)<=2*d+1e-9; });
+    const dV=inside.length*Rk, Vred=Math.max(0,NEd*10-dV), v0=betaP*NEd*10*1000/(u0*dmm), vmax=0.5*nu*fcd, rhoP=rhoOf(barInf.As,bPrime), vrdc=vRdcOf(rhoP), v1=Vred>0?betaP*Vred*1000/(u1r*dmm):0;
+    punch={u0,u1:u1r,nIn:inside.length,dV,Vred,v0,vmax,v1,vrdc,ok0:v0<=vmax+1e-9,ok1:v1<=vrdc+1e-9};
+   }
+   /* tableau des vérifications */
+   const f2=(x,k)=>(+x).toFixed(k==null?2:k).replace('.',','), st=ok=>ok?'ok':'ko';
+   const V=(zone,nom,formule,calcul,limite,etat)=>verifs.push({zone,nom,formule,calcul,limite,etat});
+   V('Tête','Charge par pieu (ELS)','R = (G + Q + poids propre)/n',f2(Rser,1)+' kN',Radm!=null?'≤ '+f2(Radm,0)+' kN (saisie)':'portance non renseignée',Radm!=null?st(Rser<=Radm+1e-9):'nf');
+   if(meth==='ec2') V('Tête','Charge par pieu (ELU)','R = (1,35 G + 1,5 Q)/n',f2(Rels,1)+' kN',Rcd!=null?'≤ '+f2(Rcd,0)+' kN (saisie)':'portance non renseignée',Rcd!=null?st(Rels<=Rcd+1e-9):'nf');
+   else V('Tête','Charge par pieu (CCBA)','R = (G + 1,2 Q + poids propre)/n',f2(Rccba,1)+' kN','—','na');
+   if(cfg!=='simple'){
+    V('Géométrie','Entraxe des pieux','a\' ≥ '+String(kEnt).replace('.',',')+' · F',f2(aPrime,0)+' cm','≥ '+f2(aPrimeMin,0)+' cm',aReleve?'ko':'ok');
+    V('Géométrie','Largeur minimale de la tête','B ≥ F + 2·tolérance',f2(bPrime,0)+' cm','≥ '+f2(F+2*puAdvNum(dp,'eTol_cm'),0)+' cm',st(bPrime+1e-9>=F+2*puAdvNum(dp,'eTol_cm')));
+    V('Bielles','Inclinaison de la bielle','45° ≤ θ ≤ 55° (cot θ de 0,7 à 1)',f2(qRaw,1)+'°','45° à 55°',qRaw+0.05<45?'ko':(qRaw>55.05?'nf':'ok'));
+    V('Bielles','Nœud sous le poteau','σ = N/(a·b·sin²θ)',f2(sousPoteau)+' MPa','≤ '+f2(limPot)+' MPa',st(sousPoteau<=limPot+1e-9));
+    V('Bielles','Nœud sur pieux','σ = N/(n_c·π F²/4·sin²θ), n_c = '+nCtrl,f2(surPieux)+' MPa','≤ '+f2(limPieux)+' MPa',st(surPieux<=limPieux+1e-9));
+   }
+   if(meth==='ccba'&&cfg==='double') V('Tête','Cisaillement CCBA','τ = P1/(2·b\'·(7/8)·0,9 h)',f2(tau)+' MPa','≤ '+f2(limTau)+' MPa',st(tau<=limTau+1e-9));
+   if(meth==='ec2'&&shear) V('Tête','Effort tranchant au nu du poteau (a_v/d, β = a_v/2d)','β·V_Ed ≤ V_Rd,c ; V_Ed ≤ 0,5·b_w·d·ν·f_cd',f2(shear.Ved,0)+' kN (V = '+f2(shear.V,0)+', β = '+f2(shear.beta)+')','V_Rd,c = '+f2(shear.VRd,0)+' kN · max '+f2(shear.VRdmax,0)+' kN',st(shear.ok));
+   if(meth==='ec2'&&punch){ V('Tête','Poinçonnement au nu du poteau','v_Ed,0 = β·N_Ed/(u0·d) ≤ 0,5·ν·f_cd',f2(punch.v0)+' MPa','≤ '+f2(punch.vmax)+' MPa',st(punch.ok0));
+    V('Tête','Poinçonnement à 2d du poteau','v_Ed = β·(N_Ed − ΣR pieux dans le contour)/(u1·d) ≤ v_Rd,c',punch.Vred<=1e-6?'0 (tous les pieux ('+punch.nIn+') dans le contour)':f2(punch.v1)+' MPa','v_Rd,c = '+f2(punch.vrdc)+' MPa',punch.Vred<=1e-6?'ok':st(punch.ok1)); }
+   if(meth==='ccba'&&!(cfg==='double')) V('Tête','Cisaillement et poinçonnement','CCBA 68 : source non fournie','—','—','nf');
+   if(meth==='ccba'&&cfg==='double') V('Tête','Poinçonnement','CCBA 68 : source non fournie','—','—','nf');
+   if(meth==='ec2'&&anc) V('Armatures','Ancrage des tirants','l_bd ≤ F + e − c (nu intérieur du pieu)',f2(anc.lb,0)+' cm','≤ '+f2(anc.dispo,0)+' cm',anc.ok?'ok':'ko');
+   else V('Armatures','Ancrage des tirants','CCBA 68 : adhérence non sourcée','—','—','nf');
+   V('Armatures','Tirants','A_s,adoptée ≥ A_s,requise',f2(barInf.As/100)+' cm²','≥ '+f2(Math.max(Ainf,puAdvVal(dp,'asMin')==='non'?0:R.AsMin))+' cm²',barInf.insuff||barInf.As/100+1e-9<Ainf?'ko':'ok');
+   if(cfg==='simple'&&Attente!=null) V('Armatures','Attente du pieu','A_s,att = max(0 ; (N_Ed − a·b·f_cd)/f_yd)',f2(Attente)+' cm²',attenteNote||'—',Attente>0?'ok':'na');
+   /* non vérifié (hors périmètre, sources à fournir) */
+   [['Portance du pieu','EC7 / Fascicule 62 titre V / NF P94-262 / DTU 13.2 : non fournis'],['Effets de groupe, frottement négatif, flambement du pieu, battage','classeurs 031-044 du pack : non codés'],['Répartition par pieu sous moments et efforts horizontaux','méthode du module de réaction (classeurs 040-041) : charge centrée supposée'],['Poinçonnement de la tête par le pieu, arrachement','hors périmètre']].forEach(r=>V('Hors périmètre',r[0],r[1],'—','—','nf'));
+   return {mat,config:cfg,methode:meth,a,b,F,e,aPrime,aPrimeMin,aReleve,bPrime,h,d,dMin,dMax,hMin,P1,NEd,P,sig,maj,c:cnomMm,expo:expo.classe,direct,Gcap,inclPP,G,Q,Rser,Rels,Rccba,Radm,Rcd,
+    T,Ainf,Asup,Ai:Ainf,As:Asup,AsMin:R.AsMin,barInf,barSup,barAi:barInf,barAs:barSup,
+    qDeg,qRaw,sPrimeC28,sC28,limSigma,limPot,limPieux,sousPoteau,surPieux,nCtrl,okSousPoteau:sousPoteau==null||sousPoteau<=limPot+1e-9,okSurPieux:surPieux==null||surPieux<=limPieux+1e-9,tau,limTau,okTau:tau==null||tau<=limTau,
+    NacTotal,AacTotal,quadrillageMin,coefA,Nac,Aac,Nam,Aam,barCerces,barQuad,barMed,approche:cfg==='quadruple',Attente,attenteNote,
+    phiCad,espCad,anc,shear,punch,piles,verifs,warn,
+    e1:{A:dimA,B:dimB}};
   }
   function puSvg(dp){
    /* Vue en plan de la tête de pieux, cotée selon le skill « schemas-cotes-dimensionnement » :
@@ -29131,6 +29264,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const cfg=dp.config||'simple';
    if(n===1){
     return '<h5>1 · Configuration</h5>'
+     +'<label>Méthode de calcul <select data-pu="methode"><option value="ec2"'+(puMeth(dp)==='ec2'?' selected':'')+'>Eurocode 2 — bielles-tirants, ELU (défaut)</option><option value="ccba"'+(puMeth(dp)==='ccba'?' selected':'')+'>CCBA 68 — contraintes admissibles, G + 1,2 Q</option></select></label>'
+     +'<p class="pcNote">Deux méthodes distinctes, jamais mélangées dans une même note ; la note indique celle qui est retenue.</p>'
      +'<label>Nombre de pieux sous le poteau <select data-pu="config"><option value="simple"'+(cfg==='simple'?' selected':'')+'>1 pieu</option><option value="double"'+(cfg==='double'?' selected':'')+'>2 pieux</option><option value="triple"'+(cfg==='triple'?' selected':'')+'>3 pieux</option><option value="quadruple"'+(cfg==='quadruple'?' selected':'')+'>4 pieux</option></select></label>'
      +'<p class="pcNote">Côtés du poteau (a, b), diamètre des pieux (F)'+(cfg!=='simple'?", entraxe (a')":'')+' : à régler directement sur le schéma ci-dessus.</p>'
      +(cfg==='triple'?('<label>Bras de levier d (cerces) <input type="number" step="1" data-pu="dChoisi_cm" value="'+(dp.dChoisi_cm||'')+'" placeholder="laisser vide pour la valeur suggérée"> cm</label>'):'');
@@ -29138,45 +29273,54 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(n===2){
     return '<h5>2 · Matériau</h5>'
      +'<label>Classe de béton <select data-pu="classeGlobale">'+Object.keys(PC_ECM).map(c=>'<option value="'+c+'"'+(dp.classeGlobale===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
-     +'<label>Acier <select data-pu="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>';
+     +'<label>Acier <select data-pu="classeAcier">'+Object.keys(PC_FYK).map(c=>'<option value="'+c+'"'+(dp.classeAcier===c?' selected':'')+'>'+c+' (fyk='+PC_FYK[c]+' MPa)</option>').join('')+'</select></label>'
+     +'<label>Classe d\'exposition <select data-pu="classeExposition">'+Object.keys(PC_EXPO).map(c=>'<option value="'+c+'"'+((dp.classeExposition||'XC2')===c?' selected':'')+'>'+c+'</option>').join('')+'</select></label>'
+     +'<label>Fond de la tête <select data-pu="contactSol"><option value="proprete"'+(puOpt(dp,'contactSol','proprete')==='proprete'?' selected':'')+'>Sur béton de propreté</option><option value="direct"'+(puOpt(dp,'contactSol','proprete')==='direct'?' selected':'')+'>Béton coulé contre le sol (75 mm)</option></select></label>'
+     +'<p class="pcNote">Enrobage nominal c_nom = c_min,dur + 10 mm selon la classe (Pratique p.77-79) ; 75 mm contre le sol (EC2 4.4.1.3, de mémoire : à confirmer). Modifiable dans les paramètres avancés.</p>';
    }
    if(n===3){
     return '<h5>3 · Chargement</h5>'
      +'<p class="pcNote">Charges G et Q : à régler directement sur le schéma ci-dessus (flèche au-dessus du poteau).</p>'
-     +'<p class="pcNote">P1 = G + 1,2·Q (charge reprise par la semelle sur pieux, méthode CCBA68). 1 t = 10 kN. La portance du pieu lui-même (frottement + pointe) n\'est pas vérifiée ici — donnée d\'étude géotechnique.</p>';
+     +'<label>Poids propre de la tête <select data-pu="poidsPropre"><option value="1"'+(dp.poidsPropre!==false?' selected':'')+'>Inclus (25 kN/m³ × A × B × h)</option><option value="0"'+(dp.poidsPropre===false?' selected':'')+'>Exclu</option></select></label>'
+     +'<p class="pcNote">EC2 : N_Ed = 1,35·G + 1,5·Q ; CCBA 68 : P1 = G + 1,2·Q. 1 t = 10 kN. La portance du pieu (frottement + pointe) n\'est pas calculée ici : renseigner la charge admissible dans les paramètres avancés pour la vérifier.</p>';
    }
   }
   function puFormHtml(id,t){
    const dp=puData(t);
    const body=[1,2,3].map(nn=>puStepHtml(nn,dp,t)).join('<hr class="pcFormSep">');
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('pieu','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Tête de pieux (CCBA68)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('pieu','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Tête de pieux ('+(puMeth(dp)==='ccba'?'CCBA 68':'EC2')+')<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pu="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+puSvg(dp)+'</div>'
     +'<p class="pcSchemaCap">Tête de pieux — '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[dp.config||'simple']+' · vue en plan</p>'
     +'</div>'
-    +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+'</div>'
+    +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+puAdvBlockHtml(dp,id)+'</div>'
     +'<div class="pcNav pcFormNav">'+dimValiderBtnHtml(dp,'pu')+'</div>'
     +'<p class="pcNote pcFormHint">Renseigner configuration, matériau et chargement. « Calculer » lance directement le calcul et verrouille la fiche (« Recalculer l\'ouvrage » pour la rouvrir).</p>';
   }
+  /* tableau des vérifications (même présentation que la poutre : Zone · Vérification · Formule · Calcul · Limite · État) */
+  function puVerifsHtml(res){
+   const L={ok:'Conforme',ko:'Non conforme',cad:'Cadres requis',nf:'Non vérifié',na:'Sans objet'};
+   return '<table class="pcNCt"><thead><tr><th>Zone</th><th>Vérification</th><th>Formule appliquée</th><th>Calcul</th><th>Limite</th><th>État</th></tr></thead><tbody>'
+    +(res.verifs||[]).map(v=>'<tr><td>'+esc(v.zone)+'</td><td>'+esc(v.nom)+'</td><td>'+esc(v.formule)+'</td><td>'+esc(v.calcul)+'</td><td>'+esc(v.limite)+'</td><td><b class="ncSt '+v.etat+'">'+L[v.etat]+'</b></td></tr>').join('')+'</tbody></table>';
+  }
   function puResultatsHtml(res,dp){
+   const f2=(x,k)=>(x==null||isNaN(+x))?'—':(+x).toFixed(k==null?2:k).replace('.',','), bl=bb=>bb?(bb.n+' Ø'+bb.phi+(bb.lits>1?' en '+bb.lits+' lits':'')+' (e ≈ '+f2(bb.esp/10,1)+' cm)'):'—';
+   const ec=res.methode!=='ccba';
    let h='<h5>Résultats</h5>';
-   h+='<div class="pcDimBox"><b>Configuration</b><p class="pcNote">'+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[res.config]+' · P1='+res.P1.toFixed(2)+' t · entraxe retenu'+(res.aPrime?(' a\'='+res.aPrime.toFixed(0)+' cm'):'')+'</p></div>';
-   if(res.config==='simple'){
-    h+='<div class="pcDimBox"><b>Ferraillage</b><p class="pcNote">h='+res.h.toFixed(0)+' cm (e='+res.e.toFixed(1)+' cm) · A inf='+res.Ainf.toFixed(2)+' cm² → '+res.barInf.n+' Φ'+res.barInf.phi
-     +(res.barSup?('<br>A sup='+res.Asup.toFixed(2)+' cm² → '+res.barSup.n+' Φ'+res.barSup.phi):'<br>A sup : non requis (b ≤ a\')')
-     +'<br>Attente du pieu dans la semelle = '+res.Attente.toFixed(2)+' cm²</p></div>';
-   } else {
-    h+='<div class="pcDimBox"><b>Géométrie / bielle</b><p class="pcNote">h='+(res.h!=null?res.h.toFixed(0)+' cm · ':'')+'d='+res.d.toFixed(1)+' cm · angle de bielle q='+res.qDeg.toFixed(1)+'°</p></div>'
-     +'<div class="pcDimBox"><b>Vérification du béton</b><p class="pcNote">σ sous poteau='+res.sousPoteau.toFixed(2)+' MPa ≤ '+res.limSigma.toFixed(2)+' MPa → '+(res.okSousPoteau?'✓':'⚠')+'<br>σ sur pieux='+res.surPieux.toFixed(2)+' MPa ≤ '+res.limSigma.toFixed(2)+' MPa → '+(res.okSurPieux?'✓':'⚠')
-     +(res.tau!=null?('<br>τ cisaillement='+res.tau.toFixed(2)+' MPa ≤ '+res.limTau.toFixed(2)+' MPa → '+(res.okTau?'✓':'⚠')):'')+'</p></div>';
-    if(res.config==='double'){
-     h+='<div class="pcDimBox"><b>Ferraillage</b><p class="pcNote">Ai='+res.Ai.toFixed(2)+' cm² → '+res.barAi.n+' Φ'+res.barAi.phi+' (nappe inf.)<br>As=Ai/10='+res.As.toFixed(2)+' cm² → '+res.barAs.n+' Φ'+res.barAs.phi+' (nappe sup.)</p></div>';
-    } else {
-     h+='<div class="pcDimBox"><b>Ferraillage'+(res.approche?' (approché — voir note)':'')+'</b><p class="pcNote">Cerces : N\'ac='+res.AacTotal.toFixed(2)+' cm² → '+res.barCerces.n+' Φ'+res.barCerces.phi
-      +(res.barQuad?('<br>Quadrillage de répartition (chaque sens) ≥ '+res.quadrillageMin.toFixed(2)+' cm² → '+res.barQuad.n+' Φ'+res.barQuad.phi):'')+'</p></div>';
-    }
-   }
+   h+='<div class="pcDimBox"><b>Méthode et charges</b><p class="pcNote">'+(ec?'Eurocode 2 — bielles-tirants, ELU':'CCBA 68 — contraintes admissibles')+' · '+PU_NOM[res.config]+' · '+(ec?'N_Ed = 1,35 G + 1,5 Q = '+f2(res.NEd,1)+' t':'P1 = G + 1,2 Q = '+f2(res.P1,1)+' t')+(res.inclPP?' · poids propre de la tête '+f2(res.Gcap,1)+' kN inclus':' · poids propre exclu')
+    +'<br><b>Charge par pieu</b> : ELS '+f2(res.Rser,1)+' kN · '+(ec?'ELU '+f2(res.Rels,1)+' kN':'CCBA '+f2(res.Rccba,1)+' kN')+(res.Radm!=null?' · admissible '+f2(res.Radm,0)+' kN':' · portance non renseignée')+'</p></div>';
+   h+='<div class="pcDimBox"><b>Géométrie</b><p class="pcNote">h = '+f2(res.h,0)+' cm · d = '+f2(res.d,1)+' cm · c_nom = '+f2(res.c,0)+' mm ('+(res.direct?'contre le sol':'classe '+res.expo)+')'+(res.config!=='simple'?' · entraxe a\' = '+f2(res.aPrime,0)+' cm (min '+f2(res.aPrimeMin,0)+')':'')+(res.qRaw!=null?' · bielle θ = '+f2(res.qRaw,1)+'°':'')+'</p></div>';
+   if(res.config!=='simple') h+='<div class="pcDimBox"><b>Bielles</b><p class="pcNote">Nœud sous le poteau '+f2(res.sousPoteau)+' MPa (limite '+f2(res.limPot)+') '+(res.okSousPoteau?'✓':'⚠')+'<br>Nœud sur pieux '+f2(res.surPieux)+' MPa (limite '+f2(res.limPieux)+', surface de '+res.nCtrl+' pieux) '+(res.okSurPieux?'✓':'⚠')+'</p></div>';
+   h+='<div class="pcDimBox"><b>Ferraillage</b><p class="pcNote">'+(res.config==='simple'?'Nappe inférieure (2 sens) : ':(res.config==='double'?'Tirant inférieur : ':'Cerces (par côté) : '))+'A requise '+f2(res.Ainf)+' cm² → '+bl(res.barInf)
+    +(res.barSup?'<br>Nappe supérieure : '+f2(res.Asup)+' cm² → '+bl(res.barSup):'')
+    +(res.barMed?'<br>Variante cerces + médianes (a = '+f2(res.coefA)+') : cerces '+f2(res.Aac)+' cm², médianes '+f2(res.Aam)+' cm² → '+bl(res.barMed):'')
+    +(res.barQuad?'<br>Quadrillage de répartition (chaque sens) ≥ '+f2(res.quadrillageMin)+' cm² → '+bl(res.barQuad):'')
+    +'<br>Cadres verticaux Ø'+res.phiCad+' tous les '+f2(res.espCad,0)+' cm'
+    +(res.config==='simple'?'<br>Attente du pieu : '+(res.Attente!=null?(res.Attente>0?f2(res.Attente)+' cm²':'non requise (le béton a × b reprend N_Ed)'):'non calculée (méthode CCBA 68)'):'')
+    +(res.approche?'<br><b>4 pieux : T = P(a\' − a/2)/(8d) par équilibre bielle-tirant, à confirmer.</b>':'')+'</p></div>';
+   h+='<div class="pcDimBox"><b>Vérifications</b></div><div class="scroll">'+puVerifsHtml(res)+'</div>';
+   if((res.warn||[]).length) h+='<div class="pcDimBox"><b>Avertissements</b><p class="pcNote">'+res.warn.map(esc).join('<br>')+'</p></div>';
    h+='<button type="button" class="ghost pcBtnSm" data-pu-act="printNote">🖶 Voir la note</button>';
    return h;
   }
@@ -29221,11 +29365,17 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     return;
    }
    const pn=e.target.closest('[data-pu-act="printNote"]'); if(pn){ pueState(id).view='note'; pueRender(id); return; }
+   const rs=e.target.closest('[data-els-reset]'); if(rs&&rs.closest('details.pcEls[data-els-kind="pu"]')){ const t=taskById(id); if(!t) return; const dp=puData(t); PU_ADV.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } pueRender(id); return; }
   }
+  document.addEventListener('toggle',ev=>{ const d=ev.target; if(!d||!d.matches||!d.matches('details[data-els-kind="pu"]')) return; const t=taskById(d.dataset.elsId); const dp=t&&t.dimPU; if(!dp) return;
+   if(d.matches('details.pcElsSub')){ dp._elsGrp=dp._elsGrp||{}; if(!!dp._elsGrp[d.dataset.elsGrp]!==d.open){ dp._elsGrp[d.dataset.elsGrp]=d.open; try{persist();}catch(_){ } } return; }
+   if(dp._elsOpen!==d.open){ dp._elsOpen=d.open; try{persist();}catch(_){ } } },true);
   function pueChange(e,id){
    const t=taskById(id); if(!t) return; const dp=puData(t); const el=e.target;
+   if(el.dataset.els){ puAdvChange(dp,el,id); return; }
    if(el.matches('[data-pu="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
    const key=el.dataset.pu; if(key){
+    if(key==='poidsPropre'){ dp.poidsPropre=el.value==='1'; pueRender(id); return; }
     if(el.tagName==='SELECT'||el.type==='text') dp[key]=el.value;
     else dp[key]=el.value===''?null:+el.value;
     pueRender(id); return;
@@ -29239,9 +29389,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<h5>Hypothèses</h5><p class="pcNote">Béton '+esc(dp.classeGlobale)+' (fc28='+res.mat.Fc28+' MPa) · acier '+esc(dp.classeAcier)+' (fe='+res.mat.Fe+' MPa) · P1=G+1,2Q='+res.P1.toFixed(2)+' t.</p>'
     +'<h5>Géométrie</h5><p class="pcNote">Poteau '+res.a.toFixed(0)+'×'+res.b.toFixed(0)+' cm · pieu Φ'+res.F.toFixed(0)+' cm'+(res.aPrime?(' · entraxe a\'='+res.aPrime.toFixed(0)+' cm (mini 2,5F='+(res.aPrimeMin||0).toFixed(0)+' cm)'):'')+'.</p>';
    if(res.config==='simple'){
-    h+='<h5>Ferraillage (bielles CCBA68)</h5><p class="pcNote">e=min(F/8,15)='+res.e.toFixed(1)+' cm · a\'=F · h=F+2e (arrondi)='+res.h.toFixed(0)+' cm.<br>A inf=(P1·0,01·3·(a\'-a))/(8·0,9·h·2·fe)·10000='+res.Ainf.toFixed(2)+' cm² → '+res.barInf.n+' Φ'+res.barInf.phi+'.<br>A sup (si b>a\')='+res.Asup.toFixed(2)+' cm²'+(res.barSup?(' → '+res.barSup.n+' Φ'+res.barSup.phi):' (non requis)')+'.<br>Attente du pieu dans la semelle = '+res.Attente.toFixed(2)+' cm² (vérifie l\'ancrage de la compression transmise par le pieu).</p>';
+    h+='<h5>Ferraillage (bielles CCBA68)</h5><p class="pcNote">e=min(F/8,15)='+res.e.toFixed(1)+' cm · a\'=F · h=F+2e (arrondi)='+res.h.toFixed(0)+' cm.<br>A inf=(P1·0,01·3·(a\'-a))/(8·0,9·h·2·fe)·10000='+res.Ainf.toFixed(2)+' cm² → '+res.barInf.n+' Φ'+res.barInf.phi+'.<br>A sup (si b>a\')='+res.Asup.toFixed(2)+' cm²'+(res.barSup?(' → '+res.barSup.n+' Φ'+res.barSup.phi):' (non requis)')+'.<br>Attente du pieu dans la semelle : '+(res.Attente!=null?res.Attente.toFixed(2)+' cm²':'non calculée (méthode CCBA 68)')+'.</p>';
    } else {
-    h+='<h5>Bielle et vérification du béton</h5><p class="pcNote">d='+res.d.toFixed(1)+' cm · angle de bielle q='+res.qDeg.toFixed(1)+'° (plafonné à 55°).<br>σ\'c28=fc28+3='+res.sPrimeC28.toFixed(1)+' MPa · limite='+res.limSigma.toFixed(2)+' MPa.<br>σ sous poteau='+res.sousPoteau.toFixed(2)+' MPa → '+(res.okSousPoteau?'vérifiée':'⚠ NON vérifiée')+'.<br>σ sur pieux='+res.surPieux.toFixed(2)+' MPa → '+(res.okSurPieux?'vérifiée':'⚠ NON vérifiée')+'.'
+    h+='<h5>Bielle et vérification du béton</h5><p class="pcNote">d='+res.d.toFixed(1)+' cm · angle de bielle q='+res.qDeg.toFixed(1)+'° (plafonné à 55°).<br>'+(res.methode==='ccba'?'σ\'c28=fc28+3='+res.sPrimeC28.toFixed(1)+' MPa · limite='+res.limSigma.toFixed(2)+' MPa.':'Limites EC2 : nœud sous le poteau '+res.limPot.toFixed(2)+' MPa, nœud sur pieux '+res.limPieux.toFixed(2)+' MPa.')+'<br>σ sous poteau='+res.sousPoteau.toFixed(2)+' MPa → '+(res.okSousPoteau?'vérifiée':'⚠ NON vérifiée')+'.<br>σ sur pieux='+res.surPieux.toFixed(2)+' MPa → '+(res.okSurPieux?'vérifiée':'⚠ NON vérifiée')+'.'
      +(res.tau!=null?('<br>τ cisaillement='+res.tau.toFixed(2)+' MPa ≤ '+res.limTau.toFixed(2)+' MPa → '+(res.okTau?'vérifiée':'⚠ NON vérifiée')+'.'):'')+'</p>';
     if(res.config==='double'){
      h+='<h5>Ferraillage</h5><p class="pcNote">Ai=(1,1·P1·(a\'-a/2))/(4·d·(2/3)·fe)·100='+res.Ai.toFixed(2)+' cm² → '+res.barAi.n+' Φ'+res.barAi.phi+' (nappe inférieure).<br>As=Ai/10='+res.As.toFixed(2)+' cm² → '+res.barAs.n+' Φ'+res.barAs.phi+' (nappe supérieure) + cadres verticaux Φ/3 tous les 20 cm.</p>';
@@ -29321,7 +29471,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9);
    const lines=['Tete de pieux - '+({simple:'1 pieu',double:'2 pieux',triple:'3 pieux',quadruple:'4 pieux'})[res.config]+' - beton '+dp.classeGlobale+' - acier '+dp.classeAcier,
     'P1=G+1.2Q='+res.P1.toFixed(2)+' t'];
-   if(res.config==='simple') lines.push('A inf='+res.Ainf.toFixed(2)+' cm2 -> '+res.barInf.n+' phi'+res.barInf.phi, 'Attente du pieu='+res.Attente.toFixed(2)+' cm2');
+   if(res.config==='simple') lines.push('A inf='+res.Ainf.toFixed(2)+' cm2 -> '+res.barInf.n+' phi'+res.barInf.phi, 'Attente du pieu='+(res.Attente!=null?res.Attente.toFixed(2)+' cm2':'non calculee'));
    else { lines.push('q (angle de bielle)='+res.qDeg.toFixed(1)+' deg', 'Verif beton : sous poteau '+(res.okSousPoteau?'OK':'NON VERIFIEE')+', sur pieux '+(res.okSurPieux?'OK':'NON VERIFIEE')); if(res.config==='double') lines.push('Ai='+res.Ai.toFixed(2)+' cm2 -> '+res.barAi.n+' phi'+res.barAi.phi); else lines.push('A\'ac='+res.AacTotal.toFixed(2)+' cm2 -> '+res.barCerces.n+' phi'+res.barCerces.phi); }
    lines.forEach(l=>{ pdoc.text(pdfTxt(l),M,y,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M}); y+=7; });
    y+=4; pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
