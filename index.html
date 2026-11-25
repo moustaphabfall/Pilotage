@@ -26169,6 +26169,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   window.pcPlanExportPdf=async function(taskId,fmt){
    const t=taskById(taskId); if(!t) throw new Error('Ouvrage introuvable.');
    if(beTypeStructureNom(t.typeStructureId)===POTEAU_TYPE_NOM) return ptPlanExportPdf(t,fmt); /* plan de poteau */
+ if(beTypeStructureNom(t.typeStructureId)===SEMELLE_TYPE_NOM) return smPlanExportPdf(t,fmt); /* plan de semelle */
    if(t.dimDL&&t.dimDL.resultats&&!(t.dimPC&&t.dimPC.resultats)) return dlPlanExportPdf(t,fmt); /* plan de dalle */ const dp=pcData(t); const res=dp&&dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la poutre.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await pcPlanFerraillagePdf(t,dp,res,{format:f});
    const nom=String(dp.nom||t.nom||'Poutre').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Poutre';
@@ -29151,6 +29152,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote">Semelle '+(res.isolee?'isolée':'filante')+' · flexion '+M+(res.methode==='ec2'?' (classeur 097)':' (bielles)')+' · '+todayStr()+'</p>'
     +'<h5>Hypothèses</h5>'+tab(['Paramètre','Valeur','Origine'],hyp)
     +'<h5>Données géométriques et charges</h5>'
+    +(()=>{ try{ const P=smPlan(res,dp); if(!P) return ''; const sc=smPlanScenes(P)[0]; return '<div class="pcDraw">'+fplSceneSvg(sc.S,{label:sc.titre})+'</div><p class="pcSchemaCap">'+esc(sc.cap)+' (schéma coté du résultat)</p>'; }catch(e){ return ''; } })()
     +tab(['Donnée','Valeur'],(res.isolee?[['Poteau a × b',cm(res.a)+' × '+cm(res.b)]]:[['Largeur du mur b',cm(res.b)]]).concat([['G / Q',f(+dp.G_kN,1)+' / '+f(+dp.Q_kN,1)+' kN'+(res.isolee?'':'/ml')],['N_ser = G + Q',f(res.Nser*1000,1)+' kN'],['N_u = 1,35 G + 1,5 Q',f(res.Nu*1000,1)+' kN']]).concat(res.isolee&&dp.excentrique?[['M_ser / M_u',f(res.Mser*1000,1)+' / '+f(res.Mu*1000,1)+' kN·m']]:[]))
     +'<h5>Dimensions de la semelle</h5>'
     +tab(['Grandeur','Formule','Valeur'],[
@@ -29179,45 +29181,6 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return h;
   }
 
-  function smPlanFerraillageSvg(dp,res){
-   const W=220,H=170;
-   if(res.isolee){
-    const sk=Math.min((W-60)/Math.max(res.B,1),(H-60)/Math.max(res.A,1));
-    const rw=res.B*sk, rh=res.A*sk, rx=(W-rw)/2, ry=(H-rh)/2;
-    const nx=Math.max(2,res.barX.n), ny=Math.max(2,res.barY.n);
-    let lines='';
-    for(let i=0;i<=nx;i++){ const x=rx+i*(rw/nx); lines+='<line x1="'+x+'" y1="'+ry+'" x2="'+x+'" y2="'+(ry+rh)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1"/>'; }
-    for(let i=0;i<=ny;i++){ const y=ry+i*(rh/ny); lines+='<line x1="'+rx+'" y1="'+y+'" x2="'+(rx+rw)+'" y2="'+y+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1" stroke-dasharray="3 2"/>'; }
-    const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
-     +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2.4"/>'+lines
-     +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ds-ink-soft,#999)">'+res.barX.n+'Φ'+res.barX.phi+' //b · '+res.barY.n+'Φ'+res.barY.phi+' //a</text>'
-     +'</svg>';
-    return '<div class="pcDraw">'+svg+'</div>'
-     +'<p class="pcSchemaCap">Deux nappes croisées en jaune — nappe //b pleine, nappe //a tiretée, vue en plan (attentes du poteau non représentées).</p>';
-   }
-   const rw=160, rh=40, rx=(W-rw)/2, ry=H/2-rh/2;
-   const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="190" class="pcSvg">'
-    +'<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--ds-draw,#37352F)" stroke-width="2.4"/>'
-    +'<line x1="'+rx+'" y1="'+(ry+8)+'" x2="'+(rx+rw)+'" y2="'+(ry+8)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6" stroke-dasharray="4 3"/>'
-    +'<line x1="'+rx+'" y1="'+(ry+rh-8)+'" x2="'+(rx+rw)+'" y2="'+(ry+rh-8)+'" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6"/>'
-    +'<text x="'+(W/2)+'" y="'+(ry+rh+18)+'" font-size="9.5" text-anchor="middle" fill="var(--ds-ink-soft,#999)">Φ'+(res.barAy?res.barAy.phi:res.barAx.phi)+' (coupe, semelle filante)</text>'
-    +'</svg>';
-   return '<div class="pcDraw">'+svg+'</div>'
-    +'<p class="pcSchemaCap">Nappe supérieure (jaune tireté) et nappe inférieure/chaînage (jaune plein) — coupe transversale, semelle filante.</p>';
-  }
-  function smPlanFerraillageNomenclature(dp,res){
-   const rows=[];
-   if(res.isolee){
-    if(res.barX) rows.push(['Nx1','Nappe inférieure //b','Ø'+res.barX.phi+' × '+res.barX.n,(res.barX.As/100).toFixed(2)+' / '+res.Ax_cm2.toFixed(2)+' cm²',(+res.A||0).toFixed(2)+' m','Droit',(res.barX.n*(+res.A||0)*res.barX.phi*res.barX.phi/162).toFixed(1)+' kg']);
-    if(res.barY) rows.push(['Ny1','Nappe supérieure //a','Ø'+res.barY.phi+' × '+res.barY.n,(res.barY.As/100).toFixed(2)+' / '+res.Ay_cm2.toFixed(2)+' cm²',(+res.B||0).toFixed(2)+' m','Droit',(res.barY.n*(+res.B||0)*res.barY.phi*res.barY.phi/162).toFixed(1)+' kg']);
-   } else {
-    if(!res.petite&&res.barAy) rows.push(['Ay1','Nappe supérieure','Ø'+res.barAy.phi+' e='+res.barAy.s+'mm',res.Ay_cm2.toFixed(2)+' cm²/ml','filant','Droit','—']);
-    if(res.barAx) rows.push(['Ax1','Nappe inférieure / chaînage','Ø'+res.barAx.phi+' e='+res.barAx.s+'mm',res.Ax_cm2.toFixed(2)+' cm²/ml','filant','Droit','—']);
-   }
-   return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb×Ø</th><th>A_s réel / requis</th><th>Longueur</th><th>Façonnage</th><th>Poids</th></tr>'
-    +rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td><td>'+r[6]+'</td></tr>').join('')
-    +'<tr><td colspan="7" style="font-size:11.5px;opacity:.75">Enrobage = '+(dp.enrobage_cm||3)+' cm (majoré, contact sol/béton de propreté) · ancrage à vérifier (droit si longueur disponible suffisante, sinon crochets à 90°) · recouvrement avec attentes du poteau à prévoir.</td></tr></table>';
-  }
   function smCreerNoteCalcul(t,dp){
    const html=smNoteCalculHtml(t,dp,dp.resultats);
    const nom='Note de calcul '+dimOuvrageNom(t,dp);
@@ -29228,12 +29191,140 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
+  async function smNoteCalculPdf(t,dp,res){
+   /* UN SEUL générateur : même HTML que l'écran (smNoteCalculHtml → ncFormat, modèle du skill note-de-calcul) et même rendu que « Exporter en PDF » (ncPdfNote), A4 portrait. */
+   return await ncPdfNote(smNoteCalculHtml(t,dp,res),dimOuvrageNom(t,dp),{format:'a4'});
+  }
+  /* ===== Plan de ferraillage de la semelle : modèle (smPlan), scènes (écran SVG + PDF), nomenclature ===== */
+  const SM_NOTES=['Béton et acier : voir le cartouche. Norme : Eurocode 2 (NF EN 1992-1-1) et Annexe Nationale française ; flexion selon la méthode choisie dans la note de calcul.','Enrobage nominal c = valeur du cartouche (face inférieure et rives) ; cales d\'enrobage et béton de propreté non représentés. Cotes en centimètres.','Deux nappes croisées en sous-face : la nappe basse (repère 1) en trait fort, la nappe haute (repère 2) en tireté ; la hauteur utile diffère d\'un diamètre entre les deux nappes.','Ancrage : barres droites, crochets à 90° ou moitié des barres raccourcie à 0,8·L selon la règle des Recommandations professionnelles retenue (à confirmer) ; l_bd et longueur disponible vérifiés dans la note.','Attentes du poteau et recouvrement avec les barres du fût non représentés : à ajouter au plan d\'exécution.','Plan à valider par un ingénieur structure : portance du sol, tassement, ELS (fissuration) et soulèvement non vérifiés ici.'];
+  function smPlan(res,dp){
+   if(!res||!res.verifs||!res.cnom) return null;
+   const f=fplF, c=res.cnom*1000, Ht=res.Ht*1000, A=res.isolee?res.A*1000:1000, B=res.B*1000, rho=7850;
+   const kg=(n,phi,L)=>n*Math.PI/4*Math.pow(phi/1000,2)*(L/1000)*rho;
+   const rows=[], layers=[];
+   const addRows=(rep,bar,anc,L,AsReq,sens,niv,W)=>{
+    const phi=bar.phi, n=bar.n, esp=n>1?(W-2*c-phi)/(n-1):0, mode=anc?anc.mode:'droites';
+    const Ls=L-2*c, Lh=Ls+2*(Ht-2*c);
+    layers.push({rep,sens,n,phi,L,esp,niv,mode,hook:mode==='crochets',half:mode==='moitie'});
+    const base={AsReel:bar.As/100,AsReq};
+    if(mode==='crochets') rows.push(Object.assign({rep,designation:'Nappe '+niv+' // '+sens,nbDiam:n+' Ø'+phi,longueur:Lh/1000,faconnage:'U, crochets à 90° (retours '+f((Ht-2*c)/10,0)+' cm)',poids:kg(n,phi,Lh)},base));
+    else if(mode==='moitie'){ const n1=Math.ceil(n/2), n2=n-n1; rows.push(Object.assign({rep:rep+'a',designation:'Nappe '+niv+' // '+sens+' (pleine longueur)',nbDiam:n1+' Ø'+phi,longueur:Ls/1000,faconnage:'Droit',poids:kg(n1,phi,Ls)},base)); if(n2>0) rows.push({rep:rep+'b',designation:'Nappe '+niv+' // '+sens+' (0,8·'+sens+')',nbDiam:n2+' Ø'+phi,AsReel:null,AsReq:null,longueur:(res.ancX&&(sens==='B'?res.ancX:res.ancY).rM||0.8)*L/1000-2*c/1000,faconnage:'Droit',poids:kg(n2,phi,(sens==='B'?res.ancX:res.ancY).rM*L-2*c)}); }
+    else rows.push(Object.assign({rep,designation:'Nappe '+niv+' // '+sens,nbDiam:n+' Ø'+phi,longueur:Ls/1000,faconnage:'Droit',poids:kg(n,phi,Ls)},base));
+   };
+   if(res.isolee){
+    const lowX=res.low==='X';
+    addRows('1',lowX?res.barX:res.barY,lowX?res.ancX:res.ancY,lowX?B:A,lowX?res.Ax_cm2:res.Ay_cm2,lowX?'B':'A','basse',lowX?A:B);
+    addRows('2',lowX?res.barY:res.barX,lowX?res.ancY:res.ancX,lowX?A:B,lowX?res.Ay_cm2:res.Ax_cm2,lowX?'A':'B','haute',lowX?B:A);
+   } else {
+    if(res.barAy){ const e=res.barAy.s, n=1000/e, anc=res.ancY, hook=anc&&anc.mode==='crochets', Ls=B-2*c, Lh=Ls+2*(Ht-2*c), L=hook?Lh:Ls;
+     layers.push({rep:'1',sens:'T',n,phi:res.barAy.phi,L:B,esp:e,niv:'basse',mode:anc?anc.mode:'droites',hook});
+     rows.push({rep:'1',designation:'Transversales (principales, basses)',nbDiam:'Ø'+res.barAy.phi+' e='+e+' mm /ml',AsReel:res.barAy.As/100,AsReq:res.Ay_cm2,longueur:L/1000,faconnage:hook?'U, crochets à 90°':'Droit',poids:kg(n,res.barAy.phi,L)}); }
+    { const e=res.barAx.s, nl=Math.max(2,Math.ceil((B-2*c-res.barAx.phi)/e)+1); layers.push({rep:'2',sens:'L',n:nl,phi:res.barAx.phi,L:1000,esp:e,niv:'haute',mode:'droites'});
+     rows.push({rep:'2',designation:'Longitudinales (répartition / chaînage)',nbDiam:nl+' Ø'+res.barAx.phi+' /ml',AsReel:res.barAx.As/100,AsReq:res.Ax_cm2,longueur:1,faconnage:'Droit (continues)',poids:kg(nl,res.barAx.phi,1000)}); }
+   }
+   const poidsTotal=rows.reduce((q,r)=>q+r.poids,0);
+   const verifs=res.verifs.filter(v=>v.zone==='Flexion').map(v=>({zone:v.nom,calcul:v.calcul,limite:v.limite,etat:v.etat}));
+   const avertissements=res.verifs.filter(v=>v.etat==='ko').map(v=>v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')');
+   const hypotheses=['Enrobage c = '+f(c,0)+' mm ('+(res.contactSol==='terre'?'contre terre':'sur béton de propreté')+', classe '+res.cnomExpo.classe+') : à confirmer.','Règle de crochets / barres droites (Recommandations professionnelles) : à confirmer.','Longueurs de barres : développée = longueur − 2c, + 2 retours verticaux (Ht − 2c) pour les crochets, sans rayon de cintrage.','Pas de nappe supérieure d\'armatures en flexion inverse : non calculée.'];
+   return {isolee:res.isolee,g:{A,B,Ht,a:res.isolee?res.a*1000:0,b:res.b*1000},c,rows,layers,poidsTotal,verifs,avertissements,hypotheses,res,methode:res.methode,
+    lowIsX:res.low==='X',dX:res.dX,dY:res.dY};
+  }
+  /* vue en plan (semelle isolée) : deux nappes, poteau, coupes A-A et B-B, cotes */
+  function smSceneVue(P){
+   const g=P.g, s=Math.min(340/g.A,300/g.B), w=g.A*s, h=g.B*s, OX=110, OY=84, S=fplNewScene(OX+w+200,OY+h+160);
+   fplR(S,OX,OY,w,h,'bet'); const pw=g.a*s, ph=g.b*s, px=OX+(w-pw)/2, py=OY+(h-ph)/2; fplR(S,px,py,pw,ph,'betf');
+   const pos=(L,l)=>{ const out=[]; for(let k=0;k<l.n;k++) out.push((P.c+l.phi/2+(l.n>1?k*l.esp:(L-2*P.c)/2))*s); return out; };
+   P.layers.forEach(l=>{ if(l.sens==='B'){ pos(g.A,l).forEach(x=>fplL(S,OX+x,OY+P.c*s,OX+x,OY+h-P.c*s,l.niv==='basse'?'bar':'cad')); }
+    else { pos(g.B,l).forEach(y=>fplL(S,OX+P.c*s,OY+y,OX+w-P.c*s,OY+y,l.niv==='basse'?'bar':'cad')); } });
+   const lb=P.layers[0], lh=P.layers[1];
+   const yA=OY+h/2, xB=OX+w/2;
+   fplL(S,OX-14,yA,OX+w+14,yA,'coupe'); fplT(S,OX-22,yA+4,'A','tb','end',0,false); fplT(S,OX+w+22,yA+4,'A','tb','start',0,false);
+   fplL(S,xB,OY-14,xB,OY+h+14,'coupe'); fplT(S,xB,OY-20,'B','tb','middle',0,false); fplT(S,xB,OY+h+30,'B','tb','middle',0,false);
+   fplHD(S,OX,OX+w,OY-34,'A = '+fplF(g.A/10,0)+' cm',OY,OY); fplVD(S,OX-34,OY,OY+h,'B = '+fplF(g.B/10,0)+' cm',OX,OX,-6);
+   fplHD(S,px,px+pw,OY+h+52,'a = '+fplF(g.a/10,0)+' cm',py+ph,OY+h+52); fplVD(S,OX+w+34,py,py+ph,'b = '+fplF(g.b/10,0)+' cm',px+pw,OX+w,-6);
+   if(lb&&lb.n>1&&lb.sens==='B'){ const xs=pos(g.A,lb); fplHD(S,OX+xs[0],OX+xs[1],OY+h+86,'e = '+fplF(lb.esp/10,1)+' cm',OY+h-P.c*s,OY+h+86); }
+   if(lb){ const x=lb.sens==='B'?OX+pos(g.A,lb)[0]:OX+w-P.c*s, y=lb.sens==='B'?OY+P.c*s+14:OY+pos(g.B,lb)[0]; fplL(S,x,y,OX+w+60,OY+h*0.22,'lead'); fplBub(S,OX+w+72,OY+h*0.22,'1',12); }
+   if(lh){ const x=lh.sens==='B'?OX+pos(g.A,lh)[lh.n-1]:OX+w-P.c*s-20, y=lh.sens==='B'?OY+h-P.c*s-14:OY+pos(g.B,lh)[lh.n-1]; fplL(S,x,y,OX+w+60,OY+h*0.78,'lead'); fplBub(S,OX+w+72,OY+h*0.78,'2',12); }
+   fplT(S,OX,OY+h+118,'Vue en plan · nappe basse (repère 1) en trait fort, nappe haute (repère 2) en tireté · enrobage c = '+fplF(P.c/10,1)+' cm','ts','start',0,false);
+   return S;
+  }
+  /* coupe : kind = 'A' (coupe selon A) ou 'B' (selon B) pour la semelle isolée ; 'T' = coupe transversale de la semelle filante */
+  function smSceneCoupe(P,kind){
+   const g=P.g, iso=P.isolee, Lc=iso?(kind==='A'?g.A:g.B):g.B, pcw=iso?(kind==='A'?g.a:g.b):g.b, Ht=g.Ht, s=Math.min(1.6,360/Lc,200/Ht)*0.98;
+   const w=Lc*s, h=Ht*s, OX=96, OY=130, stub=70, S=fplNewScene(OX+w+190,OY+h+150);
+   fplR(S,OX,OY,w,h,'bet'); const pw=pcw*s; fplR(S,OX+(w-pw)/2,OY-stub,pw,stub,'betf');
+   fplL(S,OX+(w-pw)/2-8,OY-stub,OX+(w-pw)/2+pw+8,OY-stub,'cote');
+   const rd=Math.max(3,Math.min(6,(P.layers[0]?P.layers[0].phi:12)*s*0.6)), cy=P.c*s;
+   const yLow=OY+h-Math.max(cy,6)-rd, yHigh=yLow-Math.max(rd*2.6,9);
+   const lines=[];
+   P.layers.forEach(l=>{
+    const along=iso?(l.sens===kind):(l.sens==='T');
+    const y=l.niv==='basse'?yLow:yHigh, cls=l.niv==='basse'?'bar':'cad';
+    if(along){ const x0=OX+Math.max(cy,4), x1=OX+w-Math.max(cy,4); if(l.hook){ const yt=OY+Math.max(cy,4)+rd; fplP(S,[[x0,yt],[x0,y],[x1,y],[x1,yt]],cls); } else fplL(S,x0,y,x1,y,cls); lines.push({l,y}); }
+    else { const n=l.n, e=n>1?(Lc-2*P.c-l.phi)/(n-1)*s:0; for(let k=0;k<n;k++){ const x=OX+(P.c+l.phi/2)*s+k*e+(n>1?0:(w-2*P.c*s)/2); fplC(S,x,y,rd,'dot'); } }
+   });
+   fplHD(S,OX,OX+w,OY+h+38,(iso?(kind==='A'?'A':'B'):'B')+' = '+fplF(Lc/10,0)+' cm',OY+h,OY+h); fplVD(S,OX+w+34,OY,OY+h,'Ht = '+fplF(Ht/10,0)+' cm',OX+w,OX+w,-6);
+   fplHD(S,OX+(w-pw)/2,OX+(w+pw)/2,OY-stub-26,(iso?(kind==='A'?'a':'b'):'b')+' = '+fplF(pcw/10,0)+' cm',OY-stub,OY-stub);
+   fplVD(S,OX-30,OY+h-cy,OY+h,'c',OX,OX,-6); fplT(S,OX-34,OY+h-cy-8,'c = '+fplF(P.c/10,1)+' cm','ts','end',0,false);
+   const first=P.layers.find(l=>iso?l.sens===kind:l.sens==='T'), perp=P.layers.find(l=>iso?l.sens!==kind:l.sens==='L');
+   if(first){ const yy=first.niv==='basse'?yLow:yHigh; fplL(S,OX+w*0.7,yy,OX+w+54,OY+h*0.3,'lead'); fplBub(S,OX+w+66,OY+h*0.3,first.rep,12); fplT(S,OX+w+84,OY+h*0.3+4,(iso?first.n+' Ø'+first.phi:'Ø'+first.phi+' e='+fplF(first.esp,0)+' mm'),'ts','start',0,false); }
+   if(perp){ const yy=perp.niv==='basse'?yLow:yHigh; fplL(S,OX+w*0.35,yy,OX+w+54,OY+h*0.7,'lead'); fplBub(S,OX+w+66,OY+h*0.7,perp.rep,12); fplT(S,OX+w+84,OY+h*0.7+4,perp.n+' Ø'+perp.phi,'ts','start',0,false); }
+   fplT(S,OX,OY+h+72,iso?('Coupe '+kind+'-'+kind+' à l\'échelle · barres // '+kind+' en trait, barres perpendiculaires en coupe'):'Coupe transversale à l\'échelle · transversales en trait, longitudinales en coupe','ts','start',0,false);
+   return S;
+  }
+  /* vue en plan partielle de la semelle filante (1 m de long) */
+  function smSceneFilante(P){
+   const g=P.g, s=Math.min(1.1,360/g.B,220/1000), w=g.B*s, h=1000*s, OX=110, OY=70, S=fplNewScene(OX+w+190,OY+h+110);
+   fplR(S,OX,OY,w,h,'bet'); const mw=g.b*s; fplR(S,OX+(w-mw)/2,OY,mw,h,'betf');
+   P.layers.forEach(l=>{ if(l.sens==='T'){ const n=Math.max(2,Math.round(1000/l.esp)); for(let k=0;k<=n&&k*l.esp<=1000;k++){ const y=OY+(k*l.esp)*s; fplL(S,OX+P.c*s,y,OX+w-P.c*s,y,'bar'); } }
+    else if(l.sens==='L'){ for(let k=0;k<l.n;k++){ const x=OX+(P.c+l.phi/2+(l.n>1?k*(g.B-2*P.c-l.phi)/(l.n-1):(g.B-2*P.c)/2))*s; fplL(S,x,OY,x,OY+h,'cad'); } } });
+   fplHD(S,OX,OX+w,OY-26,'B = '+fplF(g.B/10,0)+' cm',OY,OY); fplVD(S,OX-34,OY,OY+h,'1 m',OX,OX,-6); fplHD(S,OX+(w-mw)/2,OX+(w+mw)/2,OY+h+36,'b = '+fplF(g.b/10,0)+' cm',OY+h,OY+h);
+   fplL(S,OX-14,OY+h*0.5,OX+w+14,OY+h*0.5,'coupe'); fplT(S,OX-22,OY+h*0.5+4,'T','tb','end',0,false); fplT(S,OX+w+22,OY+h*0.5+4,'T','tb','start',0,false);
+   fplBub(S,OX+w+40,OY+h*0.25,'1',12); fplBub(S,OX+w+40,OY+h*0.75,'2',12);
+   fplT(S,OX,OY+h+72,'Vue en plan sur 1 m de semelle · transversales (repère 1) en trait fort, longitudinales (repère 2) en tireté','ts','start',0,false);
+   return S;
+  }
+  function smPlanScenes(P){
+   if(P.isolee) return [{id:'vue',titre:'Vue en plan',cap:'Vue en plan · deux nappes croisées, poteau, plans de coupe A-A et B-B',S:smSceneVue(P)},{id:'A',titre:'Coupe A-A',cap:'Coupe A-A · à l\'échelle réelle',S:smSceneCoupe(P,'A')},{id:'B',titre:'Coupe B-B',cap:'Coupe B-B · à l\'échelle réelle',S:smSceneCoupe(P,'B')}];
+   return [{id:'vue',titre:'Vue en plan (1 m)',cap:'Vue en plan sur 1 m de semelle',S:smSceneFilante(P)},{id:'T',titre:'Coupe transversale',cap:'Coupe transversale T-T · à l\'échelle réelle',S:smSceneCoupe(P,'T')}];
+  }
+  function smPlanFerraillageNomenclature(dp,res){
+   const P=smPlan(res,dp); if(!P) return '';
+   return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb × Ø</th><th>A<sub>s</sub> réel / requis (cm²)</th><th>Long. unit. (m)</th><th>Façonnage</th><th>Poids (kg)</th></tr>'
+    +P.rows.map(r=>'<tr><td>'+esc(r.rep)+'</td><td>'+esc(r.designation)+'</td><td style="white-space:nowrap">'+esc(r.nbDiam)+'</td><td style="white-space:nowrap">'+(r.AsReel!=null?fplF(r.AsReel)+(r.AsReq?' / '+fplF(r.AsReq):''):'—')+'</td><td>'+fplF(r.longueur)+'</td><td>'+esc(r.faconnage)+'</td><td>'+fplF(r.poids,1)+'</td></tr>').join('')
+    +'<tr><td colspan="6" style="text-align:right"><b>Total'+(P.isolee?'':' par mètre de semelle')+'</b></td><td><b>'+fplF(P.poidsTotal,1)+' kg</b></td></tr></table>';
+  }
+  function smPlanFerraillageSvg(dp,res){ const P=smPlan(res,dp); return P?'<div class="pcDraw fplDraw">'+fplSceneSvg(smPlanScenes(P)[0].S,{label:'Vue en plan du ferraillage'})+'</div>':''; }
+  function smPlanHtml(t,dp,res){
+   const P=smPlan(res,dp), info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp);
+   if(!P) return '<div class="pcNC ncDoc fplDoc"><h3 class="ncH1">Plan de ferraillage non disponible</h3><p class="pcNote">Le plan de la semelle n\'a pas pu être calculé (résultat absent ou d\'une ancienne version : relancer le calcul).</p></div>';
+   const nW=P.avertissements.length, date=todayStr(), g=P.g, f=fplF;
+   const dim=P.isolee?(f(g.A/10,0)+' × '+f(g.B/10,0)+' cm, Ht '+f(g.Ht/10,0)+' cm'):('B = '+f(g.B/10,0)+' cm, Ht '+f(g.Ht/10,0)+' cm');
+   const constat=info.nomO+' : '+f(P.poidsTotal,1)+' kg d\'acier'+(P.isolee?'':' par mètre')+', '+P.rows.length+' repère'+(P.rows.length>1?'s':'')+(nW?' — '+nW+' point'+(nW>1?'s':'')+' à reprendre':', ancrages vérifiés')+' — portance, tassement et ELS non vérifiés';
+   const subL=[info.projet,info.bat,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' · ');
+   const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(info.projet||'—')+'</td><td><b>Ouvrage</b>'+esc(info.nomO)+(info.typ?' · '+esc(info.typ):'')+'</td><td><b>Document</b>Plan de ferraillage '+esc(info.nomO)+'</td></tr>'
+    +'<tr><td><b>Norme</b>'+esc(info.norme)+'</td><td><b>Béton / acier</b>'+esc(info.beton)+' · '+esc(info.acier)+'</td><td><b>Indice · date</b>'+esc(info.indice)+(info.indice==='0'?' (première émission)':'')+' · '+esc(date)+'</td></tr>'
+    +'<tr><td><b>Échelles</b>Vues et coupes à l\'échelle indiquée par les cotes</td><td><b>Établi par</b>Been11 · module Semelle</td><td><b>Statut</b>À vérifier par un ingénieur structure · Vérifié par : —</td></tr>'
+    +'<tr><td><b>Plan lié</b>Note de calcul '+esc(info.nomO)+'</td><td><b>Semelle</b>'+esc(dim)+' · enrobage '+f(P.c/10,1)+' cm</td><td><b>Flexion</b>'+(P.methode==='bael'?'BAEL (bielles)':'Eurocode 2')+'</td></tr></table>';
+   const kp='<div class="ncKpi"><div class="ncK"><b>'+f(P.poidsTotal,1)+' kg</b><small>acier total de la nomenclature'+(P.isolee?'':' par mètre')+' ('+P.rows.length+' repère'+(P.rows.length>1?'s':'')+')</small></div>'
+    +P.layers.slice(0,2).map(l=>'<div class="ncK"><b>'+(P.isolee?l.n+' Ø'+l.phi:'Ø'+l.phi+' e='+f(l.esp,0))+'</b><small>repère '+l.rep+' · '+(P.isolee?('nappe '+l.niv+' // '+l.sens+' · '+l.mode):(l.sens==='T'?'transversales':'longitudinales'))+'</small></div>').join('')+'</div>';
+   const dr=(S,lab,cap)=>'<div class="pcDraw fplDraw">'+fplSceneSvg(S,{label:lab})+'</div><p class="pcSchemaCap">'+esc(cap)+'</p>';
+   const sc=smPlanScenes(P);
+   const ver='<table class="ncG"><tr><th>Vérification</th><th>Calcul</th><th>Limite</th><th>État</th></tr>'+P.verifs.map(r=>'<tr><td>'+esc(r.zone)+'</td><td>'+esc(r.calcul)+'</td><td>'+esc(r.limite)+'</td><td style="color:var(--ds-'+(r.etat==='ok'?'ok':'danger')+')">'+(r.etat==='ok'?'Conforme':'Non conforme')+'</td></tr>').join('')+'</table>';
+   const notes='<ol class="fplNotes">'+SM_NOTES.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>';
+   const pts='<section class="ncSec"><h4>Points à confirmer</h4>'+P.avertissements.map(a=>'<div class="ncAn"><b>Bloquant : </b>'+esc(a)+'</div>').join('')+P.hypotheses.map(a=>'<div class="ncAn conf"><b>À confirmer : </b>'+esc(a)+'</div>').join('')+'</section>';
+   return '<div class="pcNC ncDoc fplDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+'</p>'+cart+kp
+    +'<section class="ncSec"><h4>'+esc(sc[0].titre)+'</h4>'+dr(sc[0].S,sc[0].titre+' du ferraillage de la semelle',sc[0].cap)+'</section>'
+    +'<section class="ncSec"><h4>Coupes</h4><div class="fplSecs">'+sc.slice(1).map(q=>'<div>'+dr(q.S,q.titre,q.cap)+'</div>').join('')+'</div></section>'
+    +'<section class="ncSec"><h4>Nomenclature des aciers</h4>'+smPlanFerraillageNomenclature(dp,res)+'<p class="pcSchemaCap">Enrobage '+f(P.c/10,1)+' cm · poids = n·L·π·Ø²/4·7850 kg/m³ · longueurs développées sans rayon de cintrage.</p></section>'
+    +'<section class="ncSec"><h4>Vérification des sections</h4>'+ver+'</section>'
+    +'<section class="ncSec"><h4>Notes générales</h4>'+notes+'</section>'
+    +'<section class="ncSec"><h4>Légende des traits et symboles</h4><div class="pcDraw fplDraw fplLeg">'+fplSceneSvg(fplLegendScene(),{label:'Légende des traits'})+'</div></section>'
+    +pts+'<div class="ncWarn">⚠ Ce plan de ferraillage est généré automatiquement à partir des sections d\'acier calculées et des dispositions constructives courantes de l\'Eurocode 2. Les coefficients et valeurs non fournis explicitement par l\'utilisateur sont retenus aux valeurs usuelles par défaut et doivent être recoupés par un ingénieur structure avant exécution. Ce document ne remplace pas une étude signée par un bureau d\'études qualifié.</div></div>';
+  }
   function smCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
-   const html='<div class="pcNC ncDoc"><h3>Plan de ferraillage — '+esc(dp.nom||t.nom||'Semelle')+'</h3>'
-    +'<p class="pcNote">Vue en plan · '+todayStr()+'</p>'+smPlanFerraillageSvg(dp,res)
-    +smPlanFerraillageNomenclature(dp,res)
-    +'<p class="pcNote">⚠ Schéma et nomenclature générés automatiquement (méthode des bielles simplifiée). À reprendre par un dessinateur/ingénieur structure pour l\'exécution (recouvrements, attentes de poteau non représentées).</p></div>';
+   const html=smPlanHtml(t,dp,res);
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
    let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage');
@@ -29242,20 +29333,53 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
-  async function smNoteCalculPdf(t,dp,res){
-   /* UN SEUL générateur : même HTML que l'écran (smNoteCalculHtml → ncFormat, modèle du skill note-de-calcul) et même rendu que « Exporter en PDF » (ncPdfNote), A4 portrait. */
-   return await ncPdfNote(smNoteCalculHtml(t,dp,res),dimOuvrageNom(t,dp),{format:'a4'});
+  /* PDF (jsPDF) : mêmes scènes que l'écran, A4 à A0 paysage (mise en page en mm A3 puis mise à l'échelle, fplPdfCtx) */
+  async function smPlanFerraillagePdf(t,dp,res,opts){
+   const JsPDF=await loadPdfLibs(); const P=smPlan(res,dp);
+   const FMT=(opts&&FPL_FMT_W[opts.format])?opts.format:'a3', PS=FPL_FMT_W[FMT]/420;
+   const doc=fplPdfCtx(new JsPDF({unit:'mm',format:FMT,orientation:'landscape'}),PS,Math.pow(PS,0.85),FMT), PW=420, PH=297, M=12; let y=M;
+   const info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp); const date=todayStr(), f=fplF;
+   const head=txt=>{ doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(0); doc.text(FPL_PDFSYM(txt),M,M+6); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(FPL_PDFSYM([info.projet,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' - ')),M,M+12); doc.setTextColor(0); y=M+18; };
+   if(!P){ head('Plan de ferraillage - '+info.nomO); doc.setFontSize(11); doc.text('Plan non disponible : resultat absent ou d\'une ancienne version.',M,y+10); return doc.output('blob'); }
+   const page=()=>{ doc.addPage(); head('Plan de ferraillage - '+info.nomO+' (suite)'); }, need=h=>{ if(y+h>PH-M-6) page(); };
+   head('Plan de ferraillage - '+info.nomO);
+   const g=P.g;
+   const ci=[['Projet',info.projet||'-'],['Ouvrage',info.nomO+(info.typ?' - '+info.typ:'')],['Norme',info.norme],['Béton / acier',info.beton+' - '+info.acier],['Indice / date',info.indice+' - '+date],['Statut','A verifier par un ingenieur structure'],['Semelle',(P.isolee?f(g.A/10,0)+' x '+f(g.B/10,0):'B '+f(g.B/10,0))+' cm - Ht '+f(g.Ht/10,0)+' cm - enrobage '+f(P.c/10,1)+' cm'],['Poids d\'acier',f(P.poidsTotal,1)+' kg'+(P.isolee?'':' / ml')],['Établi par','Been11 - Semelle']];
+   const cw=(PW-2*M)/3; doc.setDrawColor(242,169,0); doc.setLineWidth(0.3);
+   ci.forEach((c,i)=>{ const cx=M+(i%3)*cw, cy=y+Math.floor(i/3)*10; doc.rect(cx,cy,cw,10); doc.setFontSize(6.5); doc.setTextColor(110); doc.text(FPL_PDFSYM(c[0]),cx+1.5,cy+3.4); doc.setFontSize(8.5); doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.text(FPL_PDFSYM(c[1]),cx+1.5,cy+7.6,{maxWidth:cw-3}); doc.setFont('helvetica','normal'); });
+   y+=32;
+   const sc=smPlanScenes(P), kk=(S,wmax,hmax)=>Math.min(wmax/S.w,hmax/S.h);
+   { const S0=sc[0].S, wL=(PW-2*M)*0.5, k0=kk(S0,wL,PH-y-M-14); const y0=y; fplPdfScene(doc,S0,M,y0,k0);
+     const rest=sc.slice(1), wR=(PW-2*M)*0.46, hR=(PH-y0-M-14)/rest.length; let yy=y0;
+     rest.forEach(q=>{ const k=kk(q.S,wR,hR-6); fplPdfScene(doc,q.S,M+wL+10,yy,k); yy+=q.S.h*k+6; });
+     y=y0+Math.max(S0.h*k0,yy-y0)+3; doc.setFontSize(8); doc.setTextColor(110); doc.text(FPL_PDFSYM(sc.map(q=>q.cap).join(' - ')),M,Math.min(y+2,PH-M-4)); doc.setTextColor(0); }
+   page();
+   doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Nomenclature des aciers',M,y); y+=2;
+   const HW=PW/2-M-4, AT={styles:{fontSize:8.5,cellPadding:1.6,lineColor:[242,169,0],lineWidth:0.2},headStyles:{fillColor:[255,255,255],textColor:[0,0,0],lineColor:[242,169,0],lineWidth:0.3},margin:{left:M,right:PW/2+4},tableWidth:HW};
+   let yL=y;
+   if(doc.autoTable){
+    doc.autoTable(Object.assign({startY:y+2,head:[['Rep.','Designation','Nb x Ø','As reel / requis (cm2)','Long. unit. (m)','Faconnage','Poids (kg)']],body:P.rows.map(r=>[r.rep,FPL_PDFSYM(r.designation),r.nbDiam,r.AsReel!=null?f(r.AsReel)+(r.AsReq?' / '+f(r.AsReq):''):'-',f(r.longueur),FPL_PDFSYM(r.faconnage),f(r.poids,1)]).concat([['','Total','','','','',f(P.poidsTotal,1)+' kg']])},AT));
+    yL=doc.lastAutoTable.finalY+5;
+    doc.autoTable(Object.assign({startY:yL,head:[['Verification','Calcul','Limite','Etat']],body:P.verifs.map(r=>[FPL_PDFSYM(r.zone),FPL_PDFSYM(r.calcul),FPL_PDFSYM(r.limite),r.etat==='ok'?'Conforme':'Non conforme'])},AT));
+    yL=doc.lastAutoTable.finalY+6; }
+   { const lg=fplLegendScene(), sx0=PW/2+4, kL=Math.min(0.5,(HW-4)/lg.w); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0); doc.text('Legende des traits et symboles',sx0,y); fplPdfScene(doc,lg,sx0,y+3,kL); }
+   y=yL; doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Notes generales',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+   SM_NOTES.forEach((x,i)=>{ const L=doc.splitTextToSize((i+1)+'. '+FPL_PDFSYM(x),HW-4); if(y+L.length*3.8>PH-M-30){ page(); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); } doc.text(L,M,y); y+=L.length*3.8+1; });
+   y+=3; if(y>PH-M-40) page(); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Points a confirmer',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+   P.avertissements.map(a=>({bad:true,t:a})).concat(P.hypotheses.map(a=>({bad:false,t:a}))).forEach(a=>{ const L=doc.splitTextToSize((a.bad?'Bloquant : ':'A confirmer : ')+FPL_PDFSYM(a.t),PW-2*M-6); if(y+L.length*3.8>PH-M-30){ page(); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); } doc.setDrawColor(...(a.bad?[180,40,30]:[242,169,0])); doc.setLineWidth(0.8); doc.line(M-1,y-3,M-1,y+L.length*3.8-3); doc.setTextColor(0); doc.text(L,M+1,y); y+=L.length*3.8+1.5; });
+   doc.setPage(doc.getNumberOfPages());
+   doc.setDrawColor(242,169,0); doc.setLineWidth(0.6); const aw=PW-2*M; const WL=doc.splitTextToSize(FPL_PDFSYM('Avertissement. Plan genere automatiquement a partir des sections d\'acier calculees et des dispositions constructives courantes (Eurocode 2). A recouper par un ingenieur structure avant execution ; ne remplace pas une etude signee par un bureau d\'etudes qualifie.'),aw-8); const ah=WL.length*4+6, ay=PH-M-ah; doc.roundedRect(M,ay,aw,ah,2,2,'S'); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.text(WL,M+4,ay+5); doc.setTextColor(0);
+   const NP=doc.getNumberOfPages(); for(let i=1;i<=NP;i++){ doc.setPage(i); doc.setFontSize(7); doc.setTextColor(120); doc.text(FPL_PDFSYM(info.nomO+' - Plan de ferraillage - feuille '+i+'/'+NP+' - '+FMT.toUpperCase()+' paysage'),PW-M,PH-4,{align:'right'}); }
+   return doc.output('blob');
   }
-  async function smPlanFerraillagePdf(t,dp,res){
-   const JsPDF=await loadPdfLibs(); const pdoc=new JsPDF({unit:'mm',format:'a4'}), M=16;
-   pdoc.setFont('helvetica','bold'); pdoc.setFontSize(15); pdoc.text(pdfTxt('Plan de ferraillage — '+(dp.nom||t.nom||'Semelle')),M,M+6);
-   pdoc.setFont('helvetica','normal'); pdoc.setFontSize(9); pdoc.setTextColor(110); pdoc.text(pdfTxt('Vue en plan — '+todayStr()),M,M+12); pdoc.setTextColor(0);
-   const x0=M+10,y0=M+24,w=70,h=res.isolee?(70*(res.A/Math.max(res.B,1))):30;
-   pdoc.setDrawColor(55,53,47); pdoc.setLineWidth(0.4); pdoc.rect(x0,y0,w,Math.min(h,90));
-   pdoc.setFontSize(9); pdoc.text(pdfTxt(res.isolee?(res.barX.n+' phi'+res.barX.phi+' //b + '+res.barY.n+' phi'+res.barY.phi+' //a'):('phi'+(res.barAy?res.barAy.phi:res.barAx.phi))),x0,y0+Math.min(h,90)+8);
-   pdoc.setFont('helvetica','italic'); pdoc.setFontSize(8); pdoc.setTextColor(140);
-   pdoc.text(pdfTxt('Schema genere automatiquement. A reprendre par un dessinateur/ingenieur structure pour l\'execution.'),M,pdoc.internal.pageSize.getHeight()-10,{maxWidth:pdoc.internal.pageSize.getWidth()-2*M});
-   return pdoc.output('blob');
+  /* Export PDF du plan de semelle à la demande (format au choix) : branché dans pcPlanExportPdf */
+  async function smPlanExportPdf(t,fmt){
+   const dp=smData(t), res=dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la semelle.');
+   const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await smPlanFerraillagePdf(t,dp,res,{format:f});
+   const nom=dimOuvrageNom(t,dp).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Semelle';
+   const fn='Plan-ferraillage_'+nom+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
+   return {blob,fn};
   }
   async function smCreerDocumentsDimensionnement(t,dp){
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
