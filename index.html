@@ -25052,7 +25052,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
  if(res.isolee&&res.barX) K.push({v:res.barX.n+' Ø'+res.barX.phi+' · '+res.barY.n+' Ø'+res.barY.phi,l:'Nappes // B et // A'});
  else if(res.barAx) K.push({v:(res.barAy?('Ø'+res.barAy.phi+' e='+res.barAy.s):'chaînage')+' · Ø'+res.barAx.phi+' e='+res.barAx.s,l:'Transversales · longitudinales (mm)'});
  fer=res.isolee&&res.barX?(res.barX.n+' Ø'+res.barX.phi+' · '+res.barY.n+' Ø'+res.barY.phi):(res.barAx?('Ø'+res.barAx.phi+' e='+res.barAx.s):'');
- } else if(kind==='geo'){
+ } else if(kind==='portique'){
+     const U=res.combos.elu, S=res.combos.els; let Mx=0,Vx=0,Nc=0,Ry=0; U.bars.forEach(b=>{ Mx=Math.max(Mx,Math.abs(b.Mmax),Math.abs(b.Mmin)); Vx=Math.max(Vx,b.Vmax); Nc=Math.min(Nc,b.Nmin); }); U.reactions.forEach(r=>{ if(r.fy) Ry+=r.Fy; });
+     K.push({v:ncF(Mx,1)+' kN·m',l:'Moment |M| maximal (ELU)'});
+     K.push({v:ncF(Vx,1)+' kN',l:'Effort tranchant maximal (ELU)'});
+     K.push({v:ncF(Nc,1)+' kN',l:'Effort normal minimal (ELU)'});
+     K.push({v:ncF(S.dmax.val*1000,1)+' mm',l:'Déplacement maximal (ELS)'});
+     fer='M max '+ncF(Mx,1)+' kN·m';
+    } else if(kind==='geo'){
      const m=res.methode;
      if(m==='menard'){ const bad=res.sAdm_cm!=null&&res.S>res.sAdm_cm; K.push({v:ncF(res.S)+' cm',l:'Tassement total S = S_c + S_d'+(res.sAdm_cm!=null?' (admissible '+ncF(res.sAdm_cm)+' cm)':''),bad}); K.push({v:ncF(res.Sc)+' + '+ncF(res.Sd),l:'Sphérique S_c + déviatorique S_d (cm)'}); K.push({v:ncF(res.Ec,1)+' / '+ncF(res.Ed,1),l:'Modules E_c / E_d (MPa)'}); K.push({v:ncF(res.K,0)+' t/m³',l:'Raideur surfacique k = 10 000·q/S'}); fer='S = '+ncF(res.S)+' cm'; }
      else if(m==='radier'){ const bad=res.sAdm_mm!=null&&res.S_mm>res.sAdm_mm; K.push({v:ncF(res.S_mm,1)+' mm',l:'Tassement du radier'+(res.sAdm_mm!=null?' (admissible '+ncF(res.sAdm_mm,0)+' mm)':''),bad}); K.push({v:ncF(res.q,1)+' kPa',l:'Contrainte au niveau du radier'}); K.push({v:res.rows.length+' × '+ncF(res.pas)+' m',l:'Tranches de calcul'}); fer='S = '+ncF(res.S_mm,1)+' mm'; }
@@ -25118,7 +25125,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const date=(typeof todayStr==='function')?todayStr():'';
     const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(projet||'—')+'</td><td><b>Ouvrage</b>'+esc(nomO)+(typ?' · '+esc(typ):'')+'</td><td><b>Norme</b>'+esc(norme)+'</td></tr>'
      +'<tr><td><b>Document</b>Note de calcul '+esc(nomO)+'</td><td><b>Indice</b>'+esc(indice)+(indice==='0'?' — première émission':'')+'</td><td><b>Statut</b>À vérifier par un ingénieur structure</td></tr>'
-     +'<tr><td><b>Établi par</b>Been11 · '+esc(sub.split('·')[0].trim()||'module embarqué')+'</td><td><b>Vérifié par</b>—</td><td><b>Plan lié</b>'+((kind==='geo'||kind==='pieuport')?'—':'Plan de ferraillage '+esc(nomO))+'</td></tr></table>';
+     +'<tr><td><b>Établi par</b>Been11 · '+esc(sub.split('·')[0].trim()||'module embarqué')+'</td><td><b>Vérifié par</b>—</td><td><b>Plan lié</b>'+((kind==='geo'||kind==='pieuport'||kind==='portique')?'—':'Plan de ferraillage '+esc(nomO))+'</td></tr></table>';
     const kp=K.length?'<div class="ncKpi">'+K.map(k=>'<div class="ncK'+(k.bad?' bad':'')+'"><b>'+esc(k.v)+'</b><small>'+esc(k.l)+'</small></div>').join('')+'</div>':'';
     const an0=AN.length?'<section class="ncSec"><h4>Points à confirmer</h4>'+AN.map(a=>'<div class="ncAn'+(a.bad?'':' conf')+'"><b>'+(a.bad?'Bloquant : ':'À confirmer : ')+'</b>'+esc(a.tx.replace(/^⚠\s*/,''))+'</div>').join('')+'</section>':'';
     const an=an0+jsH; // bloc repliable « Données transmises au plan » : après les points à confirmer, avant l'avertissement
@@ -27400,7 +27407,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<p class="pcNote pcKaScope"><b>Périmètre : poutres et poteaux voisins rectangulaires seulement, même E partout, pas de section orientée ni non rectangulaire.</b> Hors de ce périmètre, l\'aide ne calcule pas : saisir k1 et k2 à l\'étape 3 (calcul de k par l\'ingénieur).</p>'
     +'<p class="pcNote">Aide au choix de k1 (pied) et k2 (tête) : k = Σ(EI/l) des poteaux du nœud / Σ(α·EI/l) des poutres, α = 4 ou 3, poutres fissurées × 0,5. Même béton pour poutres et poteaux. Rien n\'est modifié tant qu\'on ne reporte pas.</p>'
     +ptKaFieldHtml(dp,null,PT_KA_FISS,err)+ptKaFieldHtml(dp,null,PT_KA_E,err)+endHtml+l0+f0+stale+done
-    +'<div class="pcKaBtns"><button type="button" class="ghost" data-ka-act="apply"'+(can?'':' disabled aria-disabled="true"')+'>Reporter dans k1 et k2</button><button type="button" class="ghost" data-ka-act="reset">Rétablir l\'aide</button></div>'
+    +'<div class="pcKaBtns"><button type="button" class="ghost" data-ka-act="apply"'+(can?'':' disabled aria-disabled="true"')+'>Reporter dans k1 et k2</button><button type="button" class="ghost" data-ka-act="reset">Rétablir l\'aide</button>'+((typeof pfPortiquesDuProjet==='function'&&pfPortiquesDuProjet().length)?'<button type="button" class="ghost" data-ka-act="portique">Reporter depuis un portique du projet</button>':'')+'</div>'+(dp._kPortique?'<p class="pcNote" role="status">k reportés depuis le portique « '+esc(dp._kPortique.nom)+' » (barre '+dp._kPortique.bar+') : '+['bas','haut'].filter(e=>dp._kPortique[e]).map(e=>(e==='bas'?'k1':'k2')+' = '+ptKaFmt(dp._kPortique[e].used,2)).join(" · ")+' (modifiables à l\'étape 3).</p>':'')
     +'</div></details>';
   }
   /* Modèle de section pour l'interaction N-M : y mesuré depuis la fibre la plus comprimée (mm), N > 0 en compression. */
@@ -27674,7 +27681,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    res.feu=ptFeu(dp,res);
    res.coefSaisis=PT_COEF.filter(sp=>!sp.legacy&&sp.th!=='ba'&&ptCoefSaisi(dp,sp.k)).map(sp=>({k:sp.k,lbl:sp.lbl.replace(/ \(vide.*$/,''),val:+dp[sp.k],unit:sp.unit||'',def:sp.def}));
    res.bi=ptBiaxial(dp,res);
-   res.kAide=ptKaNote(dp);
+   res.kAide=ptKaNote(dp); if(dp._kPortique) res.kPort=dp._kPortique;
    res.ecarts=[];
    if(!noEcart){ /* écart chiffré de chaque option saisie par rapport à son défaut (même calcul, option retirée) */
     [['c_KrMode','K_r calculé'],['c_epsC','ε de la compression centrée']].forEach(([k,lb])=>{ if(!ptCoefSaisi(dp,k)||ptCoef(dp,k)===PT_COEF_BY[k].def) return;
@@ -28552,6 +28559,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const kaB=e.target.closest('[data-ka-act]'); if(kaB){
     const t0=taskById(id); if(!t0) return; const dp0=ptData(t0); const act=kaB.dataset.kaAct;
     if(act==='reset'){ delete dp0.ka; window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp0._thOpen=dp0._thOpen||{}; dp0._thOpen.ka=true; dp0._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
+    if(act==='portique'){ if(window.pfKLink) window.pfKLink(id); return; }
     if(act==='apply'){ const c=ptKaCalc(dp0); if(c.mode==='isole') return; const ka=ptKaEns(dp0); const app={fiss:c.haut.fiss,F:c.l0new&&c.l0new.f,tab4:ptKaTab4(c),l0_m:c.l0new&&isFinite(c.l0new.l0_cm)?c.l0new.l0_cm/100:null,l0cur_m:isFinite(c.l0cur.l0_cm)?c.l0cur.l0_cm/100:null};
      PT_KA_END.forEach(([en,,,kf])=>{ const r=c[en]; if(!isFinite(r.kUp)||r.hors) return; dp0[kf]=r.kUp; app[en]={kUp:r.kUp,raw:r.raw,nb:r.nb,bb:r.bb,hb:r.hb,lb:r.lb,far:r.far,nv:r.nv,vp:r.vp,vl:r.vl,vh:r.vh,fiss:r.fiss,sc:r.sc,sb:r.sb,clamp:r.clamp}; });
      ka.app=app; dp0._thOpen=dp0._thOpen||{}; dp0._thOpen.ka=true; dp0._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
@@ -28869,6 +28877,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +(res.els.requis?'<p class="ncPt" data-bad="0">contraintes ELS : '+((res.els.saiN&&res.els.saiM)?'N_ser et M_ser saisis':'N_ser et M_ser estimés à N_Ed/1,4 et M_Ed/1,4 (rapport ELU/ELS courant) : à remplacer par les valeurs ELS de la descente de charges')+' ; section fissurée élastique avec α_e = 15 , à confirmer par un ingénieur. Fissuration et flèche non vérifiées.</p>':'<p class="ncPt" data-bad="0">classe '+res.els.classe+' : contraintes ELS non requises (requises en XD, XF, XS) ; fissuration et flèche non vérifiées.</p>')
     +(dp.dcGprim_kN!=null&&dp.dcDeg?dcDegPt(dp.dcDeg):'')
     +(res.kAide&&res.kAide.hors?'<p class="ncPt" data-bad="0">'+res.kAide.hors.map(x=>'k<sub>'+x.kn.slice(1)+'</sub> ('+x.motifs.join(', ')+')').join(' ; ')+' : situation hors du périmètre de l\'aide de calcul de k (poutres et poteaux voisins rectangulaires seulement, même E partout) ; k saisi directement par l\'ingénieur à l\'étape 3, à confirmer par un ingénieur.</p>':'')
+    +(res.kPort?'<p class="ncPt" data-bad="0">k<sub>1</sub> et k<sub>2</sub> reportés depuis le portique « '+esc(res.kPort.nom)+' » (rotation d\'un nœud sous moment unitaire, poteau retiré, nœuds supposés indéplaçables, rigidités brutes × '+fC(res.kPort.kRig,2)+', barres rectangulaires de même module E, arrondi par excès à 0,01 et au moins 0,1) : à confirmer par un ingénieur.</p>':'')
     +(res.kAide&&res.kAide.por&&res.kAide.ends?'<p class="ncPt" data-bad="0">k<sub>1</sub> et k<sub>2</sub> proposés par l\'aide de calcul : poutres supposées rectangulaires (table de compression négligée), même béton que le poteau, rigidité de rotation 4·EI/l ou 3·EI/l selon l\'autre extrémité, '+(res.kAide.fiss<1?'poutres fissurées (EI × 0,5)':'poutres non fissurées (EI × 1, à justifier)')+', valeurs arrondies par excès à 0,01 et au moins 0,1'+(res.kAide.ends.some(en=>!en.ok)?' ; pour '+res.kAide.ends.filter(en=>!en.ok).map(en=>en.kn).join(' et ')+', la valeur saisie à l\'étape 3 diffère de l\'aide et a été retenue':'')+' : à confirmer par un ingénieur.</p>':'')
     +(res.coefSaisis&&res.coefSaisis.length?'<p class="ncPt" data-bad="0">coefficients modifiés par l\'ingénieur dans les paramètres avancés : '+res.coefSaisis.map(c=>esc(c.lbl)).join(' ; ')+' : valeurs saisies, à confirmer par un ingénieur.</p>':'')
     +(res.bi&&res.bi.etat!=='na'?'<p class="ncPt" data-bad="0">flexion déviée : '+(res.bi.reel?'armatures réparties sur les quatre faces ('+res.lay4.nb+' barres par face de largeur, '+res.lay4.nh+' par face de profondeur, coins compris) ; M<sub>Rd</sub> de chaque plan calculé avec les positions réelles des barres':(res.bi.circ?'section circulaire : armatures réparties sur le cercle (modèle à barres équivalentes) ; M<sub>Rd</sub> identique dans les deux plans':'M<sub>Rd</sub> de l\'autre plan calculé avec les armatures supposées réparties aux faces de ce plan (approché)'))+' ; M<sub>Ed</sub> de l\'autre plan saisi, supposé total (imperfections et second ordre inclus) : à confirmer par un ingénieur.</p>':'<p class="ncPt" data-bad="0">flexion déviée non calculée (M<sub>Ed</sub> de l\'autre plan non renseigné dans les paramètres avancés).</p>')
@@ -28893,6 +28902,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    (res.ecarts||[]).forEach(e=>{ hypRows.push([esc(e.lbl),(e.k==='c_KrMode'?'K<sub>r</sub> calculé : M<sub>2</sub> = '+fC(e.M2,1)+' kN·m (K<sub>r</sub> = 1 : '+fC(e.M2Def,1)+' kN·m)':(e.centree?'σ<sub>s</sub> = '+fC(e.sigC,0)+' MPa (défaut '+fC(e.sigCDef,0)+' MPa)':'ε de calcul '+fC(res.epsC,2)+' ‰ (sans effet sur ce cas : pas de compression centrée)')),'Saisi (paramètres avancés) · A<sub>s</sub> = '+fC(e.As)+' cm² contre '+fC(e.AsDef)+' cm² par défaut']); });
    if(res.bi&&res.bi.etat!=='na') hypRows.push(['Flexion déviée','a = '+fC(res.bi.a,2)+(res.bi.aSaisi?' (saisi)':' (table, N<sub>Ed</sub>/N<sub>Rd</sub> = '+fC(res.bi.r,2)+')')+' · M<sub>Edy</sub> = '+fC(res.bi.MEdy,1)+' kN·m (autre plan) · M<sub>Rdz</sub> = '+fC(res.bi.MRz,1)+', M<sub>Rdy</sub> = '+fC(res.bi.MRy,1)+' kN·m'+(res.bi.reel?' · armatures réparties sur les 4 faces : '+res.lay4.nb+' barres par face de largeur, '+res.lay4.nh+' par face de profondeur (coins compris), '+res.nBars+' Φ'+res.barFace.phi+' au total':''),'Saisi (M<sub>Edy</sub>, paramètres avancés)']);
    hypRows.push(['Valeurs normatives (non modifiables)','γ<sub>C</sub> = 1,5 · γ<sub>S</sub> = 1,15 · α<sub>cc</sub> = 1,0 · γ<sub>G</sub> = 1,35 (poids propre) · σ<sub>c</sub> ≤ 0,6·f<sub>ck</sub> et σ<sub>s</sub> ≤ 0,8·f<sub>yk</sub> (ELS) · A<sub>s,max</sub> = 0,04·A<sub>c</sub> · A<sub>s,min</sub> = max(0,10·N<sub>Ed</sub>/f<sub>yd</sub> ; 0,002·A<sub>c</sub>) · k<sub>1</sub> = 0,15 · z = 0,9·d · 1 ≤ cotθ ≤ 2,5 · ρ<sub>w,min</sub> = 0,08√f<sub>ck</sub>/f<sub>yk</sub> · s<sub>l,max</sub> = 0,75·d · α<sub>6</sub> = 1,5 · σ<sub>s</sub> = 400 MPa en compression centrée · ν<sub>1</sub>, C<sub>Rd,c</sub>, β, ε<sub>c2</sub>, ε<sub>cu2</sub>, f<sub>ctd</sub>, f<sub>bd</sub> · réduction ×0,6 des cadres aux extrémités','Normatif (EC2) : lecture seule dans les paramètres avancés']);
+   if(res.kPort) hypRows.push(['k<sub>1</sub> et k<sub>2</sub> reportés depuis un portique',['bas','haut'].filter(e=>res.kPort[e]).map(e=>'k<sub>'+(e==='bas'?'1':'2')+'</sub> ('+(e==='bas'?'pied':'tête')+') = '+fC(res.kPort[e].used,2)+' (k calculé '+fC(res.kPort[e].k,3)+')').join(' · ')+' · portique « '+esc(res.kPort.nom)+' », barre '+res.kPort.bar+', rigidités brutes × '+fC(res.kPort.kRig,2),'Saisi (reporté depuis le portique du projet) · à confirmer']);
    if(res.kAide&&res.kAide.por&&res.kAide.ends) hypRows.push(['Aide au calcul de k',res.kAide.ends.map(en=>{ const s=en.s; return 'k<sub>'+en.kn.slice(1)+'</sub> ('+(en.e==='haut'?'tête':'pied')+') = '+fC(s.kUp,2)+(en.ok?' retenu':' proposé, valeur retenue '+fC(en.kUsed,2)+' (saisie)')+' : '+s.nb+' poutre'+(s.nb>1?'s':'')+' '+fC(s.bb,0)+' × '+fC(s.hb,0)+' cm, l = '+fC(s.lb,1)+' m, autre extrémité '+(s.far===4?'encastrée':'articulée')+(s.nv?', poteau voisin '+fC(s.vp,0)+(s.vl!=null&&g.rect?' × '+fC(s.vl,0):'')+' cm, hauteur '+fC(s.vh,1)+' m':'')+' (k brut '+fC(s.raw,3)+(s.clamp?', ramené au minimum 0,1':'')+')'; }).join(' · ')+(res.kAide.l0!=null?' · l<sub>0</sub> avec ces k = '+fC(res.kAide.l0,2)+' m (F = '+fC(res.kAide.F,3)+(res.kAide.tab4?' ; '+esc(res.kAide.tab4):'')+')':''),'Saisi (aide au calcul de k, paramètres avancés) · '+(res.kAide.fiss<1?'poutres fissurées × 0,5':'poutres non fissurées')]);
    if(res.coefSaisis&&res.coefSaisis.length) hypRows.push(['Coefficients saisis (paramètres avancés)',res.coefSaisis.map(c=>esc(c.lbl)+' = '+fC(c.val,3).replace(/,?0+$/,'')+(c.unit?' '+esc(c.unit):'')+(c.def!=null?' (défaut '+String(c.def).replace('.',',')+')':' (défaut : règle de calcul)')).join(' · '),'Saisi par l\'ingénieur']);
    if(res.feu.saisie) hypRows.push(['Feu : valeur saisie par l\'ingénieur','Durée justifiée '+(res.feu.dur?fC(res.feu.dur,2)+' h':'non renseignée')+' · N<sub>Rd,fi</sub> = '+(res.feu.NRd!=null?fC(res.feu.NRd,1)+' kN':'non renseigné')+' · N<sub>fi</sub> = '+fC(res.feu.Nfi,1)+' kN ('+(res.feu.srcNfi?'saisi':'par défaut, N<sub>Ed</sub>/1,4')+')'+(res.feu.ratio!=null?' · N<sub>fi</sub>/N<sub>Rd,fi</sub> = '+fC(res.feu.ratio,2):'')+' · méthode / référence : '+(res.feu.ref?esc(res.feu.ref):'non indiquée'),'Saisi par l\'ingénieur, non vérifié par l\'application (aucune méthode de calcul intégrée appliquée)']);
@@ -31433,7 +31443,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   const PF_LD=[['dist','Charge répartie'],['point','Charge ponctuelle'],['couple','Couple']];
   const PF_DIRS=[['v','Verticale (vers le bas)'],['h','Horizontale (vers la droite)']];
   const pfNum=v=>(v===undefined||v===null||v===''||!isFinite(+v))?null:+v;
-  const pfFmt=(x,n)=>(x==null||!isFinite(+x))?'—':(+x).toFixed(n==null?2:n).replace('.',',');
+  const pfFmt=(x,n)=>(x==null||!isFinite(+x))?'—':((v,d)=>(Math.abs(v)<0.5*Math.pow(10,-d)?0:v).toFixed(d).replace('.',','))(+x,n==null?2:n);
   function pfInt(v,a,b){ const x=Math.round(+v); return isFinite(x)?Math.min(b,Math.max(a,x)):a; }
   function pfArr(a,n,def){ const o=[]; for(let i=0;i<n;i++){ const v=pfNum(a&&a[i]); o.push(v==null?def:v); } return o; }
   function pfDefaultData(t){
@@ -31646,26 +31656,32 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function pfDiagSvg(dp,res,kind,combo){
    const C=res.combos[combo]; if(!C) return ''; const nodes=dp.nodes;
    let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity; nodes.forEach(n=>{ x0=Math.min(x0,+n.x); x1=Math.max(x1,+n.x); y0=Math.min(y0,+n.y); y1=Math.max(y1,+n.y); });
-   const W=Math.max(1,x1-x0), H=Math.max(1,y1-y0), s=Math.min(520/W,300/H,90), ox=60, oy=50, X=x=>ox+(x-x0)*s, Y=y=>oy+(y1-y)*s, IK='var(--ds-ink,#222)', GR='var(--ds-ink-soft,#8a8a8a)';
-   const key=kind==='N'?'N':(kind==='V'?'V':'M');
+   const W=Math.max(1,x1-x0), H=Math.max(1,y1-y0), s=Math.min(520/W,300/H,90), X=x=>(x-x0)*s, Y=y=>(y1-y)*s, IK='var(--ds-ink,#222)', GR='var(--ds-ink-soft,#8a8a8a)', BL='var(--ds-draw,#2e6ea6)';
+   const key=kind==='N'?'N':(kind==='V'?'V':'M'), pts=[];
    let vmax=0; if(kind!=='def') C.bars.forEach(b=>b[key].forEach(v=>{ vmax=Math.max(vmax,Math.abs(v)); }));
-   let dmax=0; if(kind==='def') dmax=Math.max(1e-12,C.dmax.val); const sc=kind==='def'?(0.09*Math.max(W,H)*s)/dmax:(0.16*Math.max(W,H)*s)/Math.max(vmax,1e-9);
-   let g='', lab=''; const bgs=[];
+   let dmax=Math.max(1e-12,C.dmax.val); if(kind==='def') C.bars.forEach(b=>b.v.forEach(v=>{ dmax=Math.max(dmax,Math.abs(v)); }));
+   const sc=kind==='def'?(0.08*Math.max(W,H)*s)/dmax:(0.14*Math.max(W,H)*s)/Math.max(vmax,1e-9);
+   let g='', labs=[]; const lab=(x,y,txt)=>{ if(labs.some(l=>Math.abs(l.x-x)<40&&Math.abs(l.y-y)<13)) return; labs.push({x,y}); pts.push([x+40,y],[x,y-12]); g+='<text x="'+(x+6)+'" y="'+(y-5)+'" font-size="11" fill="'+IK+'">'+txt+'</text>'; };
+   nodes.forEach(n=>pts.push([X(n.x),Y(n.y)]));
    dp.bars.forEach(b=>{ const gg=pfBarGeo(dp,b); if(gg) g+='<line x1="'+X(gg.n1.x)+'" y1="'+Y(gg.n1.y)+'" x2="'+X(gg.n2.x)+'" y2="'+Y(gg.n2.y)+'" stroke="'+GR+'" stroke-width="1.6"/>'; });
    C.bars.forEach(rb=>{ const b=dp.bars.find(q=>q.id===rb.id), gg=b&&pfBarGeo(dp,b); if(!gg) return; const c=gg.c, sn=gg.s;
-    if(kind==='def'){ const pts=rb.xs.map((x,k)=>{ const f=x/rb.L, ul=rb.uI*(1-f)+rb.uJ*f, vl=rb.v[k], ug=c*ul-sn*vl, vg=sn*ul+c*vl, gx=gg.n1.x+gg.dx*f, gy=gg.n1.y+gg.dy*f; return [X(gx)+ug*sc*0, Y(gy)]; });
+    if(kind==='def'){
      const pp=rb.xs.map((x,k)=>{ const f=x/rb.L, ul=rb.uI*(1-f)+rb.uJ*f, vl=rb.v[k], ug=c*ul-sn*vl, vg=sn*ul+c*vl; return [X(gg.n1.x+gg.dx*f+ug*(sc/s)),Y(gg.n1.y+gg.dy*f+vg*(sc/s))]; });
-     g+='<polyline points="'+pp.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')+'" fill="none" stroke="var(--ds-draw,#2e6ea6)" stroke-width="2.2"/>'; return; }
-    const sg=key==='M'?-1:1; /* moment porté du côté tendu (fibre inférieure = côté −n) */
+     pp.forEach(p=>pts.push(p));
+     g+='<polyline points="'+pp.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')+'" fill="none" stroke="'+BL+'" stroke-width="2.2"/>'; return; }
+    const sg=key==='M'?-1:1; /* moment porté du côté tendu (fibre inférieure = côté -n) */
     const P=rb.xs.map((x,k)=>{ const off=sg*rb[key][k]*sc, px=gg.n1.x+c*x, py=gg.n1.y+sn*x; return [X(px)+(-sn)*off, Y(py)-(c)*off]; });
+    P.forEach(p=>pts.push(p));
     const poly=[[X(gg.n1.x),Y(gg.n1.y)]].concat(P,[[X(gg.n2.x),Y(gg.n2.y)]]);
-    g+='<polygon points="'+poly.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')+'" fill="var(--ds-draw,#2e6ea6)" fill-opacity=".16" stroke="var(--ds-draw,#2e6ea6)" stroke-width="1.4"/>';
+    g+='<polygon points="'+poly.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')+'" fill="'+BL+'" fill-opacity=".16" stroke="'+BL+'" stroke-width="1.4"/>';
     let kmax=0,kmin=0; rb[key].forEach((v,k)=>{ if(v>rb[key][kmax]) kmax=k; if(v<rb[key][kmin]) kmin=k; });
-    [[kmax,rb[key][kmax]],[kmin,rb[key][kmin]]].forEach(([k,v],ii)=>{ if(Math.abs(v)<vmax*0.04||(ii===1&&kmin===kmax)) return; lab+='<text x="'+(P[k][0]+6)+'" y="'+(P[k][1]-5)+'" font-size="11" fill="'+IK+'">'+pfFmt(v,1)+'</text>'; }); });
-   (dp.supports||[]).forEach(sp=>{ const n=nodes.find(q=>q.id===sp.node); if(n) g+='<rect x="'+(X(n.x)-6)+'" y="'+(Y(n.y)+2)+'" width="12" height="6" fill="'+IK+'" opacity=".5"/>'; });
+    [[kmax,rb[key][kmax]],[kmin,rb[key][kmin]]].forEach(([k,v],ii)=>{ if(Math.abs(v)<vmax*0.04||(ii===1&&kmin===kmax)) return; lab(P[k][0],P[k][1],pfFmt(v,1)); }); });
+   (dp.supports||[]).forEach(sp=>{ const n=nodes.find(q=>q.id===sp.node); if(n){ g+='<rect x="'+(X(n.x)-6)+'" y="'+(Y(n.y)+2)+'" width="12" height="6" fill="'+IK+'" opacity=".5"/>'; pts.push([X(n.x),Y(n.y)+10]); } });
    const unit=kind==='M'?'kN·m':(kind==='def'?'':'kN'), tt=kind==='M'?'Moment fléchissant M ('+C.lbl+')':(kind==='V'?'Effort tranchant V ('+C.lbl+')':(kind==='N'?'Effort normal N ('+C.lbl+')':'Déformée ('+C.lbl+', amplifiée ×'+Math.round(sc/s)+')'));
-   const vb='0 0 '+Math.round(ox+W*s+80)+' '+Math.round(oy+H*s+60);
-   return '<svg viewBox="'+vb+'" width="100%" height="'+Math.round(Math.min(380,oy+H*s+60))+'" class="pcSvg" role="img" aria-label="'+esc(tt)+'"><text x="10" y="18" font-size="13" font-weight="600" fill="'+IK+'">'+esc(tt)+(unit?' en '+unit:'')+(kind==='def'?' — déplacement maximal '+pfFmt(C.dmax.val*1000,2)+' mm (nœud '+C.dmax.node+')':'')+'</text>'+g+lab+'</svg>';
+   let mx0=Infinity,mx1=-Infinity,my0=Infinity,my1=-Infinity; pts.forEach(p=>{ mx0=Math.min(mx0,p[0]); mx1=Math.max(mx1,p[0]); my0=Math.min(my0,p[1]); my1=Math.max(my1,p[1]); });
+   const vx=mx0-24, vy=my0-40, vw=Math.max(480,mx1-mx0+60), vh=my1-my0+70;
+   const title=tt+(unit?' en '+unit:'')+(kind==='def'?' — déplacement maximal '+pfFmt(C.dmax.val*1000,2)+' mm (nœud '+C.dmax.node+')':'');
+   return '<svg viewBox="'+vx.toFixed(0)+' '+vy.toFixed(0)+' '+vw.toFixed(0)+' '+vh.toFixed(0)+'" width="100%" height="'+Math.round(Math.min(380,vh))+'" class="pcSvg" role="img" aria-label="'+esc(tt)+'"><text x="'+(vx+8)+'" y="'+(vy+18)+'" font-size="13" font-weight="600" fill="'+IK+'">'+esc(title)+'</text>'+g+'</svg>';
   }
   function pfResultatsHtml(res,dp,id){
    const dg=(window._pfDiag=window._pfDiag||{})[id]||{k:'M',c:'elu'}, f=(x,d)=>pfFmt(x,d);
@@ -31769,8 +31785,164 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(act==='delLoadN'){ dp.loadsN.splice(i,1); save(); return; }
   }
   (window.DIM_SPECS_FN=window.DIM_SPECS_FN||[]).push(()=>PF_SPEC);
-  function pfNoteCalculHtml(t,dp,res){ return '<p class="pcNote">Note de calcul : disponible au lot suivant.</p>'; }
-  async function pfCreerDocumentsDimensionnement(t,dp){ dimIndiceDoc(t,dp); return {docNote:null,docPlan:null}; }
+  /* ----- note de calcul : même HTML à l'écran, dans le document et dans le PDF (ncFormat, modèle commun) ----- */
+  function pfSvgStatique(dp){
+   /* schéma de la note : les champs de saisie deviennent des textes (nom = valeur unité) */
+   return pfSvg(dp).replace(/<foreignObject([^>]*)>([\s\S]*?)<\/foreignObject>/g,(m,at,inner)=>{
+    const g=k=>{ const r=new RegExp(k+'="([^"]*)"').exec(at); return r?+r[1]:0; }, nm=(/<span class="dimNm">([^<]*)<\/span>/.exec(inner)||[])[1]||'', val=(/<input[^>]*value="([^"]*)"/.exec(inner)||[])[1]||'', un=(/<i class="pcUnit">([^<]*)<\/i>/.exec(inner)||[])[1]||'';
+    return '<text x="'+(g('x')+g('width')/2)+'" y="'+(g('y')+g('height')/2+4)+'" font-size="12" fill="#222" text-anchor="middle">'+nm+' '+val.replace('.',',')+(un?' '+un:'')+'</text>'; }); }
+  function pfNoteCalculHtml(t,dp,res){ return ncFormat(pfNoteHtml0(t,dp,res),{t,dp,res,kind:'portique'}); }
+  function pfNoteHtml0(t,dp,res){
+   const nomO=esc(dimOuvrageNom(t,dp));
+   if(!res||!res.combos) return '<div class="pcNC"><h3>Note de calcul — '+nomO+'</h3><p class="pcNote">Résultat d\'une ancienne version : toucher « Recalculer l\'ouvrage » pour régénérer la note.</p></div>';
+   const f=pfFmt, U=res.combos.elu, S=res.combos.els, orig=k=>pfAdvSaisi(dp,k)?'Saisi':'Par défaut';
+   const supL=Object.fromEntries(PF_SUP), ldL=Object.fromEntries(PF_LD);
+   const tb=(head,rows)=>'<table class="ncT"><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+   let h='<div class="pcNC" data-norme="Analyse élastique linéaire (méthode des déplacements)"><h3>Note de calcul — '+nomO+'</h3>'
+    +'<p class="pcNote">Portique plan · analyse élastique linéaire · '+res.nodes+' nœuds, '+res.bars+' barres</p>'
+    +'<p class="ncConstat">'+nomO+' : efforts, réactions et déplacements calculés (ELU et ELS), vérifications de section à mener par l\'ingénieur</p>';
+   h+='<h4>1 · Données et hypothèses</h4>'
+    +tb(['Paramètre','Valeur','Origine'],[
+     ['Matériau',esc(pcMatLabel(dp.materiau)),'Saisi'],
+     ['Classe de béton',esc(dp.classeGlobale||'—'),'Saisi'],
+     ['Module d\'élasticité E<sub>cm</sub>',f(pfP(dp,'pfEcm'),0)+' MPa',orig('pfEcm')],
+     ['Coefficient de rigidité (EI et EA)',f(pfP(dp,'pfKRig'),2)+(+pfP(dp,'pfKRig')===1?' (sections brutes non fissurées)':''),orig('pfKRig')],
+     ['Poids volumique du béton armé',f(pfP(dp,'pfGamma'),1)+' kN/m³',orig('pfGamma')],
+     ['Poids propre des barres',pfP(dp,'pfPp')?'Ajouté à G (section × poids volumique)':'Non ajouté',orig('pfPp')],
+     ['Combinaison ELU','1,35 G + 1,5 Q','Imposé'],
+     ['Combinaison ELS','G + Q','Imposé'],
+     ['Charges verticales sur barres inclinées','Par mètre horizontal ou par mètre de barre selon la charge (choix à la création : '+(pfP(dp,'pfProj')==='long'?'par mètre de barre':'par mètre horizontal')+')',orig('pfProj')]
+    ])
+    +'<p class="pcNote">Barres de Bernoulli (flexion et effort normal, sans déformation d\'effort tranchant), sections rectangulaires constantes, modèle plan à 3 degrés de liberté par nœud.</p>';
+   h+='<h4>2 · Géométrie</h4><div class="pcDraw">'+pfSvgStatique(dp)+'</div>'
+    +tb(['Nœud','x (m)','y (m)'],dp.nodes.map(n=>[n.id,f(n.x,2),f(n.y,2)]))
+    +tb(['Barre','Début','Fin','L (m)','b × h (cm)','Articulation'],dp.bars.map(b=>{ const g=pfBarGeo(dp,b); return [b.id,b.i,b.j,g?f(g.L,2):'—',f(b.b_cm,0)+' × '+f(b.h_cm,0),(b.relI?'début':'')+(b.relI&&b.relJ?' et ':'')+(b.relJ?'fin':'')||'—']; }));
+   h+='<h4>3 · Appuis</h4>'+tb(['Nœud','Type','Raideurs saisies'],dp.supports.map(s=>[s.node,esc(supL[s.type]||s.type),s.type==='ressort'?[pfNum(s.kx)>0?'k<sub>x</sub> = '+f(s.kx,0)+' kN/m':'',pfNum(s.ky)>0?'k<sub>y</sub> = '+f(s.ky,0)+' kN/m':'',pfNum(s.kr)>0?'k<sub>θ</sub> = '+f(s.kr,0)+' kN·m/rad':''].filter(Boolean).join(' · ')||'—':'—']));
+   const rowsB=(dp.loadsB||[]).map(l=>{ const v=l.kind==='dist'?f(l.q1,2)+(pfNum(l.q2)!=null&&l.q2!==''&&+l.q2!==+l.q1?' → '+f(l.q2,2):'')+' kN/m'+(pfNum(l.s1)!=null||pfNum(l.s2)!=null?' de '+f(l.s1||0,2)+' à '+(pfNum(l.s2)!=null?f(l.s2,2):'la fin')+' m':''):(l.kind==='point'?f(l.P,2)+' kN à '+f(l.s,2)+' m':f(l.M,2)+' kN·m à '+f(l.s,2)+' m');
+    return ['Barre '+l.bar,esc(ldL[l.kind]||l.kind)+(l.auto?' (grille)':''),l.var==='Q'?'Q':'G',v,l.kind==='couple'?'—':(l.dir==='h'?'Horizontale':'Verticale'),l.kind==='dist'&&l.dir!=='h'?(l.proj===false?'Par mètre de barre':'Par mètre horizontal'):'—']; });
+   const rowsN=(dp.loadsN||[]).map(l=>['Nœud '+l.node,'Charge nodale'+(l.auto?' (grille)':''),l.var==='Q'?'Q':'G',[pfNum(l.Fx)?'F<sub>x</sub> = '+f(l.Fx,2)+' kN':'',pfNum(l.Fy)?'F<sub>y</sub> = '+f(l.Fy,2)+' kN (vers le bas)':'',pfNum(l.M)?'M = '+f(l.M,2)+' kN·m':''].filter(Boolean).join(' · ')||'—','—','—']);
+   h+='<h4>4 · Charges</h4>'+((rowsB.length+rowsN.length)?tb(['Position','Type','Variable','Valeur','Direction','Mesure'],rowsB.concat(rowsN)):'<p class="pcNote">Aucune charge saisie.</p>')+(pfP(dp,'pfPp')?'<p class="pcNote">Le poids propre de chaque barre s\'ajoute aux charges permanentes G.</p>':'');
+   const rT=(C)=>C.reactions.map(r=>({n:r.node,fx:r.fx?f(r.Fx,1):'—',fy:r.fy?f(r.Fy,1):'—',m:r.fm?f(r.M,1):'—'}));
+   const ru=rT(U), rs=rT(S);
+   h+='<h4>5 · Résultats</h4><p class="pcNote"><b>Réactions d\'appui</b> (forces en kN : R<sub>x</sub> vers la droite, R<sub>y</sub> vers le haut ; moments en kN·m, positifs dans le sens antihoraire)</p>'
+    +tb(['Nœud','R<sub>x</sub> ELU','R<sub>y</sub> ELU','M ELU','R<sub>x</sub> ELS','R<sub>y</sub> ELS','M ELS'],ru.map((r,i)=>[r.n,r.fx,r.fy,r.m,rs[i]?rs[i].fx:'—',rs[i]?rs[i].fy:'—',rs[i]?rs[i].m:'—']))
+    +'<p class="pcNote"><b>Efforts extrêmes par barre (ELU)</b> : M en kN·m (positif = fibre inférieure tendue par rapport au sens de la barre), V en kN, N en kN (positif = traction)</p>'
+    +tb(['Barre','L (m)','M max','M min','V max','N max','N min'],U.bars.map(b=>[b.id,f(b.L,2),f(b.Mmax,1),f(b.Mmin,1),f(b.Vmax,1),f(b.Nmax,1),f(b.Nmin,1)]))
+    +'<p class="pcNote"><b>Déplacements (ELS)</b> : déplacement maximal '+f(S.dmax.val*1000,2)+' mm au nœud '+S.dmax.node+' (u = '+f(S.dmax.u*1000,2)+' mm, v = '+f(S.dmax.v*1000,2)+' mm).</p>'
+    +'<p class="pcNote"><b>Équilibre global</b> (somme des charges + réactions) : ELU '+f(U.equil.Fx+U.equil.Rx,3)+' kN horizontalement, '+f(U.equil.Fy+U.equil.Ry,3)+' kN verticalement ; ELS '+f(S.equil.Fx+S.equil.Rx,3)+' et '+f(S.equil.Fy+S.equil.Ry,3)+' kN.</p>';
+   h+='<h4>6 · Diagrammes</h4>'
+    +['M','V','N'].map(k=>'<div class="pcDraw">'+pfDiagSvg(dp,res,k,'elu')+'</div>').join('')+'<div class="pcDraw">'+pfDiagSvg(dp,res,'def','els')+'</div>';
+   const pt=(tx,bad)=>'<p class="ncPt" data-bad="'+(bad?1:0)+'">'+tx+'</p>';
+   h+=pt('Rigidité des barres : coefficient '+f(pfP(dp,'pfKRig'),2)+(pfAdvSaisi(dp,'pfKRig')?' saisi':' par défaut (sections brutes non fissurées)')+' ; la fissuration modifie la répartition des efforts : à confirmer par un ingénieur.')
+    +pt('Module d\'élasticité E<sub>cm</sub> = '+f(pfP(dp,'pfEcm'),0)+' MPa'+(pfAdvSaisi(dp,'pfEcm')?' saisi':' par défaut (classe de béton)')+', identique pour toutes les barres : à confirmer.')
+    +pt('Poids volumique du béton armé '+f(pfP(dp,'pfGamma'),1)+' kN/m³'+(pfAdvSaisi(dp,'pfGamma')?' saisi':' par défaut')+(pfP(dp,'pfPp')?', poids propre ajouté aux charges permanentes':', poids propre non ajouté')+' : à confirmer.')
+    +pt('Combinaisons simplifiées : ELU = 1,35 G + 1,5 Q et ELS = G + Q, charges variables appliquées simultanément (pas d\'alternance de cas de charge) : à confirmer.')
+    +pt('Non traités : second ordre global et imperfections, ferraillage et vérification de section des barres, séisme.')
+    +(dp.supports.some(s=>s.type==='ressort')?pt('Raideurs de ressort d\'appui saisies par l\'ingénieur : à confirmer.'):'')
+    +(dp.mode!=='grille'?pt('Modèle libre : nœuds, barres, appuis et charges saisis à la main : à contrôler par l\'ingénieur.'):'')
+    +'</div>';
+   return h;
+  }
+  function pfCreerNoteCalcul(t,dp){
+   const html=pfNoteCalculHtml(t,dp,dp.resultats);
+   const nom='Note de calcul '+dimOuvrageNom(t,dp);
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  async function pfNoteCalculPdf(t,dp,res){ return await ncPdfNote(pfNoteCalculHtml(t,dp,res),dimOuvrageNom(t,dp),{format:'a4'}); }
+  async function pfCreerDocumentsDimensionnement(t,dp){
+   dimIndiceDoc(t,dp);
+   if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
+   const res=dp.resultats; const docNote=pfCreerNoteCalcul(t,dp);
+   if(res&&docNote){ window.pjPdfPending=window.pjPdfPending||new Set(); window.pjPdfPending.add(docNote.id); pcPdfEnArriere(t,dp,res,docNote,null,{note:async()=>(await ncDocPdfBlob(docNote,'a4')).blob}).catch(err=>console.error(err)); }
+   return {docNote,docPlan:null};
+  }
+  /* « Dimensionner » en lot : étend le bulk aux portiques */
+  const _pjDim_portique=window.pjDimensionnerSelection;
+  window.pjDimensionnerSelection=async function(ids){
+   const rPrev= typeof _pjDim_portique==='function' ? await _pjDim_portique(ids) : {okN:0,skipTypeN:0,errN:0,incomplets:[]};
+   let okN=0, errN=0; const incomplets=[]; let lastOkT=null;
+   for(const id of (ids||[])){
+    const t=taskById(id); if(!t) continue;
+    if(beTypeStructureNom(t.typeStructureId)!==PORTIQUE_TYPE_NOM) continue;
+    const dp=pfData(t);
+    if(!pfValidateV(dp).ok){ incomplets.push(id); continue; }
+    try{ dp.resultats=pfCompute(t); dp.statut='calcule'; await pfCreerDocumentsDimensionnement(t,dp); okN++; lastOkT=t; }
+    catch(err){ console.error(err); errN++; }
+   }
+   try{ persist(); }catch(_){ }
+   if(okN||errN||incomplets.length){
+    const msg=okN+' portique'+(okN>1?'s':'')+' dimensionné'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
+    try{ clipToast(msg); }catch(_){ }
+    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
+    else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
+   }
+   return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
+  };
+  /* ----- liaison avec le poteau : k1 et k2 exacts par rotation unitaire -----
+     k = θ · (EI/l)_poteau / M : le poteau étudié est retiré, un moment unitaire est appliqué au nœud, θ est la rotation du nœud ; les autres barres du nœud (poutres, poteaux voisins) restent dans le modèle.
+     Nœuds supposés indéplaçables (translations bloquées), rigidités du portique (EI × coefficient de rigidité). Un nœud sans autre barre ni appui en rotation donne k infini (extrémité articulée). */
+  function pfKUnit(dp,barId){
+   const b=dp.bars.find(x=>x.id===barId), g=b&&pfBarGeo(dp,b); if(!g) return null;
+   const Ecm=(+pfP(dp,'pfEcm'))*1000*(+pfP(dp,'pfKRig')), EIl=Ecm*((+b.b_cm/100)*Math.pow(+b.h_cm/100,3)/12)/g.L;
+   const bot=g.n1.y<=g.n2.y?g.n1:g.n2, top=bot===g.n1?g.n2:g.n1;
+   const one=nd=>{
+    const base=pfModel(dp,'els'), bars=base.bars.filter(x=>x.id!==barId), used=new Set(); bars.forEach(x=>{ used.add(x.i); used.add(x.j); });
+    const orig=base.supports.find(s=>s.node===nd.id)||{};
+    const attached=bars.filter(x=>x.i===nd.id||x.j===nd.id), libres=attached.length&&attached.every(x=>(x.i===nd.id?x.relI:x.relJ));
+    if(!attached.length||libres){ if(orig.rz==='fixed') return {k:0,raw:0}; if(typeof orig.rz==='number'&&orig.rz>0) return {k:EIl/orig.rz,raw:EIl/orig.rz}; return {k:Infinity,raw:Infinity}; }
+    const nodes=base.nodes.filter(n=>used.has(n.id)), sup=nodes.map(n=>{ const o=base.supports.find(s=>s.node===n.id)||{}; const s={node:n.id,ux:'fixed',uy:'fixed'}; if(o.rz!==undefined) s.rz=o.rz; return s; });
+    const sol=PF.solve({nodes,bars,supports:sup,barLoads:[],nodal:[{node:nd.id,Fx:0,Fy:0,M:1}]});
+    const th=sol.nodes.find(n=>n.node===nd.id).th, k=Math.max(0,th)*EIl; return {k,raw:k};
+   };
+   return {bar:b.id,L:g.L,EIl,bas:one(bot),haut:one(top),nBas:bot.id,nHaut:top.id};
+  }
+  window.pfKUnit=pfKUnit;
+  function pfPortiquesDuProjet(){ return (state.tasks||[]).filter(x=>x&&x.dimPF&&beTypeStructureNom(x.typeStructureId)===PORTIQUE_TYPE_NOM); }
+  function pfKLink(ptId){
+   const tp=taskById(ptId); if(!tp) return; const dpp=ptData(tp), L=pfPortiquesDuProjet();
+   if(!L.length){ try{ clipToast('Aucun portique dans ce projet : créer un ouvrage de type « Portiques & ossatures planes ».'); }catch(_){ } return; }
+   const ov=document.createElement('div'); ov.className='dimCalcOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Reporter k1 et k2 depuis un portique');
+   let selP=L[0].id, selB=null;
+   const poteaux=t=>t.dimPF.bars.filter(b=>{ const g=pfBarGeo(t.dimPF,b); return g&&Math.abs(g.dx)<1e-6&&g.L>0; });
+   const rd=x=>Math.max(0.1,Math.ceil(x*100-1e-9)/100);
+   const draw=()=>{
+    const T=taskById(selP), P=T.dimPF, ps=poteaux(T); if(!ps.some(b=>b.id===selB)) selB=ps.length?ps[0].id:null;
+    let res='', can=false, kk=null;
+    if(selB!=null){ try{ kk=pfKUnit(P,selB); }catch(e){ kk=null; res='<p class="pcNote pcElsErr" role="alert">Calcul impossible : '+esc(e.message||e)+'</p>'; } }
+    if(kk){
+     const fmt=x=>isFinite(x)?x.toFixed(3).replace('.',','):'∞';
+     const line=(kn,lab,r)=>'<p class="pcKaRes"><b>'+kn+' ('+lab+') = '+(isFinite(r.k)?rd(r.k).toFixed(2).replace('.',','):'infini')+'</b>'+(isFinite(r.k)?' (k calculé '+fmt(r.k)+(r.k<0.1?', ramené au minimum 0,1':'')+', arrondi par excès à 0,01)':' : aucune barre ne retient ce nœud, choisir « Articulé » pour cette extrémité (aucune valeur reportée)')+'</p>';
+     res=line('k1','pied, nœud '+kk.nBas,kk.bas)+line('k2','tête, nœud '+kk.nHaut,kk.haut); can=isFinite(kk.bas.k)||isFinite(kk.haut.k);
+     const Lp=+dpp.L_m; if(Lp>0&&Math.abs(Lp-kk.L)/kk.L>0.05) res+='<p class="pcNote" role="status">La hauteur libre du poteau ('+Lp.toFixed(2).replace('.',',')+' m) diffère de la longueur de la barre ('+kk.L.toFixed(2).replace('.',',')+' m).</p>';
+    }
+    ov.innerHTML='<div class="dimCalcBox dimModBox"><b>Reporter k1 et k2 depuis un portique</b>'
+     +'<p class="pcNote">k = rotation du nœud sous un moment unitaire × EI/l du poteau, ce poteau étant retiré du modèle ; les poutres et poteaux voisins restent en place. Rien n\'est modifié tant qu\'on ne reporte pas.</p>'
+     +'<label>Portique <select data-kl="p">'+L.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===selP?' selected':'')+'>'+esc(dimOuvrageNom(x,x.dimPF))+'</option>').join('')+'</select></label>'
+     +'<label>Poteau <select data-kl="b">'+ps.map(b=>{ const g=pfBarGeo(P,b); return '<option value="'+b.id+'"'+(b.id===selB?' selected':'')+'>Barre '+b.id+' — nœuds '+b.i+'–'+b.j+', '+(+b.b_cm)+' × '+(+b.h_cm)+' cm, L = '+g.L.toFixed(2).replace('.',',')+' m</option>'; }).join('')+'</select></label>'
+     +res
+     +'<p class="pcNote">Hypothèses : nœuds supposés indéplaçables, barres rectangulaires de même module E (rigidité brute × coefficient de rigidité du portique, '+(+(P.pfKRig||1)).toString().replace('.',',')+(P.pfKRig==null?' par défaut':' saisi')+'), sans table de compression. Valeurs à confirmer par un ingénieur. L\'aide de calcul de k du poteau n\'est pas modifiée ; la valeur reportée remplace seulement k1 et k2 saisis.</p>'
+     +'<div class="pcKaBtns"><button type="button" class="primary" data-kl="ok"'+(can?'':' disabled aria-disabled="true"')+'>Reporter dans k1 et k2</button><button type="button" class="ghost" data-kl="no">Annuler</button></div></div>';
+    ov._kk=kk;
+   };
+   document.body.appendChild(ov); draw();
+   ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
+   ov.addEventListener('change',e=>{ const s=e.target.dataset&&e.target.dataset.kl; if(s==='p'){ selP=e.target.value; selB=null; draw(); } else if(s==='b'){ selB=+e.target.value; draw(); } });
+   ov.addEventListener('click',e=>{
+    if(e.target===ov){ ov.remove(); return; }
+    const b=e.target.closest('button[data-kl]'); if(!b) return; const w=b.dataset.kl;
+    if(w==='no'){ ov.remove(); return; }
+    if(w==='ok'){ const kk=ov._kk; if(!kk) return; const T=taskById(selP); const dpt=ptData(tp), rec={tid:T.id,nom:dimOuvrageNom(T,T.dimPF),bar:kk.bar,date:(typeof todayISO==='function'?todayISO():''),kRig:+(T.dimPF.pfKRig==null?1:T.dimPF.pfKRig)};
+     [['bas','k_bas','k1'],['haut','k_haut','k2']].forEach(([e0,kf,kn])=>{ const r=kk[e0]; if(!isFinite(r.k)) return; dpt[kf]=rd(r.k); rec[e0]={k:r.k,used:rd(r.k)}; });
+     dpt._kPortique=rec; dpt._thOpen=dpt._thOpen||{}; dpt._thOpen.ka=true; dpt._elsOpen=true; try{persist();}catch(_){ }
+     ov.remove(); try{ pteRender(ptId); }catch(_){ } try{ clipToast('✓ k reportés depuis le portique : modifiables à l\'étape 3, repris dans la note.'); }catch(_){ } }
+   });
+  }
+  window.pfKLink=pfKLink;
 
   /* --- Pieux & fondations profondes (type 05) : têtes de pieux ----------------------------------
      Méthode des bielles CCBA68 (simple/double/triple/quadruple), validée sur des cas tests. P1 (charge reprise par la semelle) est une donnée
