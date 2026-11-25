@@ -6505,7 +6505,9 @@ function dimValiderBtnHtml(dp,prefix){
 }
 /* Désignation de l'ouvrage (nom donné par l'utilisateur) pour nommer note de calcul / plan / PDF : nom saisi dans le module,
    sinon intitulé « Quoi ? » de l'ouvrage, sinon repli explicite. */
-function dimOuvrageNom(t,dp){ return String((dp&&dp.nom)||(t&&t.nom)||(t&&t.quoi)||'').trim()||'Ouvrage sans nom'; }
+/* Nom propre pour documents et fichiers : espaces de bord supprimés, espaces multiples réduits à un seul (tous modules) */
+function dimNomNorm(x){ return String(x==null?'':x).replace(/\s+/g,' ').trim(); }
+function dimOuvrageNom(t,dp){ return dimNomNorm((dp&&dp.nom)||(t&&t.nom)||(t&&t.quoi)||'')||'Ouvrage sans nom'; }
 /* Migration douce : les anciens documents générés nommés avec un mot générique (« Note de calcul P-auto », « Plan de ferraillage Poutre »…)
    prennent la désignation de l'ouvrage ; rien n'est supprimé, le fichier PDF joint garde son nom jusqu'au prochain calcul. */
 function dimMigrerNomsDocs(){
@@ -24911,7 +24913,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* Désignation de l'ouvrage : source unique = t.quoi (« Quoi ? » de la fiche, liste des ouvrages), recopiée dans dp.nom
      et dans les documents générés (note, plan). */
   function dimSetDesignation(t,dp,el){
-   const v=String(el.value||'').trim();
+   const v=dimNomNorm(el.value);
    if(!v){ const prev=dp.nom||t.quoi||''; el.value=prev; if(prev){ try{clipToast('Une désignation est nécessaire : l\'ancienne est conservée.');}catch(_){ } } return; }
    t.quoi=v; t.nom=v; dp.nom=v;
    try{ const q=document.getElementById('e-quoi'); if(q) q.value=v; const ti=document.getElementById('e-titre'); if(ti&&!ti.querySelector('input')) ti.textContent=v; }catch(_){ }
@@ -26574,7 +26576,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   async function pcAttacherPdf(doc,blob,baseNom){
    if(!doc||!blob) return;
    try{
-    const filename=baseNom.replace(/[^A-Za-z0-9À-ÿ _-]+/g,'').slice(0,80)+'.pdf';
+    const filename=dimNomNorm(String(baseNom).replace(/[^A-Za-z0-9À-ÿ _-]+/g,'')).slice(0,80).trim()+'.pdf';
     const file=new File([blob],filename,{type:'application/pdf'});
     const ref=await (window.pjStoreFile?window.pjStoreFile(file):Promise.reject(new Error('pjStoreFile indisponible')));
     doc.fichier=filename; doc.taille=file.size; doc.fichierRef=ref; doc.format='PDF'; doc.indice=doc.indice||'0';
