@@ -25150,7 +25150,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    (rv.haut||[]).forEach(h=>V.push({zone:'Appui '+h.appui,nom:'Appui de rive — armature supérieure',formule:'M ≥ β1·M_travée (encastrement partiel, EC2 9.2.1.2(1) ; guide p.83) ; A_s posée ≥ A_s requise',
     calcul:'M_travée voisine = '+f1(h.Mtrav)+' kN·m ; β1 = '+f1(rv.beta1*100,0)+' % ('+org('beta1Rive')+') ; M retenu = max(M_appui '+f1(h.Mface)+' ; β1·M_travée) = '+f1(h.Mreq)+' kN·m ; A_s requise = '+f1(h.AsReq/100,2)+' cm² ; posée = '+f1(h.AsPose/100,2)+' cm²',limite:'A_s posée ≥ A_s requise',etat:h.AsPose>=h.AsReq-1e-6?'ok':'ko'}));
    (rv.bas||[]).forEach(q=>{ const pc=q.nTot?q.nA/q.nTot:0, okP=pc>=rv.pctInf/100-1e-9;
-    V.push({zone:'Appui '+q.appui,nom:'Appui de rive — armature inférieure ancrée',formule:'≥ '+f1(rv.pctInf,0)+' % de A_s de travée prolongé sur l\'appui, ancré pour F_E = |V_Ed|·a_l/z + N_Ed (EC2 9.2.1.4 ; guide p.83) ; avec σ_sd = f_yd = 435 MPa dans l_bd, F_E n\'a pas à être calculée',
+    V.push({zone:'Appui '+q.appui,nom:'Appui de rive — armature inférieure ancrée',formule:'≥ '+f1(rv.pctInf,0)+' % de A_s de travée prolongé sur l\'appui, ancré pour F_E = |V_Ed|·a_l/z + N_Ed (EC2 9.2.1.4 ; guide p.83) ; avec σ_sd = f_yd = 435 MPa dans l_bd, F_E n\'a pas à être calculée ; l_bd calculé pour la même forme d\'ancrage, les mêmes conditions d\'adhérence et les mêmes coefficients α que la valeur retenue',
      calcul:q.nA+' HA'+q.phi+' sur '+q.nTot+' ('+f1(100*pc,0)+' %, pourcentage '+org('pctInfRive')+') ; V_Ed = '+f1(q.V)+' kN ; F_E = '+f1(q.FE/1000)+' kN (N_Ed = 0) ; σ_sd = '+f1(q.sig,0)+' MPa ; l_bd = '+f1(q.lbd,0)+' mm ('+q.type+') pour '+f1(q.dispo,0)+' mm disponibles'+(q.fix?' (largeur du poteau prise comme longueur d\'ancrage disponible, à confirmer)':'')+' ; avec σ_sd = 435 MPa : l_bd = '+f1(q.lbdFyd,0)+' mm',
      limite:'≥ '+f1(rv.pctInf,0)+' % ; l_bd ancré ≤ longueur disponible (+ crochet)',etat:(okP&&!q.insuffisant)?'ok':'ko'}); });
    (P.torsion||[]).forEach(q=>{ const pf=P.peauTorsion;
@@ -32929,10 +32929,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    // ancrage aux appuis de rive : force à ancrer F = 0,5·V·cotθ (EC2 9.2.1.4) répartie sur les barres amenées à l'appui
    function ancrageRive(phi,nbA,V,gap,poor,kA){ const FE=0.5*V*1e3*cotTh(VcotRef,zS); /* ΔF = 0,5·V·cotθ (livre p.333) */ const sig=Math.min(fyd,FE/(nbA*Ab(phi)));
     const fixA=riveFix(kA), dispo=fixA?potW:aApp-c, st=ancrage(phi,Math.max(sig,1),poor,gap,false);
-    const hk=ancrage(phi,Math.max(sig,1),poor,gap,true), lbdFyd=ancrage(phi,fyd,poor,gap,false).lbd; /* lbdFyd : l_bd avec σ_sd = f_yd = 435 MPa (guide p.83 : F_E n'est alors pas à calculer) */
-    if(st.lbd<=dispo) return {type:'droit',lbd:st.lbd,dispo,sig,lb:st.lb,FE,lbdFyd,fix:fixA};
-    if(hk.lbd<=dispo+10*phi) return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,FE,lbdFyd,fix:fixA};
-    return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,insuffisant:true,FE,lbdFyd,fix:fixA}; }
+    const hk=ancrage(phi,Math.max(sig,1),poor,gap,true), fydD=ancrage(phi,fyd,poor,gap,false).lbd, fydH=ancrage(phi,fyd,poor,gap,true).lbd; /* l_bd avec σ_sd = f_yd = 435 MPa (F_E n'a alors pas à être calculée) : même forme d'ancrage (droit ou crochet) et mêmes coefficients que la valeur retenue, donc une seule longueur dans la note et dans le plan */
+    if(st.lbd<=dispo) return {type:'droit',lbd:st.lbd,dispo,sig,lb:st.lb,FE,lbdFyd:fydD,fix:fixA};
+    if(hk.lbd<=dispo+10*phi) return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,FE,lbdFyd:fydH,fix:fixA};
+    return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,insuffisant:true,FE,lbdFyd:fydH,fix:fixA}; }
    const Vf0=Vat(aApp/2000), VfN=Vat(Ltot-aApp/2000);
    for(let e=0;e<n;e++){
     const t=trav[e], ch=t.ch, phi=ch.phi; let nA=Math.max(2,Math.ceil(ch.n/2)), nB=ch.n-nA;
