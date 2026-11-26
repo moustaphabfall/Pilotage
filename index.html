@@ -28276,14 +28276,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       titre « Section » au-dessus de la coupe, cadrage ajusté au contenu (window.dimFrame). */
    const geom=ptGeom(dp), DC=window.dimCote, FL=window.dimField, parts=[], boxes=[];
    const add=c=>{ parts.push(c.svg); boxes.push(c.box); };
-   const colH=200, colW=Math.max(30,Math.min(70,geom.hmin*2)), x0=0, topY=0, botY=colH, cx=colW/2, DX=8, DY=-8;
+   const colH=200, colW=geom.rect?Math.max(30,Math.min(70,geom.hmin*2)):Math.max(30,Math.min(110,geom.D/Math.max(10,(+dp.L_m||3)*100)*colH)), x0=0, topY=0, botY=colH, cx=colW/2, DX=geom.rect?8:0, DY=geom.rect?-8:0;
    const ST='var(--ds-ink-soft,#8a8a8a)', SB='var(--ds-draw,#2e6ea6)';
    const mat=pcMatKey(dp.materiau); // volume 3D rempli du matériau (face, dessus, tranche), comme la poutre ; armatures verticales en béton armé
-   let g=pcBox3d(mat,x0,topY,colW,colH,DX,DY,true,true)
+   const cylF=pcMatFills(mat), cyRy=Math.max(4,colW*0.16);
+   let g=(geom.rect?pcBox3d(mat,x0,topY,colW,colH,DX,DY,true,true):('<path d="M'+x0+' '+topY+' L'+x0+' '+botY+' A'+(colW/2)+' '+cyRy+' 0 0 0 '+(x0+colW)+' '+botY+' L'+(x0+colW)+' '+topY+' Z" fill="'+cylF.f+'" stroke="var(--pcm-edge)" stroke-width="1.6"/><ellipse cx="'+cx+'" cy="'+topY+'" rx="'+(colW/2)+'" ry="'+cyRy+'" fill="'+cylF.t+'" stroke="var(--pcm-edge)" stroke-width="1.2"/>'))
     +(mat==='beton_arme'?('<line x1="'+(x0+5)+'" y1="'+(topY+5)+'" x2="'+(x0+5)+'" y2="'+(botY-5)+'" style="stroke:var(--pcm-rebar)" stroke-width="1.6" stroke-linecap="round"/><line x1="'+(x0+colW-5)+'" y1="'+(topY+5)+'" x2="'+(x0+colW-5)+'" y2="'+(botY-5)+'" style="stroke:var(--pcm-rebar)" stroke-width="1.6" stroke-linecap="round"/>'):'')
     +(dp.appuiBas==='encastre'?('<rect x="'+(x0-6)+'" y="'+botY+'" width="'+(colW+12)+'" height="6" fill="none" stroke="'+ST+'" stroke-width="1.5"/>'):('<path d="M'+(x0-4)+' '+botY+' L'+cx+' '+(botY+12)+' L'+(x0+colW+4)+' '+botY+' Z" fill="none" stroke="'+ST+'" stroke-width="1.5"/>'))
     +(dp.appuiHaut==='encastre'?('<rect x="'+(x0-6)+'" y="'+(topY-6)+'" width="'+(colW+12)+'" height="6" fill="none" stroke="'+ST+'" stroke-width="1.5"/>'):'');
-   boxes.push({x:x0-6,y:topY-10,w:colW+DX+12,h:colH+24});
+   boxes.push({x:x0-6,y:topY-10-(geom.rect?0:cyRy),w:colW+DX+12,h:colH+24+(geom.rect?0:cyRy)});
    /* hauteur L cotée à DROITE (règle : hauteurs à droite), moments à gauche */
    const Lc=DC({dir:'v',a:[x0+colW+DX,topY],b:[x0+colW+DX,botY],off:22,key:'pt-L',label:'L',val:(dp.L_m==null?'':dp.L_m),unit:'m',attr:'data-pt="L_m" min="0.5"',title:'Hauteur libre L'});
    add(Lc);
@@ -28860,7 +28861,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   /* élévation : poteau à l'échelle verticale, cadres à espacements par zone, barres dépassant en tête de l_0, coupes A-A (courante) et B-B (recouvrement) */
   function ptSceneElev(P){
-   const Lpx=Math.max(220,Math.min(520,P.L*130)), ky=Lpx/P.Lmm, x0=190, colW=80, y0=86, y1=y0+Lpx, S=fplNewScene(620,Lpx+196), Y=z=>y1-z*ky, ce=Math.max(5,P.c*ky*0.9), eb=Math.max(9,ce+4);
+   const Lpx=Math.max(220,Math.min(520,P.L*130)), ky=Lpx/P.Lmm, x0=190, colW=P.rect?80:Math.max(44,Math.min(160,P.D*10*(Lpx/P.Lmm))), y0=86, y1=y0+Lpx, S=fplNewScene(620,Lpx+196), Y=z=>y1-z*ky, ce=Math.max(5,P.c*ky*0.9), eb=Math.max(9,ce+4);
    fplR(S,x0,y0,colW,Lpx,'bet');
    const cx0=x0+Math.min(colW/4,eb), cx1=x0+colW-Math.min(colW/4,eb), yt=y0-P.l0*ky;
    fplL(S,cx0,yt,cx0,y1-3,'bar'); fplL(S,cx1,yt,cx1,y1-3,'bar');
@@ -28882,7 +28883,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const yA=Y(P.Lmm/2), yB=Y(P.l0/2);
    fplL(S,x0-14,yA,x0+colW+14,yA,'coupe'); fplT(S,x0-22,yA+4,'A','tb','end',0,false); fplT(S,x0+colW+22,yA+4,'A','tb','start',0,false);
    fplL(S,x0-14,yB,x0+colW+14,yB,'coupe'); fplT(S,x0-22,yB+4,'B','tb','end',0,false); fplT(S,x0+colW+22,yB+4,'B','tb','start',0,false);
-   fplT(S,x0,y1+34,'Élévation : hauteur à l\'échelle, largeur non à l\'échelle · enrobage c = '+fplF(P.c/10,1)+' cm','ts','start',0,false);
+   fplT(S,x0,y1+34,(P.rect?'Élévation : hauteur à l\'échelle, largeur non à l\'échelle':'Élévation : hauteur et diamètre à l\'échelle')+' · enrobage c = '+fplF(P.c/10,1)+' cm','ts','start',0,false);
    fplT(S,x0,y1+52,'1er cadre à 50 mm du nu · barres dépassant de l₀ en tête','ts','start',0,false);
    return S;
   }
@@ -28920,7 +28921,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function ptShapeScenes(P){
    const out=[]; const S1=fplNewScene(300,100); fplL(S1,20,40,280,40,'bar'); fplHD(S1,20,280,70,'développée '+fplF(P.bLen)+' m (L + l₀)',40,40); fplT(S1,20,24,P.nTot+' HA'+P.phi,'ts','start'); out.push({rep:'Lo1',scene:S1,txt:P.nTot+' HA'+P.phi+' — droit, L + l₀ = '+fplF(P.bLen)+' m'});
    const w=P.rect?Math.min(160,(P.larg/Math.max(P.larg,P.prof))*140+20):120, h=P.rect?Math.min(120,(P.prof/Math.max(P.larg,P.prof))*140+20):120, x=60, y=20; const S2=fplNewScene(300,Math.max(150,y+h+46));
-   fplR(S2,x,y,w,h,'cads',6); fplL(S2,x+w,y+10,x+w-18,y+26,'cads'); fplL(S2,x+w-4,y+4,x+w-24,y+18,'cads');
+   if(P.rect){ fplR(S2,x,y,w,h,'cads',6); fplL(S2,x+w,y+10,x+w-18,y+26,'cads'); fplL(S2,x+w-4,y+4,x+w-24,y+18,'cads'); }
+   else { fplC(S2,x+w/2,y+h/2,w/2,'cads'); const ax=x+w/2+(w/2)*Math.cos(-Math.PI/4), ay=y+h/2+(w/2)*Math.sin(-Math.PI/4); fplL(S2,ax,ay,ax-20,ay+4,'cads'); fplL(S2,ax-5,ay-6,ax-25,ay-2,'cads'); }
    fplHD(S2,x,x+w,y+h+20,P.rect?fplF((P.larg*10-2*P.c)/10,0)+' cm hors-tout':'cercle Ø '+fplF((P.D*10-2*P.c)/10,0)+' cm',y+h,y+h); fplT(S2,x+w+14,y+30,'crochet 135°, retour '+P.tail+' mm','ts','start'); out.push({rep:'Ca1',scene:S2,txt:P.nCad+' HA'+P.phiT+' — développée '+fplF(P.cadLen)+' m'});
    if(P.nEp>0){ const S3=fplNewScene(300,110); fplL(S3,40,30,40,80,'cads'); fplL(S3,40,30,24,40,'cads'); fplL(S3,40,80,24,70,'cads'); fplL(S3,40,55,200,55,'cads'); fplT(S3,56,48,'épingle, crochets 135°','ts','start'); out.push({rep:'Ep1',scene:S3,txt:P.nEp*P.nCad+' HA'+P.phiT+' — développée '+fplF(P.epLen)+' m'}); }
    return out;
@@ -29199,7 +29201,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const subL=[info.projet,info.bat,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' · ');
    const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(info.projet||'—')+'</td><td><b>Ouvrage</b>'+esc(info.nomO)+(info.typ?' · '+esc(info.typ):'')+'</td><td><b>Document</b>Plan de ferraillage '+esc(info.nomO)+'</td></tr>'
     +'<tr><td><b>Norme</b>'+esc(info.norme)+'</td><td><b>Béton / acier</b>'+esc(info.beton)+' · '+esc(info.acier)+'</td><td><b>Indice · date</b>'+esc(info.indice)+(info.indice==='0'?' (première émission)':'')+' · '+esc(date)+'</td></tr>'
-    +'<tr><td><b>Échelles</b>Élévation : hauteur à l\'échelle, largeur non à l\'échelle · coupes transversales à l\'échelle réelle</td><td><b>Établi par</b>Been11 · module Poteau</td><td><b>Statut</b>À vérifier par un ingénieur structure · Vérifié par : —</td></tr>'
+    +'<tr><td><b>Échelles</b>Élévation : '+(P.rect?'hauteur à l\'échelle, largeur non à l\'échelle':'hauteur et diamètre à l\'échelle')+' · coupes transversales à l\'échelle réelle</td><td><b>Établi par</b>Been11 · module Poteau</td><td><b>Statut</b>À vérifier par un ingénieur structure · Vérifié par : —</td></tr>'
     +'<tr><td><b>Plan lié</b>Note de calcul '+esc(info.nomO)+'</td><td><b>Section</b>'+(P.rect?fplF(g.b,0)+' × '+fplF(g.h,0)+' cm':'Ø '+fplF(g.D,0)+' cm')+' · enrobage '+fplF(par.enrobage,1)+' cm</td><td><b>Hauteur libre</b>'+fplF(P.L)+' m</td></tr></table>';
    const kp='<div class="ncKpi"><div class="ncK"><b>'+fplF(P.poidsTotal,1)+' kg</b><small>acier total de la nomenclature ('+P.nomenclature.length+' repères)</small></div>'
     +'<div class="ncK"><b>'+P.nTot+' HA'+P.phi+'</b><small>armatures longitudinales : '+fplF(res.AsReelle_cm2)+' / '+fplF(res.AsTotal_cm2)+' cm² (adoptée / requise)</small></div>'
@@ -29217,7 +29219,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const notes='<ol class="fplNotes">'+ptNotesFor(res).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>';
    const pts='<section class="ncSec"><h4>Points à confirmer</h4>'+P.avertissements.map(a=>'<div class="ncAn"><b>Bloquant : </b>'+esc(a)+'</div>').join('')+P.hypotheses.map(a=>'<div class="ncAn conf"><b>À confirmer : </b>'+esc(a)+'</div>').join('')+'</section>';
    return '<div class="pcNC ncDoc fplDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+'</p>'+cart+kp
-    +'<section class="ncSec"><h4>Élévation</h4>'+dr(ptSceneElev(P),'Élévation du ferraillage du poteau','Élévation · hauteur à l\'échelle, largeur non à l\'échelle · cadres par zones d\'espacement · barres dépassant de l₀ en tête · traits de coupe A-A et B-B')+'</section>'
+    +'<section class="ncSec"><h4>Élévation</h4>'+dr(ptSceneElev(P),'Élévation du ferraillage du poteau','Élévation · '+(P.rect?'hauteur à l\'échelle, largeur non à l\'échelle':'hauteur et diamètre à l\'échelle')+' · cadres par zones d\'espacement · barres dépassant de l₀ en tête · traits de coupe A-A et B-B')+'</section>'
     +'<section class="ncSec"><h4>Coupes transversales</h4>'+secs+'</section>'
     +'<section class="ncSec"><h4>Nomenclature des aciers</h4>'+nomHtml+'</section>'
     +'<section class="ncSec"><h4>Schémas de façonnage</h4>'+shapes+'</section>'
@@ -29227,7 +29229,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +pts+'<div class="ncWarn">⚠ Ce plan de ferraillage est généré automatiquement à partir des sections d\'acier calculées et des dispositions constructives courantes de '+(res.norme==='BAEL'?'BAEL 91':'l\'Eurocode 2')+'. Les coefficients et valeurs non fournis explicitement par l\'utilisateur sont retenus aux valeurs usuelles par défaut et doivent être recoupés par un ingénieur structure avant exécution. Ce document ne remplace pas une étude signée par un bureau d\'études qualifié.</div></div>';
   }
   /* ---- PDF (jsPDF) : mêmes scènes que l'écran, A4 à A0 paysage (mise en page en mm A3 puis mise à l'échelle, fplPdfCtx) ---- */
-  function ptNotesFor(res){ if(!res||res.norme!=='BAEL') return PT_NOTES; const n=PT_NOTES.slice(); n[0]='Béton et acier : voir le cartouche. Norme : BAEL 91.'; n[3]='Cadres Ca1 (et épingles Ep1) : crochets à 135° avec retour dirigé vers l\'intérieur ; espacement BAEL constant sur la hauteur (à confirmer).'; const nt=['nœuds poutre-poteau','armatures de continuité'].concat(res.bael&&res.bael.tr&&(res.bael.tr.etat==='off'||res.bael.tr.etat==='nf')?['effort tranchant']:[]).concat(res.bael&&res.bael.els&&(res.bael.els.etat==='off'||res.bael.els.etat==='nf')?['ELS']:[]); n[5]='Plan à valider par un ingénieur structure : '+nt.join(', ')+' non traités.'; return n; }
+  function ptNotesFor(res){ const n=ptNotesFor0(res); if(res&&res.geom&&!res.geom.rect){ n[3]=n[3].replace('Cadres Ca1 (et épingles Ep1) : crochets à 135°','Cadres circulaires Ca1 (cerces) : crochets à 135°').replace(/ ; espacement réduit ×0,6 sur la plus grande dimension en pied et en tête/,' ; espacement réduit ×0,6 en pied et en tête'); n[4]=n[4].replace('élévation à l\'échelle en hauteur, largeur non à l\'échelle','élévation à l\'échelle en hauteur et en diamètre'); } return n; }
+  function ptNotesFor0(res){ if(!res||res.norme!=='BAEL') return PT_NOTES.slice(); const n=PT_NOTES.slice(); n[0]='Béton et acier : voir le cartouche. Norme : BAEL 91.'; n[3]='Cadres Ca1 (et épingles Ep1) : crochets à 135° avec retour dirigé vers l\'intérieur ; espacement BAEL constant sur la hauteur (à confirmer).'; const nt=['nœuds poutre-poteau','armatures de continuité'].concat(res.bael&&res.bael.tr&&(res.bael.tr.etat==='off'||res.bael.tr.etat==='nf')?['effort tranchant']:[]).concat(res.bael&&res.bael.els&&(res.bael.els.etat==='off'||res.bael.els.etat==='nf')?['ELS']:[]); n[5]='Plan à valider par un ingénieur structure : '+nt.join(', ')+' non traités.'; return n; }
   async function ptPlanFerraillagePdf1(t,dp,res,opts){
    const JsPDF=await loadPdfLibs(); const P=ptPlan(res,dp);
    const FMT=(opts&&FPL_FMT_W[opts.format])?opts.format:'a3', PS=FPL_FMT_W[FMT]/420;
@@ -29244,7 +29247,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    y+=32;
    const sc=(S,wmax,hmax)=>Math.min(wmax/S.w,hmax/S.h);
    { const S=ptSceneElev(P), Lg=ptLegendScene(), wE=(PW-2*M)*0.58, kE=sc(S,wE,PH*0.52), kL=Math.min(0.30,((PW-2*M)*0.38)/Lg.w); need(S.h*kE+4); const y0=y; fplPdfScene(doc,S,M+(wE-S.w*kE)/2,y0,kE); fplPdfScene(doc,Lg,M+wE+8,y0+4,kL); y=y0+Math.max(S.h*kE,Lg.h*kL)+3;
-     doc.setFontSize(8); doc.setTextColor(110); doc.text('Elevation - hauteur a l\'echelle, largeur non a l\'echelle - traits de coupe A-A et B-B - legende des traits',M,y+2); doc.setTextColor(0); y+=7; }
+     doc.setFontSize(8); doc.setTextColor(110); doc.text('Elevation - '+(P.rect?'hauteur a l\'echelle, largeur non a l\'echelle':'hauteur et diametre a l\'echelle')+' - traits de coupe A-A et B-B - legende des traits',M,y+2); doc.setTextColor(0); y+=7; }
    if(V===0) page();
    { const B=ptSceneSection(P,'A'), C=ptSceneSection(P,'B'), w2=(PW-2*M)*0.46, kB=sc(B,w2,PH*0.19); need(Math.max(B.h,C.h)*kB+14); const y0=y; fplPdfScene(doc,B,M,y0,kB); fplPdfScene(doc,C,M+w2+10,y0,kB); y=y0+Math.max(B.h,C.h)*kB+3;
      doc.setFontSize(8); doc.setTextColor(110); doc.text('Coupes transversales A-A (section courante) et B-B (recouvrement) a l\'echelle reelle',M,y+2); doc.setTextColor(0); y+=8; }
