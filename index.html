@@ -26321,6 +26321,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       parts.forEach(pt=>{ const d=document.createElement('div'); d.innerHTML=pt; const tx=d.textContent.trim(); if(!/⚠/.test(tx)) return;
        const bad=/non vérifi|NON vérifi|dépass|insuffisan|à revoir|augmenter/i.test(tx); const k=tx.slice(0,140); if(!AN.some(a=>a.k===k)) AN.push({k,bad,tx}); }); });
     { const sn=window.dimSolNoteTxt&&window.dimSolNoteTxt(dp); if(sn) AN.push({k:'solclass',bad:false,tx:sn}); }
+    let dvN=null; try{ dvN=window.dimValidNote?window.dimValidNote(dp,kind):null; }catch(_){ dvN=null; } if(dvN) dvN.pts.forEach(q=>{ if(!AN.some(a=>a.tx===q.tx)) AN.push({k:'dv'+q.tx.slice(0,60),bad:!!q.bad,tx:q.tx}); });
     if(/par défaut/i.test(html)&&!AN.some(a=>!a.bad)) AN.push({k:'def',bad:false,tx:'Des coefficients sont retenus « par défaut » (voir les sections ci-dessus) : à confirmer par le validateur.'});
     /* sections : une par titre h4 / h5 */
     const secs=[]; let cur=null;
@@ -26338,6 +26339,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       d.querySelectorAll('table').forEach(tb=>{ tb.className=grille?'ncG':'ncT'; tb.removeAttribute('style'); });
       d.querySelectorAll('svg').forEach(sv=>{ if(!sv.closest('.pcDraw')){ const w=document.createElement('div'); w.className='pcDraw'; sv.parentNode.insertBefore(w,sv); w.appendChild(sv); } });
       return '<section class="ncSec"><h4>'+esc(sc.titre)+'</h4>'+d.innerHTML+'</section>'; }).join('');
+    const dvSec=dvN?(dvN.section||''):'', dvAnx=dvN?(dvN.annex||''):'';
     const {K,fer}=ncKpis(kind,t,dp,res);
     const nBad=AN.filter(a=>a.bad).length+K.filter(k=>k.bad).length;
     const constat=constatSrc?constatSrc:(nBad?(nomO+' : '+nBad+' point'+(nBad>1?'s':'')+' bloquant'+(nBad>1?'s':'')+' à reprendre'):(nomO+' : '+(fer?fer+' — ':'')+'toutes les vérifications passent'));
@@ -26349,13 +26351,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     let typ=''; try{ typ=(t&&t.typeStructureId)?beTypeStructureNom(t.typeStructureId):''; }catch(_){}
     const date=(typeof todayStr==='function')?todayStr():'';
     const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(projet||'—')+'</td><td><b>Ouvrage</b>'+esc(nomO)+(typ?' · '+esc(typ):'')+'</td><td><b>Norme</b>'+esc(norme)+'</td></tr>'
-     +'<tr><td><b>Document</b>Note de calcul '+esc(nomO)+'</td><td><b>Indice</b>'+esc(indice)+(indice==='0'?' — première émission':'')+'</td><td><b>Statut</b>À vérifier par un ingénieur structure</td></tr>'
+     +'<tr><td><b>Document</b>Note de calcul '+esc(nomO)+'</td><td><b>Indice</b>'+esc(indice)+(indice==='0'?' — première émission':'')+'</td><td><b>Statut</b>À vérifier par un ingénieur structure'+((dvN&&dvN.user)?' · contient un calcul par méthode décrite par l’utilisateur, non vérifié par un moteur':'')+'</td></tr>'
      +'<tr><td><b>Établi par</b>Been11 · '+esc(sub.split('·')[0].trim()||'module embarqué')+'</td><td><b>Vérifié par</b>—</td><td><b>Plan lié</b>'+((kind==='geo'||kind==='pieuport'||kind==='portique'||kind==='rideau'||kind==='massif'||kind==='cand')?'—':'Plan de ferraillage '+esc(nomO))+'</td></tr></table>';
     const kp=K.length?'<div class="ncKpi">'+K.map(k=>'<div class="ncK'+(k.bad?' bad':'')+'"><b>'+esc(k.v)+'</b><small>'+esc(k.l)+'</small></div>').join('')+'</div>':'';
     const an0=AN.length?'<section class="ncSec"><h4>Points à confirmer</h4>'+AN.map(a=>'<div class="ncAn'+(a.bad?'':' conf')+'"><b>'+(a.bad?'Bloquant : ':'À confirmer : ')+'</b>'+esc(a.tx.replace(/^⚠\s*/,''))+'</div>').join('')+'</section>':'';
     const an=an0+jsH; // bloc repliable « Données transmises au plan » : après les points à confirmer, avant l'avertissement
     const subL=[projet,bat,niv,'Note de calcul indice '+indice,date].filter(Boolean).join(' · ');
-    return '<div class="pcNC ncDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+(sub?' · '+esc(sub):'')+'</p>'+cart+kp+secHtml+an
+    return '<div class="pcNC ncDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+(sub?' · '+esc(sub):'')+'</p>'+cart+kp+secHtml+dvSec+an+dvAnx
      +'<div class="ncWarn">'+esc(NC_AVERT)+(avExtra?' '+esc(avExtra):'')+'</div></div>';
    }catch(e){ console.warn('ncFormat',e); return html; }
   }
@@ -42835,6 +42837,450 @@ st.textContent='.dimCote line{stroke:var(--ds-ink-soft,#8a8a8a);stroke-width:1;f
 document.head.appendChild(st);
 })();</script>
 
+<script id="dimSkillJs">
+/* ===================== Interpréteur SÛR des méthodes décrites par l'utilisateur (« skill » de calcul) =====================
+   Un skill = définition STRUCTURÉE : entrées nommées (unité, valeur), étapes (formule), sorties. Les formules sont lues par un analyseur
+   d'expressions mathématiques limité : nombres, + - * / ^, parenthèses, sqrt min max abs sin cos tan ln exp, constante pi, variables nommées.
+   Aucun eval, aucun Function, aucun accès au réseau ni au DOM : le texte n'est jamais exécuté, seulement analysé puis évalué par ce code. */
+(function(G){
+ 'use strict';
+ const MAXLEN=300, MAXTOK=400, MAXDEPTH=32, MAXSTEPS=40, MAXIN=40, MAXOUT=20, BIG=1e30, BIGIN=1e12, MAXEXP=1000;
+ const ID=/^[A-Za-z_][A-Za-z0-9_]{0,23}$/;
+ const E=m=>{ const e=new Error(m); e.dimSkill=true; return e; };
+ const FN={
+  sqrt:{n:[1,1],f:a=>{ if(a[0]<0) throw E('racine carrée d\'un nombre négatif'); return Math.sqrt(a[0]); }},
+  min:{n:[1,8],f:a=>Math.min.apply(null,a)}, max:{n:[1,8],f:a=>Math.max.apply(null,a)},
+  abs:{n:[1,1],f:a=>Math.abs(a[0])},
+  sin:{n:[1,1],f:a=>Math.sin(a[0])}, cos:{n:[1,1],f:a=>Math.cos(a[0])},
+  tan:{n:[1,1],f:a=>{ if(Math.abs(Math.cos(a[0]))<1e-12) throw E('tangente non définie'); return Math.tan(a[0]); }},
+  ln:{n:[1,1],f:a=>{ if(!(a[0]>0)) throw E('logarithme d\'un nombre négatif ou nul'); return Math.log(a[0]); }},
+  exp:{n:[1,1],f:a=>{ if(a[0]>700) throw E('exponentielle trop grande'); return Math.exp(a[0]); }}
+ };
+ const CONST={pi:Math.PI};
+ const RESERVED=new Set(Object.keys(FN).concat(Object.keys(CONST)));
+ function norm(s){ return String(s).replace(/×|·|⋅/g,'*').replace(/÷/g,'/').replace(/[−–]/g,'-'); }
+ function tokenize(src){
+  if(typeof src!=='string') throw E('formule absente');
+  const s=norm(src); if(!s.trim()) throw E('formule vide'); if(s.length>MAXLEN) throw E('formule trop longue (maximum '+MAXLEN+' signes)');
+  const T=[]; let i=0;
+  while(i<s.length){
+   const c=s.charAt(i);
+   if(c===' '||c==='\t'){ i++; continue; }
+   if(/[0-9.]/.test(c)){ const m=/^(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]{1,3})?/.exec(s.slice(i)); if(!m) throw E('nombre invalide'); const v=Number(m[0]); if(!isFinite(v)||Math.abs(v)>BIG) throw E('nombre trop grand'); T.push({t:'n',v}); i+=m[0].length; }
+   else if(/[A-Za-z_]/.test(c)){ const m=/^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i)); if(m[0].length>24) throw E('nom trop long'); T.push({t:'i',v:m[0]}); i+=m[0].length; }
+   else if('+-*/^(),'.indexOf(c)>=0){ T.push({t:c}); i++; }
+   else throw E('caractère non autorisé « '+c+' »');
+   if(T.length>MAXTOK) throw E('formule trop complexe');
+  }
+  return T;
+ }
+ function parse(src){
+  const T=tokenize(src); let p=0, depth=0;
+  const peek=()=>T[p], eat=t=>{ if(T[p]&&T[p].t===t){ p++; return true; } return false; };
+  const enter=()=>{ if(++depth>MAXDEPTH) throw E('parenthèses trop imbriquées'); }, leave=()=>{ depth--; };
+  function expr(){ enter(); let a=term(); while(peek()&&(peek().t==='+'||peek().t==='-')){ const o=T[p++].t; const b=term(); a={k:'b',o,a,b}; } leave(); return a; }
+  function term(){ let a=unary(); while(peek()&&(peek().t==='*'||peek().t==='/')){ const o=T[p++].t; const b=unary(); a={k:'b',o,a,b}; } return a; }
+  function unary(){ enter(); let r; if(eat('-')) r={k:'neg',a:unary()}; else if(eat('+')) r=unary(); else r=power(); leave(); return r; }
+  function power(){ const a=atom(); if(eat('^')){ const b=unary(); return {k:'b',o:'^',a,b}; } return a; }
+  function atom(){
+   const x=T[p++]; if(!x) throw E('formule incomplète');
+   if(x.t==='n') return {k:'n',v:x.v};
+   if(x.t==='i'){
+    if(peek()&&peek().t==='('){ p++; const f=FN[x.v]; if(!f||!Object.prototype.hasOwnProperty.call(FN,x.v)) throw E('fonction non autorisée « '+x.v+' »'); const args=[]; if(!eat(')')){ do{ args.push(expr()); }while(eat(',')); if(!eat(')')) throw E('parenthèse fermante manquante'); }
+     if(args.length<f.n[0]||args.length>f.n[1]) throw E('mauvais nombre d\'arguments pour '+x.v); return {k:'f',n:x.v,args}; }
+    if(Object.prototype.hasOwnProperty.call(FN,x.v)) throw E('la fonction « '+x.v+' » demande des parenthèses');
+    return {k:'v',n:x.v};
+   }
+   if(x.t==='('){ const e=expr(); if(!eat(')')) throw E('parenthèse fermante manquante'); return e; }
+   throw E('élément inattendu « '+x.t+' »');
+  }
+  const ast=expr(); if(p<T.length) throw E('élément inattendu après la fin de la formule'); return ast;
+ }
+ function vars(ast,out){ out=out||[]; if(ast.k==='v'){ if(!Object.prototype.hasOwnProperty.call(CONST,ast.n)&&out.indexOf(ast.n)<0) out.push(ast.n); } else if(ast.k==='b'){ vars(ast.a,out); vars(ast.b,out); } else if(ast.k==='neg') vars(ast.a,out); else if(ast.k==='f') ast.args.forEach(a=>vars(a,out)); return out; }
+ function chk(v){ if(typeof v!=='number'||!isFinite(v)) throw E('résultat non défini'); if(Math.abs(v)>BIG) throw E('résultat trop grand'); return v; }
+ function ev(n,env){
+  switch(n.k){
+   case 'n': return n.v;
+   case 'v': { if(Object.prototype.hasOwnProperty.call(CONST,n.n)) return CONST[n.n]; if(!env.has(n.n)) throw E('variable inconnue « '+n.n+' »'); return env.get(n.n); }
+   case 'neg': return -ev(n.a,env);
+   case 'f': return chk(FN[n.n].f(n.args.map(a=>ev(a,env))));
+   case 'b': { const a=ev(n.a,env), b=ev(n.b,env);
+    if(n.o==='+') return chk(a+b); if(n.o==='-') return chk(a-b); if(n.o==='*') return chk(a*b);
+    if(n.o==='/'){ if(b===0) throw E('division par zéro'); return chk(a/b); }
+    if(Math.abs(b)>MAXEXP) throw E('exposant trop grand (maximum '+MAXEXP+')'); if(a===0&&b<0) throw E('division par zéro (0 puissance négative)'); const r=Math.pow(a,b); if(r!==r) throw E('puissance non définie'); return chk(r); }
+  }
+  throw E('formule invalide');
+ }
+ function num(v){ if(typeof v==='number') return v; if(typeof v==='string'&&v.trim()!==''&&/^[-+]?[0-9]*[.,]?[0-9]+(?:[eE][-+]?[0-9]+)?$|^[-+]?[0-9]+[.,]?$/.test(v.trim())) return Number(v.trim().replace(',','.')); return NaN; }
+ const S=(v,n)=>(typeof v==='string'?v:'').replace(/[\u0000-\u001f<>]/g,' ').trim().slice(0,n);
+ /* validation stricte de la structure : renvoie un skill NEUF (aucun champ inconnu conservé) */
+ function validate(sk){
+  const er=[]; const out={nom:'',description:'',entrees:[],etapes:[],sorties:[]};
+  if(!sk||typeof sk!=='object'||Array.isArray(sk)) return {ok:false,errors:['définition absente ou illisible'],skill:null};
+  out.nom=S(sk.nom,80)||'Méthode sans nom'; out.description=S(sk.description,600);
+  const seen=new Set();
+  const chkId=(id,w)=>{ if(typeof id!=='string'||!ID.test(id)){ er.push(w+' : nom de variable invalide (lettres, chiffres et _, commence par une lettre, 24 signes au plus)'); return false; } if(RESERVED.has(id)){ er.push(w+' : « '+id+' » est réservé'); return false; } if(seen.has(id)){ er.push(w+' : « '+id+' » est utilisé deux fois'); return false; } seen.add(id); return true; };
+  const ent=Array.isArray(sk.entrees)?sk.entrees:[]; if(ent.length>MAXIN) er.push('trop d\'entrées (maximum '+MAXIN+')');
+  ent.slice(0,MAXIN).forEach((e,i)=>{ const w='entrée '+(i+1); if(!e||typeof e!=='object'){ er.push(w+' illisible'); return; } if(!chkId(e.id,w)) return; const v=num(e.valeur); if(!isFinite(v)||Math.abs(v)>BIGIN){ er.push(w+' « '+e.id+' » : valeur numérique obligatoire (au plus 10^12)'); return; }
+   const o={id:e.id,nom:S(e.nom,60)||e.id,unite:S(e.unite,16),valeur:v}; const mn=num(e.min), mx=num(e.max); if(isFinite(mn)) o.min=mn; if(isFinite(mx)) o.max=mx; if(o.min!==undefined&&v<o.min) er.push(w+' « '+e.id+' » : valeur sous le minimum'); if(o.max!==undefined&&v>o.max) er.push(w+' « '+e.id+' » : valeur au-dessus du maximum'); out.entrees.push(o); });
+  const et=Array.isArray(sk.etapes)?sk.etapes:[]; if(!et.length) er.push('aucune étape de calcul'); if(et.length>MAXSTEPS) er.push('trop d\'étapes (maximum '+MAXSTEPS+')');
+  et.slice(0,MAXSTEPS).forEach((e,i)=>{ const w='étape '+(i+1); if(!e||typeof e!=='object'){ er.push(w+' illisible'); return; } if(!chkId(e.id,w)) return; if(typeof e.formule!=='string'){ er.push(w+' « '+e.id+' » : formule absente'); return; }
+   try{ parse(e.formule); }catch(x){ if(x&&x.dimSkill) er.push(w+' « '+e.id+' » : '+x.message); else er.push(w+' « '+e.id+' » : formule illisible'); }
+   out.etapes.push({id:e.id,nom:S(e.nom,80)||e.id,formule:S(e.formule,MAXLEN).replace(/\s+/g,' '),unite:S(e.unite,16)}); });
+  const so=Array.isArray(sk.sorties)?sk.sorties:[]; if(!so.length) er.push('aucune sortie (résultat) déclarée'); if(so.length>MAXOUT) er.push('trop de sorties (maximum '+MAXOUT+')');
+  so.slice(0,MAXOUT).forEach((s,i)=>{ const id=(s&&typeof s==='object')?s.id:s; if(typeof id!=='string'||!seen.has(id)){ er.push('sortie '+(i+1)+' : « '+(typeof id==='string'?id:'?')+' » ne correspond à aucune entrée ni étape'); return; } const src=out.etapes.find(x=>x.id===id)||out.entrees.find(x=>x.id===id)||{};
+   out.sorties.push({id,nom:S(s&&s.nom,80)||src.nom||id,unite:S(s&&s.unite,16)||src.unite||''}); });
+  return {ok:!er.length,errors:er,skill:out};
+ }
+ function fmt(v){ if(v==null||!isFinite(v)) return '—'; const a=Math.abs(v); let s; if(a!==0&&(a>=1e7||a<1e-4)) s=v.toExponential(4).replace('e+','e'); else s=String(Math.round(v*1e4)/1e4); return s.replace('.',','); }
+ /* exécution : renvoie {ok, lignes:[{id,nom,formule,subst,valeur,unite}], sorties:[{id,nom,valeur,unite}], erreurs:[]} ; ne lève jamais d'exception */
+ function run(sk,over){
+  const R={ok:false,lignes:[],sorties:[],erreurs:[],entrees:[]};
+  try{
+   const v=validate(sk); if(!v.ok){ R.erreurs=v.errors; return R; }
+   const s=v.skill, env=new Map();
+   s.entrees.forEach(e=>{ let x=e.valeur; if(over&&Object.prototype.hasOwnProperty.call(over,e.id)){ const y=num(over[e.id]); if(isFinite(y)&&Math.abs(y)<=BIGIN) x=y; } env.set(e.id,x); R.entrees.push({id:e.id,nom:e.nom,unite:e.unite,valeur:x}); });
+   for(let i=0;i<s.etapes.length;i++){ const e=s.etapes[i];
+    try{ const ast=parse(e.formule); const miss=vars(ast).filter(n=>!env.has(n)); if(miss.length) throw E('variable inconnue « '+miss[0]+' » (à définir avant cette étape)');
+     const val=ev(ast,env); env.set(e.id,val);
+     const subst=norm(e.formule).replace(/[A-Za-z_][A-Za-z0-9_]*/g,m=>env.has(m)&&!(m in FN)?'('+fmt(env.get(m))+')':m);
+     R.lignes.push({id:e.id,nom:e.nom,formule:e.formule,subst,valeur:val,unite:e.unite}); }
+    catch(x){ R.erreurs.push('Étape « '+e.nom+' » : '+((x&&x.dimSkill)?x.message:'calcul impossible')); return R; } }
+   s.sorties.forEach(o=>{ R.sorties.push({id:o.id,nom:o.nom,unite:o.unite,valeur:env.get(o.id)}); });
+   R.ok=true; return R;
+  }catch(x){ R.erreurs.push('Calcul impossible'); R.ok=false; return R; }
+ }
+ const API={parse,tokenize,validate,run,fmt,vars,limits:{MAXLEN,MAXTOK,MAXDEPTH,MAXSTEPS,MAXIN,MAXEXP}};
+ G.DimSkill=API; if(typeof module!=='undefined'&&module.exports) module.exports=API;
+})(typeof window!=='undefined'?window:globalThis);
+</script>
+<script id="dimValidJs">
+/* ===================== Fenêtre de validation commune + méthodes décrites par l'utilisateur (tous modules) =====================
+   Un seul composant : dimValidateWindow(spec, ctx). Il sert à la fiche (ligne « Choix » + bouton Calculer), aux Paramètres avancés
+   (seuils, méthodes enregistrées) et à la note (ligne « validé / modifié / méthode de l'utilisateur » avec date).
+   Mémorisé par ouvrage : dp.valid[spec] = {choix, date, sens, vals, champs, skillId} ; dp.skills = méthodes décrites (réutilisables) ;
+   dp.validSeuils = seuils des cas sensibles (modifiables). Rien n'est imposé : fermer (Echap, clic dehors, Annuler) ne change rien. */
+(function(){
+ 'use strict';
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const T=s=>(window.dimT?window.dimT(s):s);
+ const fnum=v=>{ const n=+v; if(v===null||v===undefined||v===''||!isFinite(n)) return String(v==null?'':v); return String(Math.round(n*1000)/1000).replace('.',','); };
+ const todayIso=()=>{ try{ return new Date().toISOString().slice(0,10); }catch(_){ return ''; } };
+ const frDate=iso=>{ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(iso||''); return m?m[3]+'/'+m[2]+'/'+m[1]:(iso||''); };
+ try{ Object.assign(window.DIM_BI||{},{
+  mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  speaker:'<path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
+  send:'<path d="M4 12l16-8-6 16-3-7z"/>', chat:'<path d="M4 5h16v11H9l-5 4z"/>', stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>'}); }catch(_){ }
+ const svg=k=>window.dimBiSvg?window.dimBiSvg(k):'';
+ const ib=(icon,label,attrs)=>'<span class="dimIBw"><button type="button" class="dimIB" data-dimui="1" aria-label="'+esc(T(label))+'" title="'+esc(T(label))+'" '+(attrs||'')+'>'+svg(icon)+'</button><span class="dimIBl">'+esc(T(label))+'</span></span>';
+ const clip=m=>{ try{ clipToast(m); }catch(_){ } };
+
+ /* ---------- Modules : préfixe du bouton Calculer → propriété de données, genre de note ---------- */
+ const PFX={pc:{prop:'dimPC',kind:'poutre'},pt:{prop:'dimPT',kind:'poteau'},dl:{prop:'dimDL',kind:'dalle'},sm:{prop:'dimSM',kind:'semelle'},pf:{prop:'dimPF',kind:'portique'},pm:{prop:'dimPM',kind:'mixte'},pu:{prop:'dimPU',kind:'pieu'},pp:{prop:'dimPP',kind:'pieuport'},rp:{prop:'dimRP',kind:'rideau'},vl:{prop:'dimVL',kind:'voile'},mz:{prop:'dimMZ',kind:'massif'},cd:{prop:'dimCD',kind:'cand'},as:{prop:'dimAS',kind:'section'},mu:{prop:'dimMU',kind:'mur'},dg:{prop:'dimDG',kind:'dallage'},esq:{prop:'dimES',kind:'escalier'},gt:{prop:'dimGT',kind:'geo'}};
+ const KIND2PFX={}; Object.keys(PFX).forEach(p=>{ KIND2PFX[PFX[p].kind]=p; });
+
+ /* ---------- Méthodes à valider, par module (textes simples : ce qu'elle suppose / ignore / quand elle ne convient pas) ---------- */
+ const SPECS={};
+ const vals=list=>dp=>{ const o=[]; list.forEach(([k,l,u])=>{ const v=dp[k]; if(v===undefined||v===null||v==='') return; o.push([l,(typeof v==='boolean'?(v?'oui':'non'):fnum(v))+(u&&typeof v!=='boolean'?' '+u:'')]); }); return o; };
+ const sp=(pfx,id,titre,o)=>{ (SPECS[pfx]=SPECS[pfx]||[]).push(Object.assign({pfx,id,titre,warn:false},o)); };
+ const ch=(k,nom,unit,min,max)=>({k,nom,unit,min,max});
+
+ sp('pc','pc_efforts','Efforts de la poutre continue',{supposes:'Matériau élastique, section constante dans chaque travée, charges statiques posées sur la poutre.',ignore:'La fissuration du béton dans le calcul des efforts, la redistribution des moments, les effets dynamiques.',ne:'Poutres très courtes (poutres-voiles), charges mobiles lourdes, appuis qui se déforment et que vous n\'avez pas saisis.',valeurs:vals([['b_cm','Largeur','cm'],['h_cm','Hauteur','cm'],['classeGlobale','Béton'],['classeAcier','Acier'],['enrobage_cm','Enrobage','cm']]),champs:[ch('b_cm','Largeur b','cm',10,200),ch('h_cm','Hauteur h','cm',15,300),ch('enrobage_cm','Enrobage','cm',1,10)]});
+ sp('pc','pc_sectionT','Section en T simplifiée',{warn:true,quand:dp=>dp.sectionT===true,supposes:'Une largeur de table effective constante sur toute la travée.',ignore:'La variation de cette largeur le long de la poutre et le glissement fin entre la table et la nervure.',ne:'Tables très larges, poutres courtes, table tendue sur appui.',sensible:dp=>dp.flangeTens===true?'la table est tendue':null,valeurs:vals([['beff_cm','Largeur de table','cm'],['hf_cm','Épaisseur de table','cm']]),champs:[ch('beff_cm','Largeur de table','cm',10,600),ch('hf_cm','Épaisseur de table','cm',5,100)]});
+ sp('pc','pc_convoi','Charge roulante',{warn:true,quand:dp=>dp.convoiActif===true,supposes:'Un convoi de charges ponctuelles à écartement fixe qui avance en ligne droite le long de la poutre.',ignore:'Le choc, la vibration et le freinage du convoi.',ne:'Engins rapides, ponts roulants, charges qui sautent.',valeurs:dp=>(Array.isArray(dp.convoi)?[['Charges du convoi',dp.convoi.map(c=>fnum(c.P)+' kN').join(' ; ')]]:[])});
+
+ sp('dl','dl_charges','Charges ajoutées de la dalle',{warn:true,quand:()=>true,seuils:[{k:'Q',nom:'Charge d\'exploitation à partir de laquelle le cas est sensible',def:5,unit:'kN/m²',min:0.5,max:50},{k:'G',nom:'Charge permanente ajoutée à partir de laquelle le cas est sensible',def:6,unit:'kN/m²',min:0.5,max:50}],sensible:(dp,S)=>((+dp.Q_kNm2>=S.Q)||(+dp.G_kNm2>=S.G))?'les charges ajoutées sont élevées, des charges localisées (cloisons, machines) peuvent dominer':null,supposes:'Les charges ajoutées (permanentes G et d\'exploitation Q) sont réparties de façon uniforme sur toute la dalle.',ignore:'Les cloisons, les charges en ligne ou ponctuelles, les zones plus chargées que d\'autres.',ne:'Locaux industriels, parkings lourds, cloisons lourdes ou équipements posés sur la dalle.',valeurs:vals([['G_kNm2','Charge permanente ajoutée G','kN/m²'],['Q_kNm2','Charge d\'exploitation Q','kN/m²'],['poidsPropre','Poids propre ajouté'],['lx_m','Portée lx','m'],['ly_m','Portée ly','m'],['h_cm','Épaisseur','cm']]),champs:[ch('G_kNm2','Charge permanente ajoutée G','kN/m²',0,100),ch('Q_kNm2','Charge d\'exploitation Q','kN/m²',0,100)]});
+ sp('dl','dl_poincon','Poinçonnement simplifié',{warn:true,quand:dp=>dp.poincon===true,supposes:'Une charge de poteau centrée, un contour de contrôle standard autour du poteau.',ignore:'Le moment transmis par le poteau, les trémies proches, les poteaux de rive ou d\'angle.',ne:'Poteaux de rive ou d\'angle, trémie proche, charges très excentrées.',valeurs:vals([['N_poincon_kN','Charge du poteau','kN'],['c1_cm','Côté c1','cm'],['c2_cm','Côté c2','cm']]),champs:[ch('N_poincon_kN','Charge du poteau','kN',0,1e6)]});
+
+ sp('pt','pt_second','Second ordre simplifié du poteau',{warn:true,quand:()=>true,seuils:[{k:'elanc',nom:'Élancement (hauteur / plus petit côté) à partir duquel le cas est sensible',def:15,unit:'',min:5,max:60}],sensible:(dp,S)=>{ const c=dp.forme==='circ'?+dp.D_cm:Math.min(+dp.b_cm,+dp.h_cm); const e=(+dp.L_m*100)/c; return (c>0&&e>=S.elanc)?'le poteau est élancé':null; },supposes:'Un poteau isolé, des défauts de rectitude forfaitaires, une section constante sur la hauteur.',ignore:'Les déplacements d\'ensemble de la structure, le fluage détaillé, la flexion dans les deux directions à la fois.',ne:'Poteaux très élancés, structures souples non contreventées.',valeurs:vals([['L_m','Hauteur libre','m'],['N_kN','Effort normal','kN'],['M_tete_kNm','Moment en tête','kN·m'],['M_pied_kNm','Moment en pied','kN·m']]),champs:[ch('N_kN','Effort normal','kN',0,1e7),ch('M_tete_kNm','Moment en tête','kN·m',-1e6,1e6),ch('M_pied_kNm','Moment en pied','kN·m',-1e6,1e6)]});
+ sp('pt','pt_feu','Résistance au feu simplifiée du poteau',{warn:true,quand:dp=>dp.feu_on===true&&dp.feu_methode!=='saisie',seuils:[{k:'duree',nom:'Durée au feu à partir de laquelle le cas est sensible',def:90,unit:'min',min:15,max:240}],sensible:(dp,S)=>{ const d=+dp.feu_duree>0?+dp.feu_duree:(+dp.feu_duree_h>0?+dp.feu_duree_h*60:0); return d>=S.duree?'la durée au feu demandée est longue':null; },supposes:'Une méthode simplifiée par abaques : section réduite par la chaleur, poteau chauffé sur tout son pourtour.',ignore:'Les gradients de température précis, l\'éclatement du béton, la dilatation des éléments voisins.',ne:'Petites sections, poteaux très chargés ou très excentrés, longues durées.',valeurs:vals([['feu_duree','Durée au feu','min'],['feu_duree_h','Durée au feu','h']])});
+
+ sp('pm','pm_methode','Poteau mixte : méthode simplifiée',{warn:true,quand:()=>true,seuils:[{k:'exc',nom:'Excentricité à partir de laquelle le cas est sensible',def:0.05,unit:'m',min:0,max:1}],sensible:(dp,S)=>(+dp.exc_m>=S.exc)?'la charge est fortement excentrée':null,supposes:'Une courbe de flambement unique et une interaction simplifiée entre effort normal et moment, avec adhérence parfaite acier-béton.',ignore:'Le glissement entre acier et béton, le fluage détaillé, la flexion dans les deux directions à la fois.',ne:'Poteaux élancés, charges très excentrées.',valeurs:vals([['L_m','Hauteur','m'],['G_kN','Charge permanente G','kN'],['Q_kN','Charge d\'exploitation Q','kN'],['exc_m','Excentricité','m']]),champs:[ch('G_kN','Charge permanente G','kN',0,1e7),ch('Q_kN','Charge d\'exploitation Q','kN',0,1e7),ch('exc_m','Excentricité','m',0,1)]});
+ sp('pm','pm_feu','Poteau mixte : feu simplifié',{warn:true,quand:dp=>dp.feu_on===true,supposes:'Une méthode simplifiée : parties de la section réduites selon la durée au feu.',ignore:'Les gradients de température précis et la dilatation des éléments voisins.',ne:'Longues durées, sections très chargées.',valeurs:vals([['feu_duree','Durée au feu','min']])});
+
+ sp('vl','vl_methode','Voile : bande verticale chargée en tête',{warn:true,quand:()=>true,seuils:[{k:'elanc',nom:'Hauteur / épaisseur à partir de laquelle le cas est sensible',def:25,unit:'',min:5,max:80}],sensible:(dp,S)=>((+dp.Hv_m*100)/(+dp.e_cm)>=S.elanc)?'le voile est élancé':null,supposes:'Un voile plein, chargé uniformément en tête, traité comme une bande verticale.',ignore:'Les ouvertures, les raidisseurs, les effets de plaque, le contreventement horizontal.',ne:'Voiles percés, voiles courts, voiles de contreventement.',valeurs:vals([['e_cm','Épaisseur','cm'],['Lv_m','Longueur','m'],['Hv_m','Hauteur','m'],['Nml_kN','Charge verticale','kN']]),champs:[ch('Nml_kN','Charge verticale','kN',0,1e7),ch('Hv_m','Hauteur','m',0.5,30),ch('e_cm','Épaisseur','cm',10,100)]});
+
+ sp('pf','pf_methode','Portique plan : calcul élastique du premier ordre',{warn:true,quand:()=>true,seuils:[{k:'niv',nom:'Nombre d\'étages à partir duquel le cas est sensible',def:4,unit:'',min:2,max:20}],sensible:(dp,S)=>(+dp.nE>=S.niv)?'le portique a plusieurs étages':null,supposes:'Nœuds rigides, barres élastiques, charges statiques, structure plane.',ignore:'Le second ordre (déformation de l\'ensemble), la fissuration des barres, les effets en trois dimensions.',ne:'Structures élancées non contreventées, étages souples.',valeurs:vals([['nT','Travées'],['nE','Étages'],['Gp','Charge permanente G','kN/m'],['Qp','Charge d\'exploitation Q','kN/m'],['Hq','Charge horizontale','kN']]),champs:[ch('Gp','Charge permanente G','kN/m',0,1e4),ch('Qp','Charge d\'exploitation Q','kN/m',0,1e4),ch('Hq','Charge horizontale','kN',0,1e5)]});
+
+ sp('sm','sm_bielles','Semelle : bielles et pression du sol répartie',{warn:true,quand:()=>true,sensible:dp=>dp.excentrique===true?'la charge est excentrée':null,supposes:'Une semelle rigide, un sol qui réagit par une pression répartie (uniforme, ou trapézoïdale si la charge est excentrée), des bielles de béton.',ignore:'Les tassements, l\'interaction entre le sol et la structure, les sols qui changent d\'un point à l\'autre.',ne:'Semelles souples, sols hétérogènes ou très compressibles, forte excentricité.',valeurs:vals([['G_kN','Charge permanente G','kN'],['Q_kN','Charge d\'exploitation Q','kN'],['qsol_MPa','Pression admissible du sol','MPa'],['Mser_kNm','Moment','kN·m']]),champs:[ch('G_kN','Charge permanente G','kN',0,1e7),ch('Q_kN','Charge d\'exploitation Q','kN',0,1e7),ch('Mser_kNm','Moment','kN·m',-1e6,1e6)]});
+ sp('cd','cd_methode','Massif de candélabre : pression du sol',{warn:true,quand:()=>true,sensible:dp=>(+dp.M_kNm>0&&+dp.P_kN>0&&(+dp.M_kNm/+dp.P_kN)>=0.8*(+dp.a_m||1)/3)?'le moment est grand par rapport à la charge verticale':null,supposes:'Un massif rigide, un effort horizontal et un moment en tête, un sol qui réagit par une pression répartie.',ignore:'L\'effet dynamique du vent, la butée des terres au-dessus du massif.',ne:'Sols meubles, candélabres très hauts, vent fort.',valeurs:vals([['P_kN','Charge verticale','kN'],['H_kN','Effort horizontal','kN'],['M_kNm','Moment','kN·m'],['q_kPa','Pression admissible du sol','kPa']]),champs:[ch('P_kN','Charge verticale','kN',0,1e6),ch('H_kN','Effort horizontal','kN',0,1e6),ch('M_kNm','Moment','kN·m',0,1e6)]});
+ sp('pu','pu_bielles','Tête de pieux : bielles et tirants',{warn:true,quand:()=>true,supposes:'Une semelle de tête rigide, des pieux chargés de façon égale, une charge centrée.',ignore:'Les défauts d\'implantation des pieux et la répartition inégale des charges entre pieux.',ne:'Têtes sur beaucoup de pieux, charges très excentrées.',valeurs:vals([['G_kN','Charge permanente G','kN'],['Q_kN','Charge d\'exploitation Q','kN'],['F_cm','Hauteur de la tête','cm']]),champs:[ch('G_kN','Charge permanente G','kN',0,1e7),ch('Q_kN','Charge d\'exploitation Q','kN',0,1e7)]});
+ sp('pp','pp_portance','Portance du pieu par essai en place',{warn:true,quand:()=>true,supposes:'Des courbes de frottement et de pointe courantes selon le type de sol et de pieu.',ignore:'Le frottement négatif, l\'effet de groupe, le tassement du pieu.',ne:'Sols qui ne rentrent dans aucune catégorie courante, pieux très courts.',valeurs:vals([['L','Longueur du pieu','m'],['B','Diamètre','m'],['typePieu','Type de pieu']]),champs:[ch('L','Longueur du pieu','m',1,100),ch('B','Diamètre','m',0.1,5)]});
+ sp('gt','gt_methode','Tassement : sol en couches élastiques',{warn:true,quand:()=>true,supposes:'Un sol en couches, une charge uniforme sur la fondation, un tassement immédiat.',ignore:'Le tassement dans le temps des sols argileux et le fluage.',ne:'Argiles molles très compressibles, charges très différentes entre appuis.',valeurs:vals([['B','Largeur','m'],['L','Longueur','m'],['D','Profondeur d\'assise','m'],['q_kPa','Pression','kPa']]),champs:[ch('B','Largeur','m',0.2,100),ch('L','Longueur','m',0.2,100),ch('q_kPa','Pression','kPa',0,5000)]});
+ sp('mu','mu_poussee','Mur : poussée des terres et stabilité',{warn:true,quand:()=>true,seuils:[{k:'q',nom:'Surcharge à partir de laquelle le cas est sensible',def:20,unit:'kPa',min:1,max:200},{k:'H',nom:'Hauteur à partir de laquelle le cas est sensible',def:6,unit:'m',min:1,max:20}],sensible:(dp,S)=>((+dp.q_kPa>=S.q)||(+dp.H_m>=S.H))?'la surcharge ou la hauteur est importante':null,supposes:'Un remblai horizontal, un mur lisse, une poussée en triangle sur la hauteur.',ignore:'Le frottement entre la terre et le mur, la nappe d\'eau si vous ne la saisissez pas, le séisme.',ne:'Remblai en pente, grosses charges sur le talus, nappe haute.',valeurs:vals([['H_m','Hauteur','m'],['gamma1_kNm3','Poids du remblai','kN/m³'],['phi1_deg','Angle de frottement du remblai','°'],['q_kPa','Surcharge','kPa']]),champs:[ch('H_m','Hauteur','m',0.5,15),ch('gamma1_kNm3','Poids du remblai','kN/m³',10,25),ch('phi1_deg','Angle de frottement du remblai','°',15,45),ch('q_kPa','Surcharge','kPa',0,500)]});
+ sp('rp','rp_methode','Rideau de palplanches : équilibre limite',{warn:true,quand:()=>true,seuils:[{k:'libre',nom:'Hauteur libre à partir de laquelle le cas est sensible',def:5,unit:'m',min:1,max:30}],sensible:(dp,S)=>((+dp.L_m-+dp.f_m)>=S.libre)?'la hauteur libre est grande':null,supposes:'Poussée et butée des terres en triangle, fiche trouvée par équilibre des moments, rideau libre en tête.',ignore:'Les déformations du rideau, l\'interaction avec le sol, le drainage.',ne:'Grandes hauteurs libres, nappe importante, rideau ancré que vous n\'avez pas saisi.',valeurs:vals([['L_m','Longueur','m'],['f_m','Fiche','m'],['gamma','Poids du sol','kN/m³'],['phi','Angle de frottement','°']]),champs:[ch('L_m','Longueur','m',1,40),ch('f_m','Fiche','m',0.5,30)]});
+ sp('mz','mz_methode','Massif enterré chargé en tête',{warn:true,quand:()=>true,seuils:[{k:'rapport',nom:'Rapport effort horizontal / charge verticale à partir duquel le cas est sensible',def:1,unit:'',min:0.1,max:10}],sensible:(dp,S)=>((+dp.V_kN>0)&&(Math.hypot(+dp.Hx_kN||0,+dp.Hy_kN||0)/+dp.V_kN>=S.rapport))?'l\'effort horizontal est grand par rapport à la charge verticale':null,supposes:'Un massif rigide, une pression du sol qui varie de façon linéaire, une butée latérale limitée.',ignore:'Les tassements différents d\'un coin à l\'autre, l\'influence des ouvrages voisins.',ne:'Efforts horizontaux dominants, sols meubles.',valeurs:vals([['V_kN','Charge verticale','kN'],['Hx_kN','Effort horizontal x','kN'],['Hy_kN','Effort horizontal y','kN'],['Mx_kNm','Moment x','kN·m'],['My_kNm','Moment y','kN·m']]),champs:[ch('V_kN','Charge verticale','kN',0,1e7),ch('Hx_kN','Effort horizontal x','kN',0,1e6),ch('Hy_kN','Effort horizontal y','kN',0,1e6),ch('Mx_kNm','Moment x','kN·m',-1e7,1e7),ch('My_kNm','Moment y','kN·m',-1e7,1e7)]});
+ sp('esq','esq_modele','Escalier : modèle de poutre équivalente',{warn:true,quand:()=>true,sensible:dp=>(dp.cfg&&dp.cfg!=='droit')?'l\'escalier n\'est pas droit':null,supposes:'Une paillasse en poutre posée sur ses appuis, portée mesurée à l\'horizontale, charge uniforme.',ignore:'Les encastrements partiels, la continuité avec les paliers non saisie, les vibrations.',ne:'Escaliers hélicoïdaux, à limons complexes, en console.',valeurs:vals([['Hesc_m','Hauteur à franchir','m'],['g_cm','Giron','cm'],['W_cm','Largeur','cm'],['e_cm','Épaisseur','cm']]),champs:[ch('Hesc_m','Hauteur à franchir','m',0.5,10),ch('W_cm','Largeur','cm',50,400)]});
+ sp('dg','dg_efforts','Dallage : efforts par méthode prudente',{warn:true,quand:()=>true,seuils:[{k:'nb',nom:'Nombre de charges à partir duquel le cas est sensible',def:5,unit:'',min:1,max:100}],sensible:(dp,S)=>(Array.isArray(dp.charges)&&dp.charges.length>=S.nb)?'plusieurs charges peuvent se cumuler':null,supposes:'Un dallage posé sur un sol élastique, des charges isolées, des joints régulièrement espacés.',ignore:'Le cumul de charges proches, le retrait gêné (selon l\'option choisie), les écarts de température.',ne:'Rayonnages très serrés, charges très proches les unes des autres, sols très inégaux.',valeurs:vals([['L_m','Longueur','m'],['B_m','Largeur','m'],['h_cm','Épaisseur','cm'],['ks_MPam','Module de réaction du sol','MPa/m'],['qsol_kPa','Pression admissible du sol','kPa']]),champs:[ch('ks_MPam','Module de réaction du sol','MPa/m',1,500),ch('qsol_kPa','Pression admissible du sol','kPa',10,2000)]});
+ sp('as','as_section','Analyse de section : sections planes et béton en bloc rectangulaire',{supposes:'Les sections planes restent planes, le béton comprimé est remplacé par un bloc rectangulaire, l\'acier est élastique puis plastique.',ignore:'Le flambement de l\'élément (les efforts saisis doivent déjà en tenir compte), le fluage, la fatigue.',ne:'Éléments élancés, pièces très courtes (régions de disque), chargements répétés.',valeurs:vals([['asB_cm','Largeur','cm'],['asH_cm','Hauteur','cm'],['asN','Effort normal','kN'],['asM','Moment','kN·m'],['asV','Effort tranchant','kN'],['enrobage_cm','Enrobage','cm']]),champs:[ch('asN','Effort normal','kN',-1e7,1e7),ch('asM','Moment','kN·m',-1e7,1e7),ch('enrobage_cm','Enrobage','cm',1,10)]});
+ sp('as','as_cercle','Section circulaire : effort tranchant simplifié',{warn:true,quand:dp=>dp.asForme==='circulaire',sensible:dp=>(+dp.asV>0)?'un effort tranchant est appliqué à la section':null,supposes:'Pour le cisaillement, la section ronde est remplacée par un rectangle équivalent.',ignore:'La largeur réelle de la section ronde qui varie avec la hauteur.',ne:'Forts efforts tranchants, sections très petites.',valeurs:vals([['asD_cm','Diamètre','cm'],['asV','Effort tranchant','kN'],['asN','Effort normal','kN'],['asM','Moment','kN·m']]),champs:[ch('asV','Effort tranchant','kN',-1e7,1e7)]});
+
+ /* ---------- Accès aux données de l'ouvrage ---------- */
+ const ALLOF=pfx=>SPECS[pfx]||[];
+ const getT=id=>{ try{ return taskById(id); }catch(_){ return null; } };
+ const getDp=(pfx,id)=>{ const t=getT(id); return t&&PFX[pfx]&&t[PFX[pfx].prop]?t[PFX[pfx].prop]:null; };
+ const store=dp=>{ if(!dp.valid||typeof dp.valid!=='object') dp.valid={}; return dp.valid; };
+ const skillsOf=dp=>{ if(!Array.isArray(dp.skills)) dp.skills=[]; return dp.skills; };
+ const seuilsOf=(dp,spec)=>{ const o={}; (spec.seuils||[]).forEach(s=>{ const v=dp.validSeuils&&dp.validSeuils[spec.id+'.'+s.k]; o[s.k]=(v!==undefined&&isFinite(+v))?+v:s.def; }); return o; };
+ const sensibleMsg=(dp,spec)=>{ try{ return spec.sensible?spec.sensible(dp,seuilsOf(dp,spec)):null; }catch(_){ return null; } };
+ const appliesTo=(dp,spec)=>{ try{ return spec.quand?!!spec.quand(dp):true; }catch(_){ return false; } };
+ const pending=(dp,pfx)=>ALLOF(pfx).filter(s=>s.warn&&appliesTo(dp,s)).filter(s=>{ const e=store(dp)[s.id]; if(!e) return true; if(sensibleMsg(dp,s)&&!e.sens) return true; return false; });
+ const valsNow=(dp,spec)=>{ try{ return spec.valeurs?spec.valeurs(dp):[]; }catch(_){ return []; } };
+ const skillById=(dp,id)=>skillsOf(dp).find(s=>s.id===id);
+ const CONSEIL='Il est conseillé de saisir vous-même les effets.';
+ /* trace pour la note : phrase unique par choix */
+ function traceTxt(spec,e,dp){
+  const sk=e.choix==='methode'?skillById(dp,e.skillId):null;
+  const c=e.choix==='accepte'?'vous avez choisi la méthode simplifiée':(e.choix==='modifie'?'vous avez saisi vos propres effets':'vous avez décrit votre propre méthode');
+  const base=spec.titre+' : '+(e.choix==='accepte'?'méthode intégrée acceptée':(e.choix==='modifie'?'valeurs saisies par l\'ingénieur':'calcul par méthode décrite par l\'utilisateur'+(sk?' (« '+sk.nom+' »)':'')))+', le '+frDate(e.date)+'.';
+  return base+(e.sens?' Il vous était conseillé de saisir vous-même les effets ; '+c+'.':'');
+ }
+ const choixTxt=(spec,e,dp)=>{ if(!e) return null; const d=frDate(e.date); const sk=e.choix==='methode'?skillById(dp,e.skillId):null;
+  return e.choix==='accepte'?'méthode intégrée acceptée le '+d:(e.choix==='modifie'?'valeurs saisies par vous le '+d:'méthode décrite par vous'+(sk?' (« '+sk.nom+' »)':'')+', non vérifiée par un moteur, validée le '+d); };
+
+ /* ---------- Fenêtre commune ---------- */
+ function overlay(cls){ try{ stopVoice(); }catch(_){ } const old=document.getElementById('dvOv'); if(old) old.remove(); const ov=document.createElement('div'); ov.id='dvOv'; ov.className='pcFeuOv dvOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','dvT');
+  ov.addEventListener('mousedown',e=>{ ov._down=(e.target===ov); }); document.body.appendChild(ov); try{ window.dimChEsc&&window.dimChEsc(ov); }catch(_){ } return ov; }
+ function closeOv(ov){ try{ stopVoice(); }catch(_){ } ov.remove(); }
+ function valsTable(rows){ return rows.length?'<table class="dvVals"><tbody>'+rows.map(r=>'<tr><th>'+esc(r[0])+'</th><td>'+esc(r[1])+'</td></tr>').join('')+'</tbody></table>':'<p class="pcNote">Aucune valeur saisie pour cette méthode.</p>'; }
+ function commit(ctx,spec,entry){ const dp=ctx.dp; entry.date=todayIso(); entry.vals=valsNow(dp,spec); const sm=sensibleMsg(dp,spec); entry.sens=!!sm; store(dp)[spec.id]=entry; try{ persist(); }catch(_){ } try{ refresh(ctx.pfx,ctx.id,true); }catch(_){ } }
+ function dimValidateWindow(spec,ctx){
+  ctx=ctx||{}; if(!ctx.dp&&ctx.pfx&&ctx.id) ctx.dp=getDp(ctx.pfx,ctx.id); const dp=ctx.dp; if(!dp) return null;
+  const ov=overlay(); const sm=sensibleMsg(dp,spec); const cur=store(dp)[spec.id];
+  const rows=[ {icon:'check',nom:'J\'accepte',aide:'Je garde la méthode intégrée telle qu\'elle est décrite ci-dessus.',attr:'data-dv-c="accepte"',primary:true} ];
+  if(spec.champs&&spec.champs.length) rows.push({icon:'edit',nom:'Je modifie',aide:'Je donne moi-même mes valeurs.',attr:'data-dv-c="modifie"'}); else rows.push({icon:'edit',nom:'Je modifie',aide:'Je change moi-même les valeurs dans la fiche et les paramètres avancés.',attr:'data-dv-c="modifie"'});
+  rows.push({icon:'chat',nom:'Je décris ma méthode',aide:'J\'explique ma méthode à l\'assistant, qui la met en calcul pas à pas.',attr:'data-dv-c="methode"'});
+  rows.push({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-dv-c=""'});
+  ov.innerHTML='<div class="pcFeuCard dvCard"><h4 id="dvT">Voici ce qui est à valider</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
+   +(sm?'<p class="dvSens" role="note"><b>Cas sensible : </b>'+esc(sm)+'. <b>'+esc(CONSEIL)+'</b></p>':'')
+   +'<h5 class="dvH5">Voici la méthode utilisée</h5><ul class="pcFeuUl dvUl"><li><b>Elle suppose : </b>'+esc(spec.supposes)+'</li><li><b>Elle ignore : </b>'+esc(spec.ignore)+'</li><li><b>Elle ne convient pas quand : </b>'+esc(spec.ne)+'</li></ul>'
+   +'<h5 class="dvH5">Valeurs utilisées</h5>'+valsTable(valsNow(dp,spec))
+   +(cur?'<p class="pcNote">Choix actuel : '+esc(choixTxt(spec,cur,dp))+'.</p>':'')
+   +rows.map(r=>window.dimChRow?window.dimChRow(r):'').join('')+'</div>';
+  ov.addEventListener('click',e=>{ const b=e.target.closest('[data-dv-c]'); if(!b){ if(e.target===ov&&ov._down) closeOv(ov); return; } const c=b.dataset.dvC;
+   if(c===''){ closeOv(ov); return; }
+   if(c==='accepte'){ commit(ctx,spec,{choix:'accepte'}); closeOv(ov); clip('Choix enregistré : méthode intégrée acceptée.'); if(ctx.onAccept) ctx.onAccept(); return; }
+   if(c==='modifie'){ if(spec.champs&&spec.champs.length) editView(ov,spec,ctx); else { closeOv(ov); commit(ctx,spec,{choix:'modifie'}); clip('Choix enregistré. Modifiez les valeurs dans la fiche, puis touchez Calculer.'); } return; }
+   if(c==='methode'){ chatView(ov,spec,ctx); return; } });
+  const f=ov.querySelector('.dimChRow'); if(f) try{ f.focus({preventScroll:true}); }catch(_){ } return ov;
+ }
+ /* « Je modifie » : mes valeurs, avec bornes ; écrites dans la fiche par ses propres champs (donc avec ses propres contrôles) */
+ function findInput(k){ const mb=document.getElementById('modalBody'); if(!mb) return null; return [...mb.querySelectorAll('input,select,textarea')].find(el=>[...el.attributes].some(a=>a.name.indexOf('data-')===0&&a.value===k)); }
+ function editView(ov,spec,ctx){
+  const dp=ctx.dp; const locked=(typeof dimStatut==='function')&&dimStatut(dp)==='calcule';
+  const cs=spec.champs.filter(c=>dp[c.k]!==undefined);
+  ov.innerHTML='<div class="pcFeuCard dvCard"><h4 id="dvT">Je modifie mes valeurs</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
+   +(locked?'<p class="dvSens" role="note">La fiche est verrouillée (calcul fait). Touchez « Recalculer l\'ouvrage » pour la rouvrir, puis revenez ici.</p>':'')
+   +'<div class="dvFields">'+cs.map(c=>'<label class="dvFld"><span class="dvFl">'+esc(c.nom)+'</span><span class="dvFc"><input type="text" inputmode="decimal" data-dv-k="'+esc(c.k)+'" value="'+esc(dp[c.k]===null?'':String(dp[c.k]).replace('.',','))+'"'+(locked?' disabled':'')+'><span class="dvU">'+esc(c.unit||'')+'</span></span><span class="dvErr" data-dv-err="'+esc(c.k)+'" role="alert"></span></label>').join('')+'</div>'
+   +'<div class="dvBtns">'+ib('back','Retour','data-dv-x="back"')+(locked?'':ib('save','Enregistrer mes valeurs','data-dv-x="save"'))+'</div></div>';
+  ov.onclick=e=>{ const b=e.target.closest('[data-dv-x]'); if(!b){ if(e.target===ov&&ov._down) closeOv(ov); return; }
+   if(b.dataset.dvX==='back'){ ov.onclick=null; dimValidateWindow(spec,ctx); return; }
+   let bad=false; const out={}; ov.querySelectorAll('[data-dv-k]').forEach(inp=>{ const k=inp.dataset.dvK, c=cs.find(x=>x.k===k), er=ov.querySelector('[data-dv-err="'+k+'"]'); const raw=inp.value.trim().replace(',','.'); const n=raw===''?NaN:Number(raw); let m='';
+    if(raw===''){ m=''; } else if(!isFinite(n)) m=c.nom+' doit être un nombre.'; else if(c.min!=null&&n<c.min) m=c.nom+' doit être ≥ '+fnum(c.min)+(c.unit?' '+c.unit:'')+'.'; else if(c.max!=null&&n>c.max) m=c.nom+' doit être ≤ '+fnum(c.max)+(c.unit?' '+c.unit:'')+'.';
+    er.textContent=m; inp.setAttribute('aria-invalid',m?'true':'false'); if(m) bad=true; else if(raw!==''&&n!==+dp[k]) out[k]=n; });
+   if(bad) return;
+   Object.keys(out).forEach(k=>{ const el=findInput(k); if(el&&!el.disabled){ el.value=String(out[k]); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); } else { dp[k]=out[k]; } });
+   commit(ctx,spec,{choix:'modifie',champs:out}); closeOv(ov); clip('Choix enregistré : vos valeurs sont prises. Touchez Calculer pour lancer le calcul.'); };
+ }
+
+ /* ---------- Chat IA : « Je décris ma méthode » ---------- */
+ const CH={}; const chatSt=(ctx,spec)=>{ const k=ctx.id+'|'+spec.id; return CH[k]=CH[k]||{log:[],draft:null,busy:false,view:'chat',demande:''}; };
+ let rec=null, recStop=false, voiceOn=false;
+ function stopVoice(){ voiceOn=false; try{ if(rec){ recStop=true; rec.stop(); } }catch(_){ } rec=null; try{ window.speechSynthesis&&window.speechSynthesis.cancel(); }catch(_){ } }
+ function speak(txt,done){ try{ const S=window.speechSynthesis; if(!S||!window.SpeechSynthesisUtterance){ done&&done(); return; } S.cancel(); const u=new SpeechSynthesisUtterance(String(txt).slice(0,600)); u.lang='fr-FR'; u.onend=()=>{ done&&done(); }; u.onerror=()=>{ done&&done(); }; S.speak(u); }catch(_){ done&&done(); } }
+ function resultHtml(sk,res){
+  if(!sk) return '';
+  let h='<div class="dvSk"><p class="dvTag" role="note">Calcul par méthode décrite par l\'utilisateur, non vérifié par un moteur.</p><p class="dvSkN"><b>'+esc(sk.nom)+'</b></p>'+(sk.description?'<p class="pcNote">'+esc(sk.description)+'</p>':'');
+  if(!res.ok) return h+'<div class="dimErrBox" role="alert"><b>La méthode ne peut pas être calculée</b><ul>'+res.erreurs.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div></div>';
+  h+='<h5 class="dvH5">Entrées</h5><table class="dvVals"><tbody>'+res.entrees.map(e=>'<tr><th>'+esc(e.nom)+' ('+esc(e.id)+')</th><td>'+esc(window.DimSkill.fmt(e.valeur))+(e.unite?' '+esc(e.unite):'')+'</td></tr>').join('')+'</tbody></table>';
+  h+='<h5 class="dvH5">Étapes</h5><ol class="dvSteps">'+res.lignes.map(l=>'<li><b>'+esc(l.nom)+'</b><span class="dvF">'+esc(l.id)+' = '+esc(l.formule)+'</span><span class="dvF">= '+esc(l.subst)+'</span><span class="dvR">= '+esc(window.DimSkill.fmt(l.valeur))+(l.unite?' '+esc(l.unite):'')+'</span></li>').join('')+'</ol>';
+  h+='<h5 class="dvH5">Résultat</h5><table class="dvVals dvRes"><tbody>'+res.sorties.map(o=>'<tr><th>'+esc(o.nom)+'</th><td><b>'+esc(window.DimSkill.fmt(o.valeur))+(o.unite?' '+esc(o.unite):'')+'</b></td></tr>').join('')+'</tbody></table></div>';
+  return h;
+ }
+ function chatView(ov,spec,ctx){
+  const dp=ctx.dp, st=chatSt(ctx,spec); const online=navigator.onLine!==false;
+  const draw=()=>{
+   const res=st.draft?window.DimSkill.run(st.draft):null; const ex=skillsOf(dp);
+   const logH=st.log.length?st.log.map(m=>'<div class="dvMsg dvMsg-'+m.role+'">'+esc(m.text)+'</div>').join(''):'<p class="pcNote">Décrivez votre méthode avec vos mots, au clavier ou au micro. Exemple : « le moment est q fois L au carré sur 8, avec q = 20 kN/m et L = 5 m ».</p>';
+   ov.innerHTML='<div class="pcFeuCard dvCard dvChat"><h4 id="dvT">Je décris ma méthode</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
+    +(online?'':'<p class="dvSens" role="alert">Hors ligne : l\'assistant a besoin d\'Internet. Vous pouvez quand même écrire la méthode vous-même avec « Modifier ».</p>')
+    +(ex.length&&!st.draft?'<div class="dvReuse"><p class="pcNote">Méthodes déjà décrites pour cet ouvrage :</p>'+ex.map(s=>window.dimChRow({icon:'chat',nom:s.nom,aide:'Reprendre cette méthode.',attr:'data-dv-reuse="'+esc(s.id)+'"'})).join('')+'</div>':'')
+    +'<div class="dvLog" aria-live="polite">'+logH+'</div>'
+    +(st.draft?resultHtml(st.draft,res):'')
+    +(st.draft?'<div class="dvBtns">'+ib('check','Valider ce calcul','data-dv-x="valider"'+(res&&res.ok?'':' disabled'))+ib('edit','Modifier','data-dv-x="edit"')+ib('close','Annuler','data-dv-x="annuler"')+'</div>'
+     :'<div class="dvBtns">'+ib('edit','Écrire moi-même','data-dv-x="edit"')+'</div>')
+    +'<textarea class="dvIn" rows="3" data-dv-in aria-label="Votre message à l\'assistant" placeholder="Votre message…"'+(st.busy?' disabled':'')+'></textarea>'
+    +'<div class="dvBtns dvTools">'+ib('mic','Micro','data-dv-x="mic"')+ib(voiceOn?'stop':'speaker',voiceOn?'Arrêter la voix':'Discussion vocale','data-dv-x="voix"'+(voiceOn?' aria-pressed="true"':' aria-pressed="false"'))+ib('send',st.busy?'Envoi…':'Envoyer','data-dv-x="send"'+(st.busy?' disabled':''))+'</div>'
+    +'<div class="dvBtns">'+ib('back','Retour','data-dv-x="retour"')+'</div></div>';
+   const lg=ov.querySelector('.dvLog'); if(lg) lg.scrollTop=lg.scrollHeight; const ta=ov.querySelector('[data-dv-in]'); if(ta&&!st.busy) ta.value=st._txt||''; if(ta) ta.addEventListener('input',()=>{ st._txt=ta.value; });
+   const mic=ov.querySelector('[data-dv-x="mic"]'); if(mic&&rec) mic.classList.add('on');
+  };
+  const send=async()=>{
+   const ta=ov.querySelector('[data-dv-in]'); const msg=String((ta?ta.value:st._txt)||'').trim(); if(!msg||st.busy) return; st._txt=''; st.log.push({role:'user',text:msg}); st.demande=(st.demande?st.demande+'\n':'')+msg; st.busy=true; draw();
+   try{
+    if(navigator.onLine===false) throw new Error('Hors ligne : l\'assistant a besoin d\'une connexion Internet. Rien n\'a été modifié.');
+    if(typeof SUPABASE_URL==='undefined'||typeof SUPABASE_KEY==='undefined') throw new Error('Le canal de l\'assistant IA n\'est pas configuré dans cette application (adresse et clé du serveur IA absentes). Vous pouvez écrire la méthode vous-même avec « Écrire moi-même ».');
+    const body={message:msg,historique:st.log.slice(-7,-1),contexte:{module:spec.pfx,methode:spec.titre,suppose:spec.supposes,ignore:spec.ignore,ne_convient_pas:spec.ne,valeurs:valsNow(dp,spec)},skill_courant:st.draft};
+    const resp=await fetch(SUPABASE_URL+'/functions/v1/methode-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(resp.status===404) throw new Error('L\'assistant des méthodes n\'est pas encore activé : la fonction serveur « methode-ia » (fichier supabase/methode-ia.ts) doit être déployée avec la clé du modèle IA. Vous pouvez écrire la méthode vous-même avec « Écrire moi-même ».');
+    const j=await resp.json().catch(()=>null);
+    if(!resp.ok||!j||j.error||!j.data) throw new Error((j&&j.error)||('Le serveur IA a répondu une erreur ('+resp.status+'). Rien n\'a été modifié.'));
+    const d=j.data; let txt=String(d.message||'').slice(0,1200);
+    if(d.skill){ const v=window.DimSkill.validate(d.skill); if(v.skill&&v.ok){ st.draft=v.skill; txt=(txt?txt+' ':'')+'Voici le calcul proposé : vérifiez-le pas à pas avant de le valider.'; } else { txt=(txt?txt+' ':'')+'La définition reçue est incomplète ('+(v.errors||[]).slice(0,3).join(' ; ')+'). Précisez votre demande ou touchez « Modifier ».'; if(v.skill&&v.skill.etapes.length) st.draft=st.draft||v.skill; } }
+    if(!txt) txt='Je n\'ai pas pu transformer cette demande en calcul. Pouvez-vous préciser ?';
+    st.log.push({role:'bot',text:txt}); st.busy=false; draw();
+    if(voiceOn) speak(txt,()=>{ if(voiceOn&&document.getElementById('dvOv')===ov) listen(); });
+   }catch(e){ st.busy=false; const em=(e&&e.message)||String(e); st.log.push({role:'err',text:/Failed to fetch|NetworkError|Load failed/i.test(em)?'Le serveur IA est injoignable (hors ligne ?). Rien n\'a été modifié. Vous pouvez écrire la méthode vous-même avec « Écrire moi-même ».':em}); draw(); }
+  };
+  const listen=()=>{
+   const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR){ clip('Dictée non disponible sur ce navigateur. Utilisez la dictée du clavier.'); voiceOn=false; draw(); return; }
+   if(rec){ recStop=true; try{ rec.stop(); }catch(_){ } return; }
+   const ta=ov.querySelector('[data-dv-in]'); if(!ta) return; const r=new SR(); r.lang='fr-FR'; r.interimResults=true; r.continuous=!voiceOn; rec=r; recStop=false; const base=ta.value?ta.value+' ':'';
+   r.onresult=e=>{ let t=''; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript; ta.value=base+t; st._txt=ta.value; };
+   r.onerror=e=>{ const c=e&&e.error; clip(c==='not-allowed'||c==='service-not-allowed'?'Micro bloqué par le navigateur. Utilisez la dictée du clavier.':c==='no-speech'?'Aucune voix détectée.':c==='audio-capture'?'Aucun micro détecté.':'Dictée indisponible.'); };
+   r.onend=()=>{ const wasStop=recStop; rec=null; recStop=false; const m=ov.querySelector('[data-dv-x="mic"]'); if(m) m.classList.remove('on'); if(ov.isConnected&&voiceOn&&!wasStop&&ta.value.trim()) send(); };
+   try{ r.start(); const m=ov.querySelector('[data-dv-x="mic"]'); if(m) m.classList.add('on'); }catch(_){ rec=null; }
+  };
+  const onClick=e=>{
+   const ru=e.target.closest('[data-dv-reuse]'); if(ru){ const s=skillById(dp,ru.dataset.dvReuse); if(s){ st.draft=JSON.parse(JSON.stringify(s.def)); st.log.push({role:'bot',text:'Méthode « '+s.nom+' » reprise. Vérifiez-la, modifiez-la ou validez-la.'}); draw(); } return; }
+   const b=e.target.closest('[data-dv-x]'); if(!b){ if(e.target===ov&&ov._down){ closeOv(ov); } return; }
+   const x=b.dataset.dvX;
+   if(x==='retour'){ stopVoice(); ov.onclick=null; dimValidateWindow(spec,ctx); return; }
+   if(x==='send'){ send(); return; }
+   if(x==='mic'){ listen(); return; }
+   if(x==='voix'){ if(voiceOn){ stopVoice(); draw(); } else { voiceOn=true; draw(); listen(); } return; }
+   if(x==='annuler'){ st.draft=null; st.log.push({role:'bot',text:'Calcul annulé. Rien n\'a été enregistré.'}); draw(); return; }
+   if(x==='edit'){ skillEditor(ov,spec,ctx,st,redraw); return; }
+   if(x==='valider'){ const v=window.DimSkill.validate(st.draft); const r=window.DimSkill.run(st.draft); if(!v.ok||!r.ok){ clip('Le calcul contient des erreurs : corrigez-le avant de le valider.'); return; }
+    const sks=skillsOf(dp); const ex=st.editId&&sks.find(s=>s.id===st.editId); const rec0=ex||{id:'s'+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)}; Object.assign(rec0,{nom:v.skill.nom,def:v.skill,demande:st.demande||rec0.demande||'',spec:spec.id,date:todayIso()}); if(!ex) sks.push(rec0);
+    commit(ctx,spec,{choix:'methode',skillId:rec0.id}); stopVoice(); closeOv(ov); st.draft=null; st.editId=null; clip('Méthode enregistrée avec l\'ouvrage. Elle est notée « non vérifiée par un moteur ». Touchez Calculer pour lancer le calcul.'); }
+  };
+  ov.onclick=onClick; const redraw=()=>{ ov.oninput=null; ov.onclick=onClick; draw(); };
+  draw(); const ta0=ov.querySelector('[data-dv-in]'); if(ta0) try{ ta0.focus({preventScroll:true}); }catch(_){ }
+  return {draw:redraw};
+ }
+ /* éditeur du calcul : entrées, étapes, sorties, aperçu en direct */
+ function skillEditor(ov,spec,ctx,st,back){
+  const D=window.DimSkill; let sk=st.draft?JSON.parse(JSON.stringify(st.draft)):{nom:'Ma méthode',description:'',entrees:[{id:'a',nom:'Donnée',unite:'',valeur:1}],etapes:[{id:'r',nom:'Résultat',formule:'a*2',unite:''}],sorties:[{id:'r'}]};
+  const draw=()=>{
+   const res=D.run(sk);
+   ov.innerHTML='<div class="pcFeuCard dvCard dvEd"><h4 id="dvT">Modifier le calcul</h4><p class="pcNote">Formules : nombres, + - * / ^, parenthèses, sqrt, min, max, abs, sin, cos, tan, ln, exp, pi, et vos noms de variables. Décimales avec un point.</p>'
+    +'<label class="dvFld"><span class="dvFl">Nom de la méthode</span><span class="dvFc"><input type="text" data-e="nom" maxlength="80" value="'+esc(sk.nom)+'"></span></label>'
+    +'<label class="dvFld"><span class="dvFl">Description (ce que vous voulez calculer)</span><span class="dvFc"><textarea rows="2" data-e="description" maxlength="600">'+esc(sk.description)+'</textarea></span></label>'
+    +'<h5 class="dvH5">Entrées</h5>'+sk.entrees.map((e,i)=>'<div class="dvRow"><input type="text" data-e="en.'+i+'.id" value="'+esc(e.id)+'" aria-label="Nom court" placeholder="nom"><input type="text" data-e="en.'+i+'.nom" value="'+esc(e.nom)+'" aria-label="Libellé" placeholder="libellé"><input type="text" inputmode="decimal" data-e="en.'+i+'.valeur" value="'+esc(String(e.valeur).replace('.',','))+'" aria-label="Valeur" placeholder="valeur"><input type="text" data-e="en.'+i+'.unite" value="'+esc(e.unite||'')+'" aria-label="Unité" placeholder="unité"><button type="button" class="dimIB" data-dimui="1" data-x="delen" data-i="'+i+'" aria-label="Supprimer cette entrée" title="Supprimer cette entrée">'+svg('trash')+'</button></div>').join('')
+    +'<div class="dvBtns">'+ib('plus','Ajouter une entrée','data-x="addEn"')+'</div>'
+    +'<h5 class="dvH5">Étapes de calcul</h5>'+sk.etapes.map((e,i)=>'<div class="dvRow dvRow2"><input type="text" data-e="et.'+i+'.id" value="'+esc(e.id)+'" aria-label="Nom court" placeholder="nom"><input type="text" data-e="et.'+i+'.nom" value="'+esc(e.nom)+'" aria-label="Libellé" placeholder="libellé"><input type="text" data-e="et.'+i+'.formule" value="'+esc(e.formule)+'" aria-label="Formule" placeholder="formule, ex. q*L^2/8"><input type="text" data-e="et.'+i+'.unite" value="'+esc(e.unite||'')+'" aria-label="Unité" placeholder="unité"><button type="button" class="dimIB" data-dimui="1" data-x="delet" data-i="'+i+'" aria-label="Supprimer cette étape" title="Supprimer cette étape">'+svg('trash')+'</button></div>').join('')
+    +'<div class="dvBtns">'+ib('plus','Ajouter une étape','data-x="addEt"')+'</div>'
+    +'<h5 class="dvH5">Résultats affichés</h5><p class="pcNote">Noms des étapes à montrer comme résultat, séparés par une virgule.</p><label class="dvFld"><span class="dvFc"><input type="text" data-e="sorties" value="'+esc(sk.sorties.map(s=>s.id).join(', '))+'" aria-label="Résultats"></span></label>'
+    +'<div class="dvPrev">'+(res.ok?'<p class="pcNote"><b>Aperçu :</b> '+res.sorties.map(o=>esc(o.nom)+' = '+esc(D.fmt(o.valeur))+(o.unite?' '+esc(o.unite):'')).join(' ; ')+'</p>':'<div class="dimErrBox" role="alert"><b>À corriger</b><ul>'+res.erreurs.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>')+'</div>'
+    +'<div class="dvBtns">'+ib('back','Retour sans enregistrer','data-x="cancel"')+ib('save','Enregistrer ce calcul','data-x="ok"')+'</div></div>';
+  };
+  const setv=(path,val)=>{ const p=path.split('.'); if(p[0]==='nom') sk.nom=val; else if(p[0]==='description') sk.description=val; else if(p[0]==='sorties') sk.sorties=val.split(/[,;]/).map(s=>s.trim()).filter(Boolean).map(id=>({id})); else { const arr=p[0]==='en'?sk.entrees:sk.etapes, o=arr[+p[1]]; if(o) o[p[2]]=val; } };
+  ov.onclick=e=>{ const b=e.target.closest('[data-x]'); if(!b){ if(e.target===ov&&ov._down) closeOv(ov); return; }
+   const x=b.dataset.x;
+   if(x==='cancel'){ back(); return; }
+   if(x==='addEn'){ sk.entrees.push({id:'e'+(sk.entrees.length+1),nom:'Donnée',unite:'',valeur:0}); draw(); return; }
+   if(x==='addEt'){ sk.etapes.push({id:'s'+(sk.etapes.length+1),nom:'Étape',formule:'',unite:''}); draw(); return; }
+   if(x==='delen'){ sk.entrees.splice(+b.dataset.i,1); draw(); return; }
+   if(x==='delet'){ sk.etapes.splice(+b.dataset.i,1); draw(); return; }
+   if(x==='ok'){ const v=D.validate(sk); if(!v.ok){ clip('Corrigez d\'abord : '+v.errors[0]); return; } st.draft=v.skill; st.log.push({role:'bot',text:'Calcul modifié. Vérifiez-le pas à pas, puis validez-le.'}); back(); } };
+  ov.oninput=e=>{ const el=e.target.closest('[data-e]'); if(!el) return; setv(el.dataset.e,el.value); const res=D.run(sk); const pv=ov.querySelector('.dvPrev'); if(pv) pv.innerHTML=res.ok?'<p class="pcNote"><b>Aperçu :</b> '+res.sorties.map(o=>esc(o.nom)+' = '+esc(D.fmt(o.valeur))+(o.unite?' '+esc(o.unite):'')).join(' ; ')+'</p>':'<div class="dimErrBox" role="alert"><b>À corriger</b><ul>'+res.erreurs.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>'; };
+  draw();
+ }
+
+ /* ---------- Bloc dans la fiche : lignes « Choix » ; dans les Paramètres avancés : seuils et méthodes enregistrées ---------- */
+ function choixBlockHtml(pfx,dp){
+  const L=ALLOF(pfx).filter(s=>!s.warn||appliesTo(dp,s)||store(dp)[s.id]);
+  return '<div class="dvBlk" data-dv-pfx="'+pfx+'">'+L.map(s=>{ const e=store(dp)[s.id]; const sm=sensibleMsg(dp,s);
+   const t=e?('Choix : <b>'+esc(s.titre)+'</b> — '+esc(choixTxt(s,e,dp))):('À valider : <b>'+esc(s.titre)+'</b>'+(s.warn?' (avant le calcul)':''));
+   const alert=(!e&&s.warn)||(e&&sm&&!e.sens);
+   return '<div class="dimChLine dvLine'+(alert?' dvPend':'')+'"><span class="dimChTxt">'+t+(sm?'<span class="dvSensT"> — cas sensible : '+esc(sm)+'. '+esc(CONSEIL)+'</span>':'')+'</span><button type="button" class="ghost dimChMod" data-dv-open="'+s.id+'">'+(e?'Modifier':'Voir et valider')+'</button></div>'; }).join('')+'</div>';
+ }
+ function advBlockHtml(pfx,dp){
+  const sp0=ALLOF(pfx).filter(s=>s.seuils&&s.seuils.length); const sks=skillsOf(dp);
+  if(!sp0.length&&!sks.length) return '';
+  let h='<div class="dvAdv" data-dv-pfx="'+pfx+'"><h6 class="dvH6">Validations : cas sensibles et méthodes décrites</h6>';
+  sp0.forEach(s=>{ const S=seuilsOf(dp,s); h+=s.seuils.map(z=>{ const key=s.id+'.'+z.k; const saisi=dp.validSeuils&&dp.validSeuils[key]!==undefined&&isFinite(+dp.validSeuils[key]);
+   return '<label class="dvFld"><span class="dvFl">'+esc(z.nom)+' <span class="pcElsTag">'+(saisi?'saisi':'par défaut')+'</span></span><span class="dvFc"><input type="text" inputmode="decimal" data-dv-seuil="'+esc(key)+'" data-min="'+z.min+'" data-max="'+z.max+'" value="'+esc(String(S[z.k]).replace('.',','))+'"><span class="dvU">'+esc(z.unit||'')+'</span><button type="button" class="ghost dvRet" data-dv-ret="'+esc(key)+'"'+(saisi?'':' disabled')+'>Rétablir</button></span></label>'; }).join(''); });
+  if(sks.length){ h+='<p class="pcNote">Méthodes décrites pour cet ouvrage (non vérifiées par un moteur) :</p>'+sks.map(s=>'<div class="dimChLine dvLine"><span class="dimChTxt"><b>'+esc(s.nom)+'</b> — '+frDate(s.date)+'</span><button type="button" class="ghost dimChMod" data-dv-sk="edit" data-i="'+esc(s.id)+'">Modifier</button><button type="button" class="ghost dimChMod" data-dv-sk="del" data-i="'+esc(s.id)+'">Supprimer</button></div>').join(''); }
+  return h+'</div>';
+ }
+ function ctxNow(){ const mb=document.getElementById('modalBody'); if(!mb) return null; const id=window._ficheIaId; if(!id) return null;
+  for(const p of Object.keys(PFX)){ const b=mb.querySelector('[data-'+p+'-act="validerForm"]'); if(b){ const dp=getDp(p,id); if(dp) return {pfx:p,id,dp,btn:b,mb}; } } return null; }
+ function refresh(pfx,id,force){
+  const c=ctxNow(); if(!c||c.pfx!==pfx||String(c.id)!==String(id)) return; inject(c,force); }
+ function inject(c,force){
+  const {pfx,dp,mb}=c; const sig=JSON.stringify([dp.valid||{},dp.skills||[],dp.validSeuils||{},ALLOF(pfx).map(s=>appliesTo(dp,s)+'|'+(sensibleMsg(dp,s)||''))]);
+  const root=mb.querySelector('[class*="pj"][class*="Root"]')||mb; const had=root.querySelector('.dvBlk[data-dv-pfx="'+pfx+'"]');
+  if(had&&!force&&had.dataset.sig===sig) return;
+  root.querySelectorAll('.dvBlk').forEach(b=>{ const w=b.closest('.dimFoldB'); (w||b).remove(); }); root.querySelectorAll('.dvBlk').forEach(b=>{ const w=b.closest('.dimFoldB'); (w||b).remove(); }); root.querySelectorAll('.dvSec,.dvAdv').forEach(x=>x.remove());
+  const adv=root.querySelector('details.pcEls'); const holder=document.createElement('div'); holder.className='dvSec'; holder.innerHTML='<h5>Validations et méthodes</h5>'+choixBlockHtml(pfx,dp); const blk=holder.querySelector('.dvBlk'); blk.dataset.sig=sig;
+  const hr=document.createElement('hr'); hr.className='pcFormSep'; hr.classList.add('dvSec');
+  if(adv&&adv.parentNode){ adv.parentNode.insertBefore(hr,adv); [...holder.children].forEach(n=>{ n.classList.add('dvSec'); adv.parentNode.insertBefore(n,adv); }); }
+  else { root.appendChild(hr); [...holder.children].forEach(n=>{ n.classList.add('dvSec'); root.appendChild(n); }); }
+  const ab=advBlockHtml(pfx,dp); if(ab){ const body=(adv&&adv.querySelector('.pcElsBody'))||null; const w=document.createElement('div'); w.innerHTML=ab; if(body) body.appendChild(w.firstChild); }
+ }
+ let tmr=null; const sched=()=>{ if(tmr) return; tmr=setTimeout(()=>{ tmr=null; try{ const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) return; const c=ctxNow(); if(c) inject(c,false); }catch(e){ console.warn('dimValid',e); } },120); };
+ try{ new MutationObserver(sched).observe(document.body,{childList:true,subtree:true}); }catch(_){ }
+
+ /* ---------- Clics : ouverture de la fenêtre, seuils, méthodes enregistrées, bouton Calculer ---------- */
+ const pass={on:false}; window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&voiceOn) stopVoice(); },true); window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&voiceOn) stopVoice(); },true);
+ document.addEventListener('click',e=>{
+  const t=e.target; if(!t||!t.closest) return;
+  const op=t.closest('[data-dv-open]'); if(op){ e.preventDefault(); e.stopPropagation(); const c=ctxNow(); if(!c) return; const s=ALLOF(c.pfx).find(x=>x.id===op.dataset.dvOpen); if(s) dimValidateWindow(s,{pfx:c.pfx,id:c.id,dp:c.dp}); return; }
+  const rt=t.closest('[data-dv-ret]'); if(rt){ e.preventDefault(); const c=ctxNow(); if(!c) return; if(c.dp.validSeuils) delete c.dp.validSeuils[rt.dataset.dvRet]; try{ persist(); }catch(_){ } inject(c,true); return; }
+  const sk=t.closest('[data-dv-sk]'); if(sk){ e.preventDefault(); const c=ctxNow(); if(!c) return; const s=skillById(c.dp,sk.dataset.i); if(!s) return;
+   if(sk.dataset.dvSk==='del'){ if(!sk.dataset.sure){ sk.dataset.sure='1'; sk.textContent='Confirmer la suppression'; return; } c.dp.skills=skillsOf(c.dp).filter(x=>x.id!==s.id); Object.keys(store(c.dp)).forEach(k=>{ if(store(c.dp)[k].skillId===s.id) delete store(c.dp)[k]; }); try{ persist(); }catch(_){ } inject(c,true); clip('Méthode supprimée.'); return; }
+   const spec=ALLOF(c.pfx).find(x=>x.id===s.spec)||ALLOF(c.pfx)[0]; const ctx={pfx:c.pfx,id:c.id,dp:c.dp}; const ov=overlay(); const st=chatSt(ctx,spec); st.draft=JSON.parse(JSON.stringify(s.def)); st.editId=s.id; st.demande=s.demande||''; const v=chatView(ov,spec,ctx); skillEditor(ov,spec,ctx,st,()=>v.draw()); return; }
+  const b=t.closest('button'); if(!b||pass.on) return; const pf=Object.keys(PFX).find(p=>b.hasAttribute('data-'+p+'-act')&&b.getAttribute('data-'+p+'-act')==='validerForm'); if(!pf) return;
+  const id=window._ficheIaId; const dp=getDp(pf,id); if(!dp||b.disabled) return; if(typeof dimStatut==='function'&&dimStatut(dp)==='calcule') return;
+  const P=pending(dp,pf); if(!P.length) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const step=i=>{ if(i>=P.length){ pass.on=true; try{ b.click(); }finally{ pass.on=false; } return; } dimValidateWindow(P[i],{pfx:pf,id,dp,onAccept:()=>step(i+1)}); };
+  step(0);
+ },true);
+ document.addEventListener('change',e=>{ const el=e.target&&e.target.closest&&e.target.closest('[data-dv-seuil]'); if(!el) return; const c=ctxNow(); if(!c) return; const raw=el.value.trim().replace(',','.'); const n=Number(raw); const mn=+el.dataset.min, mx=+el.dataset.max;
+  if(raw===''||!isFinite(n)||n<mn||n>mx){ el.setAttribute('aria-invalid','true'); el.title='Valeur entre '+fnum(mn)+' et '+fnum(mx); return; } el.removeAttribute('aria-invalid');
+  c.dp.validSeuils=c.dp.validSeuils||{}; c.dp.validSeuils[el.dataset.dvSeuil]=n; try{ persist(); }catch(_){ } inject(c,true); });
+
+ /* ---------- Note de calcul : hypothèses, points à confirmer, annexe, cartouche ---------- */
+ window.dimValidNote=function(dp,kind){
+  try{ const pfx=KIND2PFX[kind]; if(!dp||!pfx) return null; const hyp=[], pts=[]; let annex='', user=false; const done=new Set();
+   ALLOF(pfx).forEach(s=>{ const e=store(dp)[s.id];
+    if(e){ done.add(s.id); hyp.push(traceTxt(s,e,dp)+(e.vals&&e.vals.length?' Valeurs : '+e.vals.map(v=>v[0]+' '+v[1]).join(' ; ')+'.':''));
+     if(e.choix==='accepte') pts.push({tx:'Méthode simplifiée acceptée ('+s.titre+') : '+s.supposes+' À confirmer par l\'ingénieur.',bad:false});
+     if(e.choix==='modifie') pts.push({tx:'Valeurs saisies par l\'ingénieur ('+s.titre+') : non vérifiées par l\'application.',bad:false});
+     if(e.choix==='methode'){ user=true; const k=skillById(dp,e.skillId); pts.push({tx:'Calcul par méthode décrite par l\'utilisateur, non vérifié par un moteur ('+s.titre+(k?', « '+k.nom+' »':'')+') : à vérifier par l\'ingénieur.',bad:false});
+      if(k&&window.DimSkill){ const r=window.DimSkill.run(k.def); annex+='<section class="ncSec"><h4>Annexe : méthode décrite par l\'utilisateur</h4><p><b>Calcul par méthode décrite par l\'utilisateur, non vérifié par un moteur.</b></p><p>Méthode : '+esc(k.nom)+' · validée le '+esc(frDate(e.date))+' · concerne : '+esc(s.titre)+'</p>'+(k.demande?'<p>Description donnée par l\'utilisateur : '+esc(k.demande).replace(/\n/g,'<br>')+'</p>':'')+(k.def.description?'<p>'+esc(k.def.description)+'</p>':'')
+       +(r.ok?'<table class="ncT"><tr><td><b>Entrées</b></td><td>'+r.entrees.map(x=>esc(x.nom)+' ('+esc(x.id)+') = '+esc(window.DimSkill.fmt(x.valeur))+(x.unite?' '+esc(x.unite):'')).join('<br>')+'</td></tr><tr><td><b>Étapes</b></td><td>'+r.lignes.map(l=>esc(l.nom)+' : '+esc(l.id)+' = '+esc(l.formule)+' = '+esc(l.subst)+' = <b>'+esc(window.DimSkill.fmt(l.valeur))+(l.unite?' '+esc(l.unite):'')+'</b>').join('<br>')+'</td></tr><tr><td><b>Résultat</b></td><td>'+r.sorties.map(o=>esc(o.nom)+' = <b>'+esc(window.DimSkill.fmt(o.valeur))+(o.unite?' '+esc(o.unite):'')+'</b>').join('<br>')+'</td></tr></table>':'<p>Le calcul de cette méthode ne peut plus être exécuté : '+esc(r.erreurs.join(' ; '))+'</p>')+'</section>'; } } }
+    else if(s.warn&&appliesTo(dp,s)){ pts.push({tx:'Méthode simplifiée non validée par l\'ingénieur : '+s.titre+'. '+s.supposes,bad:false}); hyp.push(s.titre+' : méthode intégrée utilisée sans validation explicite. '+s.supposes); } });
+   if(!hyp.length&&!pts.length&&!annex) return null;
+   return {hyp,pts,annex,user,section:hyp.length?'<section class="ncSec"><h4>Validations et méthodes</h4>'+hyp.map(x=>'<p>'+esc(x)+'</p>').join('')+'</section>':''};
+  }catch(e){ console.warn('dimValidNote',e); return null; }
+ };
+ window.dimValidateWindow=dimValidateWindow; window.dimValidSpecs=SPECS; window.dimValidPending=pending;
+
+ /* ---------- Styles ---------- */
+ const css=document.createElement('style'); css.id='dimValidCss';
+ css.textContent='.dvCard{max-width:520px}.dvCard h4{margin:0 0 6px}.dvWhat{margin:0 0 10px;font-size:16px}.dvH5{margin:12px 0 6px;font-size:15px}.dvH6{margin:12px 0 6px;font-size:15px}.dvUl{margin-bottom:10px}'
+  +'.dvSens{margin:0 0 10px;padding:10px 12px;border:1.5px solid var(--ds-accent,#FFC400);border-radius:12px;font-size:15px;line-height:1.4}.dvSensT{color:var(--ds-ink-soft,#5f6a66)}'
+  +'.dvVals{width:100%;border-collapse:collapse;margin:0 0 10px;font-size:15px}.dvVals th{text-align:left;font-weight:500;color:var(--ds-ink-soft,#5f6a66);padding:5px 8px 5px 0;vertical-align:top}.dvVals td{padding:5px 0;text-align:right;white-space:nowrap}.dvVals tr{border-bottom:1px solid var(--ds-line,#DAD8D1)}.dvRes td{font-size:16px}'
+  +'.dvBtns{display:flex;justify-content:flex-end;gap:8px;margin:10px 0 4px;flex-wrap:wrap}.dvBtns .dimIBw{flex:0 0 calc((100% - 16px)/3);max-width:calc((100% - 16px)/3);margin:0;min-width:0;align-items:center}.dvBtns .dimIBl{max-width:100%}'
+  +'.dvLog{max-height:30vh;overflow:auto;display:flex;flex-direction:column;gap:8px;margin:8px 0}.dvMsg{max-width:92%;padding:8px 11px;border-radius:12px;font-size:15px;line-height:1.4;white-space:pre-wrap}.dvMsg-user{align-self:flex-end;background:var(--ds-accent,#FFC400);color:var(--ds-on-accent,#000)}.dvMsg-bot{align-self:flex-start;border:1px solid var(--ds-line,#DAD8D1)}.dvMsg-err{align-self:flex-start;border:1.5px solid var(--ds-danger,#B4432D);color:var(--ds-danger,#B4432D)}'
+  +'.dvIn{width:100%;box-sizing:border-box;resize:vertical;background:transparent;color:inherit;border:0;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:16px;padding:8px 2px;margin-top:8px}.dvIn:focus{outline:none;border-bottom-color:var(--ds-accent,#FFC400)}'
+  +'.dvTag{margin:0 0 6px;padding:6px 10px;border-radius:10px;border:1.5px solid var(--ds-accent,#FFC400);font-size:14px;font-weight:600}.dvSk{margin:8px 0}.dvSkN{margin:0 0 4px;font-size:16px}'
+  +'.dvSteps{margin:0 0 10px;padding-left:20px;font-size:15px}.dvSteps li{margin:0 0 8px}.dvF{display:block;color:var(--ds-ink-soft,#5f6a66);font-family:ui-monospace,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}.dvR{display:block;font-weight:700}'
+  +'.dvFld{display:block;margin:0 0 10px}.dvFl{display:block;font-size:15px;font-weight:600;margin:0 0 4px}.dvFc{display:flex;align-items:center;gap:8px}.dvFc input,.dvFc textarea{flex:1;min-width:0;min-height:44px;box-sizing:border-box;background:transparent;color:inherit;border:0;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:16px;padding:6px 2px}.dvFc input:focus,.dvFc textarea:focus{outline:none;border-bottom-color:var(--ds-accent,#FFC400)}.dvFc input[aria-invalid="true"]{border-bottom-color:var(--ds-danger,#B4432D)}.dvU{font-size:15px;color:var(--ds-ink-soft,#5f6a66);white-space:nowrap}.dvErr{display:block;color:var(--ds-danger,#B4432D);font-size:14px}.dvErr:empty{display:none}'
+  +'.dvRow{display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,.7fr) 44px;gap:6px;align-items:end;margin:0 0 6px}.dvRow2{grid-template-columns:minmax(0,.7fr) minmax(0,1.2fr) minmax(0,1.6fr) minmax(0,.7fr) 44px}.dvRow input{min-height:44px;min-width:0;box-sizing:border-box;background:transparent;color:inherit;border:0;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:15px;padding:4px 2px}.dvRow input:focus{outline:none;border-bottom-color:var(--ds-accent,#FFC400)}.dvRow .dimIB{width:44px!important;height:44px!important}'
+  +'@media (max-width:600px){.dvRow,.dvRow2{grid-template-columns:repeat(4,minmax(0,1fr))}.dvRow>:nth-child(1),.dvRow>:nth-child(2),.dvRow>:nth-child(3),.dvRow2>:nth-child(1),.dvRow2>:nth-child(2){grid-column:span 2}.dvRow>:nth-child(4){grid-column:span 1}.dvRow2>:nth-child(3){grid-column:span 4}.dvRow2>:nth-child(4){grid-column:span 3}.dvRow>:nth-child(5),.dvRow2>:nth-child(5){grid-column:span 1;justify-self:end}.dvRow>:nth-child(4){grid-column:span 1}.dvRow{margin-bottom:14px}.dvRow2{margin-bottom:14px}}'
+  +'.dvLine.dvPend .dimChTxt{font-weight:600}.dvLine.dvPend{border-left:3px solid var(--ds-accent,#FFC400);padding-left:8px}.dvAdv{margin:10px 0 0}.dvRet{min-height:44px}'
+  +'.dimIB[aria-pressed="true"]{background:var(--ds-accent,#FFC400)!important;color:var(--ds-on-accent,#000)!important}.dvTools .dimIB.on{background:var(--ds-danger,#B4432D)!important;color:#fff!important}'
+  +'.dvBtns .dimIBw,.dvBtns .dimIBw[data-npos]{flex-direction:column!important;align-items:center;gap:4px}.dvBtns .dimIBl{text-align:center}'
+  +'.dvVals,.dvVals tr,.dvVals th,.dvVals td{border-left:0!important;border-right:0!important;background:transparent!important}.dvVals th,.dvVals td{border-top:0!important;border-bottom:1px solid var(--ds-line,#DAD8D1)!important}.dvVals tr{border:0!important}'
+  +'.dvOv{z-index:100030}';
+ document.head.appendChild(css);
+})();
+</script>
 <script id="ficheIaJs">(function(){
 /* ===================== Assistant IA flottant des fiches d'ouvrage =====================
    Bouton 🤖 flottant sur TOUTE fiche d'ouvrage ouverte (fiche classique et fiches de dimensionnement :
