@@ -42033,6 +42033,13 @@ html{overscroll-behavior-y:none}
 }
 @media (max-width:1024px){ .pcBeamDraw .dimZBf,.pcBeamDraw .dimIBw.dimZBf{display:none !important} }
 @media (max-width:640px){ .pcModHead{flex-wrap:wrap;justify-content:flex-start} .pcModHead>*{max-width:100%} .pcDraw:not(.pcBeamDraw){padding-top:58px;padding-bottom:62px} }
+@media (max-width:900px){
+ .dg-sep{display:block !important}
+ .dg-cs.dg-ce{display:flex !important;flex:none !important;width:100%;height:44px;align-items:center;justify-content:center}
+ .dg-cs.dg-ce .dg-plus{position:static;transform:none;opacity:.85}
+ .dg-bar{display:flex !important}
+}
+@media (pointer:coarse){ .dg-plus{min-width:44px;min-height:44px;opacity:.85} .dg-sep{height:48px} .dg-sep .dg-plus{top:2px} .be-tip{position:fixed;z-index:200000;max-width:min(300px,calc(100vw - 24px));padding:10px 14px;border-radius:12px;background:#16232B;color:#fff;font-size:15px;line-height:1.35;box-shadow:0 6px 20px rgba(0,0,0,.35);pointer-events:none} }
 @media (max-width:1024px){ table{max-width:100%} .tbl-wrap,.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch} }
 </style>
 <script id="rsp6js">
@@ -42046,6 +42053,33 @@ html{overscroll-behavior-y:none}
  window.addEventListener('popstate',()=>{ if(!pushed) return; popping=true; pushed=false; try{ if(ov.classList.contains('open')){ if(window._modalBackTo&&typeof modalBack==='function') modalBack(); else closeModal(); } }catch(_){ } popping=false; });
  /* clavier à l'écran : le champ actif reste visible */
  document.addEventListener('focusin',e=>{ const t=e.target; if(t&&/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)&&window.matchMedia('(max-width:1024px)').matches){ setTimeout(()=>{ try{ t.scrollIntoView({block:'center',behavior:'smooth'}); }catch(_){ } },320); } });
+}catch(_){ } })();
+
+/* Parité appareils tactiles : appui long = menu contextuel (iOS), appui long = info-bulle, glisser-déposer tactile (iOS), partage des fichiers exportés (iOS installée) */
+(function(){ try{
+ const ua=navigator.userAgent||''; const iOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+ const touch=()=>{ try{ return window.matchMedia('(pointer:coarse)').matches; }catch(_){ return 'ontouchstart' in window; } };
+ let timer=null, sx=0, sy=0, tgt=null, tipEl=null, tipT=null, swallow=false;
+ const hideTip=()=>{ if(tipEl){ tipEl.remove(); tipEl=null; } clearTimeout(tipT); };
+ const showTip=(el,txt)=>{ hideTip(); const d=document.createElement('div'); d.className='be-tip'; d.setAttribute('role','status'); d.textContent=txt; document.body.appendChild(d); const r=el.getBoundingClientRect(); const w=d.offsetWidth; d.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px'; const top=r.bottom+8+d.offsetHeight>innerHeight?r.top-d.offsetHeight-8:r.bottom+8; d.style.top=Math.max(8,top)+'px'; tipEl=d; tipT=setTimeout(hideTip,3500); };
+ document.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse'||!touch()) return; hideTip(); swallow=false; sx=e.clientX; sy=e.clientY; tgt=e.target; clearTimeout(timer);
+  timer=setTimeout(()=>{ if(!tgt) return; const t=tgt.closest&&tgt.closest('[title]'); const txt=t&&t.getAttribute('title');
+   if(iOS&&!(t&&txt)){ try{ tgt.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:sx,clientY:sy,button:2})); }catch(_){ } return; }
+   if(t&&txt){ swallow=true; showTip(t,txt); } },550); },true);
+ const cancel=e=>{ if(e&&e.type==='pointermove'&&Math.abs(e.clientX-sx)<10&&Math.abs(e.clientY-sy)<10) return; clearTimeout(timer); };
+ document.addEventListener('pointermove',cancel,true); document.addEventListener('pointerup',()=>clearTimeout(timer),true); document.addEventListener('pointercancel',()=>clearTimeout(timer),true);
+ document.addEventListener('click',e=>{ if(swallow){ swallow=false; e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); } },true);
+ /* glisser-déposer tactile pour les éléments « draggable » (iOS Safari ne le gère pas partout) */
+ if(iOS){ let src=null, dt=null, on=false;
+  document.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse') return; const d=e.target.closest&&e.target.closest('[draggable="true"]'); if(!d) return; src=d; on=false; clearTimeout(window.__bdT); window.__bdT=setTimeout(()=>{ try{ dt=new DataTransfer(); d.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:dt})); on=true; }catch(_){ src=null; } },450); },true);
+  document.addEventListener('pointermove',e=>{ if(on&&src){ const t=document.elementFromPoint(e.clientX,e.clientY); if(t){ try{ t.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:dt})); }catch(_){ } } e.preventDefault(); } },{capture:true,passive:false});
+  document.addEventListener('pointerup',e=>{ clearTimeout(window.__bdT); if(on&&src){ const t=document.elementFromPoint(e.clientX,e.clientY); try{ if(t) t.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt})); src.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt})); }catch(_){ } } src=null; on=false; },true); }
+ /* export de fichier : feuille de partage du système si le téléchargement direct est impossible (iPhone/iPad, application installée) */
+ const sa=()=>{ try{ return window.matchMedia('(display-mode:standalone)').matches||navigator.standalone===true; }catch(_){ return false; } };
+ const oc=HTMLAnchorElement.prototype.click;
+ HTMLAnchorElement.prototype.click=function(){ const a=this; try{
+  if(iOS&&sa()&&a.download&&/^blob:/.test(a.href)&&navigator.canShare&&navigator.share){ fetch(a.href).then(r=>r.blob()).then(b=>{ const f=new File([b],a.download,{type:b.type||'application/octet-stream'}); if(navigator.canShare({files:[f]})) return navigator.share({files:[f],title:a.download}).catch(err=>{ if(err&&err.name==='AbortError') return; oc.call(a); }); oc.call(a); }).catch(()=>oc.call(a)); return; }
+ }catch(_){ } return oc.call(a); };
 }catch(_){ } })();
 </script>
 </body></html>
