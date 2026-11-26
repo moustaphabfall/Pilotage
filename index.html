@@ -7131,7 +7131,7 @@ const DIM_I18N_DATA=[
  const FK='dim_fold';
  const foldGet=()=>{ try{ return JSON.parse(localStorage.getItem(FK)||'{}')||{}; }catch(_){ return {}; } };
  const foldSave=o=>{ try{ localStorage.setItem(FK,JSON.stringify(o)); }catch(_){ } };
- const foldOwner=()=>String(window._ficheIaId||'app');
+ const foldOwner=el=>(el&&el.closest&&el.closest('#modalBody'))?String(window._ficheIaId||'app'):'app';
  const foldKey=(h)=>{ const c=h.cloneNode(true); c.querySelectorAll('.dimEye,.dimEyeN').forEach(x=>x.remove()); return nk(c.textContent).replace(/^\d+\s*[·.\-]\s*/,'').slice(0,60); };
  const ERRSEL='[aria-invalid="true"],.pcElsErr,.dimErrBox,.ncSt.ko';
  function eyeBtn(title,hidden,nErr){
@@ -7141,7 +7141,7 @@ const DIM_I18N_DATA=[
   if(nErr) b.setAttribute('data-err','1'); return b;
  }
  function foldRefresh(head,body,key){
-  const st=foldGet(), mine=st[foldOwner()]||{}; const nErr=body.querySelectorAll(ERRSEL).length; let hidden=!!mine[key];
+  const st=foldGet(), mine=st[foldOwner(head)]||{}; const nErr=body.querySelectorAll(ERRSEL).length; let hidden=!!mine[key];
   if(nErr) hidden=false;
   body.hidden=hidden; const old=head.querySelector(':scope>.dimEye'); const nb=eyeBtn(key,hidden,nErr); if(nErr) nb.disabled=false;
   if(old) old.replaceWith(nb); else head.insertBefore(nb,head.firstChild);
@@ -7150,7 +7150,7 @@ const DIM_I18N_DATA=[
  document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.dimEye'); if(!b) return; e.preventDefault(); e.stopPropagation();
   const head=b.parentElement, key=head.dataset.dimfold, body=head.nextElementSibling&&head.nextElementSibling.dataset.dimfoldb===key?head.nextElementSibling:null; if(!body) return;
   if(body.querySelectorAll(ERRSEL).length){ return; }
-  const st=foldGet(), o=foldOwner(); st[o]=st[o]||{}; if(body.hidden) delete st[o][key]; else st[o][key]=1; foldSave(st); foldRefresh(head,body,key); },true);
+  const st=foldGet(), o=foldOwner(head); st[o]=st[o]||{}; if(body.hidden) delete st[o][key]; else st[o][key]=1; foldSave(st); foldRefresh(head,body,key); },true);
  const STOP='.pcFormSticky,.pcNav,.pcFormHint,.dimErrBox,details.pcEls,.pcBtnMain,hr.pcFormSep,.pcModHead,.pjBeam-top,.ppSeg,.pcDraw,.pcSchemaCap';
  function doFold(mb){
   /* sections d'une fiche : chaque titre h5 et son contenu jusqu'au titre suivant */
@@ -7173,6 +7173,18 @@ const DIM_I18N_DATA=[
   mb.querySelectorAll('.pcNC .ncSec>h4:not([data-dimfold]),.ncDoc .ncSec>h4:not([data-dimfold])').forEach(h=>{
    const sec=h.parentElement, nodes=[...sec.children].filter(x=>x!==h); if(!nodes.length) return; const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,'note:'+foldKey(h)); });
  }
+ /* pages de l'application : blocs du tableau de bord, sections repliables, titres de page */
+ function doFoldApp(){
+  const mb=document.getElementById('modalBody');
+  document.querySelectorAll('.dg-block:not([data-dimfold])').forEach(bl=>{ if(mb&&mb.contains(bl)) return; const inn=bl.querySelector(':scope>.dg-in'); if(!inn) return; bl.dataset.dimfold='1';
+   const head=document.createElement('div'); head.className='dimAppH'; const tt=bl.getAttribute('data-t')||''; head.innerHTML='<span class="dimTabT">'+esc2(tt)+'</span>'; inn.before(head); foldBlock(head,inn,'bloc:'+tt); });
+  document.querySelectorAll('details:not(.pcEls):not(.pcElsSub):not(.ncJson):not([data-dimfoldd])>summary').forEach(sm=>{
+   const d=sm.parentElement; if(d.closest('#modalBody,.dimZOv')||sm.querySelector('.dimEye')) return; d.dataset.dimfoldd='1';
+   const mk=()=>{ const old=sm.querySelector('.dimEye'); const nErr=d.querySelectorAll(ERRSEL).length; const nb=eyeBtn(nk(sm.textContent)||'Section',!d.open,nErr); if(nErr&&!d.open) d.open=true; if(old) old.replaceWith(nb); else sm.insertBefore(nb,sm.firstChild); };
+   mk(); d.addEventListener('toggle',mk); sm.addEventListener('click',e=>{ const b=e.target.closest('.dimEye'); if(!b) return; e.preventDefault(); e.stopPropagation(); if(d.querySelectorAll(ERRSEL).length) return; d.open=!d.open; },true); });
+  document.querySelectorAll('.page>h3:not([data-dimfold])').forEach(h=>{ const nodes=[]; let n=h.nextElementSibling; while(n&&n.tagName!=='H3'){ nodes.push(n); n=n.nextElementSibling; } if(!nodes.length){ h.dataset.dimfold='-'; return; }
+   const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,'page:'+foldKey(h)); });
+ }
  let raf=0;
  function scan(){ raf=0; const mb=document.getElementById('modalBody')||document.body;
   const R=[mb,...document.querySelectorAll('.dimDiffOv,.pcFeuOv,.dimModBox,#miniPromptOverlay,.dimCalcOverlay')];
@@ -7181,7 +7193,7 @@ const DIM_I18N_DATA=[
   document.querySelectorAll('.fiche-exp-bar button:not([data-dimui]),#modalBody button[role="switch"]:not([data-dimui]),#modalBody .ppSeg button:not([data-dimui]),#modalBody button[data-beam-back]:not([data-dimui])').forEach(doBtn);
   document.querySelectorAll('.elsMDLb:not([data-dimfr])').forEach(e=>{ const fr=e.textContent.trim(); e.setAttribute('data-dimfr',fr); const tr=TR(fr); if(tr!=null) e.textContent=tr; });
   mb.querySelectorAll('.pcDraw:not([data-dimuiz])').forEach(doDraw);
-  try{ doFold(mb); }catch(err){ console.error(err); }
+  try{ doFold(mb); doFoldApp(); }catch(err){ console.error(err); }
  }
  try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
 })();
@@ -20833,6 +20845,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .dimFoldH{display:flex!important;align-items:center;gap:0}
 details>summary .dimEye{margin-block:4px}
 .dimFoldB[hidden]{display:none!important}
+.dimAppH{display:flex;align-items:center;margin:2px 0 4px}
 .dimTabH{display:flex;align-items:center;gap:0;margin:6px 0 2px;font:600 15px/1.2 system-ui}.dimTabT{color:var(--ds-ink-soft,#777)}
 .mzLay{width:100%;border-collapse:collapse;margin:6px 0 10px}.mzLay th,.mzLay td{padding:4px 6px;text-align:left;font-size:var(--ds-fs-help,12px)}.mzLay input{width:92px;min-height:40px;box-sizing:border-box}.mzLay td:last-child{width:48px}
 .pjBeamRoot .pcModHead .pcNote{font-size:var(--ds-fs-help);opacity:1;padding:3px 10px!important;color:var(--ds-ink-soft)}
