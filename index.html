@@ -42838,7 +42838,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    function loadSetup(d){
     if(isBeamD(d)) return; const svg=d.querySelector('svg.pcSvg'); if(!svg) return; const lk=locked(d);
     const fos=[...svg.querySelectorAll('foreignObject.dimFo')].filter(fo=>{ const u=fo.querySelector('.pcUnit'), i=fo.querySelector('input'); return u&&i&&LOADU.test((u.textContent||'').trim()); });
-    const sig=fos.length+(lk?'L':'U'); if(svg.__dgl===sig&&svg.querySelectorAll('g.dgLoad').length===fos.length) return; svg.__dgl=sig;
+    const sig=fos.length+(lk?'L':'U')+fos.map(fo=>fo.getAttribute('x')+','+fo.getAttribute('y')+','+fo.getAttribute('width')).join(';'); if(svg.__dgl===sig&&svg.querySelectorAll('g.dgLoad').length===fos.length) return; svg.__dgl=sig;
     svg.querySelectorAll('g.dgLoad').forEach(n=>n.remove());
     fos.forEach((fo,i)=>{ const x=+fo.getAttribute('x'), y=+fo.getAttribute('y'), w=+fo.getAttribute('width'), h=+fo.getAttribute('height'), cx=x+w+16, cy=y+h/2, inp=fo.querySelector('input'), nm=((fo.querySelector('.dimNm')||{}).textContent||'').replace('=','').trim(), un=(fo.querySelector('.pcUnit').textContent||'').trim();
      const g=document.createElementNS('http://www.w3.org/2000/svg','g'); g.setAttribute('class','dgLoad'+(lk?' dgLoadLk':'')); g.setAttribute('data-dgl',String(i)); g.setAttribute('tabindex','0'); g.setAttribute('role','slider'); g.dataset.cy=String(cy);
@@ -43042,6 +43042,11 @@ window.dimPosHandle=function(o){
   const a=c.axes.find(q=>(q.ax==='x')===!!sx); if(!a) return; const v=clampStep(a,a.val+Math.sign(a.k)*(sx||sy)*(a.step||0.1)); if(v!==a.val) commit(c,[[a.path,v]]);
  }
  document.addEventListener('pointerdown',down,true); document.addEventListener('keydown',key,true);
+ /* taille constante à l'écran (zone de prise de 48 px) quel que soit le zoom et l'échelle du dessin */
+ function fitAll(){ try{ document.querySelectorAll('#modalBody g.dgPos').forEach(g=>{ const svg=g.ownerSVGElement, m=svg&&svg.getScreenCTM(); if(!m) return; const k=Math.hypot(m.a,m.b)||1; if(g.__k&&Math.abs(g.__k-k)<0.005) return; g.__k=k; const c=g.querySelectorAll('circle'), t=g.querySelector('text'), y=+g.dataset.dgpy; if(c[0]) c[0].setAttribute('r',24/k); if(c[1]){ c[1].setAttribute('r',13/k); c[1].setAttribute('stroke-width',2/k); } if(t){ t.setAttribute('font-size',15/k); t.setAttribute('y',y+5/k); } }); }catch(_){ } }
+ let fq=0; const sched=()=>{ if(!fq) fq=requestAnimationFrame(()=>{ fq=0; fitAll(); }); };
+ try{ new MutationObserver(sched).observe(document.body,{childList:true,subtree:true}); }catch(_){ }
+ window.addEventListener('resize',sched); document.addEventListener('pcfrm-zoom',sched,true); window.dimPosFit=fitAll;
 })();
 /* Barre d'échelle graphique sur les schémas cotés : longueur ronde (0 — L/2 — L, en m ou cm), ajoutée dans une bande sous le dessin donc sans recouvrement avec les cotes ; échelle déduite de la plus longue cote saisie (m, cm, mm) ou imposée (opt.ppm = unités du dessin par mètre) ; elle suit le zoom car elle fait partie du dessin */
 window.dimScaleBarAdd=function(svg,opt){
@@ -43105,6 +43110,8 @@ window.dimPolish=function(svg){
  let x0=vb[0],y0=vb[1],x1=vb[0]+vb[2],y1=vb[1]+vb[3];
  placed.forEach(b=>{ x0=Math.min(x0,b.x-4); y0=Math.min(y0,b.y-4); x1=Math.max(x1,b.x+b.w+4); y1=Math.max(y1,b.y+b.h+4); });
  if(x0<vb[0]||y0<vb[1]||x1>vb[0]+vb[2]||y1>vb[1]+vb[3]) svg.setAttribute('viewBox',x0+' '+y0+' '+(x1-x0)+' '+(y1-y0));
+ /* les champs ont pu bouger : les poignées de charge de l'espace graphique se reposent sur leur nouvelle place */
+ try{ const dr=svg.closest('.pcDraw'); if(dr&&window.__pcFrm) window.__pcFrm.setup(dr); }catch(_){ }
 };
 document.addEventListener('input',ev=>{ const el=ev.target; if(!el||!el.classList||!el.classList.contains('pcDimIn')) return; el.style.width=Math.max(3,String(el.value).length+2)+'ch'; const fo=el.closest&&el.closest('foreignObject'); if(fo&&el.parentElement){ const w=el.parentElement.scrollWidth+6, cur=+fo.getAttribute('width')||0; if(w>cur){ fo.setAttribute('x',(+fo.getAttribute('x')||0)-(w-cur)/2); fo.setAttribute('width',w); } } });
 let raf=0;
