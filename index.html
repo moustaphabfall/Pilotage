@@ -6606,6 +6606,7 @@ function dimProposerDocs(docNote,docPlan){
   +'<button type="button" class="ghost" data-dim-doc="fermer">Plus tard</button>'
   +'</div></div>';
  document.body.appendChild(ov);
+ try{ const hb=ov.querySelector('.dimCalcBox>b'), pp=hb&&hb.nextElementSibling; if(pp&&window.dimFoldBlock) window.dimFoldBlock(hb,pp,'dlg:ouvrage calcule',true); }catch(_){ }
  ov.addEventListener('click',e=>{
   if(e.target===ov){ ov.remove(); return; }
   const b=e.target.closest('[data-dim-doc]'); if(!b) return;
@@ -6982,7 +6983,7 @@ const DIM_I18N_DATA=[
 ['Calculer','Calculate','احسب'],['Recalculer l\'ouvrage','Recalculate the structure','إعادة حساب المنشأ'],['Valider et recalculer','Confirm and recalculate','تأكيد وإعادة الحساب'],['Oui','Yes','نعم'],['Non','No','لا'],['Utiliser cette méthode','Use this method','استخدام هذه الطريقة'],['Utiliser ces valeurs','Use these values','استخدام هذه القيم'],['Je saisis mes valeurs','I enter my values','سأدخل قيمي'],['Ne pas utiliser','Do not use','عدم الاستخدام'],['Enregistrer les modifications','Save changes','حفظ التعديلات'],['Voir la note de calcul','View the calculation note','عرض مذكرة الحساب'],['Voir le plan de ferraillage','View the reinforcement drawing','عرض مخطط التسليح'],['Tableau de bord','Dashboard','لوحة القيادة'],['Travaux','Works','الأشغال'],['Planification','Planning','التخطيط'],['Finance','Finance','المالية'],['Retours d’expérience','Lessons learned','حصيلة التجارب'],['Paramètres (niveaux, phase)','Settings (levels, phase)','الإعدادات (المستويات، المرحلة)'],['Disposition','Layout','التخطيط'],['Ma boîte à outils','My toolbox','صندوق أدواتي'],['Aide','Help','مساعدة'],['Changer de module','Change module','تغيير الوحدة'],
 ['Réduire','Zoom out','تصغير'],['Agrandir','Zoom in','تكبير'],['Ajuster','Fit','ملاءمة'],['Compacte','Compact','مدمج'],['Imprimer la vue','Print the view','طباعة العرض'],
 ['Charge','Load','حمولة'],
-['Masquer la section','Hide the section','إخفاء القسم'],['Afficher la section','Show the section','إظهار القسم'],['erreur(s) dans cette section','error(s) in this section','أخطاء في هذا القسم'],
+['Masquer la section','Hide the section','إخفاء القسم'],['Vue générale','General view','عرض عام'],['Tout replier','Collapse all','طي الكل'],['Tout déplier','Expand all','توسيع الكل'],['Chiffres clés','Key figures','أرقام رئيسية'],['Afficher la section','Show the section','إظهار القسم'],['erreur(s) dans cette section','error(s) in this section','أخطاء في هذا القسم'],
 ['Masquer','Hide','إخفاء'],['Afficher','Show','إظهار'],
 ['Français','Français','Français'],
 ['English','English','English'],
@@ -7182,23 +7183,27 @@ const DIM_I18N_DATA=[
   if(nErr) b.setAttribute('data-err','1'); return b;
  }
  function foldRefresh(head,body,key){
-  const st=foldGet(), mine=st[foldOwner(head)]||{}; const nErr=body.querySelectorAll(ERRSEL).length; let hidden=!!mine[key];
+  const st=foldGet(), mine=st[foldOwner(head)]||{}; const nErr=body.querySelectorAll(ERRSEL).length; let hidden=mine[key]===1||(mine[key]===undefined&&head.dataset.dimgen==='1');
   if(nErr) hidden=false;
   body.hidden=hidden; const old=head.querySelector(':scope>.dimEye'); const nb=eyeBtn(key,hidden,nErr); if(nErr) nb.disabled=false;
   if(old) old.replaceWith(nb); else head.insertBefore(nb,head.firstChild);
  }
- function foldBlock(head,body,key){ head.classList.add('dimFoldH'); head.dataset.dimfold=key; body.dataset.dimfoldb=key; foldRefresh(head,body,key); }
- document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.dimEye'); if(!b) return; e.preventDefault(); e.stopPropagation();
-  const head=b.parentElement, key=head.dataset.dimfold, body=head.nextElementSibling&&head.nextElementSibling.dataset.dimfoldb===key?head.nextElementSibling:null; if(!body) return;
+ function foldBlock(head,body,key,gen){ head.classList.add('dimFoldH'); head.dataset.dimfold=key; if(gen) head.dataset.dimgen='1'; body.dataset.dimfoldb=key; foldRefresh(head,body,key); }
+ window.dimFoldBlock=foldBlock;
+ /* contenu généré : replié par défaut ; un choix ouvert (2) est oublié à chaque (re)calcul de l'ouvrage */
+ window.dimFoldResetGen=function(){ const st=foldGet(), m=st[String(window._ficheIaId||'app')]; if(!m) return; Object.keys(m).forEach(k=>{ if(m[k]===2) delete m[k]; }); foldSave(st); };
+ const GENRE=/^(\d+\s*[·.\-]\s*)?(résultats?|vérifications?|résumé|récapitulatif|documents? liés?|note de calcul|plan de ferraillage)/i;
+ document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.dimEye'); if(!b) return;
+  const head=b.parentElement, key=head.dataset.dimfold, body=head.nextElementSibling&&head.nextElementSibling.dataset.dimfoldb===key?head.nextElementSibling:null; if(!body) return; e.preventDefault(); e.stopPropagation();
   if(body.querySelectorAll(ERRSEL).length){ return; }
-  const st=foldGet(), o=foldOwner(head); st[o]=st[o]||{}; if(body.hidden) delete st[o][key]; else st[o][key]=1; foldSave(st); foldRefresh(head,body,key); },true);
+  const st=foldGet(), o=foldOwner(head); st[o]=st[o]||{}; if(body.hidden){ if(head.dataset.dimgen==='1') st[o][key]=2; else delete st[o][key]; } else st[o][key]=1; foldSave(st); foldRefresh(head,body,key); },true);
  const STOP='.pcFormSticky,.pcNav,.pcFormHint,.dimErrBox,details.pcEls,.pcBtnMain,hr.pcFormSep,.pcModHead,.pjBeam-top,.ppSeg,.pcDraw,.pcSchemaCap';
  function doFold(mb){
   /* sections d'une fiche : chaque titre h5 et son contenu jusqu'au titre suivant */
   mb.querySelectorAll('.pcPanel,[data-dim-fiche],.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot,.pjVoileRoot,.pjMixteRoot,.pjPortiqueRoot,.pjMurRoot,.pjDallageRoot,.pjRideauRoot,.pjMassifRoot').forEach(c=>{
-   [...c.children].filter(h=>h.tagName==='H5'&&!h.dataset.dimfold).forEach(h=>{
-    const nodes=[]; let n=h.nextElementSibling; while(n&&n.tagName!=='H5'&&!n.matches(STOP)){ nodes.push(n); n=n.nextElementSibling; }
-    if(!nodes.length) return; const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,foldKey(h)); });
+   [...c.children].filter(h=>(h.tagName==='H5'||(h.tagName==='H4'&&GENRE.test(foldKey(h))))&&!h.dataset.dimfold).forEach(h=>{
+    const nodes=[]; let n=h.nextElementSibling; while(n&&n.tagName!=='H5'&&!(n.tagName==='H4'&&GENRE.test(foldKey(n)))&&!n.matches(STOP)){ nodes.push(n); n=n.nextElementSibling; }
+    if(!nodes.length) return; const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,foldKey(h),GENRE.test(foldKey(h))); });
   });
   /* paramètres avancés et sous-blocs : l'œil pilote l'ouverture */
   mb.querySelectorAll('details.pcEls>summary:not([data-dimfold]),details.pcElsSub>summary:not([data-dimfold])').forEach(sm=>{
@@ -7212,7 +7217,9 @@ const DIM_I18N_DATA=[
    tb.before(head); const body=document.createElement('div'); body.className='dimFoldB'; tb.before(body); body.appendChild(tb); /* les boutons d'ajout qui suivent restent visibles */ foldBlock(head,body,'tableau:'+(tb.querySelector('th')?nk(tb.querySelector('th').textContent):'')+':'+[...mb.querySelectorAll('.gtTW,.mzLay')].indexOf(tb)); });
   /* notes : une section pliable par titre */
   mb.querySelectorAll('.pcNC .ncSec>h4:not([data-dimfold]),.ncDoc .ncSec>h4:not([data-dimfold])').forEach(h=>{
-   const sec=h.parentElement, nodes=[...sec.children].filter(x=>x!==h); if(!nodes.length) return; const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,'note:'+foldKey(h)); });
+   const sec=h.parentElement, nodes=[...sec.children].filter(x=>x!==h); if(!nodes.length) return; const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,'note:'+foldKey(h),true); });
+  /* chiffres clés des notes et plans : bloc résumé pliable, replié par défaut */
+  mb.querySelectorAll('.pcNC .ncKpi:not([data-dimfold]),.ncDoc .ncKpi:not([data-dimfold])').forEach(k=>{ k.dataset.dimfold='kpi'; if(k.parentElement&&k.parentElement.dataset.dimfoldb) return; const head=document.createElement('div'); head.className='dimTabH'; head.innerHTML='<span class="dimTabT" data-dimfr="Chiffres clés">'+esc2(window.dimT('Chiffres clés'))+'</span>'; k.before(head); const body=document.createElement('div'); body.className='dimFoldB'; k.before(body); body.appendChild(k); foldBlock(head,body,'note:chiffres cles',true); });
  }
  /* pages de l'application : blocs du tableau de bord, sections repliables, titres de page */
  function doFoldApp(){
@@ -7224,8 +7231,38 @@ const DIM_I18N_DATA=[
    const mk=()=>{ const old=sm.querySelector('.dimEye'); const nErr=d.querySelectorAll(ERRSEL).length; const nb=eyeBtn(nk(sm.textContent)||'Section',!d.open,nErr); if(nErr&&!d.open) d.open=true; if(old) old.replaceWith(nb); else sm.insertBefore(nb,sm.firstChild); };
    mk(); d.addEventListener('toggle',mk); sm.addEventListener('click',e=>{ const b=e.target.closest('.dimEye'); if(!b) return; e.preventDefault(); e.stopPropagation(); if(d.querySelectorAll(ERRSEL).length) return; d.open=!d.open; },true); });
   document.querySelectorAll('.page>h3:not([data-dimfold])').forEach(h=>{ const nodes=[]; let n=h.nextElementSibling; while(n&&n.tagName!=='H3'){ nodes.push(n); n=n.nextElementSibling; } if(!nodes.length){ h.dataset.dimfold='-'; return; }
-   const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,'page:'+foldKey(h)); });
+   const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,'page:'+foldKey(h),GENRE.test(foldKey(h))); });
  }
+ /* ===== Vue générale : « Tout replier » / « Tout déplier » agit sur toutes les sections pliables de l'écran courant (fiche, note, plan ou page) ; l'état courant est montré ===== */
+ const FVT=k=>window.dimT(k);
+ function fvEl(top){
+  const w=document.createElement('span'); w.className='fvW'+(top?' fvTop':''); w.dataset.dimui='1';
+  w.innerHTML='<span class="fvSeg" role="group" aria-label="'+esc2(FVT('Vue générale'))+'"><button type="button" class="fvB" data-fv="close" data-dimui="1" aria-pressed="false">'+svg('eyeoff')+'</button><button type="button" class="fvB" data-fv="open" data-dimui="1" aria-pressed="false">'+svg('eye')+'</button></span><span class="fvN" data-dimfr="Vue générale">'+esc2(FVT('Vue générale'))+'</span>';
+  return w;
+ }
+ function fvScope(el){ const m=el&&el.closest&&el.closest('#modalBody'); if(m) return m; return document.querySelector('.page.active')||document.body; }
+ function fvEyes(sc){ return [...sc.querySelectorAll('.dimEye')].filter(b=>!b.closest('.fvW,.dimCalcOverlay')&&!b.hasAttribute('data-err')); }
+ function fvState(sc){ const e=fvEyes(sc).filter(b=>!b.closest('[hidden]')); if(!e.length) return ''; const v=e.filter(b=>b.getAttribute('aria-pressed')==='true').length; return v===0?'close':(v===e.length?'open':'mixed'); }
+ function fvApply(sc,collapse){
+  const pass=()=>{ fvEyes(sc).filter(b=>(b.getAttribute('aria-pressed')==='true')===collapse).forEach(b=>{ try{ if(b.isConnected) b.click(); }catch(_){ } }); };
+  pass(); setTimeout(()=>{ pass(); setTimeout(fvRefresh,150); },150);
+ }
+ function fvRefresh(){
+  document.querySelectorAll('.fvW').forEach(w=>{ const st=fvState(fvScope(w)); w.querySelectorAll('.fvB').forEach(b=>{ const c=b.dataset.fv==='close'; b.setAttribute('aria-pressed',st===b.dataset.fv?'true':'false'); const t=FVT(c?'Tout replier':'Tout déplier'); b.setAttribute('aria-label',t); b.setAttribute('title',t); }); const g=w.querySelector('.fvSeg'); if(g) g.setAttribute('aria-label',FVT('Vue générale')); });
+ }
+ function doFv(){
+  document.querySelectorAll('#modalBody .pcModHead').forEach(h=>{ if(h.querySelector(':scope>.fvW')) return; const c=h.querySelector(':scope>.pcModCalc'); const w=fvEl(); if(c) h.insertBefore(w,c); else h.appendChild(w); });
+  document.querySelectorAll('#modalBody h3 #tfViewBtn').forEach(b=>{ const h=b.parentElement, mod=!!document.querySelector('#modalBody .pcModHead'); const o=h.querySelector(':scope>.fvW'); if(mod){ if(o) o.remove(); return; } if(o) return; h.insertBefore(fvEl(),b); });
+  document.querySelectorAll('#modalBody .ncDoc').forEach(d=>{ if(d.querySelector(':scope>.fvRow')) return; const r=document.createElement('div'); r.className='fvRow'; r.appendChild(fvEl()); d.insertBefore(r,d.firstChild); });
+  let bar=document.getElementById('fvBar'); if(!bar){ bar=document.createElement('div'); bar.id='fvBar'; bar.appendChild(fvEl(true)); document.body.appendChild(bar); }
+  const ov=document.getElementById('overlay'), vb=document.getElementById('pjViewBtn'); const open=!!(ov&&ov.classList.contains('open'));
+  bar.style.display=(open||document.body.classList.contains('plan-fs-on')||document.body.classList.contains('mat-mode')||document.body.classList.contains('lv-open'))?'none':'';
+  if(bar.style.display==='none') return;
+  const vis=id=>{ const e=document.getElementById(id); if(!e) return false; const r=e.getBoundingClientRect(); return r.width>4&&getComputedStyle(e).display!=='none'; };
+  const off=12+(vis('otBar')?54:0)+(vis('dgOpenBtn')?54:0); bar.style.right='calc(max(12px,env(safe-area-inset-right,0px)) + '+(off-12)+'px)';
+  if(vb){ const r=vb.getBoundingClientRect(); if(r.width>4) bar.style.top=Math.round(r.top)+'px'; }
+ }
+ document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-fv]'); if(!b) return; e.preventDefault(); e.stopPropagation(); fvApply(fvScope(b),b.dataset.fv==='close'); fvRefresh(); },true);
  /* Position du nom (règle unique) : sous le cadre par défaut ; à droite (à gauche en arabe) dans une liste verticale ; sous le cadre dans une rangée ou une barre d'outils. Décidée d'après la mise en page du conteneur, jamais par bouton. */
  function vertical(p){
   const cs=getComputedStyle(p), d=cs.display;
@@ -7275,6 +7312,7 @@ const DIM_I18N_DATA=[
   try{ doChg(mb); }catch(err){ console.error(err); }
   try{ layoutNames(); }catch(err){ console.error(err); }
   try{ doFold(mb); doFoldApp(); }catch(err){ console.error(err); }
+  try{ doFv(); fvRefresh(); }catch(err){ console.error(err); }
  }
  try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
 })();
@@ -7492,7 +7530,7 @@ function dimRunCalcul0(dp,computeFn,creerDocsFn,renderFn,okMsg){
   let ok=true, docs=null;
   try{
    dp.resultats=computeFn();
-   dp.statut='calcule';
+   dp.statut='calcule'; try{ if(window.dimFoldResetGen) window.dimFoldResetGen(); }catch(_){ }
    if(creerDocsFn) docs=await creerDocsFn();
   }catch(err){ console.error(err); ok=false; try{clipToast('Erreur de calcul — vérifier les données.');}catch(_){ } }
   try{persist();}catch(_){ }
@@ -21011,6 +21049,24 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pcDraw svg,.pcDraw foreignObject,.dimZStage svg{direction:ltr}
 .dimFDf input,.dimFDf select{direction:ltr}:root[dir="rtl"] .dimFDf select{direction:rtl}
 .pv-lg-w .pv-th{display:flex;gap:6px;flex-wrap:wrap}.pv-lg-w button{min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid var(--ds-line,#9a9a9a);background:transparent;color:inherit;font:600 15px/1 system-ui}.pv-lg-w button.on{border-color:var(--ds-accent,#FFC400)}
+/* Vue générale : icône dans un cadre doré (deux moitiés : tout replier / tout déplier), nom dehors */
+.fvW{display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin:4px;margin-inline-end:8px;vertical-align:top;flex:none}
+.fvSeg{display:inline-flex;box-sizing:border-box;height:48px;border:1.5px solid var(--ds-accent,#FFC400);border-radius:14px;overflow:hidden;background:transparent}
+.fvB{display:inline-flex;align-items:center;justify-content:center;width:48px;min-width:44px;height:100%;min-height:44px;padding:0;margin:0;border:0;border-radius:0;background:transparent;color:var(--ds-ink,inherit);cursor:pointer}
+.fvB+.fvB{border-inline-start:1.5px solid var(--ds-accent,#FFC400)}
+.fvB .dimBI{width:26px;height:26px}
+.fvB[aria-pressed="true"]{background:color-mix(in srgb,var(--ds-accent,#FFC400) 28%,transparent)}
+.fvB:focus-visible{outline:3px solid var(--ds-accent,#FFC400);outline-offset:-3px}
+.fvN{display:block;font:600 15px/1.2 var(--ds-font-body,system-ui,sans-serif);text-align:center;color:var(--ds-ink,inherit);white-space:nowrap}
+.pcModHead .fvW{margin-inline-start:auto}.pcModHead .fvW+.pcModCalc{margin-inline-start:0}
+.fvRow{display:flex;justify-content:flex-end;padding-inline-end:52px;margin:0 0 4px}
+h3>.fvW{margin-block:0}
+#fvBar{position:fixed;top:8px;right:12px;z-index:66}
+#fvBar .fvW{margin:0}#fvBar .fvN{font-size:11px;line-height:1.2}
+@media (max-width:520px){#fvBar .fvB{width:44px}}
+.dimCalcBox .dimEye{width:44px!important;height:44px!important;min-width:44px!important;flex:none!important;padding:0!important;margin:0 8px 0 0!important}
+.dimCalcBox>.dimFoldH{justify-content:center}
+
 .dimEye{display:inline-flex;position:relative;align-items:center;justify-content:center;flex:none;width:44px;height:44px;min-width:44px;box-sizing:border-box;margin:0;margin-inline-end:10px;padding:0;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:12px;background:transparent;color:var(--ds-ink,inherit);cursor:pointer;vertical-align:middle}
 .dimEye .dimBI{width:24px;height:24px}.dimEye:hover{border-color:var(--ds-accent,#FFC400)}.dimEye:focus-visible{outline:3px solid var(--ds-accent,#FFC400);outline-offset:2px}
 .dimEye[aria-pressed="false"]{color:var(--ds-ink-soft,#777)}
