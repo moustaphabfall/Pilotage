@@ -42805,6 +42805,123 @@ st.textContent='.dimCote line{stroke:var(--ds-ink-soft,#8a8a8a);stroke-width:1;f
 document.head.appendChild(st);
 })();</script>
 
+<script id="dimSkillJs">
+/* ===================== Interpréteur SÛR des méthodes décrites par l'utilisateur (« skill » de calcul) =====================
+   Un skill = définition STRUCTURÉE : entrées nommées (unité, valeur), étapes (formule), sorties. Les formules sont lues par un analyseur
+   d'expressions mathématiques limité : nombres, + - * / ^, parenthèses, sqrt min max abs sin cos tan ln exp, constante pi, variables nommées.
+   Aucun eval, aucun Function, aucun accès au réseau ni au DOM : le texte n'est jamais exécuté, seulement analysé puis évalué par ce code. */
+(function(G){
+ 'use strict';
+ const MAXLEN=300, MAXTOK=400, MAXDEPTH=32, MAXSTEPS=40, MAXIN=40, MAXOUT=20, BIG=1e30, BIGIN=1e12, MAXEXP=1000;
+ const ID=/^[A-Za-z_][A-Za-z0-9_]{0,23}$/;
+ const E=m=>{ const e=new Error(m); e.dimSkill=true; return e; };
+ const FN={
+  sqrt:{n:[1,1],f:a=>{ if(a[0]<0) throw E('racine carrée d\'un nombre négatif'); return Math.sqrt(a[0]); }},
+  min:{n:[1,8],f:a=>Math.min.apply(null,a)}, max:{n:[1,8],f:a=>Math.max.apply(null,a)},
+  abs:{n:[1,1],f:a=>Math.abs(a[0])},
+  sin:{n:[1,1],f:a=>Math.sin(a[0])}, cos:{n:[1,1],f:a=>Math.cos(a[0])},
+  tan:{n:[1,1],f:a=>{ if(Math.abs(Math.cos(a[0]))<1e-12) throw E('tangente non définie'); return Math.tan(a[0]); }},
+  ln:{n:[1,1],f:a=>{ if(!(a[0]>0)) throw E('logarithme d\'un nombre négatif ou nul'); return Math.log(a[0]); }},
+  exp:{n:[1,1],f:a=>{ if(a[0]>700) throw E('exponentielle trop grande'); return Math.exp(a[0]); }}
+ };
+ const CONST={pi:Math.PI};
+ const RESERVED=new Set(Object.keys(FN).concat(Object.keys(CONST)));
+ function norm(s){ return String(s).replace(/×|·|⋅/g,'*').replace(/÷/g,'/').replace(/[−–]/g,'-'); }
+ function tokenize(src){
+  if(typeof src!=='string') throw E('formule absente');
+  const s=norm(src); if(!s.trim()) throw E('formule vide'); if(s.length>MAXLEN) throw E('formule trop longue (maximum '+MAXLEN+' signes)');
+  const T=[]; let i=0;
+  while(i<s.length){
+   const c=s.charAt(i);
+   if(c===' '||c==='\t'){ i++; continue; }
+   if(/[0-9.]/.test(c)){ const m=/^(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]{1,3})?/.exec(s.slice(i)); if(!m) throw E('nombre invalide'); const v=Number(m[0]); if(!isFinite(v)||Math.abs(v)>BIG) throw E('nombre trop grand'); T.push({t:'n',v}); i+=m[0].length; }
+   else if(/[A-Za-z_]/.test(c)){ const m=/^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i)); if(m[0].length>24) throw E('nom trop long'); T.push({t:'i',v:m[0]}); i+=m[0].length; }
+   else if('+-*/^(),'.indexOf(c)>=0){ T.push({t:c}); i++; }
+   else throw E('caractère non autorisé « '+c+' »');
+   if(T.length>MAXTOK) throw E('formule trop complexe');
+  }
+  return T;
+ }
+ function parse(src){
+  const T=tokenize(src); let p=0, depth=0;
+  const peek=()=>T[p], eat=t=>{ if(T[p]&&T[p].t===t){ p++; return true; } return false; };
+  const enter=()=>{ if(++depth>MAXDEPTH) throw E('parenthèses trop imbriquées'); }, leave=()=>{ depth--; };
+  function expr(){ enter(); let a=term(); while(peek()&&(peek().t==='+'||peek().t==='-')){ const o=T[p++].t; const b=term(); a={k:'b',o,a,b}; } leave(); return a; }
+  function term(){ let a=unary(); while(peek()&&(peek().t==='*'||peek().t==='/')){ const o=T[p++].t; const b=unary(); a={k:'b',o,a,b}; } return a; }
+  function unary(){ enter(); let r; if(eat('-')) r={k:'neg',a:unary()}; else if(eat('+')) r=unary(); else r=power(); leave(); return r; }
+  function power(){ const a=atom(); if(eat('^')){ const b=unary(); return {k:'b',o:'^',a,b}; } return a; }
+  function atom(){
+   const x=T[p++]; if(!x) throw E('formule incomplète');
+   if(x.t==='n') return {k:'n',v:x.v};
+   if(x.t==='i'){
+    if(peek()&&peek().t==='('){ p++; const f=FN[x.v]; if(!f||!Object.prototype.hasOwnProperty.call(FN,x.v)) throw E('fonction non autorisée « '+x.v+' »'); const args=[]; if(!eat(')')){ do{ args.push(expr()); }while(eat(',')); if(!eat(')')) throw E('parenthèse fermante manquante'); }
+     if(args.length<f.n[0]||args.length>f.n[1]) throw E('mauvais nombre d\'arguments pour '+x.v); return {k:'f',n:x.v,args}; }
+    if(Object.prototype.hasOwnProperty.call(FN,x.v)) throw E('la fonction « '+x.v+' » demande des parenthèses');
+    return {k:'v',n:x.v};
+   }
+   if(x.t==='('){ const e=expr(); if(!eat(')')) throw E('parenthèse fermante manquante'); return e; }
+   throw E('élément inattendu « '+x.t+' »');
+  }
+  const ast=expr(); if(p<T.length) throw E('élément inattendu après la fin de la formule'); return ast;
+ }
+ function vars(ast,out){ out=out||[]; if(ast.k==='v'){ if(!Object.prototype.hasOwnProperty.call(CONST,ast.n)&&out.indexOf(ast.n)<0) out.push(ast.n); } else if(ast.k==='b'){ vars(ast.a,out); vars(ast.b,out); } else if(ast.k==='neg') vars(ast.a,out); else if(ast.k==='f') ast.args.forEach(a=>vars(a,out)); return out; }
+ function chk(v){ if(typeof v!=='number'||!isFinite(v)) throw E('résultat non défini'); if(Math.abs(v)>BIG) throw E('résultat trop grand'); return v; }
+ function ev(n,env){
+  switch(n.k){
+   case 'n': return n.v;
+   case 'v': { if(Object.prototype.hasOwnProperty.call(CONST,n.n)) return CONST[n.n]; if(!env.has(n.n)) throw E('variable inconnue « '+n.n+' »'); return env.get(n.n); }
+   case 'neg': return -ev(n.a,env);
+   case 'f': return chk(FN[n.n].f(n.args.map(a=>ev(a,env))));
+   case 'b': { const a=ev(n.a,env), b=ev(n.b,env);
+    if(n.o==='+') return chk(a+b); if(n.o==='-') return chk(a-b); if(n.o==='*') return chk(a*b);
+    if(n.o==='/'){ if(b===0) throw E('division par zéro'); return chk(a/b); }
+    if(Math.abs(b)>MAXEXP) throw E('exposant trop grand (maximum '+MAXEXP+')'); if(a===0&&b<0) throw E('division par zéro (0 puissance négative)'); const r=Math.pow(a,b); if(r!==r) throw E('puissance non définie'); return chk(r); }
+  }
+  throw E('formule invalide');
+ }
+ function num(v){ if(typeof v==='number') return v; if(typeof v==='string'&&v.trim()!==''&&/^[-+]?[0-9]*[.,]?[0-9]+(?:[eE][-+]?[0-9]+)?$|^[-+]?[0-9]+[.,]?$/.test(v.trim())) return Number(v.trim().replace(',','.')); return NaN; }
+ const S=(v,n)=>(typeof v==='string'?v:'').replace(/[\u0000-\u001f<>]/g,' ').trim().slice(0,n);
+ /* validation stricte de la structure : renvoie un skill NEUF (aucun champ inconnu conservé) */
+ function validate(sk){
+  const er=[]; const out={nom:'',description:'',entrees:[],etapes:[],sorties:[]};
+  if(!sk||typeof sk!=='object'||Array.isArray(sk)) return {ok:false,errors:['définition absente ou illisible'],skill:null};
+  out.nom=S(sk.nom,80)||'Méthode sans nom'; out.description=S(sk.description,600);
+  const seen=new Set();
+  const chkId=(id,w)=>{ if(typeof id!=='string'||!ID.test(id)){ er.push(w+' : nom de variable invalide (lettres, chiffres et _, commence par une lettre, 24 signes au plus)'); return false; } if(RESERVED.has(id)){ er.push(w+' : « '+id+' » est réservé'); return false; } if(seen.has(id)){ er.push(w+' : « '+id+' » est utilisé deux fois'); return false; } seen.add(id); return true; };
+  const ent=Array.isArray(sk.entrees)?sk.entrees:[]; if(ent.length>MAXIN) er.push('trop d\'entrées (maximum '+MAXIN+')');
+  ent.slice(0,MAXIN).forEach((e,i)=>{ const w='entrée '+(i+1); if(!e||typeof e!=='object'){ er.push(w+' illisible'); return; } if(!chkId(e.id,w)) return; const v=num(e.valeur); if(!isFinite(v)||Math.abs(v)>BIGIN){ er.push(w+' « '+e.id+' » : valeur numérique obligatoire (au plus 10^12)'); return; }
+   const o={id:e.id,nom:S(e.nom,60)||e.id,unite:S(e.unite,16),valeur:v}; const mn=num(e.min), mx=num(e.max); if(isFinite(mn)) o.min=mn; if(isFinite(mx)) o.max=mx; if(o.min!==undefined&&v<o.min) er.push(w+' « '+e.id+' » : valeur sous le minimum'); if(o.max!==undefined&&v>o.max) er.push(w+' « '+e.id+' » : valeur au-dessus du maximum'); out.entrees.push(o); });
+  const et=Array.isArray(sk.etapes)?sk.etapes:[]; if(!et.length) er.push('aucune étape de calcul'); if(et.length>MAXSTEPS) er.push('trop d\'étapes (maximum '+MAXSTEPS+')');
+  et.slice(0,MAXSTEPS).forEach((e,i)=>{ const w='étape '+(i+1); if(!e||typeof e!=='object'){ er.push(w+' illisible'); return; } if(!chkId(e.id,w)) return; if(typeof e.formule!=='string'){ er.push(w+' « '+e.id+' » : formule absente'); return; }
+   try{ parse(e.formule); }catch(x){ if(x&&x.dimSkill) er.push(w+' « '+e.id+' » : '+x.message); else er.push(w+' « '+e.id+' » : formule illisible'); }
+   out.etapes.push({id:e.id,nom:S(e.nom,80)||e.id,formule:S(e.formule,MAXLEN).replace(/\s+/g,' '),unite:S(e.unite,16)}); });
+  const so=Array.isArray(sk.sorties)?sk.sorties:[]; if(!so.length) er.push('aucune sortie (résultat) déclarée'); if(so.length>MAXOUT) er.push('trop de sorties (maximum '+MAXOUT+')');
+  so.slice(0,MAXOUT).forEach((s,i)=>{ const id=(s&&typeof s==='object')?s.id:s; if(typeof id!=='string'||!seen.has(id)){ er.push('sortie '+(i+1)+' : « '+(typeof id==='string'?id:'?')+' » ne correspond à aucune entrée ni étape'); return; } const src=out.etapes.find(x=>x.id===id)||out.entrees.find(x=>x.id===id)||{};
+   out.sorties.push({id,nom:S(s&&s.nom,80)||src.nom||id,unite:S(s&&s.unite,16)||src.unite||''}); });
+  return {ok:!er.length,errors:er,skill:out};
+ }
+ function fmt(v){ if(v==null||!isFinite(v)) return '—'; const a=Math.abs(v); let s; if(a!==0&&(a>=1e7||a<1e-4)) s=v.toExponential(4).replace('e+','e'); else s=String(Math.round(v*1e4)/1e4); return s.replace('.',','); }
+ /* exécution : renvoie {ok, lignes:[{id,nom,formule,subst,valeur,unite}], sorties:[{id,nom,valeur,unite}], erreurs:[]} ; ne lève jamais d'exception */
+ function run(sk,over){
+  const R={ok:false,lignes:[],sorties:[],erreurs:[],entrees:[]};
+  try{
+   const v=validate(sk); if(!v.ok){ R.erreurs=v.errors; return R; }
+   const s=v.skill, env=new Map();
+   s.entrees.forEach(e=>{ let x=e.valeur; if(over&&Object.prototype.hasOwnProperty.call(over,e.id)){ const y=num(over[e.id]); if(isFinite(y)&&Math.abs(y)<=BIGIN) x=y; } env.set(e.id,x); R.entrees.push({id:e.id,nom:e.nom,unite:e.unite,valeur:x}); });
+   for(let i=0;i<s.etapes.length;i++){ const e=s.etapes[i];
+    try{ const ast=parse(e.formule); const miss=vars(ast).filter(n=>!env.has(n)); if(miss.length) throw E('variable inconnue « '+miss[0]+' » (à définir avant cette étape)');
+     const val=ev(ast,env); env.set(e.id,val);
+     const subst=norm(e.formule).replace(/[A-Za-z_][A-Za-z0-9_]*/g,m=>env.has(m)&&!(m in FN)?'('+fmt(env.get(m))+')':m);
+     R.lignes.push({id:e.id,nom:e.nom,formule:e.formule,subst,valeur:val,unite:e.unite}); }
+    catch(x){ R.erreurs.push('Étape « '+e.nom+' » : '+((x&&x.dimSkill)?x.message:'calcul impossible')); return R; } }
+   s.sorties.forEach(o=>{ R.sorties.push({id:o.id,nom:o.nom,unite:o.unite,valeur:env.get(o.id)}); });
+   R.ok=true; return R;
+  }catch(x){ R.erreurs.push('Calcul impossible'); R.ok=false; return R; }
+ }
+ const API={parse,tokenize,validate,run,fmt,vars,limits:{MAXLEN,MAXTOK,MAXDEPTH,MAXSTEPS,MAXIN,MAXEXP}};
+ G.DimSkill=API; if(typeof module!=='undefined'&&module.exports) module.exports=API;
+})(typeof window!=='undefined'?window:globalThis);
+</script>
 <script id="ficheIaJs">(function(){
 /* ===================== Assistant IA flottant des fiches d'ouvrage =====================
    Bouton 🤖 flottant sur TOUTE fiche d'ouvrage ouverte (fiche classique et fiches de dimensionnement :
