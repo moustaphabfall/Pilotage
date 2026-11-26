@@ -7339,6 +7339,7 @@ const DIM_I18N_DATA=[
   document.querySelectorAll('.elsMDLb:not([data-dimfr])').forEach(e=>{ const fr=e.textContent.trim(); e.setAttribute('data-dimfr',fr); const tr=TR(fr); if(tr!=null) e.textContent=tr; });
   mb.querySelectorAll('.pcDraw:not([data-dimuiz])').forEach(doDraw);
   try{ doChg(mb); }catch(err){ console.error(err); }
+  try{ if(window.dimSelScan) window.dimSelScan(); }catch(err){ console.error(err); }
   try{ layoutNames(); }catch(err){ console.error(err); }
   try{ doFold(mb); doFoldApp(); }catch(err){ console.error(err); }
   try{ doFv(); fvRefresh(); }catch(err){ console.error(err); }
@@ -7407,6 +7408,36 @@ const DIM_I18N_DATA=[
  window.dimChLine=function(txt,attr,lbl){ return '<div class="dimChLine"><span class="dimChTxt">Choix : <b>'+txt+'</b></span><button type="button" class="ghost dimChMod" '+attr+'>'+(lbl||'Modifier')+'</button></div>'; };
  document.addEventListener('keydown',e=>{ const r=e.target&&e.target.classList&&e.target.classList.contains('dimChRow')?e.target:null; if(r&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } });
  window.dimChEsc=function(ov){ const h=e=>{ if(!ov.isConnected){ window.removeEventListener('keydown',h,true); return; } if(e.key==='Escape'){ e.stopImmediatePropagation(); e.preventDefault(); ov.remove(); window.removeEventListener('keydown',h,true); } }; window.addEventListener('keydown',h,true); };
+})();
+/* ===== Choix par fenêtre pour TOUTES les listes de choix des fiches de dimensionnement : la liste déroulante est remplacée par une ligne « valeur choisie + Modifier » ; « Modifier » ouvre une fenêtre à lignes icône-cadre / nom dehors ; choisir referme tout de suite ; Echap, clic hors fenêtre et Annuler ne changent rien. Le choix écrit dans la liste d'origine (cachée) et déclenche son événement de changement : l'enregistrement avec l'ouvrage et la reprise dans la note (Hypothèses) restent ceux du module. ===== */
+(function(){
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const T=s=>window.dimT?window.dimT(s):s;
+ const inScope=s=>!!s.closest('#modalBody [class^="pj"][class$="Root"],.dimModBox,.pcFeuCard:not(.dimSolOv .pcFeuCard)')&&!s.closest('.dimSolOv,.dimZOv,.pcNC,.ncDoc,svg,foreignObject')&&!s.multiple&&!s.hasAttribute('data-nodimsel');
+ const optText=s=>{ const o=s.options[s.selectedIndex]; return o?o.text.replace(/\s+/g,' ').trim():''; };
+ function title(s){ const l=s.closest('label'); let t=''; const n=l&&(l.querySelector('.dimFDn')||l.querySelector('.pcElsLbl')||l.querySelector('.pcFldLbl')); if(n){ const c=n.cloneNode(true); c.querySelectorAll('.pcElsTag,i,small').forEach(x=>x.remove()); t=c.textContent; } if(!t) t=s.getAttribute('aria-label')||s.getAttribute('title')||''; t=t.replace(/\s+/g,' ').trim(); return t||'Choisir'; }
+ function lead(s){ const l=s.closest('label'); const p=l&&l.nextElementSibling; return p&&p.classList.contains('pcNote')&&!p.classList.contains('pcElsErr')?p.textContent.replace(/\s+/g,' ').trim():''; }
+ function openWin(s){
+  if(s.disabled||document.getElementById('dimSelOv')) return;
+  const ov=document.createElement('div'); ov.id='dimSelOv'; ov.className='pcFeuOv dimSelOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); const tt=title(s); ov.setAttribute('aria-label',tt);
+  let h='<div class="pcFeuCard"><h4>'+esc(tt)+'</h4>'; const ld=lead(s); if(ld) h+='<p class="pcNote">'+esc(ld.length>260?ld.slice(0,257)+'...':ld)+'</p>';
+  let g=null; [...s.options].forEach((o,i)=>{ const og=o.parentElement&&o.parentElement.tagName==='OPTGROUP'?o.parentElement.label:null; if(og&&og!==g){ g=og; h+='<p class="pcNote dimSelGrp"><b>'+esc(og)+'</b></p>'; } else if(!og) g=null;
+   const on=i===s.selectedIndex; h+=window.dimChRow({icon:on?'check':'dot',nom:o.text.replace(/\s+/g,' ').trim()||'-',attr:'data-dimsel-i="'+i+'"'+(o.disabled?' aria-disabled="true" style="opacity:.5;pointer-events:none"':''),primary:on}); });
+  h+=window.dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-dimsel-i=""'})+'</div>';
+  ov.innerHTML=h; window.dimChEsc(ov);
+  ov.addEventListener('click',e=>{ if(e.target===ov){ ov.remove(); return; } const r=e.target.closest('[data-dimsel-i]'); if(!r||r.getAttribute('aria-disabled')==='true') return; const v=r.getAttribute('data-dimsel-i'); ov.remove(); if(v==='') return; const i=+v; if(i===s.selectedIndex||!s.isConnected) return; s.selectedIndex=i; sync(s); s.dispatchEvent(new Event('change',{bubbles:true})); });
+  document.body.appendChild(ov); const f=ov.querySelector('.dimChRow.on')||ov.querySelector('.dimChRow'); if(f) f.focus({preventScroll:true});
+ }
+ function sync(s){ const w=s._dimSel; if(!w) return; const t=w.querySelector('.dimSelTx'); if(t) t.textContent=optText(s); const b=w.querySelector('.dimSelBtn'); if(b){ b.disabled=!!s.disabled; b.setAttribute('aria-label',T('Modifier')+' : '+tt0(s)); } }
+ function tt0(s){ return title(s)+', '+optText(s); }
+ function doSel(s){
+  s.dataset.dimsel='1'; const w=document.createElement('span'); w.className='dimSelW'; w._sel=s; s._dimSel=w;
+  w.innerHTML='<span class="dimSelTx"></span><button type="button" class="ghost dimSelBtn" data-dimui="1" aria-haspopup="dialog">'+esc(T('Modifier'))+'</button>';
+  s.classList.add('dimSelHid'); s.tabIndex=-1; s.setAttribute('aria-hidden','true'); s.parentNode.insertBefore(w,s.nextSibling); sync(s);
+  w.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); openWin(s); });
+ }
+ window.dimSelScan=function(){ document.querySelectorAll('#modalBody select:not([data-dimsel]),.dimModBox select:not([data-dimsel]),.pcFeuCard select:not([data-dimsel])').forEach(s=>{ if(inScope(s)) doSel(s); }); };
+ document.addEventListener('change',e=>{ const s=e.target; if(s&&s._dimSel) sync(s); },true);
 })();
 /* Clic sur un bouton de fiche pendant qu'un champ modifié a encore le focus : le changement re-dessine la fiche et le clic était perdu (calcul lancé sans la dernière saisie, ou pas lancé). On laisse d'abord le champ valider sa saisie, puis on rejoue le clic sur le même bouton. */
 (function(){
@@ -21016,6 +21047,8 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .dimIB{display:inline-flex!important;flex-direction:column;align-items:center;justify-content:flex-start;gap:4px;min-width:72px;max-width:132px;min-height:44px;height:auto!important;padding:2px 4px!important;margin:4px 6px 4px 0;background:transparent!important;border:0!important;box-shadow:none!important;color:var(--ds-ink,inherit);font:600 15px/1.2 var(--ds-font-body,system-ui,sans-serif)!important;text-align:center;cursor:pointer;vertical-align:top;border-radius:12px;width:auto!important}
 .dimIBf{display:flex;align-items:center;justify-content:center;width:48px;height:48px;min-width:44px;min-height:44px;box-sizing:border-box;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:14px;background:transparent;color:var(--ds-ink,inherit)}
 .dimIBf .dimBI{width:26px;height:26px}
+.dimSelHid{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;opacity:0!important;pointer-events:none!important;overflow:hidden}
+.dimSelW{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}.dimSelTx{flex:1 1 auto;min-width:0;font:600 15px/1.25 var(--ds-font-body,system-ui,sans-serif);overflow-wrap:anywhere;color:var(--ds-ink,inherit)}.dimSelBtn{flex:none;min-height:44px;min-width:44px;padding:0 12px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer}.dimFDf{position:relative}.dimSelOv{z-index:100020}.dimSelGrp{margin:10px 0 4px}
 .dimChRow{display:flex;align-items:center;gap:14px;min-height:56px;padding:6px 8px;margin:0 0 6px;border-radius:14px;cursor:pointer;box-sizing:border-box}.dimChRow:hover,.dimChRow:focus-visible{background:var(--ds-bg-soft,rgba(128,128,128,.12));outline:none}.dimChRow:hover .dimIBf,.dimChRow:focus-visible .dimIBf,.dimChRow.on .dimIBf{border-color:var(--ds-accent,#FFC400)}.dimChRow .dimIBf{flex:none}.dimChTx{display:flex;flex-direction:column;gap:2px;min-width:0}.dimChNm{font-weight:600;font-size:16px;line-height:1.25}.dimChAide{font-size:13px;line-height:1.35;color:var(--ds-ink-soft,#777)}.dimChLine{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0;padding:6px 10px;border:1px solid var(--ds-line,#d6d3cc);border-radius:12px}.dimChTxt{font-size:14px;line-height:1.4;flex:1;min-width:180px}.dimChBlock{margin:10px 0}.pcFeuMore{margin:6px 0}.pcFeuMore summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
 .dimIBl{display:block;font-size:15px;line-height:1.2;overflow-wrap:anywhere;word-break:normal;max-width:128px}
 .dimIB:hover .dimIBf{border-color:var(--ds-accent,#FFC400)}
@@ -35201,8 +35234,15 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function ppModeBarHtml(t){
    const m=ppMode(t);
-   return '<div class="ppSeg" role="group" aria-label="Objet du calcul">'+[['tete','Tête de pieux'],['portance','Portance du pieu']].map(([k,l])=>{ const on=(k==='portance')===m; return '<button type="button" class="ghost'+(on?' on':'')+'" data-pp-objet="'+k+'" aria-pressed="'+(on?'true':'false')+'">'+l+'</button>'; }).join('')+'</div>';
+   return '<div class="ppSeg" role="group" aria-label="Objet du calcul">'+dimChLine('objet du calcul : '+(m?'portance du pieu':'tête de pieux'),'data-pp-objet-open="1" aria-haspopup="dialog"')+'</div>';
   }
+  /* Objet du calcul (tête de pieux / portance du pieu) : fenêtre à deux lignes ; choisir referme tout de suite ; Echap et clic dehors sans changement ; le choix rejoue le clic historique sur data-pp-objet dans la fiche */
+  document.addEventListener('click',e=>{ const o=e.target.closest&&e.target.closest('[data-pp-objet-open]'); if(!o) return; e.preventDefault(); const wrap=o.closest('[class*="Root"]')||document.getElementById('modalBody'); if(!wrap||document.getElementById('dimPpObjOv')) return;
+   const cur=o.closest('.ppSeg')&&/portance du pieu/.test(o.parentElement.textContent)?'portance':'tete';
+   const ov=document.createElement('div'); ov.id='dimPpObjOv'; ov.className='pcFeuOv dimSelOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Objet du calcul');
+   ov.innerHTML='<div class="pcFeuCard"><h4>Objet du calcul</h4>'+dimChRow({icon:cur==='tete'?'check':'dot',nom:'Tête de pieux',aide:'Dimensionner la semelle sur pieux (têtes de 1 à 4 pieux).',attr:'data-pp-pick="tete"',primary:cur==='tete'})+dimChRow({icon:cur==='portance'?'check':'dot',nom:'Portance du pieu',aide:'Calculer la portance et le tassement d\'un pieu.',attr:'data-pp-pick="portance"',primary:cur==='portance'})+dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-pp-pick=""'})+'</div>';
+   dimChEsc(ov); ov.addEventListener('click',x=>{ if(x.target===ov){ ov.remove(); return; } const r=x.target.closest('[data-pp-pick]'); if(!r) return; const k=r.getAttribute('data-pp-pick'); ov.remove(); if(!k||k===cur||!wrap.isConnected) return; const b=document.createElement('button'); b.type='button'; b.hidden=true; b.setAttribute('data-pp-objet',k); wrap.appendChild(b); b.click(); b.remove(); });
+   document.body.appendChild(ov); const f=ov.querySelector('.dimChRow.on')||ov.querySelector('.dimChRow'); if(f) f.focus({preventScroll:true}); });
   function ppFormHtml(id,t){
    const dp=ppData(t), body=[1,2,3,4].map(nn=>ppStepHtml(nn,dp,t)).join('<hr class="pcFormSep">'), er=(window._ppErr||{})[id];
    return '<div class="pcFormSticky">'
