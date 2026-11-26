@@ -20474,6 +20474,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pcDimWrap{display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:var(--ink-soft,#777);gap:3px}
 .pcDimIn{width:auto;min-width:44px;min-height:24px;text-align:center;font-size:var(--ds-fs-md);border:none;border-bottom:1.5px solid var(--ds-line);border-radius:0;background:transparent;color:var(--ink);padding:2px 3px;box-sizing:border-box;-webkit-appearance:none;appearance:none;-moz-appearance:textfield}
 .pcDimIn:focus{outline:none;border-bottom-color:var(--ds-accent)}
+.rcTblWrap{overflow-x:auto;margin:6px 0}.rcT{border-collapse:collapse;width:100%}.rcT th,.rcT td{padding:4px 6px;text-align:left;font-size:13px;white-space:nowrap}.rcT th{font-weight:600;color:var(--ink-soft,#777)}.rcIn{min-height:44px;box-sizing:border-box;text-align:center;font-size:15px;border:1px solid var(--ds-line,#d6d3cc);border-radius:8px;background:transparent;color:var(--ink);padding:4px 6px}.rcIn:disabled{opacity:.5}.rcDel{min-width:44px;min-height:44px}.rcBtns{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.rcT label.rcChkW{display:flex!important;align-items:center;justify-content:center;min-width:44px;min-height:44px}.rcChk{width:22px;height:22px}.pjRideauRoot select[data-rp="methode"],.pjRideauRoot select[data-rp="Kmeth"]{width:100%;max-width:100%}
 .pcDimIn[aria-invalid="true"],.pcFldIn[aria-invalid="true"],.pjBeamRoot input[aria-invalid="true"]{border-bottom-color:var(--ds-danger,#c0392b)!important;color:var(--ds-danger,#c0392b)}
 .dimErrBox{margin:8px 0 12px;padding:10px 14px;border:1.5px solid var(--ds-danger,#c0392b);border-radius:12px;background:transparent;color:var(--ds-danger,#c0392b);font-size:15px}
 .dimErrBox ul{margin:6px 0 0;padding-left:20px}
@@ -25192,6 +25193,13 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      K.push({v:ncF(R.NEd_kN,0)+' kN/ml',l:'Effort normal N_Ed par mètre de voile'});
      K.push({v:'HA'+res.bH.phi+' e '+ncF(res.bH.s,0),l:'Armatures horizontales par face (mm) · A_s,h '+ncF(res.AsAdoptH)+' cm²/m'});
      fer='HA'+res.bV.phi+' e '+ncF(res.bV.s,0)+' mm';
+    } else if(kind==='rideau'&&res.complet){
+     const bad=k=>res.verifs.some(v=>v.etat==='ko'&&v.zone===k);
+     K.push({v:res.fiche!=null?ncF(res.fiche,2)+' m':'—',l:'Fiche calculée · longueur conseillée f + fiche = '+(res.Lrec!=null?ncF(res.Lrec,2)+' m':'—'),bad:bad('Fiche')});
+     K.push({v:res.z0!=null?ncF(res.z0,2)+' m':'—',l:'Niveau de contre-butée (fouille à '+ncF(res.f,2)+' m)',bad:bad('Équilibre')});
+     K.push({v:ncF(res.Mmax,1)+' kN·m/m',l:'Moment maximal par mètre de rideau (à '+ncF(res.zMmax,2)+' m)',bad:bad('Profilé')});
+     K.push({v:ncF(res.Vmax,1)+' kN/m',l:'Effort tranchant maximal par mètre de rideau (à '+ncF(res.zVmax,2)+' m)'});
+     fer='Fiche = '+(res.fiche!=null?ncF(res.fiche,2)+' m':'indéterminée');
     } else if(kind==='rideau'){
      const bad=k=>res.verifs.some(v=>v.etat==='ko'&&v.zone===k);
      K.push({v:res.Lrec!=null?ncF(res.Lrec,2)+' m':'—',l:'Longueur évaluée L_rec = f + k·(z0 − f) · longueur saisie '+ncF(res.L,2)+' m',bad:bad('Fiche')});
@@ -27064,6 +27072,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(beTypeStructureNom(t.typeStructureId)===PIEU_TYPE_NOM) return puPlanExportPdf(t,fmt); /* plan de tête de pieux */
    if(beTypeStructureNom(t.typeStructureId)===MUR_TYPE_NOM) return muPlanExportPdf(t,fmt); /* plan de mur de soutènement */
    if(beTypeStructureNom(t.typeStructureId)===VL_TYPE_NOM) return vlPlanExportPdf(t,fmt); /* plan de voile */
+   if(beTypeStructureNom(t.typeStructureId)===RP_TYPE_NOM&&t.dimRP&&t.dimRP.methode==='complet') return rcPlanExportPdf(t,fmt); /* plan de coupe de rideau */
    if(beTypeStructureNom(t.typeStructureId)===MIXTE_TYPE_NOM) return pmPlanExportPdf(t,fmt); /* plan de poteau mixte */
    if(t.dimDL&&t.dimDL.resultats&&!(t.dimPC&&t.dimPC.resultats)) return dlPlanExportPdf(t,fmt); /* plan de dalle */ const dp=pcData(t); const res=dp&&dp.resultats; if(!res) throw new Error('Calcul absent : relancer le calcul de la poutre.');
    const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await pcPlanFerraillagePdf(t,dp,res,{format:f});
@@ -34120,11 +34129,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Coefficients partiels',k:'gQ',lbl:'γ_Q — surcharges',t:'num',def:1.5,min:1,max:1.6,step:0.05,unit:'',aide:'Appliqué aux surcharges en mode Eurocode 7 ; 1,5 par défaut. À confirmer.'},
    {grp:'Coefficients partiels',k:'gPhi',lbl:'γ_φ — tan φ',t:'num',def:1,min:1,max:1.5,step:0.05,unit:'',aide:'φ_d = arctan(tan φ / γ_φ) pour K_a et K_p calculés ; 1,0 par défaut (coefficient porté sur les actions et la butée), 1,25 pour une combinaison à coefficient sur le sol. À confirmer.'},
    {grp:'Coefficients partiels',k:'gRe',lbl:'γ_R,e — butée',t:'num',def:1.4,min:1,max:2,step:0.05,unit:'',aide:'Butée divisée par γ_R,e en mode Eurocode 7 ; 1,4 par défaut. À confirmer.'},
-   {grp:'Poussée et butée',k:'KaS',lbl:'K_a — coefficient de poussée saisi',t:'num',def:null,min:0.01,max:2,step:0.001,unit:'',ph:'calculé (Rankine)',aide:'Vide : K_a de Rankine (δ = 0) avec φ_d. Une valeur saisie remplace le calcul : à confirmer.'},
-   {grp:'Poussée et butée',k:'KbS',lbl:'K_p — coefficient de butée saisi',t:'num',def:null,min:0.01,max:30,step:0.01,unit:'',ph:'calculé (Rankine)',aide:'Vide : K_p de Rankine (δ = 0) avec φ_d. Une valeur plus faible réduit la butée (sens de la sécurité) : à confirmer.'},
-   {grp:'Longueur du rideau',k:'kFiche',lbl:'Majoration de la fiche k',t:'num',def:1.2,min:1,max:2,step:0.05,unit:'',aide:'Longueur évaluée L_rec = f + k·(z0 − f), z0 = cote où le moment s\'annule ; 1,2 par défaut. À confirmer.'}
+   {only:'rupture',grp:'Poussée et butée',k:'KaS',lbl:'K_a — coefficient de poussée saisi',t:'num',def:null,min:0.01,max:2,step:0.001,unit:'',ph:'calculé (Rankine)',aide:'Vide : K_a de Rankine (δ = 0) avec φ_d. Une valeur saisie remplace le calcul : à confirmer.'},
+   {only:'rupture',grp:'Poussée et butée',k:'KbS',lbl:'K_p — coefficient de butée saisi',t:'num',def:null,min:0.01,max:30,step:0.01,unit:'',ph:'calculé (Rankine)',aide:'Vide : K_p de Rankine (δ = 0) avec φ_d. Une valeur plus faible réduit la butée (sens de la sécurité) : à confirmer.'},
+   {grp:'Longueur du rideau',k:'kFiche',lbl:'Majoration de la fiche k',t:'num',def:1.2,min:1,max:2,step:0.05,unit:'',aide:'Méthode à la rupture : L_rec = f + k·(z0 − f), z0 = cote où le moment s\'annule. Calcul complet : fiche = k·(cote de contre-butée − cote de pression nulle) + (cote de pression nulle − f). 1,2 par défaut. À confirmer.'},
+   {only:'complet',grp:'Profilé et déformée',k:'E_MPa',lbl:'E — module d\'Young de l\'acier',t:'num',def:210000,min:100000,max:250000,step:1000,unit:'MPa',aide:'Module utilisé pour la déformée et les appuis élastiques ; 210 000 MPa par défaut. À confirmer.'},
+   {only:'complet',grp:'Profilé et déformée',k:'gM0',lbl:'γ_M0 — coefficient de résistance du profilé',t:'num',def:1,min:1,max:1.25,step:0.05,unit:'',aide:'Résistance en flexion M_Rd = W_el·f_y/γ_M0 ; 1,0 par défaut. À confirmer.'}
   ];
-  const RP_MD=[['Coefficients partiels','els-flexion','Coefficients partiels'],['Poussée et butée','els-tranchant','Poussée et butée'],['Longueur du rideau','els-indirect','Longueur du rideau']];
+  const RP_MD=[['Coefficients partiels','els-flexion','Coefficients partiels'],['Poussée et butée','els-tranchant','Poussée et butée'],['Longueur du rideau','els-indirect','Longueur du rideau'],['Profilé et déformée','els-fleche','Profilé et déformée']];
   (window.DIM_SPECS_FN=window.DIM_SPECS_FN||[]).push(()=>RP_ADV);
   Object.assign(DIM_LBL,{L_m:'Longueur du rideau L (m)',f_m:'Niveau de fouille f (m)',zwP_m:'Nappe côté poussée (m)',zwB_m:'Nappe côté butée (m)',gamma:'Poids volumique du sol (kN/m³)',phi:'Angle de frottement φ (°)',gammaW:'Poids volumique de l\'eau (kN/m³)',mode:'Règlement de calcul',
    s1_on:'Surcharge illimitée',s1_q:'Surcharge illimitée q (kPa)',s2_on:'Surcharge illimitée éloignée',s2_q:'Surcharge éloignée q (kPa)',s2_z:'Surcharge éloignée : niveau (m)',s2_d:'Surcharge éloignée : distance (m)',
@@ -34143,8 +34154,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {k:'s3_q',nom:'La surcharge contiguë q',min:0,max:1e4,unit:'kPa',fem:true,when:d=>d.s3_on},{k:'s3_z',nom:'Le niveau de la surcharge contiguë',min:0,max:60,unit:'m',fem:false,when:d=>d.s3_on},{k:'s3_b',nom:'La largeur de la surcharge contiguë',pos:1,max:100,unit:'m',fem:true,when:d=>d.s3_on},
    {k:'s4_q',nom:'La surcharge limitée éloignée q',min:0,max:1e4,unit:'kPa',fem:true,when:d=>d.s4_on},{k:'s4_z',nom:'Le niveau de la surcharge limitée éloignée',min:0,max:60,unit:'m',fem:false,when:d=>d.s4_on},{k:'s4_d',nom:'La distance de la surcharge limitée éloignée',min:0,max:100,unit:'m',fem:true,when:d=>d.s4_on},{k:'s4_b',nom:'La largeur de la surcharge limitée éloignée',pos:1,max:100,unit:'m',fem:true,when:d=>d.s4_on},
    {k:'s5_Q',nom:'La surcharge linéaire Q',min:0,max:1e5,unit:'kN/m',fem:true,when:d=>d.s5_on},{k:'s5_z',nom:'Le niveau de la surcharge linéaire',min:0,max:60,unit:'m',fem:false,when:d=>d.s5_on},{k:'s5_d',nom:'La distance de la surcharge linéaire',pos:1,max:100,unit:'m',fem:true,when:d=>d.s5_on}];
-  function rpValidate(dp){ return dimValidateSpecs(dp,RP_SPECS,(d,er)=>{ if(+d.f_m>=+d.L_m&&!er.some(x=>x.key==='f_m'||x.key==='L_m')) er.push({key:'f_m',msg:'Le niveau de fouille doit être inférieur à la longueur du rideau.'}); }); }
-  function rpDefault(t){ return {nom:(t&&(t.nom||t.quoi))||'',L_m:12,f_m:4,zwP_m:4,zwB_m:4,gamma:19,phi:30,gammaW:10,mode:'ec7',
+  function rpValidate(dp){ if(rcOn(dp)) return rcValidate(dp); return dimValidateSpecs(dp,RP_SPECS,(d,er)=>{ if(+d.f_m>=+d.L_m&&!er.some(x=>x.key==='f_m'||x.key==='L_m')) er.push({key:'f_m',msg:'Le niveau de fouille doit être inférieur à la longueur du rideau.'}); }); }
+  function rpDefault(t){ return {nom:(t&&(t.nom||t.quoi))||'',L_m:12,f_m:4,zwP_m:4,zwB_m:4,gamma:'',phi:'',methode:'rupture',gammaW:10,mode:'ec7',
    s1_on:false,s1_q:10,s2_on:false,s2_q:10,s2_z:1,s2_d:3,s3_on:false,s3_q:10,s3_z:1,s3_b:3,s4_on:false,s4_q:10,s4_z:1,s4_d:3,s4_b:3,s4_diag:2,s5_on:false,s5_Q:20,s5_z:1,s5_d:3,s5_diag:6,statut:null,resultats:null}; }
   function rpData(t){ if(!t.dimRP) t.dimRP=rpDefault(t); return t.dimRP; }
   const rpMode=t=>!!t&&beTypeStructureNom(t.typeStructureId)===RP_TYPE_NOM;
@@ -34188,7 +34199,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function rpRoot(fn,a,b){ let fa=fn(a); for(let i=0;i<60;i++){ const m=(a+b)/2, fm=fn(m); if((fa<=0)===(fm<=0)){ a=m; fa=fm; } else b=m; } return (a+b)/2; }
   function rpCompute(t){
-   const dp=rpData(t); dimThrow(rpValidate(dp));
+   const dp=rpData(t); if(rcOn(dp)) return rcCompute(t); dimThrow(rpValidate(dp));
    const cf=rpCoef(dp), S=rpSegments(dp,cf), L=+dp.L_m, f=+dp.f_m, N=400, pts=[];
    for(let i=0;i<=N;i++){ const z=L*i/N, r=rpMV(S,z); pts.push({z,M:r.M,V:r.V,p:r.p}); }
    const roots=[]; for(let i=1;i<=N;i++){ const a=pts[i-1].M, b=pts[i].M; if((a>1e-9&&b<=0)||(a<-1e-9&&b>=0)) roots.push(rpRoot(z=>rpMV(S,z).M,pts[i-1].z,pts[i].z)); }
@@ -34209,15 +34220,417 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(cf.KaSaisi||cf.KpSaisi) conf.push('K_a ou K_p saisi : valeur retenue telle quelle, non vérifiée par l\'application.');
    return {cf,S,L,f,z0,d,Lrec,Mmax,zMmax,Mmin,zMmin,Vmax,zVmax,Mb:base.M,Vb:base.V,pts,verifs,nKo,warn,conf,dp:{mode:dp.mode}};
   }
+  /* moteur du calcul complet : pressions, poutre continue, contre-butée */
+  /* ENGINE rideau complet (morceau inséré dans index.html) */
+  const rcNum=x=>(x==null||x===''||isNaN(+x))?null:+x;
+  /* coefficients de poussée et de butée par couche : Rankine (δ = 0) avec φ_d, ou valeurs saisies */
+  function rcKs(co,cf,i,meth){
+   const phid=Math.atan(Math.tan((+co.phi||0)*Math.PI/180)/cf.gPhi);
+   let Ka=Math.pow(Math.tan(Math.PI/4-phid/2),2), Kp=Math.pow(Math.tan(Math.PI/4+phid/2),2), kaS=false, kpS=false, meth_a='Rankine', meth_p='Rankine';
+   if(meth==='saisi'){ const a=rcNum(co.Ka), p=rcNum(co.Kp); if(a!=null&&a>0){ Ka=a; kaS=true; meth_a='saisi'; } if(p!=null&&p>0){ Kp=p; kpS=true; meth_p='saisi'; } }
+   else if(meth==='caquot'&&typeof rcCaquot==='function'){ const r=rcCaquot(phid,rcNum(co.dA)||0,rcNum(co.dP)||0); if(r){ Ka=r.Ka; Kp=r.Kp; meth_a=meth_p='Caquot-Kérisel'; } }
+   return {Ka,Kp,phid,kaS,kpS,meth_a,meth_p};
+  }
+  /* tronçons de pression nette (positive vers la fouille), kN/m par m de profondeur, de 0 à zmax */
+  function rcSegments(D,zmax){
+   const cf=D.cf, C=D.couches, f=D.f, gw=D.gammaW||0;
+   const tops=[]; let z=0; C.forEach((c,i)=>{ tops.push(z); z+=(i<C.length-1?(+c.h||0):1e9); });
+   const bots=tops.map((t,i)=>i<C.length-1?tops[i+1]:1e9);
+   const layerAt=zz=>{ for(let i=C.length-1;i>=0;i--) if(zz>=tops[i]-1e-12) return i; return 0; };
+   const bp=new Set([0,zmax]); tops.forEach(t=>{ if(t>0&&t<zmax) bp.add(+t.toFixed(9)); });
+   [f,D.zwP,D.zwB].forEach(v=>{ if(v!=null&&v>0&&v<zmax) bp.add(+v.toFixed(9)); });
+   const zs=[...bp].sort((a,b)=>a-b);
+   /* contrainte verticale effective à la profondeur zz côté poussée / butée */
+   const gEff=(i,zz,zw)=>(zw!=null&&zz>=zw-1e-12)?(+C[i].gammaP):(+C[i].gamma);
+   function sigV(zStart,sig0,zz,zw){ /* intègre de zStart à zz par morceaux */
+    let s=sig0, a=zStart; const cuts=[...new Set([a,zz].concat(tops.filter(t=>t>a&&t<zz)).concat(zw!=null&&zw>a&&zw<zz?[zw]:[]))].sort((x,y)=>x-y);
+    for(let k=1;k<cuts.length;k++){ const m=(cuts[k-1]+cuts[k])/2; s+=gEff(layerAt(m),m,zw)*(cuts[k]-cuts[k-1]); } return s; }
+   const q=(+D.q||0)*cf.gQ;
+   const segs=[];
+   for(let k=1;k<zs.length;k++){
+    const za=zs[k-1], zb=zs[k], mid=(za+zb)/2, i=layerAt(mid), K=D.K[i], c=+C[i].c||0;
+    const sa=z0=>{ const sv=q+sigV(0,0,z0,D.zwP); return K.Ka*sv-2*c*Math.sqrt(K.Ka); };
+    const sp=z0=>{ if(z0<f) return 0; const sv=sigV(f,0,z0,D.zwB); return K.Kp*sv+2*c*Math.sqrt(K.Kp); };
+    const uP=z0=>(D.zwP!=null&&z0>D.zwP)?gw*(z0-D.zwP):0, uB=z0=>(D.zwB!=null&&z0>D.zwB)?gw*(z0-D.zwB):0;
+    /* actions : poussée effective + eau côté poussée (permanentes) ; butée effective + eau côté butée (résistance) */
+    const act=z0=>{ const a=sa(z0); return {a:a, u:uP(z0)}; };
+    const net=(z0,fl)=>{ const aF=fl?sa(z0):0; return (aF*cf.gG+uP(z0)*cf.gG)-(z0>=f?(sp(z0)/cf.gRe+uB(z0)):0); };
+    /* point où la poussée effective s'annule dans l'intervalle (cohésion) */
+    let cut=null; const a0=sa(za), a1=sa(zb); if((a0<0)!==(a1<0)&&Math.abs(a1-a0)>1e-12){ cut=za+(zb-za)*(0-a0)/(a1-a0); }
+    const pieces=cut!=null?[[za,cut],[cut,zb]]:[[za,zb]];
+    pieces.forEach(([x0,x1])=>{ if(x1-x0<1e-12) return; const em=(x0+x1)/2; const fl=sa(em)>=0; const p0=net(x0,fl), p1=net(x1,fl); segs.push({z0:x0,z1:x1,p0,p1,layer:i}); });
+   }
+   /* tronçons séparés par un saut éventuel au changement de couche : déjà par intervalle */
+   return segs;
+  }
+  /* point de pression nette nulle (de + à −) */
+  function rcPressZero(segs){
+   for(const s of segs){ if(s.p0>1e-9&&s.p1<=1e-9) return s.z0+(s.z1-s.z0)*s.p0/(s.p0-s.p1); if(s.p0<=1e-9&&s.p0>-1e-9&&s.z0>0) {} }
+   for(let i=1;i<segs.length;i++){ if(segs[i-1].p1>1e-9&&segs[i].p0<=1e-9) return segs[i].z0; }
+   return null;
+  }
+  /* poutre continue : éléments d'Euler-Bernoulli, appuis ressorts aux ancrages, encastrement en pied (cote fr) */
+  function rcBeam(D,segs,fr,EI){
+   const anc=(D.ancrages||[]).filter(a=>a.z>=0&&a.z<fr-1e-6), frc=D.forces||[];
+   const pts=new Set([0,fr]);
+   anc.forEach(a=>pts.add(+a.z.toFixed(9))); frc.forEach(a=>{ if(a.z>=0&&a.z<=fr) pts.add(+a.z.toFixed(9)); });
+   segs.forEach(s=>{ if(s.z0<fr) pts.add(+s.z0.toFixed(9)); if(s.z1<fr) pts.add(+s.z1.toFixed(9)); });
+   let zs=[...pts].sort((a,b)=>a-b); const hmax=D.hmax||0.1;
+   const nodes=[zs[0]]; for(let k=1;k<zs.length;k++){ const n=Math.max(1,Math.ceil((zs[k]-zs[k-1])/hmax-1e-9)); for(let j=1;j<=n;j++) nodes.push(zs[k-1]+(zs[k]-zs[k-1])*j/n); }
+   const N=nodes.length, nd=2*N, kP=1e11*EI/Math.pow(hmax,3);
+   const K=new Float64Array(nd*nd), F=new Float64Array(nd), bw=3;
+   const pAt=(z,side)=>{ for(const s of segs){ if(z>=s.z0-1e-9&&z<=s.z1+1e-9){ const t=(z-s.z0)/(s.z1-s.z0); return s.p0+(s.p1-s.p0)*t; } } return 0; };
+   const elems=[];
+   for(let e=0;e<N-1;e++){
+    const L=nodes[e+1]-nodes[e], mid=(nodes[e]+nodes[e+1])/2;
+    let sg=segs.find(s=>mid>=s.z0&&mid<=s.z1); let w1=0,w2=0; if(sg){ const t1=(nodes[e]-sg.z0)/(sg.z1-sg.z0), t2=(nodes[e+1]-sg.z0)/(sg.z1-sg.z0); w1=sg.p0+(sg.p1-sg.p0)*t1; w2=sg.p0+(sg.p1-sg.p0)*t2; }
+    const c=EI/(L*L*L), k=[[12,6*L,-12,6*L],[6*L,4*L*L,-6*L,2*L*L],[-12,-6*L,12,-6*L],[6*L,2*L*L,-6*L,4*L*L]];
+    const fe=[L*(7*w1+3*w2)/20, L*L*(3*w1+2*w2)/60, L*(3*w1+7*w2)/20, -L*L*(2*w1+3*w2)/60];
+    const idx=[2*e,2*e+1,2*e+2,2*e+3];
+    for(let a=0;a<4;a++){ F[idx[a]]+=fe[a]; for(let b=0;b<4;b++) K[idx[a]*nd+idx[b]]+=c*k[a][b]; }
+    elems.push({L,w1,w2,fe,idx,c});
+   }
+   const nodeAt=z=>{ let b=0,bd=1e9; for(let i=0;i<N;i++){ const d=Math.abs(nodes[i]-z); if(d<bd){ bd=d; b=i; } } return b; };
+   const sup=[];
+   anc.forEach(a=>{ const i=nodeAt(a.z), kk=(a.rigide||!(a.k>0))?kP:a.k, d=(+a.d||0); K[2*i*nd+2*i]+=kk; F[2*i]+=kk*d; sup.push({i,kk,d,z:a.z,rigide:kk===kP}); });
+   frc.forEach(a=>{ if(a.z<0||a.z>fr) return; const i=nodeAt(a.z); F[2*i]+=(+a.F||0); F[2*i+1]+=(+a.M||0); });
+   /* encastrement en pied : v = θ = 0 (pénalité) */
+   const nl=N-1; K[2*nl*nd+2*nl]+=kP; K[(2*nl+1)*nd+2*nl+1]+=kP*hmax*hmax;
+   /* résolution : élimination de Gauss dans la bande */
+   const A=K, b=F;
+   for(let i=0;i<nd;i++){ const piv=A[i*nd+i]; const jm=Math.min(nd-1,i+bw);
+    for(let r=i+1;r<=jm;r++){ const fct=A[r*nd+i]/piv; if(fct===0) continue; for(let c2=i;c2<=jm;c2++) A[r*nd+c2]-=fct*A[i*nd+c2]; b[r]-=fct*b[i]; } }
+   const u=new Float64Array(nd); for(let i=nd-1;i>=0;i--){ let s=b[i]; const jm=Math.min(nd-1,i+bw); for(let c2=i+1;c2<=jm;c2++) s-=A[i*nd+c2]*u[c2]; u[i]=s/A[i*nd+i]; }
+   /* efforts : moment M = EI·y'' au bout de chaque élément ; effort tranchant par équilibre */
+   const M=new Float64Array(N), Mc=new Float64Array(N), Mn=new Float64Array(N);
+   elems.forEach((el,e)=>{ const L=el.L, v1=u[2*e],t1=u[2*e+1],v2=u[2*e+2],t2=u[2*e+3];
+    const m0=EI*((-6)*v1+L*(-4)*t1+6*v2+L*(-2)*t2)/(L*L), m1=EI*((6)*v1+L*(2)*t1-6*v2+L*(4)*t2)/(L*L);
+    M[e]+=m0; Mc[e]++; M[e+1]+=m1; Mc[e+1]++; });
+   for(let i=0;i<N;i++) M[i]/=Mc[i];
+   const R=sup.map(s=>s.kk*(u[2*s.i]-s.d)); const Rtot=R.reduce((a,x)=>a+x,0);
+   let tot=0; elems.forEach(el=>{ tot+=el.L*(el.w1+el.w2)/2; }); frc.forEach(a=>{ if(a.z>=0&&a.z<=fr) tot+=(+a.F||0); });
+   const C=tot-Rtot;
+   /* tranchant par intégration : V(z) = ∫p + F − Σ R au-dessus */
+   const V=new Float64Array(N); let acc=0;
+   for(let i=0;i<N;i++){ if(i>0){ const el=elems[i-1]; acc+=el.L*(el.w1+el.w2)/2; }
+    frc.forEach(a=>{ if(nodeAt(a.z)===i&&a.z>=0&&a.z<=fr) acc+=(+a.F||0); });
+    sup.forEach((s,j)=>{ if(s.i===i) acc-=R[j]; });
+    V[i]=acc; }
+   return {nodes:Array.from(nodes),M:Array.from(M),V:Array.from(V),y:nodes.map((_,i)=>u[2*i]),R:sup.map((s,j)=>({z:s.z,R:R[j],rigide:s.rigide})),C,Mfoot:M[N-1],tot};
+  }
+  /* niveau de contre-butée : M(pied) = 0 */
+  function rcSolve(D){
+   const E=D.EI>0?D.EI:1e5, f=D.f, last=Math.max(f,...(D.ancrages||[]).map(a=>a.z));
+   const zmaxP=f+Math.max(10,2*f)+2;
+   const segsAll=rcSegments(D,zmaxP);
+   const g=fr=>rcBeam(D,segsAll,fr,E).Mfoot;
+   const step=D.step||0.1; let a=last+step, ga=g(a), b=null, gb=null, found=false;
+   for(let fr=a+step; fr<=zmaxP-0.5; fr+=step){ const gv=g(fr); if(!(ga>0&&gv>0)&&!(ga<0&&gv<0)){ b=fr; gb=gv; found=true; break; } a=fr; ga=gv; }
+   if(!found) return {ok:false,segsAll,reason:'pas d\'équilibre'};
+   for(let it=0;it<60;it++){ const m=(a+b)/2, gm=g(m); if((ga>0)===(gm>0)){ a=m; ga=gm; } else { b=m; gb=gm; } }
+   const fr=(a+b)/2, res=rcBeam(D,segsAll,fr,E);
+   return {ok:true,fr,res,segsAll};
+  }
+
+  /* =================== Rideau de palplanches, calcul complet (lot 2) ===================
+     Rideau étudié comme une poutre continue de la tête à la cote de contre-butée : appuis aux ancrages ou butons (rigides ou élastiques), encastrement à la cote de contre-butée
+     où le moment s'annule (recherche itérative), chargement par la pression nette (poussée − butée, eau, surcharge uniforme) et efforts concentrés. Fiche, moments, tranchants, réactions et déformée.
+     Unités : kN, m, kPa, kN/m ; efforts par mètre de rideau ; profilé : W_el en cm³/m, I en cm⁴/m. Cotes en profondeur depuis la tête du rideau (positif vers le bas). */
+  const RC_CAT=[['AZ 12-700',1205],['AZ 14-700',1405],['AZ 18-700',1800],['AZ 20-700',2000],['AZ 24-700',2400],['AZ 26-700',2600],['AZ 28-700',2800],['AZ 36-700N',3600],['AU 14',1405],['AU 16',1600],['AU 18',1800],['AU 20',2000]];
+  const RC_ACIER=[[240,'S240GP'],[270,'S270GP'],[320,'S320GP'],[355,'S355GP'],[390,'S390GP'],[430,'S430GP']];
+  const rcOn=dp=>!!dp&&dp.methode==='complet';
+  const rcCzNew=()=>({h:'',gamma:'',gammaP:'',phi:'',c:'',Ka:'',Kp:''});
+  function rcInit(dp){ if(!Array.isArray(dp.couches)||!dp.couches.length) dp.couches=[rcCzNew()]; if(!Array.isArray(dp.ancrages)) dp.ancrages=[]; if(!Array.isArray(dp.forces)) dp.forces=[]; if(!dp.Kmeth) dp.Kmeth='rankine'; return dp; }
+  Object.assign(DIM_ARR,{ancrages:['Ancrage',1,''],forces:['Effort concentré',1,'']});
+  Object.assign(DIM_SUB,{gammaP:'γ′ (kN/m³)',gamma:'γ (kN/m³)',phi:'φ (°)',c:'c (kPa)',Ka:'K_a',Kp:'K_p',rigide:'appui rigide',F:'F (kN/m)',z:'niveau (m)',k:'raideur (kN/m par m)',d:'déplacement imposé (mm)'});
+  Object.assign(DIM_LBL,{methode:'Méthode de calcul',Kmeth:'Poussée et butée',pfCat:'Profilé',pfW:'Module élastique W_el (cm³/m)',pfI:'Inertie I (cm⁴/m)',pfAcier:'Nuance d\'acier',pfFy:'Limite d\'élasticité f_y (MPa)'});
+  ['methode','Kmeth','pfCat','pfW','pfI','pfAcier','pfFy'].forEach(k=>DIM_MAT.add(k));
+  function rcSpecs(dp){
+   const cz=dp.couches||[], n=cz.length, hasW=rpNum(dp.zwP_m)!=null||rpNum(dp.zwB_m)!=null;
+   const S=[{k:'f_m',nom:'Le niveau de fouille f',pos:1,max:60,unit:'m',fem:false},
+    {k:'L_m',nom:'La longueur du rideau L',pos:1,max:60,unit:'m',fem:true,req:false},
+    {k:'zwP_m',nom:'Le niveau de la nappe côté poussée',min:0,max:60,unit:'m',fem:false,req:false},{k:'zwB_m',nom:'Le niveau de la nappe côté butée',min:0,max:60,unit:'m',fem:false,req:false},
+    {k:'gammaW',nom:'Le poids volumique de l\'eau',pos:1,min:9,max:12,unit:'kN/m³',fem:false,when:()=>hasW},
+    {k:'s1_q',nom:'La surcharge q',min:0,max:1e4,unit:'kPa',fem:true,when:d=>d.s1_on},
+    {k:'pfW',nom:'Le module élastique W_el',pos:1,max:1e5,unit:'cm³/m',fem:false,req:false},{k:'pfI',nom:'L\'inertie I',pos:1,max:1e7,unit:'cm⁴/m',fem:true,req:false},{k:'pfFy',nom:'La limite d\'élasticité f_y',pos:1,max:1000,unit:'MPa',fem:true,req:false}];
+   cz.forEach((c,i)=>{ const p='couches.'+i+'.', nm=n>1?' de la couche '+(i+1):'';
+    if(i<n-1) S.push({k:p+'h',nom:'L\'épaisseur'+nm,pos:1,max:60,unit:'m',fem:true});
+    S.push({k:p+'gamma',nom:'Le poids volumique'+nm,pos:1,min:10,max:30,unit:'kN/m³',fem:false},{k:p+'gammaP',nom:'Le poids volumique déjaugé'+nm,pos:1,min:5,max:25,unit:'kN/m³',fem:false,req:hasW},{k:p+'phi',nom:'L\'angle de frottement φ'+nm,min:0,max:50,unit:'°',fem:false},{k:p+'c',nom:'La cohésion c'+nm,min:0,max:1000,unit:'kPa',fem:true,req:false});
+    if(dp.Kmeth==='saisi') S.push({k:p+'Ka',nom:'Le coefficient K_a'+nm,pos:1,max:5,unit:'',fem:false},{k:p+'Kp',nom:'Le coefficient K_p'+nm,pos:1,max:30,unit:'',fem:false}); });
+   (dp.ancrages||[]).forEach((a,i)=>{ const p='ancrages.'+i+'.', nm=' de l\'ancrage '+(i+1);
+    S.push({k:p+'z',nom:'Le niveau'+nm,min:0,max:60,unit:'m',fem:false},{k:p+'k',nom:'La raideur'+nm,pos:1,max:1e9,unit:'kN/m par m',fem:true,when:()=>!a.rigide},{k:p+'d',nom:'Le déplacement imposé'+nm,min:-1000,max:1000,unit:'mm',fem:false,req:false}); });
+   (dp.forces||[]).forEach((a,i)=>{ const p='forces.'+i+'.', nm=' de l\'effort '+(i+1);
+    S.push({k:p+'z',nom:'Le niveau'+nm,min:0,max:60,unit:'m',fem:false},{k:p+'F',nom:'L\'effort horizontal'+nm,min:-1e6,max:1e6,unit:'kN/m',fem:false,req:false},{k:p+'M',nom:'Le moment'+nm,min:-1e6,max:1e6,unit:'kN·m/m',fem:false,req:false}); });
+   return S;
+  }
+  function rcValidate(dp){ rcInit(dp); return dimValidateSpecs(dp,rcSpecs(dp),(d,er)=>{ const has=k=>er.some(x=>x.key===k), f=rpNum(d.f_m), L=rpNum(d.L_m);
+   if(f!=null&&L!=null&&L<=f&&!has('f_m')&&!has('L_m')) er.push({key:'L_m',msg:'La longueur du rideau doit être supérieure au niveau de fouille (ou à laisser vide).'});
+   (d.ancrages||[]).forEach((a,i)=>{ const z=rpNum(a.z); if(z!=null&&f!=null&&z>=f&&!has('ancrages.'+i+'.z')) er.push({key:'ancrages.'+i+'.z',msg:'Le niveau de l\'ancrage '+(i+1)+' doit être au-dessus de la fouille (inférieur à f).'}); });
+   if((d.ancrages||[]).some(a=>!a.rigide)&&!(rpNum(d.pfI)>0)&&!has('pfI')) er.push({key:'pfI',msg:'L\'inertie I du profilé doit être renseignée (nécessaire avec un appui élastique).'});
+  }); }
+  function rcDonnees(dp){
+   rcInit(dp); const ec=dp.mode!=='carac', cf={gG:ec?rpVal(dp,'gG'):1,gQ:ec?rpVal(dp,'gQ'):1,gPhi:ec?rpVal(dp,'gPhi'):1,gRe:ec?rpVal(dp,'gRe'):1,ec};
+   const zwP=rpNum(dp.zwP_m), zwB=rpNum(dp.zwB_m), hasW=zwP!=null||zwB!=null;
+   const C=dp.couches.map(c=>({h:rcNum(c.h)||0,gamma:+c.gamma,gammaP:rcNum(c.gammaP)||+c.gamma,phi:+c.phi,c:rcNum(c.c)||0,Ka:c.Ka,Kp:c.Kp}));
+   const meth=dp.Kmeth==='saisi'?'saisi':'rankine', K=C.map((c,i)=>rcKs(c,cf,i,meth));
+   const Iv=rpNum(dp.pfI), E=rpVal(dp,'E_MPa'), EI=Iv>0?E*1e3*Iv*1e-8:null;
+   return {cf,couches:C,K,meth,f:+dp.f_m,q:dp.s1_on?(+dp.s1_q||0):0,zwP,zwB,gammaW:hasW?+dp.gammaW:0,EI,E,
+    ancrages:dp.ancrages.map(a=>({z:+a.z,rigide:!!a.rigide,k:a.rigide?Infinity:+a.k,d:(rcNum(a.d)||0)/1000})),
+    forces:dp.forces.map(a=>({z:+a.z,F:rcNum(a.F)||0,M:rcNum(a.M)||0}))};
+  }
+  function rcCompute(t){
+   const dp=rcInit(rpData(t)); dimThrow(rcValidate(dp));
+   const D=rcDonnees(dp), cf=D.cf, f=D.f, kF=rpVal(dp,'kFiche'), gM0=rpVal(dp,'gM0');
+   const sol=rcSolve(D), verifs=[], V=(zone,nom,formule,calcul,limite,etat)=>verifs.push({zone,nom,formule,calcul,limite,etat});
+   const conf=[], warn=[];
+   if(!sol.ok){
+    V('Équilibre','Contre-butée','M = 0 en pied de la poutre continue','aucun niveau de contre-butée trouvé dans le terrain défini','M(pied) = 0','ko');
+    return {complet:true,cf,D,L:rpNum(dp.L_m),f,z0:null,Lrec:null,fiche:null,Nve:null,Mmax:0,zMmax:0,Vmax:0,zVmax:0,Mb:0,Vb:0,pts:[],S:[],verifs,nKo:1,warn:['Aucun équilibre : la butée du terrain défini ne suffit pas, ou le terrain s\'arrête trop haut. Ajouter des couches ou revoir les ancrages.'],conf,dp:{mode:dp.mode},reac:[],hasEI:false};
+   }
+   const fr=sol.fr, B=sol.res, segsAll=sol.segsAll, Nve=rcPressZero(segsAll);
+   const fiche=Nve!=null?kF*(fr-Nve)+(Nve-f):null, Lrec=fiche!=null?f+fiche:null;
+   let Mmax=0,zMmax=0,Vmax=0,zVmax=0,ymax=0,zy=0;
+   B.nodes.forEach((z,i)=>{ if(Math.abs(B.M[i])>Mmax){ Mmax=Math.abs(B.M[i]); zMmax=z; } if(Math.abs(B.V[i])>Vmax){ Vmax=Math.abs(B.V[i]); zVmax=z; } if(Math.abs(B.y[i])>ymax){ ymax=Math.abs(B.y[i]); zy=z; } });
+   const pAt=z=>{ for(const s of segsAll){ if(z>=s.z0-1e-9&&z<=s.z1+1e-9) return s.p0+(s.p1-s.p0)*(s.z1>s.z0?(z-s.z0)/(s.z1-s.z0):0); } return 0; };
+   const step=Math.max(1,Math.floor(B.nodes.length/180)), pts=[]; B.nodes.forEach((z,i)=>{ if(i%step===0||i===B.nodes.length-1) pts.push({z,p:pAt(z),V:B.V[i],M:B.M[i],y:B.y[i]*1000}); });
+   const S=segsAll.filter(s=>s.z0<fr-1e-9).map(s=>({nom:'Pression nette — couche '+(s.layer+1),xd:s.z0,cd:s.p0,xf:Math.min(s.z1,fr),cf:s.p0+(s.p1-s.p0)*((Math.min(s.z1,fr)-s.z0)/(s.z1-s.z0))}));
+   const hasEI=D.EI>0, Wel=rpNum(dp.pfW), fy=rpNum(dp.pfFy), L=rpNum(dp.L_m), C=Math.abs(B.C);
+   V('Équilibre','Contre-butée','M = 0 en pied de la poutre continue','niveau de contre-butée z = '+rpF(fr,2)+' m ; contre-butée C = '+rpF(C,1)+' kN/m','M(pied) = 0','ok');
+   if(Nve!=null){ V('Fiche','Fiche calculée','fiche = k·(z_c − z_p) + (z_p − f), k = '+rpF(kF,2),'z_p = '+rpF(Nve,2)+' m (pression nette nulle) ; fiche = '+rpF(fiche,2)+' m ; longueur conseillée f + fiche = '+rpF(Lrec,2)+' m','—','ok');
+    if(L!=null) V('Fiche','Longueur du rideau suffisante','L ≥ f + fiche','L = '+rpF(L,2)+' m','≥ '+rpF(Lrec,2)+' m',L>=Lrec-1e-9?'ok':'ko'); }
+   else V('Fiche','Fiche calculée','pression nette nulle sous la fouille','non trouvée','—','nf');
+   if(Wel>0&&fy>0){ const MRd=Wel*fy/(1000*gM0); V('Profilé','Flexion du profilé','M_Ed ≤ M_Rd = W_el·f_y/γ_M0, γ_M0 = '+rpF(gM0,2),'M_Ed = '+rpF(Mmax,1)+' kN·m/m ; M_Rd = '+rpF(MRd,1)+' kN·m/m','M_Ed ≤ M_Rd',Mmax<=MRd+1e-9?'ok':'ko'); }
+   else V('Profilé','Flexion du profilé','M_Ed ≤ W_el·f_y/γ_M0','profilé ou nuance non défini','—','nf');
+   V('Déformée','Déplacement maximal',hasEI?'poutre continue élastique, E·I = '+rpF(D.EI,0)+' kN·m²/m':'inertie du profilé non renseignée',hasEI?'y max = '+rpF(ymax*1000,2)+' mm à '+rpF(zy,2)+' m':'non calculé','—',hasEI?'na':'nf');
+   if(B.R.length) V('Appuis','Réactions des ancrages et butons','réaction R = k·(y − déplacement imposé)',B.R.map((r,i)=>'appui '+(i+1)+' à '+rpF(r.z,2)+' m : R = '+rpF(r.R,1)+' kN/m').join(' ; '),'—','na');
+   V('Non traités','Séisme, stabilité d\'ensemble, tirants, cisaillement et voilement du profilé','hors du calcul','non calculés','—','nf');
+   const nKo=verifs.filter(v=>v.etat==='ko').length;
+   if(D.gammaW>0) conf.push('Poids volumique déjaugé sous la nappe avec pression d\'eau ajoutée ; pression hydrostatique différentielle de part et d\'autre.');
+   if(cf.ec) conf.push('Coefficients partiels de l\'Eurocode 7 appliqués par défaut (γ_G, γ_Q, γ_φ, γ_R,e saisissables) : choix d\'ingénieur à confirmer.');
+   if(D.meth==='saisi') conf.push('K_a et K_p saisis couche par couche : valeurs retenues telles quelles, non vérifiées par l\'application.');
+   if(D.K.some(k=>k.meth_a==='Rankine')) conf.push('Poussée et butée de Rankine (δ = 0, surface horizontale) : sens de la sécurité pour la poussée, butée plutôt faible ; l\'ingénieur peut saisir ses propres coefficients.');
+   if(!hasEI&&D.ancrages.every(a=>a.rigide)) warn.push('Inertie du profilé non renseignée : efforts calculés avec des appuis rigides (indépendants de E·I), déformée non calculée.');
+   if(D.couches.length&&Nve!=null&&fr>D.couches.reduce((a,c,i)=>a+(i<D.couches.length-1?c.h:0),0)&&D.couches.length>1) warn.push('Le niveau de contre-butée est dans la dernière couche, supposée se prolonger jusqu\'au pied du rideau.');
+   return {complet:true,cf,D,L,f,z0:fr,fr,Lrec,fiche,Nve,C,Mmax,zMmax,Vmax,zVmax,ymax,zy,Mb:B.Mfoot,Vb:B.V[B.V.length-1],pts,S,verifs,nKo,warn,conf,dp:{mode:dp.mode},reac:B.R,hasEI,Wel,fy};
+  }
+  /* ---------- formulaire ---------- */
+  const rcIn=(k,v,w,ph,dis)=>'<input type="number" inputmode="decimal" step="any" class="rcIn" style="width:'+(w||86)+'px" data-rp="'+k+'" value="'+esc(v==null?'':String(v))+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+(dis?' disabled aria-disabled="true"':'')+'>';
+  function rcMethodHtml(dp){
+   return '<label>Méthode de calcul '+rpSel('methode',rcOn(dp)?'complet':'rupture',[['rupture','À la rupture (une couche)'],['complet','Calcul complet (poutre continue)']])+'</label>';
+  }
+  function rcStepsHtml(dp){
+   rcInit(dp); const cz=dp.couches, n=cz.length, sa=dp.Kmeth==='saisi';
+   const th=(a)=>'<th scope="col">'+a+'</th>';
+   let h='<h5>1 · Rideau et terrain</h5><p class="pcNote">Niveau de fouille f et niveaux de nappe : à régler sur le schéma (mètres depuis la tête du rideau, vers le bas) ; nappe laissée vide : pas d\'eau de ce côté. La longueur du rideau est un résultat ; la saisir seulement pour la comparer à la longueur conseillée. Couches de haut en bas, la dernière se prolonge jusqu\'au pied.</p>'
+    +'<div class="rcTblWrap"><table class="rcT"><thead><tr>'+th('N°')+th('Épaisseur h (m)')+th('γ (kN/m³)')+th('γ′ (kN/m³)')+th('φ (°)')+th('c (kPa)')+(sa?th('K<sub>a</sub>')+th('K<sub>p</sub>'):'')+th('')+'</tr></thead><tbody>'
+    +cz.map((c,i)=>'<tr><td>'+(i+1)+'</td><td>'+(i<n-1?rcIn('couches.'+i+'.h',c.h,78):'<span class="pcNote">jusqu\'au pied</span>')+'</td><td>'+rcIn('couches.'+i+'.gamma',c.gamma,78)+'</td><td>'+rcIn('couches.'+i+'.gammaP',c.gammaP,78)+'</td><td>'+rcIn('couches.'+i+'.phi',c.phi,70)+'</td><td>'+rcIn('couches.'+i+'.c',c.c,70,'0')+'</td>'
+     +(sa?'<td>'+rcIn('couches.'+i+'.Ka',c.Ka,70)+'</td><td>'+rcIn('couches.'+i+'.Kp',c.Kp,70)+'</td>':'')
+     +'<td>'+(n>1?'<button type="button" class="ghost rcDel" data-rp-act="delCz" data-i="'+i+'" aria-label="Supprimer la couche '+(i+1)+'" title="Supprimer la couche">✕</button>':'')+'</td></tr>').join('')+'</tbody></table></div>'
+    +'<div class="rcBtns"><button type="button" class="ghost pcBtnSm" data-rp-act="addCz">+ Ajouter une couche</button><button type="button" class="ghost pcBtnSm" data-rp-act="exemple">Exemple</button></div>'
+    +'<p class="pcNote">γ′ (poids volumique déjaugé) n\'est utilisé qu\'en présence d\'une nappe. Cohésion laissée vide : nulle (côté sécurité pour la butée).</p>'
+    +rpNumIn('gammaW',dp.gammaW,'Poids volumique de l\'eau','kN/m³')
+    +'<label>Poussée et butée '+rpSel('Kmeth',sa?'saisi':'rankine',[['rankine','Rankine (δ = 0), calculée avec φ'],['saisi','Coefficients K_a et K_p saisis par couche (par exemple lus dans les tables de Caquot-Kérisel)']])+'</label>'
+    +'<label>Règlement de calcul '+rpSel('mode',dp.mode==='carac'?'carac':'ec7',[['ec7','Eurocode 7 : coefficients partiels (modifiables dans les paramètres avancés)'],['carac','Valeurs caractéristiques, sans coefficient']])+'</label>';
+   h+='<hr class="pcFormSep"><h5>2 · Surcharge et efforts concentrés</h5><p class="pcNote">Surcharge uniforme sur le terrain côté poussée (autres types de surcharge : méthode à la rupture). Effort horizontal F positif dans le sens de la poussée (vers la fouille), moment M en kN·m par mètre de rideau.</p>'
+    +'<label class="pcChk"><input type="checkbox" data-rp="s1_on"'+(dp.s1_on?' checked':'')+'> Surcharge illimitée</label>'+(dp.s1_on?'<div class="pcForm">'+rpNumIn('s1_q',dp.s1_q,'q','kPa')+'</div>':'')
+    +(dp.forces.length?'<div class="rcTblWrap"><table class="rcT"><thead><tr>'+th('N°')+th('Niveau z (m)')+th('F (kN/m)')+th('M (kN·m/m)')+th('')+'</tr></thead><tbody>'+dp.forces.map((a,i)=>'<tr><td>'+(i+1)+'</td><td>'+rcIn('forces.'+i+'.z',a.z,78)+'</td><td>'+rcIn('forces.'+i+'.F',a.F,78,'0')+'</td><td>'+rcIn('forces.'+i+'.M',a.M,78,'0')+'</td><td><button type="button" class="ghost rcDel" data-rp-act="delFo" data-i="'+i+'" aria-label="Supprimer l\'effort '+(i+1)+'">✕</button></td></tr>').join('')+'</tbody></table></div>':'')
+    +'<div class="rcBtns"><button type="button" class="ghost pcBtnSm" data-rp-act="addFo">+ Ajouter un effort concentré</button></div>';
+   h+='<hr class="pcFormSep"><h5>3 · Ancrages et butons</h5><p class="pcNote">Appuis du rideau au-dessus de la fouille (tirants, butons). Un appui rigide ne se déplace pas ; sinon, saisir la raideur k (kN/m par mètre de rideau). Déplacement imposé (tassement ou jeu de l\'appui) facultatif, en mm.</p>'
+    +(dp.ancrages.length?'<div class="rcTblWrap"><table class="rcT"><thead><tr>'+th('N°')+th('Niveau z (m)')+th('Rigide')+th('Raideur k (kN/m par m)')+th('Déplacement imposé (mm)')+th('')+'</tr></thead><tbody>'+dp.ancrages.map((a,i)=>'<tr><td>'+(i+1)+'</td><td>'+rcIn('ancrages.'+i+'.z',a.z,78)+'</td><td><label class="rcChkW"><input type="checkbox" class="rcChk" data-rp="ancrages.'+i+'.rigide"'+(a.rigide?' checked':'')+' aria-label="Appui rigide"></label></td><td>'+rcIn('ancrages.'+i+'.k',a.rigide?'':a.k,104,a.rigide?'rigide':'',a.rigide)+'</td><td>'+rcIn('ancrages.'+i+'.d',a.d,86,'0')+'</td><td><button type="button" class="ghost rcDel" data-rp-act="delAn" data-i="'+i+'" aria-label="Supprimer l\'ancrage '+(i+1)+'">✕</button></td></tr>').join('')+'</tbody></table></div>':'<p class="pcNote">Aucun ancrage : rideau en console (encastré dans le sol).</p>')
+    +'<div class="rcBtns"><button type="button" class="ghost pcBtnSm" data-rp-act="addAn">+ Ajouter un ancrage</button></div>';
+   h+='<hr class="pcFormSep"><h5>4 · Profilé</h5><p class="pcNote">Choisir un profilé du catalogue (module W<sub>el</sub> nominal, à confirmer sur la fiche du fabricant) ou saisir ses propres valeurs ; l\'inertie I sert à la déformée et aux appuis élastiques. Laisser vide : flexion du profilé non vérifiée.</p>'
+    +'<label>Profilé '+rpSel('pfCat',dp.pfCat||'',[['','Aucun choix'],['saisi','Valeurs saisies']].concat(RC_CAT.map((c,i)=>[String(i),c[0]+' — W_el ≈ '+c[1]+' cm³/m'])))+'</label>'
+    +rpNumIn('pfW',dp.pfW,'Module élastique W_el','cm³/m')+rpNumIn('pfI',dp.pfI,'Inertie I','cm⁴/m')
+    +'<label>Nuance d\'acier '+rpSel('pfAcier',dp.pfAcier||'',[['','Aucun choix'],['autre','Valeur saisie']].concat(RC_ACIER.map(a=>[String(a[0]),a[1]+' — f_y = '+a[0]+' MPa'])))+'</label>'
+    +rpNumIn('pfFy',dp.pfFy,'Limite d\'élasticité f_y','MPa');
+   return h;
+  }
+  function rcExemple(dp){
+   dp.methode='complet'; dp.Kmeth='rankine'; dp.mode='carac'; dp.f_m=3.5; dp.L_m=''; dp.zwP_m=1; dp.zwB_m=1; dp.gammaW=10; dp.s1_on=true; dp.s1_q=5;
+   dp.couches=[{h:'',gamma:17,gammaP:10.5,phi:27,c:'',Ka:'',Kp:''}]; dp.ancrages=[{z:1,rigide:true,k:'',d:''}]; dp.forces=[]; dp.pfCat='saisi'; dp.pfW=''; dp.pfI=316; dp.pfAcier=''; dp.pfFy='';
+  }
+  /* ---------- résultats ---------- */
+  function rcSceneDiag(res){
+   const pts=res.pts, zE=res.z0||res.fr||1, H=300, ky=H/zE, Y=z=>30+z*ky, W=140, gap=30, defs=[['Pression nette (kN/m)','p'],['Effort tranchant V (kN/m)','V'],['Moment M (kN·m/m)','M']].concat(res.hasEI?[['Déplacement (mm)','y']]:[]);
+   const S=fplNewScene(defs.length*(W+gap)+50,H+80);
+   defs.forEach(([ti,key],i)=>{ const x0=60+i*(W+gap)+W/2, mx=Math.max(1e-9,...pts.map(q=>Math.abs(q[key]))), sc=(W/2-8)/mx;
+    fplT(S,x0,16,ti,'tb','middle',0,false); fplL(S,x0,Y(0),x0,Y(zE),'cote');
+    fplP(S,pts.map(q=>[x0+q[key]*sc,Y(q.z)]),'bar');
+    const ext=pts.reduce((a,q)=>Math.abs(q[key])>Math.abs(a[key])?q:a,pts[0]); fplT(S,x0+(ext[key]>=0?5:-5),Math.min(Y(ext.z)+4,Y(zE)-8),rpF(ext[key],key==='y'?2:1),'ts',ext[key]>=0?'start':'end');
+    fplL(S,x0-W/2,Y(res.f),x0+W/2,Y(res.f),'cad'); (res.reac||[]).forEach(r=>{ fplL(S,x0-W/2,Y(r.z),x0-W/2+8,Y(r.z),'lead'); });
+    fplL(S,x0-W/2,Y(zE),x0+W/2,Y(zE),'coupe'); });
+   fplT(S,4,Y(0)+4,'0 m','ts','start'); fplT(S,4,Y(res.f)+4,'f','ts','start'); fplT(S,4,Y(zE)+4,rpF(zE,2)+' m','ts','start'); fplT(S,60,H+62,'Trait mixte : cote de contre-butée ; tirets : fouille ; repères : appuis','ts','start',0,false);
+   return S;
+  }
+  function rcDiagSvg(res){ return fplSceneSvg(rcSceneDiag(res),{label:'Pression, effort tranchant, moment et déplacement le long du rideau'}); }
+  function rcResultatsHtml(res){
+   const f=rpF; let h='<h5>Résultats</h5>';
+   if(res.z0==null) return h+'<div class="pcDimBox"><b>Équilibre</b><p class="pcNote" role="alert">Aucun niveau de contre-butée trouvé.</p></div><div class="scroll">'+rpVerifsHtml(res)+'</div>'+(res.warn.length?'<div class="pcDimBox"><b>Avertissements</b><p class="pcNote">'+res.warn.map(esc).join('<br>')+'</p></div>':'');
+   h+='<div class="pcDimBox"><b>Contre-butée et fiche</b><p class="pcNote">Niveau de contre-butée <b>'+f(res.z0,2)+' m</b> · contre-butée C = <b>'+f(res.C,1)+' kN/m</b> · pression nette nulle à '+(res.Nve!=null?f(res.Nve,2)+' m':'—')+' · fiche calculée <b>'+(res.fiche!=null?f(res.fiche,2)+' m':'—')+'</b> · longueur conseillée f + fiche = <b>'+(res.Lrec!=null?f(res.Lrec,2)+' m':'—')+'</b>'+(res.L!=null?' · longueur saisie '+f(res.L,2)+' m':'')+'</p></div>';
+   h+='<div class="pcDimBox"><b>Efforts par mètre de rideau</b><p class="pcNote">|M|<sub>max</sub> = '+f(res.Mmax,1)+' kN·m/m à '+f(res.zMmax,2)+' m · |V|<sub>max</sub> = '+f(res.Vmax,1)+' kN/m à '+f(res.zVmax,2)+' m'+(res.hasEI?' · déplacement maximal '+f(res.ymax*1000,2)+' mm à '+f(res.zy,2)+' m':'')+'</p>'
+    +(res.reac.length?'<p class="pcNote">'+res.reac.map((r,i)=>'Réaction de l\'appui '+(i+1)+' (à '+f(r.z,2)+' m) : <b>'+f(r.R,1)+' kN/m</b>').join('<br>')+'</p>':'')+'</div>';
+   h+='<div class="pcDimBox"><b>Diagrammes</b><div class="pcDraw">'+rcDiagSvg(res)+'</div></div>';
+   h+='<div class="pcDimBox"><b>Vérifications</b></div><div class="scroll">'+rpVerifsHtml(res)+'</div>';
+   const w=res.warn.concat(res.conf); if(w.length) h+='<div class="pcDimBox"><b>Avertissements</b><p class="pcNote">'+w.map(esc).join('<br>')+'</p></div>';
+   return h+'<button type="button" class="ghost pcBtnSm" data-rp-act="printNote">🖶 Voir la note</button>';
+  }
+  /* ---------- clics et saisies du calcul complet ---------- */
+  function rcClick(e,id,dp){
+   const b=e.target.closest('[data-rp-act]'); if(!b) return false; const act=b.dataset.rpAct, i=+b.dataset.i; if(!/^(addCz|delCz|addAn|delAn|addFo|delFo|exemple|exempleR)$/.test(act)) return false;
+   rcInit(dp);
+   if(act==='addCz') dp.couches.push(rcCzNew()); else if(act==='delCz'&&dp.couches.length>1) dp.couches.splice(i,1);
+   else if(act==='addAn') dp.ancrages.push({z:'',rigide:false,k:'',d:''}); else if(act==='delAn') dp.ancrages.splice(i,1);
+   else if(act==='addFo') dp.forces.push({z:'',F:'',M:''}); else if(act==='delFo') dp.forces.splice(i,1);
+   else if(act==='exemple') rcExemple(dp);
+   else if(act==='exempleR'){ dp.gamma=19; dp.phi=30; if(!rpNum(dp.L_m)) dp.L_m=12; if(!rpNum(dp.f_m)) dp.f_m=4; }
+   try{persist();}catch(_){ } rpRender(id); return true;
+  }
+  function rcChange(el,dp,id){
+   const key=el.dataset.rp, m=/^(couches|ancrages|forces)\.(\d+)\.(\w+)$/.exec(key||''); rcInit(dp);
+   if(m){ const row=dp[m[1]][+m[2]]; if(!row) return true; row[m[3]]=el.type==='checkbox'?el.checked:(el.value===''?'':+String(el.value).replace(',','.')); if(m[3]==='rigide'&&el.checked) row.k=''; try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='pfCat'){ dp.pfCat=el.value; const c=RC_CAT[+el.value]; if(c&&el.value!=='saisi'&&el.value!==''){ dp.pfW=c[1]; } try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='pfAcier'){ dp.pfAcier=el.value; if(el.value&&el.value!=='autre') dp.pfFy=+el.value; try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='pfFy'){ dp.pfFy=el.value===''?'':+String(el.value).replace(',','.'); if(!RC_ACIER.some(a=>a[0]===+dp.pfFy)) dp.pfAcier=dp.pfFy===''?'':'autre'; else dp.pfAcier=String(dp.pfFy); try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='pfW'||key==='pfI'){ dp[key]=el.value===''?'':+String(el.value).replace(',','.'); if(key==='pfW') dp.pfCat='saisi'; try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='methode'){ dp.methode=el.value; if(el.value==='complet') rcInit(dp); try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='Kmeth'){ dp.Kmeth=el.value; try{persist();}catch(_){ } rpRender(id); return true; }
+   return false;
+  }
+  /* ---------- note de calcul ---------- */
+  function rcNoteCalculHtml0(t,dp,res){
+   const f=rpF, nm=esc(dp.nom||t.quoi||t.nom||'Rideau de palplanches'), cf=res.cf, D=res.D;
+   const constat=res.nKo?nm+' : '+res.nKo+' point'+(res.nKo>1?'s':'')+' bloquant'+(res.nKo>1?'s':'')+' à reprendre':nm+' : fiche calculée '+(res.fiche!=null?f(res.fiche,2)+' m':'indéterminée')+', moment maximal '+f(res.Mmax,1)+' kN·m/m, contre-butée à '+(res.z0!=null?f(res.z0,2)+' m':'—')+' — poutre continue sur ancrages ; tirants, séisme et stabilité d\'ensemble non vérifiés';
+   const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>').join('')
+    +res.conf.concat(res.warn).map(w=>'<p class="ncPt" data-bad="0">'+esc(w)+'</p>').join('')
+    +'<p class="ncPt" data-bad="0">Non vérifié ou non traité : dimensionnement des tirants et butons, séisme, stabilité d\'ensemble, cisaillement et voilement du profilé, effets tridimensionnels, poussée de Coulomb ou à frottement de paroi (sauf coefficients saisis).</p>'
+    +'<p class="ncPt" data-bad="0">Le niveau de contre-butée est celui où le moment de la poutre continue encastrée s\'annule ; la fiche majore la profondeur au-delà de la pression nulle du coefficient k.</p>';
+   const org=(...ks)=>ks.some(k=>rpSaisi(dp,k))?'Saisi (paramètres avancés)':'Par défaut';
+   const hypRows=[
+    ['Méthode','Calcul complet : poutre continue sur ancrages, encastrée à la cote de contre-butée','Choix de l\'ingénieur (fiche)'],
+    ['Règlement',cf.ec?'Eurocode 7 : coefficients partiels (γ_G = '+f(cf.gG,2)+', γ_Q = '+f(cf.gQ,2)+', γ_φ = '+f(cf.gPhi,2)+', γ_R,e = '+f(cf.gRe,2)+')':'Valeurs caractéristiques, sans coefficient partiel','Choix de l\'ingénieur'],
+    ['Poussée et butée',D.meth==='saisi'?'K_a et K_p saisis couche par couche':'Rankine (δ = 0) calculée avec φ'+(cf.ec?'<sub>d</sub>':''),D.meth==='saisi'?'Saisi':'Choix de l\'ingénieur'],
+    ['Eau',D.gammaW>0?'γ<sub>w</sub> = '+f(D.gammaW,1)+' kN/m³ ; nappe '+(D.zwP!=null?f(D.zwP,2)+' m côté poussée':'absente côté poussée')+', '+(D.zwB!=null?f(D.zwB,2)+' m côté butée':'absente côté butée'):'Pas d\'eau','Saisie'],
+    ['Fiche','fiche = k·(z<sub>c</sub> − z<sub>p</sub>) + (z<sub>p</sub> − f), k = '+f(rpVal(dp,'kFiche'),2),org('kFiche')],
+    ['Profilé',(dp.pfW?'W<sub>el</sub> = '+f(+dp.pfW,0)+' cm³/m':'W<sub>el</sub> non renseigné')+(dp.pfI?' ; I = '+f(+dp.pfI,0)+' cm⁴/m':'')+(dp.pfFy?' ; f<sub>y</sub> = '+f(+dp.pfFy,0)+' MPa':'')+' ; E = '+f(rpVal(dp,'E_MPa'),0)+' MPa','Saisie'],
+    ['γ<sub>M0</sub>',f(rpVal(dp,'gM0'),2),org('gM0')]]
+    .concat(RP_ADV.filter(sp=>sp.only!=='rupture'&&rpSaisi(dp,sp.k)&&rpVal(dp,sp.k)!==sp.def&&!['kFiche','gM0'].includes(sp.k)).map(sp=>[esc(sp.lbl),f(rpVal(dp,sp.k),3).replace(/,?0+$/,'')+(sp.unit?' '+sp.unit:''),'Saisi (paramètres avancés)']));
+   const hyp='<h4>Hypothèses</h4><table class="pcNCt"><thead><tr><th>Paramètre</th><th>Valeur retenue</th><th>Origine</th></tr></thead><tbody>'+hypRows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('')+'</tbody></table>';
+   const czT='<table class="pcNCt"><thead><tr><th>Couche</th><th>Épaisseur</th><th>γ (kN/m³)</th><th>γ′ (kN/m³)</th><th>φ (°)</th><th>c (kPa)</th><th>K<sub>a</sub></th><th>K<sub>p</sub></th></tr></thead><tbody>'
+    +D.couches.map((c,i)=>'<tr><td>'+(i+1)+'</td><td>'+(i<D.couches.length-1?f(c.h,2)+' m':'jusqu\'au pied')+'</td><td>'+f(c.gamma,1)+'</td><td>'+f(c.gammaP,1)+'</td><td>'+f(c.phi,1)+'</td><td>'+f(c.c,1)+'</td><td>'+f(D.K[i].Ka,3)+'</td><td>'+f(D.K[i].Kp,3)+'</td></tr>').join('')+'</tbody></table>';
+   const anT=D.ancrages.length?'<table class="pcNCt"><thead><tr><th>Appui</th><th>Niveau</th><th>Raideur</th><th>Déplacement imposé</th></tr></thead><tbody>'+D.ancrages.map((a,i)=>'<tr><td>'+(i+1)+'</td><td>'+f(a.z,2)+' m</td><td>'+(a.rigide?'rigide':f(a.k,0)+' kN/m par m')+'</td><td>'+f(a.d*1000,1)+' mm</td></tr>').join('')+'</tbody></table>':'<p class="pcNote">Aucun ancrage : rideau en console.</p>';
+   const foT=D.forces.length?'<table class="pcNCt"><thead><tr><th>Effort</th><th>Niveau</th><th>F (kN/m)</th><th>M (kN·m/m)</th></tr></thead><tbody>'+D.forces.map((a,i)=>'<tr><td>'+(i+1)+'</td><td>'+f(a.z,2)+' m</td><td>'+f(a.F,1)+'</td><td>'+f(a.M,1)+'</td></tr>').join('')+'</tbody></table>':'';
+   const don='<h4>Données géométriques et charges</h4><p class="ncGeo">Niveau de fouille f = '+f(res.f,2)+' m ; cotes depuis la tête du rideau, vers le bas ; surcharge uniforme '+(D.q>0?f(D.q/cf.gQ,1)+' kPa':'aucune')+'.</p>'
+    +'<div class="ncDraws"><div><div class="pcDraw">'+fplSceneSvg(rcSceneCoupe(res,dp),{label:'Coupe du rideau'})+'</div><p class="pcSchemaCap">Coupe du rideau : terrain, nappes, ancrages et niveaux calculés</p></div></div>'+czT+anT+foT;
+   const sol='<h4>Pressions et efforts</h4><p class="ncF">Pression nette p(z) = poussée − butée (et eau de part et d\'autre) ; la poutre continue est chargée par p(z) de la tête à la cote de contre-butée, appuyée aux ancrages et encastrée en pied. Niveau de contre-butée z<sub>c</sub> = <b>'+(res.z0!=null?f(res.z0,2):'—')+' m</b> ; pression nette nulle à z<sub>p</sub> = '+(res.Nve!=null?f(res.Nve,2)+' m':'—')+' ; fiche = <b>'+(res.fiche!=null?f(res.fiche,2)+' m':'—')+'</b> ; longueur conseillée f + fiche = <b>'+(res.Lrec!=null?f(res.Lrec,2)+' m':'—')+'</b> ; contre-butée C = '+(res.C!=null?f(res.C,1)+' kN/m':'—')+'.</p>'
+    +'<table class="pcNCt"><thead><tr><th>Tronçon</th><th>Début</th><th>Pression au début</th><th>Fin</th><th>Pression à la fin</th></tr></thead><tbody>'+res.S.map(s=>'<tr><td>'+esc(s.nom)+'</td><td>'+f(s.xd,2)+' m</td><td>'+f(s.cd,2)+' kN/m</td><td>'+f(s.xf,2)+' m</td><td>'+f(s.cf,2)+' kN/m</td></tr>').join('')+'</tbody></table>'
+    +'<p class="ncF">|M|<sub>max</sub> = '+f(res.Mmax,1)+' kN·m/m à '+f(res.zMmax,2)+' m ; |V|<sub>max</sub> = '+f(res.Vmax,1)+' kN/m à '+f(res.zVmax,2)+' m'+(res.hasEI?' ; déplacement maximal '+f(res.ymax*1000,2)+' mm à '+f(res.zy,2)+' m':'')+(res.reac.length?' ; '+res.reac.map((r,i)=>'réaction de l\'appui '+(i+1)+' = '+f(r.R,1)+' kN/m').join(', '):'')+'.</p>'
+    +(res.pts.length?'<div class="ncDraws"><div><div class="pcDraw">'+rcDiagSvg(res)+'</div><p class="pcSchemaCap">Pression nette, effort tranchant, moment et déplacement le long du rideau</p></div></div>':'');
+   const ver='<h4>Vérifications réglementaires</h4>'+rpVerifsHtml(res);
+   return '<div class="pcNC" data-norme="'+(cf.ec?'Eurocode 7':'Valeurs caractéristiques')+'"><h3>Note de calcul — '+nm+'</h3><div class="ncConstat" style="display:none">'+constat+'</div>'
+    +'<p class="pcNote">Rideau de palplanches, calcul complet · '+todayStr()+'</p>'+hyp+don+sol+ver+pts
+    +'<p class="pcNote">⚠ Note de calcul générée automatiquement (poutre continue sur ancrages, contre-butée itérative). Les tirants, le séisme et la stabilité d\'ensemble ne sont pas vérifiés. À vérifier et valider par un ingénieur géotechnicien avant exécution.</p></div>';
+  }
+  /* ---------- plan de coupe (écran et PDF) ---------- */
+  function rcSceneCoupe(res,dp){
+   const D=res.D, zE=Math.max(res.z0||0,res.Lrec||0,res.L||0,res.f*1.3), ky=Math.min(34,480/zE), Y=z=>60+z*ky, xw=330, ww=14, SW=250;
+   const S=fplNewScene(xw+SW+260,Y(zE)+110);
+   fplR(S,xw-SW,Y(0),SW,Y(zE)-Y(0),'betf'); fplR(S,xw+ww,Y(res.f),SW,Y(zE)-Y(res.f),'betf'); fplR(S,xw,Y(0),ww,Y(Math.max(res.Lrec||0,res.L||0,res.z0||0))-Y(0),'bet');
+   fplL(S,xw-SW-10,Y(0),xw,Y(0),'bet'); fplL(S,xw+ww,Y(res.f),xw+ww+SW+10,Y(res.f),'bet');
+   let top=0; D.couches.forEach((c,i)=>{ const zb=i<D.couches.length-1?top+c.h:null; if(zb!=null){ fplL(S,xw-SW,Y(zb),xw,Y(zb),'cad'); if(zb>res.f) fplL(S,xw+ww,Y(zb),xw+ww+SW,Y(zb),'cad'); }
+    const zm=zb!=null?(top+zb)/2:Math.min(zE,top+Math.max(1,(zE-top)/2)); fplT(S,xw-SW+8,Y(zm)+4,'Couche '+(i+1)+' : γ '+rpF(c.gamma,1)+', φ '+rpF(c.phi,1)+'°'+(c.c?', c '+rpF(c.c,0):''),'ts','start'); if(zb!=null) top=zb; });
+   if(D.zwP!=null){ fplL(S,xw-SW,Y(D.zwP),xw,Y(D.zwP),'lead'); fplT(S,xw-SW+8,Y(D.zwP)-4,'nappe '+rpF(D.zwP,2)+' m','ts','start'); }
+   if(D.zwB!=null){ fplL(S,xw+ww,Y(D.zwB),xw+ww+SW,Y(D.zwB),'lead'); fplT(S,xw+ww+8,Y(D.zwB)-4,'nappe '+rpF(D.zwB,2)+' m','ts','start'); }
+   D.ancrages.forEach((a,i)=>{ fplL(S,xw-90,Y(a.z),xw,Y(a.z),'bar'); fplBub(S,xw-104,Y(a.z),'A'+(i+1),12); fplT(S,xw-60,Y(a.z)-6,(a.rigide?'rigide':'k = '+rpF(a.k,0)),'ts','middle'); });
+   if(D.q>0){ fplL(S,xw-SW+10,Y(0)-22,xw-10,Y(0)-22,'bar'); for(let k=0;k<6;k++){ const x=xw-SW+20+k*(SW-40)/5; fplL(S,x,Y(0)-22,x,Y(0)-3,'bar'); } fplT(S,xw-SW/2,Y(0)-30,'q = '+rpF(D.q/res.cf.gQ,1)+' kPa','ts','middle'); }
+   fplT(S,xw-SW/2,Y(zE)+22,'Côté poussée','ts','middle'); fplT(S,xw+ww+SW/2,Y(zE)+22,'Côté fouille (butée)','ts','middle');
+   const xr=xw+ww+SW+56;
+   fplVD(S,xr,Y(0),Y(res.f),'f = '+rpF(res.f,2)+' m',xw+ww+SW,xw+ww+SW,-6);
+   if(res.z0!=null){ fplL(S,xw,Y(res.z0),xr+10,Y(res.z0),'coupe'); fplT(S,xr+16,Y(res.z0)+4,'contre-butée '+rpF(res.z0,2)+' m','ts','start'); }
+   if(res.Nve!=null){ fplL(S,xw+ww,Y(res.Nve),xr+10,Y(res.Nve),'cad'); fplT(S,xr+16,Y(res.Nve)+4,'pression nulle '+rpF(res.Nve,2)+' m','ts','start'); }
+   if(res.Lrec!=null){ fplVD(S,xr+130,Y(0),Y(res.Lrec),'L = '+rpF(res.Lrec,2)+' m',xr+10,xr+10,-6); fplL(S,xw,Y(res.Lrec),xr+135,Y(res.Lrec),'cad'); }
+   fplT(S,xw-SW,Y(zE)+46,'Cotes en mètres depuis la tête du rideau, vers le bas ; schéma non à l\'échelle en largeur.','ts','start',0,false);
+   return S;
+  }
+  const RC_NOTES=['Cotes en mètres depuis la tête du rideau, vers le bas ; efforts en kN et kN·m par mètre de rideau.','Longueur conseillée = niveau de fouille + fiche calculée ; la fiche majore la profondeur entre la pression nulle et la contre-butée du coefficient k.','Les ancrages et butons sont des appuis de la poutre continue ; leur dimensionnement (tirants, ancrages, butons) n\'est pas fait.','Plan à lire avec la note de calcul liée ; séisme et stabilité d\'ensemble non vérifiés.'];
+  function rcPlanHtml(t,dp,res){
+   const info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp); const date=todayStr(), f=rpF, D=res.D;
+   const constat=info.nomO+' : fiche '+(res.fiche!=null?f(res.fiche,2)+' m':'indéterminée')+', longueur conseillée '+(res.Lrec!=null?f(res.Lrec,2)+' m':'—')+', moment maximal '+f(res.Mmax,1)+' kN·m/m';
+   const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(info.projet||'—')+'</td><td><b>Ouvrage</b>'+esc(info.nomO)+(info.typ?' · '+esc(info.typ):'')+'</td><td><b>Document</b>Plan de coupe '+esc(info.nomO)+'</td></tr>'
+    +'<tr><td><b>Norme</b>'+(res.cf.ec?'Eurocode 7':'Valeurs caractéristiques')+'</td><td><b>Fouille</b>'+f(res.f,2)+' m</td><td><b>Indice · date</b>'+esc(info.indice)+(info.indice==='0'?' (première émission)':'')+' · '+esc(date)+'</td></tr>'
+    +'<tr><td><b>Échelles</b>Hauteurs à l\'échelle, largeur non à l\'échelle</td><td><b>Établi par</b>Been11 · module Rideau de palplanches</td><td><b>Statut</b>À vérifier par un ingénieur géotechnicien · Vérifié par : —</td></tr></table>';
+   const kp='<div class="ncKpi"><div class="ncK"><b>'+(res.fiche!=null?f(res.fiche,2)+' m':'—')+'</b><small>fiche calculée · longueur conseillée '+(res.Lrec!=null?f(res.Lrec,2)+' m':'—')+'</small></div><div class="ncK"><b>'+f(res.Mmax,1)+' kN·m/m</b><small>moment maximal à '+f(res.zMmax,2)+' m</small></div><div class="ncK"><b>'+f(res.C,1)+' kN/m</b><small>contre-butée à '+f(res.z0,2)+' m</small></div></div>';
+   const dr=(S,lab,cap)=>'<div class="pcDraw fplDraw">'+fplSceneSvg(S,{label:lab})+'</div><p class="pcSchemaCap">'+esc(cap)+'</p>';
+   const tbl='<table class="ncG"><tr><th>Couche</th><th>Épaisseur</th><th>γ (kN/m³)</th><th>γ′ (kN/m³)</th><th>φ (°)</th><th>c (kPa)</th><th>K<sub>a</sub></th><th>K<sub>p</sub></th></tr>'+D.couches.map((c,i)=>'<tr><td>'+(i+1)+'</td><td>'+(i<D.couches.length-1?f(c.h,2)+' m':'jusqu\'au pied')+'</td><td>'+f(c.gamma,1)+'</td><td>'+f(c.gammaP,1)+'</td><td>'+f(c.phi,1)+'</td><td>'+f(c.c,1)+'</td><td>'+f(D.K[i].Ka,3)+'</td><td>'+f(D.K[i].Kp,3)+'</td></tr>').join('')+'</table>';
+   const apT=res.reac.length?'<table class="ncG"><tr><th>Appui</th><th>Niveau</th><th>Raideur</th><th>Réaction (kN/m)</th></tr>'+res.reac.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+f(r.z,2)+' m</td><td>'+(D.ancrages[i]&&!D.ancrages[i].rigide?f(D.ancrages[i].k,0)+' kN/m par m':'rigide')+'</td><td>'+f(r.R,1)+'</td></tr>').join('')+'</table>':'';
+   const notes='<ol class="fplNotes">'+RC_NOTES.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>';
+   const pts='<section class="ncSec"><h4>Points à confirmer</h4>'+res.warn.map(a=>'<div class="ncAn conf"><b>À confirmer : </b>'+esc(a)+'</div>').join('')+res.conf.map(a=>'<div class="ncAn conf"><b>À confirmer : </b>'+esc(a)+'</div>').join('')+'</section>';
+   return '<div class="pcNC ncDoc fplDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc([info.projet,info.bat,'Plan de coupe indice '+info.indice,date].filter(Boolean).join(' · '))+'</p>'+cart+kp
+    +'<section class="ncSec"><h4>Coupe</h4>'+dr(rcSceneCoupe(res,dp),'Coupe du rideau de palplanches','Coupe · terrain, nappes, ancrages, niveaux calculés')+'</section>'
+    +'<section class="ncSec"><h4>Diagrammes</h4>'+dr(rcSceneDiag(res),'Diagrammes le long du rideau','Pression nette, effort tranchant, moment et déplacement')+'</section>'
+    +'<section class="ncSec"><h4>Terrain</h4>'+tbl+'</section>'+(apT?'<section class="ncSec"><h4>Appuis</h4>'+apT+'</section>':'')
+    +'<section class="ncSec"><h4>Notes générales</h4>'+notes+'</section>'+pts
+    +'<div class="ncWarn">⚠ Ce plan de coupe est généré automatiquement à partir du calcul du rideau. Les valeurs non fournies par l\'utilisateur sont retenues aux valeurs usuelles par défaut et doivent être recoupées par un ingénieur géotechnicien avant exécution. Ce document ne remplace pas une étude signée par un bureau d\'études qualifié.</div></div>';
+  }
+  function rcCreerPlan(t,dp){
+   const res=dp.resultats; if(!res||!res.complet||res.z0==null) return null;
+   const html=rcPlanHtml(t,dp,res), nom='Plan de coupe '+dimOuvrageNom(t,dp);
+   const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
+   doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
+   try{persist();}catch(_){ } return doc;
+  }
+  async function rcPlanPdf(t,dp,res,opts){
+   const JsPDF=await loadPdfLibs(); const FMT=(opts&&FPL_FMT_W[opts.format])?opts.format:'a3', PS=FPL_FMT_W[FMT]/420;
+   const doc=fplPdfCtx(new JsPDF({unit:'mm',format:FMT,orientation:'landscape'}),PS,Math.pow(PS,0.85),FMT), PW=420, PH=297, M=12; let y=M;
+   const info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp); const date=todayStr(), D=res.D, f=fplF;
+   const head=txt=>{ doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(0); doc.text(FPL_PDFSYM(txt),M,M+6); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(FPL_PDFSYM([info.projet,'Plan de coupe indice '+info.indice,date].filter(Boolean).join(' - ')),M,M+12); doc.setTextColor(0); y=M+18; };
+   const page=()=>{ doc.addPage(); head('Plan de coupe - '+info.nomO+' (suite)'); }, need=h=>{ if(y+h>PH-M-6) page(); };
+   head('Plan de coupe - '+info.nomO);
+   const ci=[['Projet',info.projet||'-'],['Ouvrage',info.nomO+(info.typ?' - '+info.typ:'')],['Norme',res.cf.ec?'Eurocode 7':'Valeurs caracteristiques'],['Fouille',f(res.f,2)+' m'],['Indice / date',info.indice+' - '+date],['Statut','A verifier par un ingenieur geotechnicien'],['Fiche calculee',res.fiche!=null?f(res.fiche,2)+' m':'-'],['Longueur conseillee',res.Lrec!=null?f(res.Lrec,2)+' m':'-'],['Etabli par','Been11 - Rideau de palplanches']];
+   const cw=(PW-2*M)/3; doc.setDrawColor(242,169,0); doc.setLineWidth(0.3);
+   ci.forEach((c,i)=>{ const cx=M+(i%3)*cw, cy=y+Math.floor(i/3)*10; doc.rect(cx,cy,cw,10); doc.setFontSize(6.5); doc.setTextColor(110); doc.text(FPL_PDFSYM(c[0]),cx+1.5,cy+3.4); doc.setFontSize(8.5); doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.text(FPL_PDFSYM(c[1]),cx+1.5,cy+7.6,{maxWidth:cw-3}); doc.setFont('helvetica','normal'); });
+   y+=32;
+   const sc=(S,wmax,hmax)=>Math.min(wmax/S.w,hmax/S.h);
+   { const A=rcSceneCoupe(res,dp), B=rcSceneDiag(res), wA=(PW-2*M)*0.5, wB=(PW-2*M)*0.46, kA=sc(A,wA,PH*0.55), kB=sc(B,wB,PH*0.45); need(Math.max(A.h*kA,B.h*kB)+8); const y0=y; fplPdfScene(doc,A,M,y0,kA); fplPdfScene(doc,B,M+wA+8,y0+4,kB); y=y0+Math.max(A.h*kA,B.h*kB)+3;
+    doc.setFontSize(8); doc.setTextColor(110); doc.text('Coupe (largeur non a l\'echelle) - pression nette, effort tranchant, moment et deplacement le long du rideau',M,y+2); doc.setTextColor(0); y+=8; }
+   if(y>PH-M-70) page();
+   const HW=(PW-2*M)/2-4, AT={styles:{fontSize:8.5,cellPadding:1.6,lineColor:[242,169,0],lineWidth:0.2},headStyles:{fillColor:[255,255,255],textColor:[0,0,0],lineColor:[242,169,0],lineWidth:0.3}};
+   doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Terrain',M,y); const yT=y+2;
+   if(doc.autoTable){
+    doc.autoTable(Object.assign({startY:yT,margin:{left:M,right:PW/2+4},tableWidth:HW,head:[['Couche','Epaisseur','g (kN/m3)','g\' (kN/m3)','phi (deg)','c (kPa)','Ka','Kp']],body:D.couches.map((c,i)=>[String(i+1),i<D.couches.length-1?f(c.h,2)+' m':'jusqu\'au pied',f(c.gamma,1),f(c.gammaP,1),f(c.phi,1),f(c.c,1),f(D.K[i].Ka,3),f(D.K[i].Kp,3)])},AT));
+    let yL=doc.lastAutoTable.finalY+4;
+    if(res.reac.length){ doc.autoTable(Object.assign({startY:yL,margin:{left:PW/2+4,right:M},tableWidth:HW,head:[['Appui','Niveau','Raideur','Reaction (kN/m)']],body:res.reac.map((r,i)=>[String(i+1),f(r.z,2)+' m',D.ancrages[i]&&!D.ancrages[i].rigide?f(D.ancrages[i].k,0)+' kN/m par m':'rigide',f(r.R,1)])},AT)); yL=Math.max(yL,doc.lastAutoTable.finalY+4); }
+    y=Math.max(yL,doc.lastAutoTable.finalY+4); }
+   need(40); doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Notes generales',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+   RC_NOTES.forEach((x,i)=>{ const L=doc.splitTextToSize((i+1)+'. '+FPL_PDFSYM(x),PW-2*M-6); need(L.length*3.8+2); doc.text(L,M,y); y+=L.length*3.8+1; });
+   y+=3; need(20); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Points a confirmer',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+   res.warn.concat(res.conf).forEach(a=>{ const L=doc.splitTextToSize('A confirmer : '+FPL_PDFSYM(a),PW-2*M-6); need(L.length*3.8+2); doc.setDrawColor(242,169,0); doc.setLineWidth(0.8); doc.line(M-1,y-3,M-1,y+L.length*3.8-3); doc.setTextColor(0); doc.text(L,M+1,y); y+=L.length*3.8+1.5; });
+   doc.setPage(doc.getNumberOfPages()); doc.setDrawColor(242,169,0); doc.setLineWidth(0.6); const aw=PW-2*M; const WL=doc.splitTextToSize(FPL_PDFSYM('Avertissement. Plan genere automatiquement a partir du calcul du rideau. A recouper par un ingenieur geotechnicien avant execution ; ne remplace pas une etude signee par un bureau d\'etudes qualifie.'),aw-8); const ah=WL.length*4+6, ay=PH-M-ah; if(y>ay-2){ doc.addPage(); head('Plan de coupe - '+info.nomO+' (suite)'); } doc.roundedRect(M,ay,aw,ah,2,2,'S'); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.text(WL,M+4,ay+5); doc.setTextColor(0);
+   const NP=doc.getNumberOfPages(); for(let i=1;i<=NP;i++){ doc.setPage(i); doc.setFontSize(7); doc.setTextColor(120); doc.text(FPL_PDFSYM(info.nomO+' - Plan de coupe - feuille '+i+'/'+NP+' - '+FMT.toUpperCase()+' paysage'),PW-M,PH-4,{align:'right'}); }
+   return doc.output('blob');
+  }
+  async function rcPlanExportPdf(t,fmt){
+   const dp=rpData(t), res=dp.resultats; if(!res||!res.complet) throw new Error('Calcul absent : relancer le calcul du rideau.');
+   const f=FPL_FMT_W[fmt]?fmt:'a3'; const blob=await rcPlanPdf(t,dp,res,{format:f});
+   const nom=dimOuvrageNom(t,dp).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'Rideau';
+   const fn='Plan-coupe_'+nom+dimIndFile(t.id,'Plan de ferraillage')+'_'+todayISO()+'_'+f.toUpperCase()+'-paysage.pdf';
+   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000);
+   return {blob,fn};
+  }
+
   function rpSvg(dp,plain){ return window.dimScaleBarAdd(rpSvg0(dp,plain)); }
   function rpSvg0(dp,plain){
    const DC=plain?null:window.dimCote, FL=plain?null:window.dimField, parts=[], boxes=[], add=c=>{ parts.push(c.svg); boxes.push(c.box); };
-   const L=rpNum(dp.L_m)||12, f=Math.min(rpNum(dp.f_m)||4,L), zP=Math.min(rpNum(dp.zwP_m)||0,L), zB=Math.min(rpNum(dp.zwB_m)||0,L), H=300, k=H/L, Y=z=>z*k, xr=150, SW=140;
+   const cx=rcOn(dp), L=rpNum(dp.L_m)||(cx?Math.max(8,(rpNum(dp.f_m)||4)*2.2):12), f=Math.min(rpNum(dp.f_m)||4,L), zP=Math.min(rpNum(dp.zwP_m)||0,L), zB=Math.min(rpNum(dp.zwB_m)||0,L), H=300, k=H/L, Y=z=>z*k, xr=150, SW=140;
    const soilL='<rect x="'+(xr-SW)+'" y="0" width="'+SW+'" height="'+Y(L)+'" fill="var(--ds-ink-soft,#888)" fill-opacity=".18" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="0.8"/>';
    const soilR='<rect x="'+(xr+6)+'" y="'+Y(f)+'" width="'+SW+'" height="'+(Y(L)-Y(f))+'" fill="var(--ds-ink-soft,#888)" fill-opacity=".18" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="0.8"/>';
    const wal='<rect x="'+xr+'" y="0" width="6" height="'+Y(L)+'" fill="var(--ds-draw,#2e6ea6)" fill-opacity=".55" stroke="var(--ds-draw,#2e6ea6)" stroke-width="1.6"/>';
    const water=(x0,x1,z)=>'<line x1="'+x0+'" y1="'+Y(z)+'" x2="'+x1+'" y2="'+Y(z)+'" stroke="#2f7fd0" stroke-width="1.6" stroke-dasharray="6 3"/><path d="M'+((x0+x1)/2-7)+' '+(Y(z)-8)+' L'+((x0+x1)/2)+' '+Y(z)+' L'+((x0+x1)/2+7)+' '+(Y(z)-8)+' Z" fill="#2f7fd0" fill-opacity=".5"/>';
-   const wat=water(xr-SW,xr,zP)+water(xr+6,xr+6+SW,zB);
+   const wat=((cx&&rpNum(dp.zwP_m)==null)?'':water(xr-SW,xr,zP))+((cx&&rpNum(dp.zwB_m)==null)?'':water(xr+6,xr+6+SW,zB));
+   let ext=''; if(cx){ rcInit(dp); let top=0; dp.couches.forEach((c,i)=>{ const h=rpNum(c.h); if(i<dp.couches.length-1&&h>0){ top+=h; if(top<L){ ext+='<line x1="'+(xr-SW)+'" y1="'+Y(top)+'" x2="'+xr+'" y2="'+Y(top)+'" stroke="var(--ds-ink-soft,#888)" stroke-width="1" stroke-dasharray="2 3"/>'+(top>f?'<line x1="'+(xr+6)+'" y1="'+Y(top)+'" x2="'+(xr+6+SW)+'" y2="'+Y(top)+'" stroke="var(--ds-ink-soft,#888)" stroke-width="1" stroke-dasharray="2 3"/>':''); } } });
+    dp.ancrages.forEach((a,i)=>{ const z=rpNum(a.z); if(z!=null&&z>=0&&z<=L) ext+='<line x1="'+(xr-SW+24)+'" y1="'+Y(z)+'" x2="'+xr+'" y2="'+Y(z)+'" stroke="var(--ds-draw,#2e6ea6)" stroke-width="2.4"/><circle cx="'+(xr-SW+24)+'" cy="'+Y(z)+'" r="10" fill="var(--ds-bg,#fff)" stroke="var(--ds-draw,#2e6ea6)" stroke-width="1.6"/><text x="'+(xr-SW+24)+'" y="'+(Y(z)+4)+'" font-size="11" text-anchor="middle" fill="var(--ds-ink,#222)">A'+(i+1)+'</text>'; }); }
    const ground='<line x1="'+(xr-SW-6)+'" y1="0" x2="'+(xr+2)+'" y2="0" stroke="var(--ds-ink,#222)" stroke-width="2.4"/><line x1="'+(xr+6)+'" y1="'+Y(f)+'" x2="'+(xr+6+SW+6)+'" y2="'+Y(f)+'" stroke="var(--ds-ink,#222)" stroke-width="2.4"/>';
    const lab='<text x="'+(xr-SW/2)+'" y="'+(Y(L)+16)+'" font-size="12" text-anchor="middle" fill="var(--ds-ink-soft,#777)">Côté poussée</text><text x="'+(xr+6+SW/2)+'" y="'+(Y(L)+16)+'" font-size="12" text-anchor="middle" fill="var(--ds-ink-soft,#777)">Côté fouille (butée)</text>';
    let sur='';
@@ -34232,7 +34645,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(FL&&dp.s1_on){ const q=FL({x:xr-SW/2,y:-62,align:'center',label:'q',val:dp.s1_q??'',unit:'kPa',attr:'data-rp="s1_q"',title:'Surcharge illimitée q'}); parts.push(q.svg); boxes.push(q.box); }
    boxes.push({x:xr-SW-6,y:-66,w:2*SW+24,h:Y(L)+90});
    let X0=Infinity,Y0=Infinity,X1=-Infinity,Y1=-Infinity; boxes.forEach(q=>{ X0=Math.min(X0,q.x); Y0=Math.min(Y0,q.y); X1=Math.max(X1,q.x+q.w); Y1=Math.max(Y1,q.y+q.h); }); X0-=16; X1+=16; Y0-=10; Y1+=14;
-   return '<svg viewBox="'+X0+' '+Y0+' '+(X1-X0)+' '+(Y1-Y0)+'" width="100%" height="'+Math.round(Math.min(420,Y1-Y0))+'" class="pcSvg" role="img" aria-label="Rideau de palplanches, coupe">'+soilL+soilR+wat+wal+ground+sur+lab+parts.join('')+'</svg>';
+   return '<svg viewBox="'+X0+' '+Y0+' '+(X1-X0)+' '+(Y1-Y0)+'" width="100%" height="'+Math.round(Math.min(420,Y1-Y0))+'" class="pcSvg" role="img" aria-label="Rideau de palplanches, coupe">'+soilL+soilR+wat+wal+ground+sur+lab+ext+parts.join('')+'</svg>';
   }
   /* diagrammes de pression nette, effort tranchant et moment le long du rideau */
   function rpDiagSvg(res){
@@ -34257,7 +34670,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(n===2){ let kk=''; try{ const cf=rpCoef(dp); kk='<p class="pcNote">K<sub>a</sub> = '+rpF(cf.Ka,3)+(cf.KaSaisi?' (saisi)':' (Rankine, δ = 0)')+' · K<sub>p</sub> = '+rpF(cf.Kp,3)+(cf.KpSaisi?' (saisi)':' (Rankine, δ = 0)')+(cf.ec?' · φ<sub>d</sub> = '+rpF(cf.phid*180/Math.PI,2)+' °':'')+'</p>'; }catch(_){ }
     return '<h5>2 · Sol et règlement</h5>'
      +'<label>Règlement de calcul '+rpSel('mode',dp.mode==='carac'?'carac':'ec7',[['ec7','Eurocode 7 : coefficients partiels (modifiables dans les paramètres avancés)'],['carac','Valeurs caractéristiques, sans coefficient']])+'</label>'
-     +rpNumIn('gamma',dp.gamma,'Poids volumique du sol γ','kN/m³')+rpNumIn('phi',dp.phi,'Angle de frottement φ','°')+rpNumIn('gammaW',dp.gammaW,'Poids volumique de l\'eau','kN/m³')+kk
+     +'<div class="rcBtns"><button type="button" class="ghost pcBtnSm" data-rp-act="exempleR">Exemple</button></div>'+rpNumIn('gamma',dp.gamma,'Poids volumique du sol γ','kN/m³')+rpNumIn('phi',dp.phi,'Angle de frottement φ','°')+rpNumIn('gammaW',dp.gammaW,'Poids volumique de l\'eau','kN/m³')+kk
      +'<p class="pcNote">Poussée et butée de Rankine (δ = 0) ; valeurs de K<sub>a</sub> et K<sub>p</sub> saisissables dans les paramètres avancés (Poussée et butée).</p>'; }
    const chk=(k,l)=>'<label class="pcChk"><input type="checkbox" data-rp="'+k+'"'+(dp[k]?' checked':'')+'> '+l+'</label>', sub=(k,body)=>dp[k]?'<div class="pcForm">'+body+'</div>':'';
    return '<h5>3 · Surcharges</h5><p class="pcNote">Surcharges sur le terrain côté poussée : cocher celles qui existent. Niveaux et distances en mètres depuis la tête du rideau ; surcharges en kPa (linéaire en kN/m).</p>'
@@ -34271,7 +34684,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const err=(window._elsErr||{})[id];
    return '<details class="pcEls" data-els-id="'+id+'" data-els-kind="rp"'+(dp._elsOpen?' open':'')+'><summary>Paramètres avancés</summary><div class="pcElsBody">'
     +'<p class="pcNote">Valeurs par défaut affichées dans les champs ; elles servent au calcul et sont reprises dans la note (Hypothèses et Points à confirmer). Les coefficients partiels ne s\'appliquent qu\'au règlement « Eurocode 7 ».</p>'
-    +elsMenuHtml(dp,'rp',id,RP_ADV,err,RP_MD,elsFieldHtml)
+    +elsMenuHtml(dp,'rp',id,RP_ADV.filter(sp=>!sp.only||(sp.only==='complet')===rcOn(dp)),err,RP_MD,elsFieldHtml)
     +'<button type="button" class="ghost" data-els-reset="1">Rétablir les valeurs par défaut</button></div></details>';
   }
   function rpAdvRowsHyp(dp){ return RP_ADV.map(sp=>{ const sa=rpSaisi(dp,sp.k)&&rpVal(dp,sp.k)!==sp.def, v=rpVal(dp,sp.k); return [sp.lbl,v==null?'calculé':rpF(v,3).replace(/,?0+$/,'')+(sp.unit?' '+sp.unit:''),sa?'saisi':'par défaut']; }); }
@@ -34286,9 +34699,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   document.addEventListener('toggle',ev=>{ const d=ev.target; if(!d||!d.matches||!d.matches('details.pcEls[data-els-kind="rp"]')) return; const t=taskById(d.dataset.elsId), dp=t&&t.dimRP; if(dp&&dp._elsOpen!==d.open){ dp._elsOpen=d.open; try{persist();}catch(_){ } } },true);
   function rpFormHtml(id,t){
-   const dp=rpData(t), body=[1,2,3].map(nn=>rpStepHtml(nn,dp)).join('<hr class="pcFormSep">');
+   const dp=rpData(t), body=rcMethodHtml(dp)+'<hr class="pcFormSep">'+(rcOn(dp)?rcStepsHtml(dp):[1,2,3].map(nn=>rpStepHtml(nn,dp)).join('<hr class="pcFormSep">'));
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('palplanche','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Rideau de palplanches (rupture)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+dimCalcHeadBtnHtml(dp,'rp',true,'')+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('palplanche','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Rideau de palplanches ('+(rcOn(dp)?'complet':'rupture')+')<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+dimCalcHeadBtnHtml(dp,'rp',true,'')+'</div>'
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-rp="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+rpSvg(dp)+'</div><p class="pcSchemaCap">Rideau de palplanches — coupe (hauteurs à l\'échelle)</p></div>'
     +'<div class="pcPanel pcFormPanel'+dimLockedClass(dp)+'">'+body+rpAdvBlockHtml(dp,id)+'</div>'
@@ -34300,6 +34713,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +res.verifs.map(v=>'<tr><td>'+esc(v.zone)+'</td><td>'+esc(v.nom)+'</td><td>'+esc(v.formule)+'</td><td>'+esc(v.calcul)+'</td><td>'+esc(v.limite)+'</td><td><b class="ncSt '+v.etat+'">'+L[v.etat]+'</b></td></tr>').join('')+'</tbody></table>';
   }
   function rpResultatsHtml(res){
+   if(res.complet) return rcResultatsHtml(res);
    let h='<h5>Résultats</h5>';
    h+='<div class="pcDimBox"><b>Longueur du rideau</b><p class="pcNote">Moment nul à z<sub>0</sub> = '+(res.z0!=null?rpF(res.z0,2)+' m':'—')+' (fiche calculée z<sub>0</sub> − f = '+(res.d!=null?rpF(res.d,2)+' m':'—')+') · longueur évaluée L<sub>rec</sub> = f + k·(z<sub>0</sub> − f) = <b>'+(res.Lrec!=null?rpF(res.Lrec,2)+' m':'indéterminée')+'</b> · longueur saisie L = '+rpF(res.L,2)+' m</p></div>';
    h+='<div class="pcDimBox"><b>Efforts par mètre de rideau</b><p class="pcNote">M<sub>max</sub> = '+rpF(res.Mmax,1)+' kN·m/m à '+rpF(res.zMmax,2)+' m · M<sub>min</sub> = '+rpF(res.Mmin,1)+' kN·m/m à '+rpF(res.zMmin,2)+' m · |V|<sub>max</sub> = '+rpF(res.Vmax,1)+' kN/m à '+rpF(res.zVmax,2)+' m<br>En pied : M(L) = '+rpF(res.Mb,1)+' kN·m/m · V(L) = '+rpF(res.Vb,1)+' kN/m</p></div>';
@@ -34331,6 +34745,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   const _od_rideau=window.openTaskDetail; if(typeof _od_rideau==='function'){ window.openTaskDetail=function(id){ const r=_od_rideau.apply(this,arguments); setTimeout(()=>{ try{ rpFiche(id); }catch(e){ console.error(e); } },730); return r; }; }
   function rpClick(e,id){
    const t=taskById(id); if(!t) return; const dp=rpData(t);
+   if(rcClick(e,id,dp)) return;
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ rpState(id).view='form'; rpRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
    const okBtn=e.target.closest('[data-rp-act="validerForm"]'); if(okBtn){
     if(!dimGuardClick(rpValidate(dp),()=>rpRender(id))) return;
@@ -34347,12 +34762,14 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(el.dataset.els){ rpAdvChange(dp,el,id); return; }
    if(el.matches('[data-rp="nom"]')){ dimSetDesignation(t,dp,el); return; }
    const key=el.dataset.rp; if(!key) return;
+   if(rcChange(el,dp,id)) return;
    if(el.type==='checkbox') dp[key]=el.checked; else if(el.tagName==='SELECT'||el.type==='text') dp[key]=(key==='mode')?el.value:(/diag$/.test(key)?+el.value:el.value); else dp[key]=el.value===''?null:+String(el.value).replace(',','.');
    try{persist();}catch(_){ } rpRender(id);
   }
   /* ---------- note de calcul (modèle du skill note-de-calcul, via ncFormat) ---------- */
   function rpNoteCalculHtml(t,dp,res){ return ncFormat(rpNoteCalculHtml0(t,dp,res),{t,dp,res,kind:'rideau'}); }
   function rpNoteCalculHtml0(t,dp,res){
+   if(res.complet) return rcNoteCalculHtml0(t,dp,res);
    const f=rpF, nm=esc(dp.nom||t.quoi||t.nom||'Rideau de palplanches'), cf=res.cf, nKo=res.nKo;
    const constat=nKo?nm+' : '+nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':nm+' : longueur évaluée '+(res.Lrec!=null?f(res.Lrec,2)+' m':'indéterminée')+' pour une longueur saisie de '+f(res.L,2)+' m ; M max '+f(res.Mmax,1)+' kN·m/m — méthode à la rupture ; profilé, déformée et ancrages non vérifiés';
    const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>').join('')
@@ -34402,7 +34819,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    dimIndiceDoc(t,dp);
    const res=dp.resultats, docNote=rpCreerNoteCalcul(t,dp);
    if(res&&docNote){ window.pjPdfPending=window.pjPdfPending||new Set(); window.pjPdfPending.add(docNote.id);
-    pcPdfEnArriere(t,dp,res,docNote,null,{note:async()=>(await ncDocPdfBlob(docNote,'a4')).blob}).catch(err=>console.error(err)); }
+    const docPlan=(res.complet&&res.z0!=null)?rcCreerPlan(t,dp):null; if(docPlan) window.pjPdfPending.add(docPlan.id);
+    pcPdfEnArriere(t,dp,res,docNote,docPlan,Object.assign({note:async()=>(await ncDocPdfBlob(docNote,'a4')).blob},docPlan?{plan:rcPlanPdf}:{})).catch(err=>console.error(err)); }
    return {docNote,docPlan:null};
   }
   /* « 🤖 Dimensionner » : rideaux de palplanches */
