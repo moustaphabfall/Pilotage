@@ -26170,9 +26170,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const secs=[]; let cur=null;
     [...root.childNodes].forEach(n=>{ if(n.nodeType===1&&/^H[45]$/.test(n.tagName)){ cur={titre:n.textContent.replace(/^\s*\d+\s*[·.\-]\s*/,'').trim(),nodes:[]}; secs.push(cur); return; }
       if(n.nodeType===3&&!n.textContent.trim()) return; if(!cur){ cur={titre:'Données',nodes:[]}; secs.push(cur); } cur.nodes.push(n); });
-    const hasPlan=dp&&['poutre','poteau','dalle','semelle','pieu','mur','dallage','voile','massif','rideau','mixte','section','escalier','candelabre'].some(k=>kind===k||kind==='geo'&&false);
+    const hasPlan=dp&&['poutre','poteau','dalle','semelle','pieu','mur','dallage','voile','rideau','mixte','section','escalier'].includes(kind);
     const echTxt=(dp&&+dp.planEchelle>0)?'1/'+(+dp.planEchelle)+' imposée':'automatique (la plus grande échelle normalisée qui tient sur la feuille)';
-    if(hasPlan) AN.push({k:'ech',bad:false,tx:'Échelle des plans '+echTxt+' ; les détails exagérés (armatures, enrobage, parties tronquées) sont signalés sous chaque vue : à confirmer.'});
+    const echDet={poutre:'élévations à deux échelles écrites sur le dessin (longueur et hauteur)',dalle:'coupe longitudinale à deux échelles écrites sur le dessin (longueur et hauteur)',poteau:'barres et enrobage exagérés',pieu:'poteau et pieux tronqués, barres exagérées',rideau:'sol tronqué en largeur, épaisseur du rideau indicative',voile:'barres exagérées'}[kind];
+    if(hasPlan) AN.push({k:'ech',bad:false,tx:'Échelle des plans '+echTxt+'. Vues non à l\'échelle : schémas de façonnage des barres (nomenclature) et légendes, dessinés en principe'+(echDet?' ; vues à détail exagéré, signalé sous chaque vue : '+echDet:'')+'. À confirmer.'});
     const secHtml=secs.map(sc=>{ const d=document.createElement('div'); sc.nodes.forEach(n=>d.appendChild(n));
       if(hasPlan&&/hypoth|donn/i.test(sc.titre)){ const tb0=d.querySelector('table'); if(tb0){ const nh=tb0.querySelectorAll('thead th,tr:first-child th').length||2, tr0=document.createElement('tr'); const cells=nh>=3?['Échelle des plans',echTxt,(dp&&+dp.planEchelle>0)?'Saisi':'Par défaut']:['Échelle des plans',echTxt+((dp&&+dp.planEchelle>0)?' (saisi)':' (par défaut)')]; tr0.innerHTML=cells.map(c=>'<td>'+esc(c)+'</td>').join(''); (tb0.querySelector('tbody')||tb0).appendChild(tr0); } }
       const grille=/ferraill|armature|acier|cadre|nomenclature|nappe/i.test(sc.titre);
@@ -28426,7 +28427,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {k:'L_m',nom:'La hauteur libre L',pos:1,min:0.5,max:30,unit:'m'},{k:'N_kN',nom:'L\'effort normal N',min:0,max:1e7,unit:'kN',fem:false},
    {k:'M_tete_kNm',nom:'Le moment en tête',min:-1e6,max:1e6,unit:'kN·m',fem:false,req:false},{k:'M_pied_kNm',nom:'Le moment en pied',min:-1e6,max:1e6,unit:'kN·m',fem:false,req:false},
    {k:'enrobage_cm',nom:'L\'enrobage',min:1,max:10,unit:'cm'}];
-  function ptValidate(dp){ return dimValidateSpecs(dp,PT_SPECS,(d,er)=>{ if(d.forme!=='circ'){ const b=+d.b_cm, h=+d.h_cm; if(b>0&&h>0&&Math.max(b,h)>=4*Math.min(b,h)&&!er.some(x=>x.key==='b_cm'||x.key==='h_cm')) er.push({key:h>=b?'h_cm':'b_cm',msg:'h/b ≥ 4 : voile, hors domaine du module poteau.'}); } }); }
+  function ptValidate(dp){ return dimValidateSpecs(dp,PT_SPECS,(d,er)=>{ if(d.forme!=='circ'&&!d._vlBande){ const b=+d.b_cm, h=+d.h_cm; if(b>0&&h>0&&Math.max(b,h)>=4*Math.min(b,h)&&!er.some(x=>x.key==='b_cm'||x.key==='h_cm')) er.push({key:h>=b?'h_cm':'b_cm',msg:'h/b ≥ 4 : voile, hors domaine du module poteau.'}); } }); }
   function ptData(t){
    if(!t.dimPT) t.dimPT=ptDefaultData(t); const d=t.dimPT;
    if(!PC_EXPO[d.classeExposition]) d.classeExposition='XC1';
@@ -36004,7 +36005,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const dp=vlData(t); dimThrow(vlValidate(dp));
    const e=+dp.e_cm, L=+dp.Lv_m, H=+dp.Hv_m, adv=k=>vlVal(dp,k);
    const dpt=Object.assign(ptDefaultData({}),{nom:dp.nom,forme:'rect',b_cm:100,h_cm:e,planFlexion:'h',L_m:H,appuiBas:'articule',appuiHaut:'articule',mode_l0:'isole',classeGlobale:dp.classeGlobale,classeAcier:dp.classeAcier,classeExposition:dp.classeExposition,enrobage_cm:+dp.enrobage_cm,poidsPropre:dp.poidsPropre==='inclus'?'inclus':'ajoute',
-    N_kN:+dp.Nml_kN||0,M_tete_kNm:+dp.Mtml_kNm||0,M_pied_kNm:+dp.Mpml_kNm||0,materiau:'beton_arme',feu_on:false,feu_duree_h:0,c_l0f:adv('beta')});
+    N_kN:+dp.Nml_kN||0,M_tete_kNm:+dp.Mtml_kNm||0,M_pied_kNm:+dp.Mpml_kNm||0,materiau:'beton_arme',feu_on:false,feu_duree_h:0,c_l0f:adv('beta'),_vlBande:true});
    if(vlSaisi(dp,'eiDiv')) dpt.c_ei=adv('eiDiv'); if(vlSaisi(dp,'phiEf')) dpt.phi_ef=adv('phiEf'); if(vlSaisi(dp,'Kr')) dpt.c_Kr=adv('Kr'); if(vlSaisi(dp,'ceq')) dpt.c_ceq=adv('ceq');
    const R=ptCompute({id:t.id,quoi:t.quoi,nom:t.nom,niveau:t.niveau,dimPT:dpt},true);
    const fcd=R.fcd, fyd=R.fyd, fck=R.fck, Es=200000, Ac=100*e, NEd_N=R.NEd_kN*1000, warn=[], conf=[], verifs=[], V=(zone,nom,formule,calcul,limite,etat)=>verifs.push({zone,nom,formule,calcul,limite,etat});
