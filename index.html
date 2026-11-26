@@ -6621,6 +6621,59 @@ function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return m
  const scan=()=>{ raf=0; const mb=document.getElementById('modalBody'); const st=mb&&mb.querySelector('.pcFormSticky'); sync(); if(st!==cur){ cur=st; if(ro){ try{ ro.disconnect(); }catch(_){ } ro=null; } if(st&&window.ResizeObserver){ ro=new ResizeObserver(sync); ro.observe(st); } } };
  try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
 })();
+/* ===== Classement du sol : aide commune de valeurs de départ (famille + état), réutilisée par la géotechnique, la semelle, la portance du pieu, le mur, le rideau et le massif =====
+   Les valeurs sont des ordres de grandeur prudents (bas de fourchette pour la résistance), toujours modifiables ; l'utilisateur choisit : utiliser, saisir lui-même, ne pas utiliser.
+   Elles sont signalées « à confirmer par le géotechnicien » dans la note. Chaque module enregistre sa fonction dans window.DIM_SOL_HOOKS. */
+(function(){
+ const FAM=[['sable','Sable','dens'],['grave','Grave','dens'],['limon','Limon','coh'],['argile','Argile','coh'],['marne','Marne','coh'],['roche','Roche altérée','coh'],['remblai','Remblai','dens'],['tourbe','Tourbe ou vase','tv']];
+ const ETAT={dens:[['a','Lâche'],['b','Moyen'],['c','Dense']],coh:[['a','Mou'],['b','Ferme'],['c','Dur']],tv:[['a','Mou'],['b','Ferme']]};
+ /* [γ kN/m³, φ' °, c' kPa, E_M MPa, p_l MPa, α] */
+ const V={
+  sable:{a:[16,28,0,3,0.3,0.33],b:[18,32,0,8,0.8,0.33],c:[19,36,0,20,1.8,0.33]},
+  grave:{a:[18,32,0,8,0.8,0.25],b:[20,36,0,20,1.8,0.25],c:[21,40,0,40,3.5,0.25]},
+  limon:{a:[17,22,5,2,0.2,0.5],b:[18.5,26,10,5,0.6,0.5],c:[19.5,28,20,12,1.4,0.5]},
+  argile:{a:[16,18,5,1.5,0.15,0.67],b:[18,22,10,5,0.6,0.67],c:[20,25,20,12,1.5,0.67]},
+  marne:{a:[19,25,20,15,1.5,0.5],b:[20.5,28,30,40,3,0.5],c:[22,30,50,80,5,0.5]},
+  roche:{a:[22,30,50,100,4,0.33],b:[24,35,100,300,8,0.33],c:[26,40,300,800,15,0.33]},
+  remblai:{a:[16,25,0,2,0.2,0.5],b:[18,30,0,5,0.5,0.5],c:[19,32,0,10,1,0.5]},
+  tourbe:{a:[11,10,0,0.5,0.05,1],b:[13,15,5,1.5,0.15,1]}};
+ const CH={gam:['Poids volumique γ','kN/m³',0],phi:['Angle de frottement φ\'','°',1],c:['Cohésion effective c\'','kPa',2],Em:['Module pressiométrique E_M','MPa',3],pl:['Pression limite p_l','MPa',4],alpha:['Coefficient rhéologique α','',5]};
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const fmt=x=>String(Math.round(x*1000)/1000).replace('.',',');
+ let ov=null;
+ function close(){ if(ov){ ov.remove(); ov=null; } }
+ /* opts : {titre, cible, champs:[clés], fam, onUse(valeurs, {fam, etat, famLbl, etatLbl}), onManual()} */
+ window.dimSolOpen=function(opts){
+  close(); const st={fam:opts.fam||'sable',etat:'b',ed:{}};
+  ov=document.createElement('div'); ov.className='pcFeuOv dimSolOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Classement du sol');
+  const prop=k=>{ const r=(V[st.fam]||{})[st.etat]; return r?r[CH[k][2]]:null; };
+  const etats=()=>ETAT[(FAM.find(f=>f[0]===st.fam)||FAM[0])[2]];
+  const draw=()=>{ if(!etats().some(e=>e[0]===st.etat)) st.etat='b';
+   ov.innerHTML='<div class="pcFeuCard"><h4>Classement du sol</h4><p class="pcNote">'+esc(opts.cible||'')+'Choisir la famille et l\'état du sol : l\'application propose des valeurs de départ prudentes, que vous pouvez modifier avant de les utiliser.</p>'
+   +'<label>Famille <select data-sol="fam">'+FAM.map(f=>'<option value="'+f[0]+'"'+(st.fam===f[0]?' selected':'')+'>'+f[1]+'</option>').join('')+'</select></label>'
+   +'<label>État <select data-sol="etat">'+etats().map(e=>'<option value="'+e[0]+'"'+(st.etat===e[0]?' selected':'')+'>'+e[1]+'</option>').join('')+'</select></label>'
+   +'<table class="pcNCt"><thead><tr><th>Valeur</th><th>Départ</th><th></th></tr></thead><tbody>'+(opts.champs||[]).map(k=>{ const ed=st.ed[k]!==undefined, v=ed?st.ed[k]:prop(k); return '<tr><td>'+esc(CH[k][0])+'</td><td><input type="number" inputmode="decimal" step="any" data-sol-in="'+k+'" aria-label="'+esc(CH[k][0])+'" value="'+esc(v==null?'':v)+'"> '+esc(CH[k][1])+'</td><td><span class="pcElsTag'+(ed?' on':'')+'">'+(ed?'saisi':'proposé')+'</span></td></tr>'; }).join('')+'</tbody></table>'
+   +'<p class="pcNote">Valeurs d\'ordre de grandeur, côté prudent pour la résistance : à confirmer par le géotechnicien.</p>'
+   +'<button type="button" class="ghost pcBtnSm" data-sol-act="reset">Rétablir les valeurs proposées</button>'
+   +'<button type="button" class="primary pcFeuBtn" data-sol-act="use">Utiliser ces valeurs</button><button type="button" class="ghost pcFeuBtn" data-sol-act="manual">Je saisis mes valeurs</button><button type="button" class="ghost pcFeuBtn pcFeuCancel" data-sol-act="none">Ne pas utiliser</button></div>'; };
+  ov.addEventListener('change',e=>{ const s=e.target.closest('[data-sol]'); if(s){ st[s.dataset.sol]=s.value; if(s.dataset.sol==='fam'){ st.etat='b'; } st.ed={}; draw(); return; }
+   const i=e.target.closest('[data-sol-in]'); if(i){ st.ed[i.dataset.solIn]=i.value===''?null:+String(i.value).replace(',','.'); draw(); } });
+  ov.addEventListener('click',e=>{ const b=e.target.closest('[data-sol-act]'); if(e.target===ov){ close(); return; } if(!b) return; const a=b.dataset.solAct;
+   if(a==='reset'){ st.ed={}; draw(); return; }
+   if(a==='use'){ const vals={}; (opts.champs||[]).forEach(k=>{ const v=st.ed[k]!==undefined?st.ed[k]:prop(k); if(v!=null&&isFinite(v)) vals[k]=v; });
+    const fl=(FAM.find(f=>f[0]===st.fam)||[0,''])[1], el=(etats().find(x=>x[0]===st.etat)||[0,''])[1]; const meta={fam:st.fam,etat:st.etat,famLbl:fl,etatLbl:el,etatIdx:etats().findIndex(x=>x[0]===st.etat)}; close(); try{ opts.onUse&&opts.onUse(vals,meta); }catch(err){ console.error(err); } return; }
+   if(a==='manual'){ close(); try{ opts.onManual&&opts.onManual(); }catch(_){ } return; }
+   if(a==='none'){ close(); } });
+  draw(); document.body.appendChild(ov); try{ const f=ov.querySelector('select'); if(f) f.focus({preventScroll:true}); }catch(_){ }
+ };
+ window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&ov){ e.stopImmediatePropagation(); e.preventDefault(); close(); } },true);
+ /* mémorise le classement utilisé : repris dans « Points à confirmer » de la note */
+ window.dimSolNote=function(dp,usage,meta){ dp._solClass=(dp._solClass||[]).filter(x=>x.usage!==usage); dp._solClass.push({usage,fam:meta.famLbl,etat:meta.etatLbl}); };
+ window.dimSolNoteTxt=function(dp){ const L=dp&&dp._solClass; if(!L||!L.length) return null; return 'Valeurs de sol issues du classement du sol ('+L.map(x=>x.usage+' : '+x.fam.toLowerCase()+', '+x.etat.toLowerCase()).join(' ; ')+') : ordres de grandeur prudents proposés par l\'application, à confirmer par le géotechnicien.'; };
+ window.dimSolBtn=function(arg,lbl){ return '<button type="button" class="ghost pcBtnSm" data-sol-open="'+arg+'">'+(lbl||'Classement du sol')+'</button>'; };
+ document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-sol-open]'); if(!b) return; e.preventDefault(); const [m,...rest]=b.dataset.solOpen.split('|'); const h=(window.DIM_SOL_HOOKS||{})[m]; const id=window._ficheIaId; if(h&&id) h(rest.join('|'),id); });
+})();
+
 /* Clic sur un bouton de fiche pendant qu'un champ modifié a encore le focus : le changement re-dessine la fiche et le clic était perdu (calcul lancé sans la dernière saisie, ou pas lancé). On laisse d'abord le champ valider sa saisie, puis on rejoue le clic sur le même bouton. */
 (function(){
  let pend=null;
@@ -25241,6 +25294,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     root.querySelectorAll('p,li,td,span').forEach(el=>{ if(el.closest('table')&&el.tagName!=='TD') return; const parts=el.innerHTML.split(/<br\s*\/?>/i);
       parts.forEach(pt=>{ const d=document.createElement('div'); d.innerHTML=pt; const tx=d.textContent.trim(); if(!/⚠/.test(tx)) return;
        const bad=/non vérifi|NON vérifi|dépass|insuffisan|à revoir|augmenter/i.test(tx); const k=tx.slice(0,140); if(!AN.some(a=>a.k===k)) AN.push({k,bad,tx}); }); });
+    { const sn=window.dimSolNoteTxt&&window.dimSolNoteTxt(dp); if(sn) AN.push({k:'solclass',bad:false,tx:sn}); }
     if(/par défaut/i.test(html)&&!AN.some(a=>!a.bad)) AN.push({k:'def',bad:false,tx:'Des coefficients sont retenus « par défaut » (voir les sections ci-dessus) : à confirmer par le validateur.'});
     /* sections : une par titre h4 / h5 */
     const secs=[]; let cur=null;
@@ -31403,10 +31457,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const m=dp.nfMeth||'pressio', lbl=m==='saisie'?'valeur saisie par l\'ingénieur':(SM_NF_METH.find(x=>x[0]===m)||[0,''])[1];
    let h='<p class="pcNote"><b>Portance : NF P 94-261, méthode '+esc(lbl)+'.</b> Les données du sol sont à fournir par l\'étude géotechnique (aucune valeur par défaut).</p><button type="button" class="ghost pcBtnSm pcSmChg" data-sm-act="nfModal">Changer de méthode</button>';
    const cat='<label>Catégorie de sol <select data-sm="solCat"><option value="">— à choisir —</option>'+Object.keys(SM_NF_CAT).map(c=>'<option value="'+c+'"'+(dp.solCat===c?' selected':'')+'>'+SM_NF_CAT[c].lbl+'</option>').join('')+'</select></label>';
-   if(m==='pressio') h+=smNfFld(dp,'ple_MPa','Pression limite nette équivalente p*le','MPa','0.01','0.01')+cat+'<p class="pcNote">Moyenne géométrique des pressions limites nettes sous la base, sur l\'épaisseur h_r (1,5·B à l\'ELS) : à calculer par l\'ingénieur ; q_net = k_p·p*le·i_δ.</p>';
+   if(m==='pressio') h+=dimSolBtn('sm|pressio')+smNfFld(dp,'ple_MPa','Pression limite nette équivalente p*le','MPa','0.01','0.01')+cat+'<p class="pcNote">Moyenne géométrique des pressions limites nettes sous la base, sur l\'épaisseur h_r (1,5·B à l\'ELS) : à calculer par l\'ingénieur ; q_net = k_p·p*le·i_δ.</p>';
    else if(m==='penetro') h+=smNfFld(dp,'qce_MPa','Résistance de pointe équivalente q_ce','MPa','0.1','0.1')+cat+'<p class="pcNote">Résistance de pointe lissée et écrêtée à 1,3·q_cm sous la base : à calculer par l\'ingénieur ; q_net = k_c·q_ce·i_δ.</p>';
    else if(m==='analyt'){
-    h+='<label>Conditions de calcul <select data-sm="anCond"><option value="drained"'+(dp.anCond!=='undrained'?' selected':'')+'>Drainées (c\', φ\')</option><option value="undrained"'+(dp.anCond==='undrained'?' selected':'')+'>Non drainées (c_u)</option></select></label>';
+    h+=dimSolBtn('sm|analyt')+'<label>Conditions de calcul <select data-sm="anCond"><option value="drained"'+(dp.anCond!=='undrained'?' selected':'')+'>Drainées (c\', φ\')</option><option value="undrained"'+(dp.anCond==='undrained'?' selected':'')+'>Non drainées (c_u)</option></select></label>';
     h+=(dp.anCond==='undrained'?smNfFld(dp,'cu_kPa','Cohésion non drainée c_u','kPa','1','1'):smNfFld(dp,'c_kPa','Cohésion effective c\'','kPa','1','0')+smNfFld(dp,'phi_deg','Angle de frottement effectif φ\'','°','0.5','0')+smNfFld(dp,'gamSol_kN','Poids volumique effectif sous la base γ\'','kN/m³','0.5','1'));
     h+='<p class="pcNote">Base horizontale et rugueuse, fondation éloignée de tout talus ; caractéristiques à justifier par l\'étude géotechnique.</p>';
    } else {
@@ -31507,6 +31561,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    wrap.innerHTML=smFormHtml(id,t)+(dp.resultats?smResultatsHtml(dp.resultats,dp):'');
    try{ dimApplyErrors(wrap,smValidateV(dp).errors,'data-sm'); }catch(_){ }
   }
+  (window.DIM_SOL_HOOKS=window.DIM_SOL_HOOKS||{}).sm=function(arg,id){ const t=taskById(id); if(!t) return; const dp=smData(t);
+   const done=(m)=>{ dimSolNote(dp,'sol sous la semelle',m); try{ persist(); }catch(_){ } smeRender(id); };
+   if(arg==='pressio') dimSolOpen({cible:'Sol sous la semelle : ',champs:['pl'],onUse:(v,m)=>{ if(v.pl!=null) dp.ple_MPa=v.pl; done(m); }});
+   else dimSolOpen({cible:'Sol sous la semelle : ',champs:['phi','c','gam'],onUse:(v,m)=>{ if(v.phi!=null) dp.phi_deg=v.phi; if(v.c!=null) dp.c_kPa=v.c; if(v.gam!=null) dp.gamSol_kN=v.gam; done(m); }}); };
   function smeClick(e,id){
    { const tc=taskById(id); if(tc&&smData(tc).sens==='candelabre'&&cdeClick(e,id,tc)) return; }
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ smeState(id).view='form'; smeRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
@@ -33871,7 +33929,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const pen=dp.essai==='penetro', cols=['Couche','Nature','Cat.','h (m)',pen?'q<sub>c</sub> (MPa)':'p*<sub>l</sub> (MPa)','Frottement'].concat(pen?['β','q<sub>s,max</sub> (kPa)']:[]);
    const cur=(dp.couches||[]);
    const curves=pen?[['auto','Automatique'],['aucun','Aucun'],['manuel','Saisi (β, q_s,max)']]:[['auto','Automatique'],['aucun','Aucun']].concat([1,2,3,4,5,6,7].map(n=>[String(n),'Courbe Q'+n]));
-   return '<div class="gtTW"><table class="gtT"><thead><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'<th aria-label="Supprimer"></th></tr></thead><tbody>'
+   return '<div class="gtTW"><table class="gtT"><thead><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'<th aria-label="Classement du sol"></th><th aria-label="Supprimer"></th></tr></thead><tbody>'
     +cur.map((c,i)=>{ const cats=(PP_NAT.find(x=>x[0]===c.nat)||[0,0,[]])[2], lbl=n=>n+' couche '+(i+1);
      return '<tr><td><input type="text" data-pp-row="'+i+'|nom" aria-label="'+lbl('Nom de la')+'" value="'+esc(c.nom||'')+'"></td>'
       +'<td><select data-pp-row="'+i+'|nat" aria-label="'+lbl('Nature de la')+'">'+PP_NAT.map(n=>'<option value="'+n[0]+'"'+(c.nat===n[0]?' selected':'')+'>'+n[1]+'</option>').join('')+'</select></td>'
@@ -33880,6 +33938,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       +'<td><input type="number" inputmode="decimal" step="any" data-pp-row="'+i+'|v" aria-label="'+(pen?lbl('Résistance de pointe q_c de la'):lbl('Pression limite nette p*l de la'))+' (MPa)" value="'+esc(c.v==null?'':String(c.v))+'"></td>'
       +'<td><select data-pp-row="'+i+'|curve" aria-label="'+lbl('Frottement latéral de la')+'">'+curves.map(o=>'<option value="'+o[0]+'"'+(String(c.curve||'auto')===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></td>'
       +(pen?'<td><input type="number" inputmode="decimal" step="any" data-pp-row="'+i+'|beta" aria-label="'+lbl('β de la')+'" value="'+esc(c.beta==null?'':String(c.beta))+'"></td><td><input type="number" inputmode="decimal" step="any" data-pp-row="'+i+'|qsmax" aria-label="'+lbl('q_s,max de la')+' (kPa)" value="'+esc(c.qsmax==null?'':String(c.qsmax))+'"></td>':'')
+      +'<td>'+dimSolBtn('pp|'+i)+'</td>'
       +'<td><button type="button" class="gtDel" data-pp-del="'+i+'" aria-label="Supprimer la couche '+(i+1)+'" title="Supprimer la couche">✕</button></td></tr>'; }).join('')
     +'</tbody></table></div><button type="button" class="ghost gtAdd" data-pp-add="1">＋ Ajouter une couche</button>';
   }
@@ -33980,6 +34039,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(e.target.closest('[data-pp-act="printNote"]')){ ppState(id).view='note'; ppRender(id); return; }
    const rs=e.target.closest('[data-els-reset]'); if(rs&&rs.closest('details.pcEls[data-els-kind="pp"]')){ PP_ADV.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } ppRender(id); return; }
   }
+ (window.DIM_SOL_HOOKS=window.DIM_SOL_HOOKS||{}).pp=function(arg,id){ const t=taskById(id); if(!t) return; const dp=ppData(t), c=(dp.couches||[])[+arg]; if(!c) return; const pen=dp.essai==='penetro';
+   const NM={sable:'sable',grave:'sable',limon:'argile',argile:'argile',marne:'marne',roche:'roche',remblai:'argile',tourbe:'argile'};
+   dimSolOpen({cible:'Couche '+(+arg+1)+' : '+(pen?'seules la nature et la catégorie sont proposées pour le pénétromètre. ':''),champs:pen?[]:['pl'],onUse:(v,m)=>{ c.nat=NM[m.fam]||c.nat; const cats=(PP_NAT.find(x=>x[0]===c.nat)||[0,0,[]])[2]; c.cat=cats.length?cats[Math.min(Math.max(m.etatIdx,0),cats.length-1)]:''; if(v.pl!=null) c.v=v.pl; if(!c.nom) c.nom=m.famLbl; dimSolNote(dp,'couche '+(+arg+1),m); try{ persist(); }catch(_){ } ppRender(id); }}); };
   function ppChange(e,id){
    const t=taskById(id); if(!t) return; const dp=ppData(t), el=e.target;
    if(el.dataset.els){ ppAdvChange(dp,el,id); return; }
@@ -34257,7 +34319,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(n===2){ let kk=''; try{ const cf=rpCoef(dp); kk='<p class="pcNote">K<sub>a</sub> = '+rpF(cf.Ka,3)+(cf.KaSaisi?' (saisi)':' (Rankine, δ = 0)')+' · K<sub>p</sub> = '+rpF(cf.Kp,3)+(cf.KpSaisi?' (saisi)':' (Rankine, δ = 0)')+(cf.ec?' · φ<sub>d</sub> = '+rpF(cf.phid*180/Math.PI,2)+' °':'')+'</p>'; }catch(_){ }
     return '<h5>2 · Sol et règlement</h5>'
      +'<label>Règlement de calcul '+rpSel('mode',dp.mode==='carac'?'carac':'ec7',[['ec7','Eurocode 7 : coefficients partiels (modifiables dans les paramètres avancés)'],['carac','Valeurs caractéristiques, sans coefficient']])+'</label>'
-     +rpNumIn('gamma',dp.gamma,'Poids volumique du sol γ','kN/m³')+rpNumIn('phi',dp.phi,'Angle de frottement φ','°')+rpNumIn('gammaW',dp.gammaW,'Poids volumique de l\'eau','kN/m³')+kk
+     +rpNumIn('gamma',dp.gamma,'Poids volumique du sol γ','kN/m³')+rpNumIn('phi',dp.phi,'Angle de frottement φ','°')+dimSolBtn('rp|sol')+rpNumIn('gammaW',dp.gammaW,'Poids volumique de l\'eau','kN/m³')+kk
      +'<p class="pcNote">Poussée et butée de Rankine (δ = 0) ; valeurs de K<sub>a</sub> et K<sub>p</sub> saisissables dans les paramètres avancés (Poussée et butée).</p>'; }
    const chk=(k,l)=>'<label class="pcChk"><input type="checkbox" data-rp="'+k+'"'+(dp[k]?' checked':'')+'> '+l+'</label>', sub=(k,body)=>dp[k]?'<div class="pcForm">'+body+'</div>':'';
    return '<h5>3 · Surcharges</h5><p class="pcNote">Surcharges sur le terrain côté poussée : cocher celles qui existent. Niveaux et distances en mètres depuis la tête du rideau ; surcharges en kPa (linéaire en kN/m).</p>'
@@ -34309,6 +34371,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return h+'<button type="button" class="ghost pcBtnSm" data-rp-act="printNote">🖶 Voir la note</button>';
   }
   function rpState(id){ window._dimViewRP=window._dimViewRP||{}; if(!window._dimViewRP[id]) window._dimViewRP[id]={view:'form'}; return window._dimViewRP[id]; }
+ (window.DIM_SOL_HOOKS=window.DIM_SOL_HOOKS||{}).rp=function(arg,id){ const t=taskById(id); if(!t) return; const dp=rpData(t);
+   dimSolOpen({cible:'Sol du rideau : ',champs:['gam','phi'],onUse:(v,m)=>{ if(v.gam!=null) dp.gamma=v.gam; if(v.phi!=null) dp.phi=v.phi; dimSolNote(dp,'sol du rideau',m); try{ persist(); }catch(_){ } rpRender(id); }}); };
   function rpRender(id){
    window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjRideauRoot'); const t=taskById(id); if(!wrap||!t) return;
@@ -35078,8 +35142,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function mzCouchesHtml(dp){
    const L=dp.couches, inp=(i,f,v,lab,ex)=>'<input type="number" inputmode="decimal" step="any" min="0" data-mz="couches.'+i+'.'+f+'" value="'+esc(v==null?'':String(v))+'" aria-label="'+esc(lab)+'"'+(ex||'')+'>';
-   return '<table class="mzLay"><thead><tr><th>Couche</th><th>Épaisseur (m)</th><th>E<sub>M</sub> (MPa)</th><th>α</th><th></th></tr></thead><tbody>'
-    +L.map((c,i)=>'<tr><td>'+(i+1)+'</td><td>'+(i===L.length-1?'<span class="pcNote">illimitée</span>':inp(i,'ep_m',c.ep_m,'Épaisseur de la couche '+(i+1)+' (m)'))+'</td><td>'+inp(i,'E_MPa',c.E_MPa,'Module pressiométrique de la couche '+(i+1)+' (MPa)')+'</td><td>'+inp(i,'alpha',c.alpha,'Coefficient rhéologique α de la couche '+(i+1),' list="mzAl" max="1"')+'</td><td>'+(L.length>1?'<button type="button" class="ghost pcBtnSm" data-mz-act="delCouche" data-i="'+i+'" aria-label="Supprimer la couche '+(i+1)+'" title="Supprimer la couche">−</button>':'')+'</td></tr>').join('')
+   return '<table class="mzLay"><thead><tr><th>Couche</th><th>Épaisseur (m)</th><th>E<sub>M</sub> (MPa)</th><th>α</th><th></th><th></th></tr></thead><tbody>'
+    +L.map((c,i)=>'<tr><td>'+(i+1)+'</td><td>'+(i===L.length-1?'<span class="pcNote">illimitée</span>':inp(i,'ep_m',c.ep_m,'Épaisseur de la couche '+(i+1)+' (m)'))+'</td><td>'+inp(i,'E_MPa',c.E_MPa,'Module pressiométrique de la couche '+(i+1)+' (MPa)')+'</td><td>'+inp(i,'alpha',c.alpha,'Coefficient rhéologique α de la couche '+(i+1),' list="mzAl" max="1"')+'</td><td>'+dimSolBtn('mz|'+i)+'</td><td>'+(L.length>1?'<button type="button" class="ghost pcBtnSm" data-mz-act="delCouche" data-i="'+i+'" aria-label="Supprimer la couche '+(i+1)+'" title="Supprimer la couche">−</button>':'')+'</td></tr>').join('')
     +'</tbody></table>'+(L.length?'':'<p class="pcNote" role="status" data-mz="couches">Aucune couche de sol. Le calcul est bloqué tant que le sol n\'est pas renseigné : ajouter les couches, ou charger l\'exemple.</p>')+'<datalist id="mzAl"><option value="1"><option value="0.667"><option value="0.5"><option value="0.333"><option value="0.25"></datalist>'
     +'<button type="button" class="ghost pcBtnSm" data-mz-act="addCouche">＋ Ajouter une couche</button><button type="button" class="ghost pcBtnSm" data-mz-act="exemple">Exemple</button>';
   }
@@ -35122,6 +35186,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return h+'<button type="button" class="ghost pcBtnSm" data-mz-act="printNote">🖶 Voir la note</button>';
   }
   function mzState(id){ window._dimViewMZ=window._dimViewMZ||{}; if(!window._dimViewMZ[id]) window._dimViewMZ[id]={view:'form'}; return window._dimViewMZ[id]; }
+ (window.DIM_SOL_HOOKS=window.DIM_SOL_HOOKS||{}).mz=function(arg,id){ const t=taskById(id); if(!t) return; const dp=mzData(t), c=dp.couches[+arg]; if(!c) return;
+   dimSolOpen({cible:'Couche '+(+arg+1)+' : ',champs:['Em','alpha'],onUse:(v,m)=>{ if(v.Em!=null) c.E_MPa=v.Em; if(v.alpha!=null) c.alpha=v.alpha; dimSolNote(dp,'couche '+(+arg+1),m); try{ persist(); }catch(_){ } mzRender(id); }}); };
   function mzRender(id){
    window._ficheIaId=id;
    const mb=document.getElementById('modalBody'); const wrap=mb&&mb.querySelector('.pjMassifRoot'); const t=taskById(id); if(!wrap||!t) return;
@@ -35722,8 +35788,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<label>Vérification du glissement '+muSel('glissChk',MU_GLISS,dp.glissChk)+'</label>'
     +'<label>Ferraillage '+muSel('ferr',MU_FERR,dp.ferr)+'</label><p class="pcNote">Un seul règlement de béton armé par note.</p>'
     +'<hr class="pcFormSep">'
-    +N('gamma1_kNm3','Poids volumique du remblai','kN/m³','0.5',10)+N('phi1_deg','Angle de frottement du remblai φ','°','1',5)
-    +N('gammaFond_kNm3','Poids volumique du sol de fondation','kN/m³','0.5',10)+N('phi3_deg','Angle de frottement du sol de fondation φ','°','1',5)
+    +N('gamma1_kNm3','Poids volumique du remblai','kN/m³','0.5',10)+N('phi1_deg','Angle de frottement du remblai φ','°','1',5)+dimSolBtn('mu|remblai','Classement du sol (remblai)')
+    +N('gammaFond_kNm3','Poids volumique du sol de fondation','kN/m³','0.5',10)+N('phi3_deg','Angle de frottement du sol de fondation φ','°','1',5)+dimSolBtn('mu|fond','Classement du sol (fondation)')
     +N('qELS_kPa','Contrainte admissible du sol à l\'ELS','kPa','10',10)+'<p class="pcNote">Contrainte de calcul à l\'ELU : par défaut 1,5 × la valeur ELS, modifiable dans les paramètres avancés.</p>'
     +N('buteePct','Part de butée mobilisée devant la semelle','%','5',0)+'<p class="pcNote">0 par défaut : butée ignorée (sens de la sécurité). Saisir un pourcentage pour la prendre en compte au glissement et au renversement.</p>';
    return '<h5>3 · Chargement</h5><p class="pcNote">Surcharge uniforme q et efforts de tête V, H, M : à régler sur la coupe. Poids propres, poussée des terres et butée sont calculés. Séisme, nappe et drainage : non traités.</p>'+muChargesHtml(dp)+muAdvHtml(dp,t.id);
@@ -35986,6 +36052,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(path==='reglement'||path==='ferr'||path==='poussee'){ /* les valeurs par défaut dépendantes changent : rien n'est figé */ }
    try{persist();}catch(_){ } mueRender(id);
   }
+ (window.DIM_SOL_HOOKS=window.DIM_SOL_HOOKS||{}).mu=function(arg,id){ const t=taskById(id); if(!t) return; const dp=muData(t), rem=arg==='remblai';
+   dimSolOpen({cible:(rem?'Remblai : ':'Sol de fondation : '),champs:['gam','phi'],onUse:(v,m)=>{ if(rem){ if(v.gam!=null) dp.gamma1_kNm3=v.gam; if(v.phi!=null) dp.phi1_deg=v.phi; } else { if(v.gam!=null) dp.gammaFond_kNm3=v.gam; if(v.phi!=null) dp.phi3_deg=v.phi; } dimSolNote(dp,rem?'remblai':'sol de fondation',m); try{ persist(); }catch(_){ } mueRender(id); }}); };
   function mueClick(e,id){
    const back=e.target.closest('[data-beam-back]'); if(back){ if(back.dataset.beamBack==='form'){ mueState(id).view='form'; mueRender(id); } else{ try{ closeModal(); }catch(_){ } } return; }
    const t=taskById(id); if(!t) return; const dp=muData(t);
@@ -36123,7 +36191,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    /* ---------- données ---------- */
    const GT_METH=[['menard','Tassement d\'une semelle — pressiomètre (Ménard)'],['radier','Tassement d\'un radier — diffusion'],['boussinesq','Tassement de points — Boussinesq'],['pdl','Pénétromètre dynamique — résistance de pointe'],['battage','Battage — force portante d\'un pieu']];
    /* α de Ménard, sols normalement consolidés (tableau Fascicule 62) */
-   const GT_NAT={'Tourbe':1,'Argile':0.67,'Limon':0.5,'Sable':0.33,'Grave':0.25,'Rocher':0.5};
+   const GT_NAT={'Tourbe':1,'Argile':0.67,'Limon':0.5,'Sable':0.33,'Grave':0.25,'Rocher':0.5,'Marne':0.5,'Remblai':0.5};
    function gtDefault(t){ return { nom:t.nom||t.quoi||'', methode:'menard', statut:null, resultats:null,
     forme:'rect', B:2.5, L:3, D:0.5, q_kPa:200, sAdm_cm:'',
     couches:[{nat:'Limon',h:1.5,E:5,a:0.5},{nat:'Argile',h:3,E:10,a:0.67},{nat:'Sable',h:10,E:25,a:0.33}],
@@ -36160,9 +36228,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const F=(x,n)=>(x==null||isNaN(+x))?'—':(+x).toFixed(n==null?2:n).replace('.',',');
    const num=(path,val,lab,unit,step,min)=>'<label>'+lab+' <input type="number" inputmode="decimal" step="'+(step||'any')+'"'+(min!=null?' min="'+min+'"':'')+' data-gt="'+path+'" name="gt-'+path+'" value="'+esc(val==null?'':String(val))+'">'+(unit?' '+unit:'')+'</label>';
    function gtTable(list,rows,cols,addLbl){
-    return '<div class="gtTW"><table class="gtT"><thead><tr>'+cols.map(c=>'<th>'+c.lab+(c.unit?' <small>('+c.unit+')</small>':'')+'</th>').join('')+'<th aria-label="Supprimer"></th></tr></thead><tbody>'
+    const sol=cols===COLS_SOL;
+    return '<div class="gtTW"><table class="gtT"><thead><tr>'+cols.map(c=>'<th>'+c.lab+(c.unit?' <small>('+c.unit+')</small>':'')+'</th>').join('')+(sol?'<th aria-label="Classement du sol"></th>':'')+'<th aria-label="Supprimer"></th></tr></thead><tbody>'
      +rows.map((r,i)=>'<tr>'+cols.map(c=>'<td>'+(c.sel?'<select data-gt-row="'+list+'|'+i+'|'+c.k+'" aria-label="'+c.lab+'">'+c.sel.map(o=>'<option'+(r[c.k]===o?' selected':'')+'>'+o+'</option>').join('')+'</select>'
       :'<input type="number" inputmode="decimal" step="any" data-gt-row="'+list+'|'+i+'|'+c.k+'" name="gt-'+list+'-'+i+'-'+c.k+'" aria-label="'+c.lab+' ligne '+(i+1)+'" value="'+esc(r[c.k]==null?'':String(r[c.k]))+'">')+'</td>').join('')
+      +(sol?'<td>'+dimSolBtn('gt|'+list+'|'+i)+'</td>':'')
       +'<td><button type="button" class="gtDel" data-gt-del="'+list+'|'+i+'" aria-label="Supprimer la ligne '+(i+1)+'" title="Supprimer la ligne">✕</button></td></tr>').join('')
      +'</tbody></table></div><button type="button" class="ghost gtAdd" data-gt-add="'+list+'">＋ '+addLbl+'</button>';
    }
@@ -36381,6 +36451,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      return; }
     if(e.target.closest('[data-gt-act="printNote"]')){ gtState(id).view='note'; gtRender(id); }
    }
+   (window.DIM_SOL_HOOKS=window.DIM_SOL_HOOKS||{}).gt=function(arg,id){ const [list,i]=arg.split('|'); const t=taskById(id); if(!t) return; const dp=gtData(t), L=getP(dp,list), row=L&&L[+i]; if(!row) return;
+    const NM={sable:'Sable',grave:'Grave',limon:'Limon',argile:'Argile',marne:'Marne',roche:'Rocher',remblai:'Remblai',tourbe:'Tourbe'};
+    dimSolOpen({cible:'Couche '+(+i+1)+' : ',champs:['Em','alpha'],onUse:(v,m)=>{ row.nat=NM[m.fam]||row.nat; if(v.Em!=null) row.E=v.Em; if(v.alpha!=null) row.a=v.alpha; dimSolNote(dp,'couche '+(+i+1),m); try{ persist(); }catch(_){ } gtRender(id); }}); };
    function gtChange(e,id){
     const t=taskById(id); if(!t) return; const dp=gtData(t), el=e.target;
     if(el.matches('[data-gt="nom"]')){ dp.nom=el.value; t.nom=el.value; try{ persist(); }catch(_){} return; }
