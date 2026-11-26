@@ -6624,6 +6624,369 @@ function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return m
 /* ===== Composant commun d'interface des fiches : bouton et champ « icône dans un cadre arrondi, nom en dessous » + plein écran des schémas et plans =====
    Une seule passe (dimUiScan) sur la fiche affichée : aucun module n'a sa copie. Les boutons d'action principaux (Calculer…), les bascules (ELU/ELS, modes), les cotes du schéma et les champs de cote restent tels quels. */
 (function(){
+/* Dictionnaire des libellés d'interface : [français, anglais, arabe]. Clé = identifiant dérivé du texte français (dimKey).
+   Français et anglais complets. ARABE : premier jet, À RELIRE par un arabophone avant diffusion (terminologie du génie civil à valider). */
+const DIM_I18N_DATA=[
+['Abattement près de la surface','Reduction near the surface','تخفيض قرب السطح'],
+['Acier','Steel','الفولاذ'],
+['Aire du profilé A_a','Section area A_a','مساحة المقطع A_a'],
+['Ajouter','Add','إضافة'],
+['Ajouter appui','Add support','إضافة مسند'],
+['Ajouter barre','Add bar','إضافة قضيب'],
+['Ajouter charge','Add load','إضافة حمولة'],
+['Ajouter charge linéique ou ponctuelle','Add line or point load','إضافة حمولة خطية أو نقطية'],
+['Ajouter charge sur barre','Add load on bar','إضافة حمولة على قضيب'],
+['Ajouter charge sur nœud','Add load on node','إضافة حمولة على عقدة'],
+['Ajouter nœud','Add node','إضافة عقدة'],
+['Ajouter sous-ouvrage pointable','Add pinnable sub-structure','إضافة منشأ فرعي'],
+['Ajouter une charge','Add a load','إضافة حمولة'],
+['Ajouter une couche','Add a layer','إضافة طبقة'],
+['Ajouter une dépendance','Add a dependency','إضافة تبعية'],
+['Ancrage par crochet ou équerre','Anchorage by hook or bend','التثبيت بخطاف أو زاوية'],
+['Angle de frottement du remblai φ','Fill friction angle φ','زاوية احتكاك الردم φ'],
+['Angle de frottement du sol de fondation φ','Foundation soil friction angle φ','زاوية احتكاك تربة الأساس φ'],
+['Angle de frottement φ','Friction angle φ','زاوية الاحتكاك φ'],
+['Annuler','Cancel','إلغاء'],
+['Appliquer A_s,min de flexion','Apply flexural A_s,min','تطبيق الحد الأدنى للتسليح في الانحناء'],
+['Appliquer A_s,min de flexion aux tirants','Apply flexural A_s,min to the ties','تطبيق الحد الأدنى للتسليح على الأوتار'],
+['Appliquer ces sections à toutes les barres de la grille','Apply these sections to all bars of the grid','تطبيق هذه المقاطع على جميع قضبان الشبكة'],
+['Appliquer le correctif 310/σs','Apply the 310/σs correction','تطبيق التصحيح 310/σs'],
+['Appuis de pied','Base supports','مساند القاعدة'],
+['Appuis de rive et recouvrements','Edge supports and laps','المساند الطرفية والتراكبات'],
+['Appuis indirects','Indirect supports','المساند غير المباشرة'],
+['Armature inférieure prolongée sur l\'appui de rive','Bottom bars extended over the edge support','التسليح السفلي ممتد فوق المسند الطرفي'],
+['Armatures comprimées (flèche)','Compression bars (deflection)','تسليح الضغط (السهم)'],
+['Armatures de répartition','Distribution bars','تسليح التوزيع'],
+['Armatures et arrêts','Bars and curtailment','التسليح ونهايات القضبان'],
+['Armatures horizontales','Horizontal bars','التسليح الأفقي'],
+['Armatures verticales','Vertical bars','التسليح الرأسي'],
+['Associer un interlocuteur','Link a contact','ربط جهة اتصال'],
+['Autre extrémité des poutres','Other end of the beams','الطرف الآخر للجوائز'],
+['B0 — largeur de référence','B0 — reference width','B0 — العرض المرجعي'],
+['Barres équivalentes du modèle circulaire','Equivalent bars of the circular model','القضبان المكافئة للنموذج الدائري'],
+['Bras de levier z','Lever arm z','ذراع العزم z'],
+['Bras de levier z/d (si z = 0,9 d)','Lever arm z/d (if z = 0.9 d)','نسبة ذراع العزم z/d (إذا z = 0.9 d)'],
+['Butée et glissement','Passive resistance and sliding','المقاومة السلبية والانزلاق'],
+['Béton armé','Reinforced concrete','خرسانة مسلحة'],
+['Bêche sous le voile','Key under the wall','لسان تحت الجدار'],
+['Calcul au feu','Fire design','التصميم للحريق'],
+['Calcul au feu (désactivé)','Fire design (off)','التصميم للحريق (معطل)'],
+['Catégorie d\'usage du bâtiment','Building use category','فئة استخدام المبنى'],
+['Charge admissible par pieu (ELS)','Allowable load per pile (SLS)','الحمولة المسموحة لكل ركيزة (حالة الخدمة)'],
+['Charge comparée à l\'admissible','Load compared to allowable','الحمولة مقارنة بالمسموح'],
+['Charge d\'exploitation Q (axiale)','Imposed load Q (axial)','الحمولة المتغيرة Q (محورية)'],
+['Charge permanente G (axiale)','Permanent load G (axial)','الحمولة الدائمة G (محورية)'],
+['Charge ponctuelle R_u (ELU)','Point load R_u (ULS)','حمولة نقطية R_u (حالة الحد الأقصى)'],
+['Charges et affichage','Loads and display','الحمولات والعرض'],
+['Charges verticales sur barres inclinées','Vertical loads on inclined bars','حمولات رأسية على قضبان مائلة'],
+['Classe d\'acier','Steel grade','صنف الفولاذ'],
+['Classe d\'acier des armatures','Reinforcement steel grade','صنف فولاذ التسليح'],
+['Classe d\'exposition','Exposure class','صنف التعرض'],
+['Classe de béton','Concrete class','صنف الخرسانة'],
+['Cloisons fragiles','Fragile partitions','حواجز هشة'],
+['Coefficient K saisi (remplace la courbe)','Entered K coefficient (replaces the curve)','معامل K المدخل (يحل محل المنحنى)'],
+['Coefficient appliqué à N_Ed (flexion)','Coefficient applied to N_Ed (bending)','معامل مطبق على N_Ed (الانحناء)'],
+['Coefficient d\'extrémité ψ = M_min / M_max','End coefficient ψ = M_min / M_max','معامل الطرف ψ = M_min / M_max'],
+['Coefficient d\'inclinaison de la charge','Load inclination coefficient','معامل ميل الحمولة'],
+['Coefficient d\'inclinaison imposé','Imposed inclination coefficient','معامل الميل المفروض'],
+['Coefficient d\'équivalence acier/béton','Steel/concrete equivalence coefficient','معامل التكافؤ فولاذ/خرسانة'],
+['Coefficient de butée Kp','Passive coefficient Kp','معامل المقاومة السلبية Kp'],
+['Coefficient de forme du module horizontal','Shape coefficient of the horizontal modulus','معامل شكل المعامل الأفقي'],
+['Coefficient de longueur efficace l0/l (vide : règle)','Effective length coefficient l0/l (empty: rule)','معامل الطول الفعال l0/l (فارغ: القاعدة)'],
+['Coefficient de rigidité (EI et EA)','Stiffness coefficient (EI and EA)','معامل الصلابة (EI و EA)'],
+['Coefficient de résistance au glissement','Sliding resistance coefficient','معامل مقاومة الانزلاق'],
+['Coefficient de résistance du béton','Concrete resistance coefficient','معامل مقاومة الخرسانة'],
+['Coefficient de sécurité requis','Required safety factor','معامل الأمان المطلوب'],
+['Coefficient du numérateur du module horizontal','Numerator coefficient of the horizontal modulus','معامل البسط للمعامل الأفقي'],
+['Coefficient partiel de l\'acier de construction γ_a','Partial factor of structural steel γ_a','المعامل الجزئي للفولاذ الإنشائي γ_a'],
+['Coefficient partiel des armatures γ_s','Partial factor of reinforcement γ_s','المعامل الجزئي للتسليح γ_s'],
+['Coefficient partiel du béton γ_c','Partial factor of concrete γ_c','المعامل الجزئي للخرسانة γ_c'],
+['Coefficient µ saisi (remplace la courbe)','Entered µ coefficient (replaces the curve)','معامل µ المدخل (يحل محل المنحنى)'],
+['Coefficient β de poinçonnement','Punching coefficient β','معامل β للثقب'],
+['Coefficients partiels','Partial factors','المعاملات الجزئية'],
+['Cohésion de la base','Base cohesion','تماسك القاعدة'],
+['Combinaison ELU','ULS combination','توليفة حالة الحد الأقصى'],
+['Comportement du sol','Soil behaviour','سلوك التربة'],
+['Compression, ELS quasi permanent','Compression, SLS quasi-permanent','ضغط، خدمة شبه دائمة'],
+['Compression, ELS rare','Compression, SLS characteristic','ضغط، خدمة نادرة'],
+['Compression, ELU accidentel','Compression, ULS accidental','ضغط، حد أقصى عرضي'],
+['Compression, ELU fondamental','Compression, ULS fundamental','ضغط، حد أقصى أساسي'],
+['Conditions d\'adhérence (ancrage)','Bond conditions (anchorage)','ظروف التماسك (التثبيت)'],
+['Conditions d\'adhérence η1','Bond conditions η1','ظروف التماسك η1'],
+['Construire le scénario','Build the scenario','بناء السيناريو'],
+['Contact de la face inférieure','Bottom face contact','تلامس الوجه السفلي'],
+['Contrainte admissible du sol à l\'ELS','Allowable soil stress at SLS','إجهاد التربة المسموح في حالة الخدمة'],
+['Contrainte admissible du sol à l\'ELS q.sol','Allowable soil stress at SLS q.sol','إجهاد التربة المسموح في حالة الخدمة q.sol'],
+['Contrainte admissible sous la base','Allowable stress under the base','الإجهاد المسموح تحت القاعدة'],
+['Contrainte de calcul du sol à l\'ELU','Design soil stress at ULS','إجهاد تصميم التربة في الحد الأقصى'],
+['Contrainte de calcul σ_sd de l\'ancrage','Design stress σ_sd of the anchorage','إجهاد التصميم σ_sd للتثبيت'],
+['Contrainte limite de l\'acier à l\'ELS','Steel stress limit at SLS','حد إجهاد الفولاذ في حالة الخدمة'],
+['Contrainte moyenne sous la base limitée à la contrainte du sol','Mean stress under the base limited to soil stress','الإجهاد المتوسط تحت القاعدة محدود بإجهاد التربة'],
+['Copier toutes les propriétés d\'un autre ouvrage','Copy all properties from another structure','نسخ جميع خصائص منشأ آخر'],
+['Courbe de flambement (coefficient K)','Buckling curve (K coefficient)','منحنى الانبعاج (المعامل K)'],
+['Critère de stabilité','Stability criterion','معيار الاستقرار'],
+['Critère pieu profond / semi-profond','Deep / semi-deep pile criterion','معيار الركيزة العميقة / شبه العميقة'],
+['Côté minimal essayé','Minimum side tried','أقل ضلع مجرّب'],
+['Dalle bénéficiant d\'une redistribution transversale des charges (v_min 0,34/γc·√fck)','Slab with transverse load redistribution (v_min 0.34/γc·√fck)','بلاطة مع إعادة توزيع الحمولات عرضياً (v_min 0.34/γc·√fck)'],
+['Dalle sur appui ponctuel (poteau)','Slab on point support (column)','بلاطة على مسند نقطي (عمود)'],
+['Descente de charges','Load take-down','تنزيل الحمولات'],
+['Diamètre des barres','Bar diameter','قطر القضبان'],
+['Diamètre des boulons','Bolt diameter','قطر المسامير'],
+['Diamètre des cadres','Stirrup diameter','قطر الأساور'],
+['Diamètre des cadres verticaux','Vertical stirrup diameter','قطر الأساور الرأسية'],
+['Diamètre imposé des tirants','Imposed tie diameter','القطر المفروض للأوتار'],
+['Distance U1 (premier lit, depuis la semelle)','Distance U1 (first layer, from the footing)','المسافة U1 (الطبقة الأولى من القاعدة)'],
+['Distance U2 (barres, depuis la face)','Distance U2 (bars, from the face)','المسافة U2 (القضبان من الوجه)'],
+['Distance des boulons au bord de la platine','Bolt distance to plate edge','بعد المسامير عن حافة اللوح'],
+['Donnée du sol','Soil data','بيانات التربة'],
+['Durée de stabilité au feu demandée','Required fire resistance duration','مدة مقاومة الحريق المطلوبة'],
+['Débord de la platine autour du profilé','Plate overhang around the section','بروز اللوح حول المقطع'],
+['Débord minimal','Minimum overhang','أدنى بروز'],
+['Début d de l\'intégrale de la hauteur d\'encastrement','Start d of the embedment height integral','بداية d لتكامل ارتفاع الغرس'],
+['Déplacement horizontal admissible','Allowable horizontal displacement','الإزاحة الأفقية المسموحة'],
+['ELS et fissuration','SLS and cracking','حالة الخدمة والتشقق'],
+['Effort tranchant','Shear force','قوة القص'],
+['Effort tranchant dans le plan V_Ed','In-plane shear force V_Ed','قوة القص في المستوى V_Ed'],
+['Effort tranchant de dalle continue','Continuous slab shear force','قوة القص للبلاطة المستمرة'],
+['Effort vertical V appliqué','Applied vertical force V','القوة الرأسية المطبقة V'],
+['Enrobage','Cover','الغطاء الخرساني'],
+['Enrobage des cadres','Stirrup cover','غطاء الأساور'],
+['Enrobage directement contre terre','Cover cast directly against soil','غطاء ملامس مباشرة للتربة'],
+['Enrobage nominal','Nominal cover','الغطاء الاسمي'],
+['Enrobage nominal (remplace le calcul)','Nominal cover (replaces the calculation)','الغطاء الاسمي (يحل محل الحساب)'],
+['Enrobage sur béton de propreté','Cover on blinding concrete','غطاء فوق خرسانة النظافة'],
+['Entraxe horizontal ≤ ... mm','Horizontal spacing ≤ ... mm','التباعد الأفقي ≤ ... مم'],
+['Entraxe vertical ≤ ... mm','Vertical spacing ≤ ... mm','التباعد الرأسي ≤ ... مم'],
+['Entraxe vertical ≤ ... · e','Vertical spacing ≤ ... · e','التباعد الرأسي ≤ ... · e'],
+['Espacement des cadres','Stirrup spacing','تباعد الأساور'],
+['Espacement des transversales de recouvrement','Lap transverse bar spacing','تباعد القضبان العرضية للتراكب'],
+['Espacement libre minimal des barres','Minimum clear bar spacing','أدنى تباعد صافٍ للقضبان'],
+['Espacement maximal des barres','Maximum bar spacing','أقصى تباعد للقضبان'],
+['Espacement maximal des barres d\'un lit','Maximum spacing of bars in a layer','أقصى تباعد لقضبان الطبقة'],
+['Espacement maximal sens x','Maximum spacing x direction','أقصى تباعد في الاتجاه x'],
+['Espacement maximal sens y','Maximum spacing y direction','أقصى تباعد في الاتجاه y'],
+['Espacement minimal des cadres','Minimum stirrup spacing','أدنى تباعد للأساور'],
+['Essai de sol','Soil test','اختبار التربة'],
+['Excentricité (moment transmis)','Eccentricity (transmitted moment)','اللامركزية (العزم المنقول)'],
+['Excentricité de la charge','Load eccentricity','لامركزية الحمولة'],
+['Exigence d\'aspect','Appearance requirement','متطلب المظهر'],
+['Exporter la fiche','Export the sheet','تصدير البطاقة'],
+['Exposant a de la flexion déviée (vide : table)','Exponent a of biaxial bending (empty: table)','الأس a للانحناء المائل (فارغ: الجدول)'],
+['Facteur de portance imposé (kp ou kc)','Imposed bearing factor (kp or kc)','عامل التحمل المفروض (kp أو kc)'],
+['Ferraillage','Reinforcement','التسليح'],
+['Fissuration','Cracking','التشقق'],
+['Fissuration des poutres','Beam cracking','تشقق الجوائز'],
+['Flexion','Bending','الانحناء'],
+['Flèche : méthode alternative (E_c28 majoré)','Deflection: alternative method (increased E_c28)','السهم: طريقة بديلة (E_c28 مزاد)'],
+['Fond de la tête','Pile cap bottom','قاع رأس الركائز'],
+['Forcer le calcul en fondation profonde','Force deep foundation calculation','فرض الحساب كأساس عميق'],
+['Forme','Shape','الشكل'],
+['Forme des poutres','Beam shape','شكل الجوائز'],
+['Formule de stabilité','Stability formula','معادلة الاستقرار'],
+['Granulat','Aggregate','الركام'],
+['Générer la grille','Generate the grid','إنشاء الشبكة'],
+['Hauteur de terre sur le patin D','Soil height on the toe D','ارتفاع التربة فوق الكعب D'],
+['Hauteur du pieu dans la formation porteuse h','Pile height in the bearing layer h','ارتفاع الركيزة في الطبقة الحاملة h'],
+['Hauteur libre L','Free height L','الارتفاع الحر L'],
+['Hauteur minimale de la semelle','Minimum footing height','أدنى ارتفاع للقاعدة'],
+['Largeur d\'appui','Support width','عرض المسند'],
+['Limite d\'élasticité des armatures f_sk','Reinforcement yield strength f_sk','حد خضوع التسليح f_sk'],
+['Longueur d\'ancrage dessinée (schématique)','Drawn anchorage length (schematic)','طول التثبيت المرسوم (تخطيطي)'],
+['Longueur de diffusion d de la charge ponctuelle','Spread length d of the point load','طول انتشار d للحمولة النقطية'],
+['Longueur de flambement','Buckling length','طول الانبعاج'],
+['Longueur de la moitié des barres','Length of half the bars','طول نصف القضبان'],
+['Longueur de répartition d\'une charge ponctuelle','Distribution length of a point load','طول توزيع حمولة نقطية'],
+['Longueur du rideau','Wall length','طول الستارة'],
+['Longueur efficace','Effective length','الطول الفعال'],
+['Longueur et imperfections','Length and imperfections','الطول والعيوب'],
+['Majoration admise de la contrainte maximale','Allowed increase of maximum stress','الزيادة المسموحة للإجهاد الأقصى'],
+['Majoration de la fiche k','Embedment increase k','زيادة الغرس k'],
+['Majoration du tirant','Tie increase','زيادة الوتر'],
+['Marge de la hauteur Ht,min','Margin on height Ht,min','هامش الارتفاع Ht,min'],
+['Matériau de l\'ouvrage','Structure material','مادة المنشأ'],
+['Mise en œuvre','Execution','التنفيذ'],
+['Module E des poutres et des poteaux','Modulus E of beams and columns','معامل المرونة E للجوائز والأعمدة'],
+['Module d\'élasticité de l\'acier de construction E_a','Modulus of structural steel E_a','معامل مرونة الفولاذ الإنشائي E_a'],
+['Module d\'élasticité des armatures E_s','Modulus of reinforcement E_s','معامل مرونة التسليح E_s'],
+['Module d\'élasticité du béton E_cm','Concrete modulus E_cm','معامل مرونة الخرسانة E_cm'],
+['Module de réaction vertical sous la base','Vertical reaction modulus under the base','معامل رد الفعل الرأسي تحت القاعدة'],
+['Moment M_Ed saisi','Entered moment M_Ed','العزم M_Ed المدخل'],
+['Moment d\'appui réduit à la face','Support moment reduced to the face','عزم المسند مخفض عند الوجه'],
+['Méthode','Method','الطريقة'],
+['Méthode de calcul','Calculation method','طريقة الحساب'],
+['Méthode de flexion','Bending method','طريقة الانحناء'],
+['Métier','Trade','المهنة'],
+['N_ser — effort normal de service','N_ser — service axial force','N_ser — القوة المحورية في الخدمة'],
+['Nombre d\'étages','Number of storeys','عدد الطوابق'],
+['Nombre de barres longitudinales','Number of longitudinal bars','عدد القضبان الطولية'],
+['Nombre de boulons d\'ancrage (pied)','Number of anchor bolts (base)','عدد مسامير التثبيت (القاعدة)'],
+['Nombre de pieux sous le poteau','Number of piles under the column','عدد الركائز تحت العمود'],
+['Nombre de poutres au nœud','Number of beams at the node','عدد الجوائز عند العقدة'],
+['Nombre de travées','Number of spans','عدد البحور'],
+['Nombre de travées (sens lx)','Number of spans (lx direction)','عدد البحور (الاتجاه lx)'],
+['Nombre minimal de barres par nappe','Minimum bars per layer','أدنى عدد قضبان في الطبقة'],
+['Nouvelle famille','New family','عائلة جديدة'],
+['Nuance de l\'acier de construction','Structural steel grade','درجة الفولاذ الإنشائي'],
+['Nœud','Node','عقدة'],
+['Part de butée mobilisée devant la semelle','Passive share mobilised in front of the footing','نسبة المقاومة السلبية أمام القاعدة'],
+['Part des barres du voile arrêtée en hauteur','Share of wall bars stopped in height','نسبة قضبان الجدار المقطوعة في الارتفاع'],
+['Part minimale de la base comprimée','Minimum compressed share of the base','أدنى نسبة مضغوطة من القاعدة'],
+['Pas d\'arrondi des dimensions','Dimension rounding step','خطوة تقريب الأبعاد'],
+['Pas des dimensions','Dimension step','خطوة الأبعاد'],
+['Pied','Base','القاعدة'],
+['Plafond d\'espacement des cadres','Stirrup spacing ceiling','سقف تباعد الأساور'],
+['Plafond de ρl','Ceiling of ρl','سقف ρl'],
+['Plan de flexion','Bending plane','مستوى الانحناء'],
+['Platines de pied et de tête','Base and head plates','ألواح القاعدة والرأس'],
+['Plein écran','Full screen','ملء الشاشة'],
+['Poids de la terre et surcharge sur la tête du massif','Soil weight and surcharge on the block top','وزن التربة والحمولة الإضافية فوق رأس الكتلة'],
+['Poids et sol','Weight and soil','الوزن والتربة'],
+['Poids propre de la tête','Pile cap self-weight','الوزن الذاتي لرأس الركائز'],
+['Poids propre des barres','Bar self-weight','الوزن الذاتي للقضبان'],
+['Poids propre du poteau','Column self-weight','الوزن الذاتي للعمود'],
+['Poids propre du voile','Wall self-weight','الوزن الذاتي للجدار'],
+['Poids volumique de l\'eau','Unit weight of water','الوزن الحجمي للماء'],
+['Poids volumique des terres (déjaugé si sous nappe)','Unit weight of soil (buoyant if below water table)','الوزن الحجمي للتربة (مغمور تحت الماء الجوفي)'],
+['Poids volumique du béton armé','Unit weight of reinforced concrete','الوزن الحجمي للخرسانة المسلحة'],
+['Poids volumique du béton du massif','Unit weight of block concrete','الوزن الحجمي لخرسانة الكتلة'],
+['Poids volumique du massif','Unit weight of the block','الوزن الحجمي للكتلة'],
+['Poids volumique du remblai','Unit weight of fill','الوزن الحجمي للردم'],
+['Poids volumique du sol de fondation','Unit weight of foundation soil','الوزن الحجمي لتربة الأساس'],
+['Poids volumique du sol γ','Unit weight of soil γ','الوزن الحجمي للتربة γ'],
+['Poids volumique du terrain au-dessus du massif','Unit weight of soil above the block','الوزن الحجمي للتربة فوق الكتلة'],
+['Portance du pieu','Pile bearing capacity','تحمل الركيزة'],
+['Position de la travée étudiée','Position of the studied span','موقع البحر المدروس'],
+['Poteau voisin au-dessus du nœud','Neighbouring column above the node','العمود المجاور فوق العقدة'],
+['Poteau voisin en dessous du nœud','Neighbouring column below the node','العمود المجاور تحت العقدة'],
+['Poteaux b','Columns b','الأعمدة b'],
+['Poteaux h','Columns h','الأعمدة h'],
+['Poussée des terres','Earth pressure','ضغط التربة'],
+['Poussée et butée','Active and passive pressure','الضغط الفعال والسلبي'],
+['Poutre : hauteur h','Beam: height h','الجائز: الارتفاع h'],
+['Poutre : largeur b','Beam: width b','الجائز: العرض b'],
+['Poutre : portée l','Beam: span l','الجائز: البحر l'],
+['Poutres b','Beams b','الجوائز b'],
+['Poutres h','Beams h','الجوائز h'],
+['Pression horizontale admissible du terrain','Allowable horizontal soil pressure','الضغط الأفقي المسموح للتربة'],
+['Pression horizontale affichée','Displayed horizontal pressure','الضغط الأفقي المعروض'],
+['Profilé','Section','المقطع'],
+['Profondeur d\'assise D','Foundation depth D','عمق التأسيس D'],
+['Profondeur de la nappe','Water table depth','عمق الماء الجوفي'],
+['Proposer une section','Suggest a section','اقتراح مقطع'],
+['Préparer le mail','Prepare the email','تحضير البريد'],
+['Rapport ELU/ELS pour N_ser et M_ser par défaut','ULS/SLS ratio for default N_ser and M_ser','نسبة الحد الأقصى/الخدمة لـ N_ser و M_ser الافتراضيين'],
+['Rapport h / b (rectangle)','Ratio h / b (rectangle)','النسبة h / b (مستطيل)'],
+['Rayon de congé âme-semelle','Web-flange fillet radius','نصف قطر التدوير بين الجذع والجناح'],
+['Reporter dans k1 et k2','Transfer to k1 and k2','نقل إلى k1 و k2'],
+['Retour','Back','رجوع'],
+['Rotation admissible du massif','Allowable block rotation','الدوران المسموح للكتلة'],
+['Règle : barres droites si l_bd > A/…','Rule: straight bars if l_bd > A/…','القاعدة: قضبان مستقيمة إذا l_bd > A/…'],
+['Règle : crochets si l_bd > A/…','Rule: hooks if l_bd > A/…','القاعدة: خطافات إذا l_bd > A/…'],
+['Règlement de calcul','Design code','كود التصميم'],
+['Règlement de stabilité','Stability code','كود الاستقرار'],
+['Règlement et sécurité','Code and safety','الكود والأمان'],
+['Réalésage et rainurage en fin de forage','Reaming and grooving at end of drilling','إعادة التوسيع والتخديد في نهاية الحفر'],
+['Réduction à la face aussi aux appuis de rive encastrés','Face reduction also at fixed edge supports','التخفيض عند الوجه أيضاً في المساند الطرفية المثبتة'],
+['Résistance au cisaillement dans le plan V_Rd','In-plane shear resistance V_Rd','مقاومة القص في المستوى V_Rd'],
+['Résistance de calcul par pieu (ELU)','Design resistance per pile (ULS)','مقاومة التصميم لكل ركيزة (الحد الأقصى)'],
+['Résistance du mur non armé N_Rd','Unreinforced wall resistance N_Rd','مقاومة الجدار غير المسلح N_Rd'],
+['Rétablir l\'aide','Restore the help','استعادة المساعدة'],
+['Rétablir les valeurs par défaut','Restore default values','استعادة القيم الافتراضية'],
+['Section','Section','المقطع'],
+['Section critique du moment','Critical section of the moment','المقطع الحرج للعزم'],
+['Section des armatures A_s','Reinforcement area A_s','مساحة التسليح A_s'],
+['Section en T','T-section','مقطع على شكل T'],
+['Sens de portée','Span direction','اتجاه البحر'],
+['Sens x : coefficient r en surface','x direction: surface coefficient r','الاتجاه x: معامل r على السطح'],
+['Sens x : profondeur z1 (début de la rampe)','x direction: depth z1 (ramp start)','الاتجاه x: العمق z1 (بداية المنحدر)'],
+['Sens x : profondeur z2 (fin de la rampe)','x direction: depth z2 (ramp end)','الاتجاه x: العمق z2 (نهاية المنحدر)'],
+['Sens y : coefficient r en surface','y direction: surface coefficient r','الاتجاه y: معامل r على السطح'],
+['Sens y : profondeur z1 (début de la rampe)','y direction: depth z1 (ramp start)','الاتجاه y: العمق z1 (بداية المنحدر)'],
+['Sens y : profondeur z2 (fin de la rampe)','y direction: depth z2 (ramp end)','الاتجاه y: العمق z2 (نهاية المنحدر)'],
+['Seuil μ (Eurocode 2)','μ threshold (Eurocode 2)','عتبة μ (الكود الأوروبي 2)'],
+['Sol et modules de réaction','Soil and reaction moduli','التربة ومعاملات رد الفعل'],
+['Sol et portance','Soil and bearing capacity','التربة والتحمل'],
+['Souplesse k1 (pied)','Flexibility k1 (base)','المرونة k1 (القاعدة)'],
+['Souplesse k2 (tête)','Flexibility k2 (head)','المرونة k2 (الرأس)'],
+['Supprimer','Delete','حذف'],
+['Surcharge illimitée','Unlimited surcharge','حمولة إضافية غير محدودة'],
+['Surcharge illimitée éloignée du rideau','Unlimited surcharge far from the wall','حمولة إضافية غير محدودة بعيدة عن الستارة'],
+['Surcharge limitée contiguë au rideau','Limited surcharge adjacent to the wall','حمولة إضافية محدودة ملاصقة للستارة'],
+['Surcharge limitée éloignée du rideau','Limited surcharge far from the wall','حمولة إضافية محدودة بعيدة عن الستارة'],
+['Surcharge linéaire éloignée du rideau','Line surcharge far from the wall','حمولة خطية بعيدة عن الستارة'],
+['Surcharge q sur le terrain','Surcharge q on the ground','الحمولة الإضافية q على الأرض'],
+['Surface comprimée minimale','Minimum compressed area','أدنى مساحة مضغوطة'],
+['Surface comprimée minimale à l\'ELS','Minimum compressed area at SLS','أدنى مساحة مضغوطة في الخدمة'],
+['Surface comprimée minimale à l\'ELU','Minimum compressed area at ULS','أدنى مساحة مضغوطة في الحد الأقصى'],
+['Sécurité au glissement à l\'ELS','Sliding safety at SLS','أمان الانزلاق في الخدمة'],
+['Sécurité au renversement à l\'ELS','Overturning safety at SLS','أمان الانقلاب في الخدمة'],
+['Sécurité au renversement à l\'ELU','Overturning safety at ULS','أمان الانقلاب في الحد الأقصى'],
+['Table tendue (jonction)','Tension flange (junction)','الجناح المشدود (الوصلة)'],
+['Tassement admissible (facultatif)','Allowable settlement (optional)','الهبوط المسموح (اختياري)'],
+['Tolérance d\'implantation des pieux','Pile positioning tolerance','تفاوت تموضع الركائز'],
+['Torsion : saisir T_Ed éteint','Torsion: enter T_Ed off','الفتل: إدخال T_Ed معطل'],
+['Traction, ELS rare','Tension, SLS characteristic','شد، خدمة نادرة'],
+['Traction, ELU fondamental','Tension, ULS fundamental','شد، حد أقصى أساسي'],
+['Traiter l\'élément comme','Treat the element as','معاملة العنصر على أنه'],
+['Type','Type','النوع'],
+['Type de débord','Overhang type','نوع البروز'],
+['Type de pieu','Pile type','نوع الركيزة'],
+['Type de semelle','Footing type','نوع القاعدة'],
+['Tête','Head','الرأس'],
+['Tête de pieux','Pile cap','رأس الركائز'],
+['V pour la vérification de la bielle','V for strut check','V لفحص البيل'],
+['V pour le choix de cotθ','V for cotθ choice','V لاختيار cotθ'],
+['Vérification du glissement','Sliding check','فحص الانزلاق'],
+['Vérifications complémentaires','Additional checks','فحوصات إضافية'],
+['Vérifications saisies','Entered checks','الفحوصات المدخلة'],
+['début','start','بداية'],
+['fin','end','نهاية'],
+['Échelle ×10 kN/m²','Scale ×10 kN/m²','المقياس ×10 كن/م²'],
+['Épaisseur de l\'âme','Web thickness','سماكة الجذع'],
+['Épaisseur de la platine','Plate thickness','سماكة اللوح'],
+['Épaisseur des semelles','Flange thickness','سماكة الأجنحة'],
+['Épingles et recouvrements','Pins and laps','الدبابيس والتراكبات'],
+['Épingles par m² de voile','Pins per m² of wall','دبابيس لكل م² من الجدار'],
+['Ø des épingles','Pin diameter','قطر الدبابيس'],
+['Ø estimé des barres','Estimated bar diameter','القطر المقدر للقضبان'],
+['Ø estimé des cadres','Estimated stirrup diameter','القطر المقدر للأساور'],
+['Ø estimé des tirants (hauteur utile)','Estimated tie diameter (effective depth)','القطر المقدر للأوتار (العمق الفعال)'],
+['Ø estimé pour d_x','Estimated Ø for d_x','القطر المقدر لـ d_x'],
+['Ø minimal des barres verticales','Minimum diameter of vertical bars','أدنى قطر للقضبان الرأسية'],
+['Ø minimal des cadres','Minimum stirrup diameter','أدنى قطر للأساور'],
+['Copier le texte','Copy the text','نسخ النص'],
+['Dupliquer l’ouvrage','Duplicate the structure','تكرار المنشأ'],
+['Voir la note','View the note','عرض المذكرة'],
+['Rétablir','Restore','استعادة'],
+['Exemple','Example','مثال'],
+['Fermer','Close','إغلاق'],
+['Réduire','Zoom out','تصغير'],
+['Ajuster','Fit','ملاءمة'],
+['Agrandir','Zoom in','تكبير'],
+['Exporter','Export','تصدير'],
+['Pinceau','Brush','فرشاة'],
+['Enregistrer','Save','حفظ'],
+['Imprimer','Print','طباعة'],
+['Changer de méthode','Change method','تغيير الطريقة'],
+['Descente de charges','Load take-down','تنزيل الحمولات'],
+['Plan et schémas de la note','Plan and diagrams of the note','المخطط والرسوم في المذكرة'],
+['Schéma','Diagram','رسم'],
+['Langue','Language','اللغة'],
+['Français','Français','Français'],
+['English','English','English'],
+['العربية','العربية','العربية']
+];
+
+ const LANGS=['fr','en','ar'], I18N={};
+ const nk=x=>String(x||'').replace(/<[^>]*>/g,'').replace(/&gt;/g,'>').replace(/&lt;/g,'<').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
+ DIM_I18N_DATA.forEach(r=>{ I18N[nk(r[0])]=r; });
+ let lang='fr'; try{ lang=localStorage.getItem('dim_lang')||'fr'; }catch(_){ } if(!LANGS.includes(lang)) lang='fr';
+ const TR=fr=>{ const r=I18N[nk(fr)]; return r?(lang==='en'?r[1]:(lang==='ar'?r[2]:r[0])):null; };
+ window.dimT=fr=>{ const x=TR(fr); return x==null?String(fr):x; }; window.dimLang=()=>lang;
+ const applyDir=()=>{ const h=document.documentElement; h.setAttribute('lang',lang); if(lang==='ar') h.setAttribute('dir','rtl'); else h.removeAttribute('dir'); };
+ function retr(){ document.querySelectorAll('[data-dimfr]').forEach(el=>{ const fr=el.getAttribute('data-dimfr'), x=TR(fr), v=x==null?fr:x; el.textContent=v; const w=el.closest('.dimIBw'); if(w){ const bt=w.querySelector('button'); if(bt){ bt.setAttribute('aria-label',v); bt.setAttribute('title',v); } } }); }
+ window.dimSetLang=l=>{ if(!LANGS.includes(l)) return; lang=l; try{ localStorage.setItem('dim_lang',l); }catch(_){ } applyDir(); retr(); document.querySelectorAll('.pv-lg-w button').forEach(b=>b.classList.toggle('on',b.dataset.lang===lang)); };
+ applyDir();
  const IC={
   note:'<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M9.5 12h6M9.5 15.5h6"/>',plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>',
   trash:'<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',reset:'<path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5"/>',refresh:'<path d="M20 12a8 8 0 1 1-3-6.2M20 4v5h-5"/>',
@@ -6676,9 +7039,13 @@ function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return m
   const ic=iconBtn(b,txt);
   let name=txt;
   if(ic==='trash') name='Supprimer'; else if(ic==='plus'&&!/^(ajouter|créer|nouveau|nouvelle)/i.test(name)) name='Ajouter '+name.charAt(0).toLowerCase()+name.slice(1);
-  if(!b.getAttribute('aria-label')) b.setAttribute('aria-label',strip(aria)||txt);
-  b.classList.add('dimIB'); b.innerHTML='<span class="dimIBf">'+svg(ic)+'</span><span class="dimIBl">'+name.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</span>';
+  const tr=TR(name), shown=tr==null?name:tr;
+  b.setAttribute('aria-label',shown); b.setAttribute('title',shown);
+  b.classList.add('dimIB'); b.innerHTML=svg(ic);
+  const w=document.createElement('span'); w.className='dimIBw'; const nm=document.createElement('span'); nm.className='dimIBl'; nm.setAttribute('data-dimfr',name); nm.textContent=shown; nm.addEventListener('click',()=>{ if(!b.disabled) b.click(); });
+  if(b.parentNode){ b.parentNode.insertBefore(w,b); w.appendChild(b); w.appendChild(nm); }
  }
+ function mkIB(k,fr,attrs,cls){ const w=document.createElement('span'); w.className='dimIBw'+(cls?' '+cls:''); const b=document.createElement('button'); b.type='button'; b.className='dimIB'; b.dataset.dimui='1'; Object.keys(attrs||{}).forEach(a=>b.setAttribute(a,attrs[a])); b.innerHTML=svg(k); const shown=window.dimT(fr); b.setAttribute('aria-label',shown); b.setAttribute('title',shown); const nm=document.createElement('span'); nm.className='dimIBl'; nm.setAttribute('data-dimfr',fr); nm.textContent=shown; nm.addEventListener('click',()=>b.click()); w.appendChild(b); w.appendChild(nm); return w; }
  /* champ : icône d'après la grandeur */
  function iconFld(name,key,el){
   const T=(name+' '+key).toLowerCase();
@@ -6713,7 +7080,7 @@ function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return m
   l.textContent='';
   const f=document.createElement('span'); f.className='dimFDf'; f.innerHTML=svg(ic); f.appendChild(el);
   if(unit){ const u=document.createElement('span'); u.className='dimFDu'; u.textContent=unit; f.appendChild(u); }
-  const n=document.createElement('span'); n.className='dimFDn'; n.innerHTML=nameH+(tagH?' '+tagH:'');
+  const tr=TR(nameT), n=document.createElement('span'); n.className='dimFDn'; n.innerHTML=(tr==null?nameH:'<span data-dimfr="'+esc2(nameT).replace(/"/g,'&quot;')+'">'+esc2(tr)+'</span>')+(tagH?' '+tagH:'');
   l.appendChild(f); l.appendChild(n);
  }
  function esc2(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
@@ -6729,8 +7096,8 @@ function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return m
   closeZ(true);
   const s=srcSvg.cloneNode(true); s.removeAttribute('width'); s.removeAttribute('height'); s.removeAttribute('style'); s.setAttribute('preserveAspectRatio','xMidYMid meet'); s.querySelectorAll('input,select,textarea').forEach(x=>{ x.readOnly=true; x.tabIndex=-1; }); s.querySelectorAll('button').forEach(x=>x.remove());
   ov=document.createElement('div'); ov.className='dimZOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label',titre||'Plein écran');
-  const tb=(k,l,a)=>'<button type="button" class="dimIB" data-z="'+a+'" aria-label="'+l+'"><span class="dimIBf">'+svg(k)+'</span><span class="dimIBl">'+l+'</span></button>';
-  ov.innerHTML='<div class="dimZBar"><div class="dimZTt">'+esc2(titre||'')+'</div><div class="dimZTools">'+tb('minus','Réduire','out')+tb('reset','Ajuster','fit')+tb('plus','Agrandir','in')+tb('close','Fermer','x')+'</div></div><div class="dimZStage"></div>';
+  ov.innerHTML='<div class="dimZBar"><div class="dimZTt">'+esc2(titre||'')+'</div><div class="dimZTools"></div></div><div class="dimZStage"></div>';
+  { const tl=ov.querySelector('.dimZTools'); [['minus','Réduire','out'],['reset','Ajuster','fit'],['plus','Agrandir','in'],['close','Fermer','x']].forEach(a=>tl.appendChild(mkIB(a[0],a[1],{'data-z':a[2]}))); }
   const st=ov.querySelector('.dimZStage'); st.appendChild(s); document.body.appendChild(ov);
   let k=1,x=0,y=0; const ptr=new Map(); let d0=0,k0=1;
   const ap=()=>{ s.style.transform='translate('+x+'px,'+y+'px) scale('+k+')'; };
@@ -6751,15 +7118,18 @@ function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return m
  function doDraw(d){
   d.dataset.dimuiz='1'; if(d.closest('.dimZOv,.dimCalcOverlay')) return; const sv=d.querySelector('svg:not(.dimBI)'); if(!sv) return;
   const note=!!d.closest('.pcNC,.ncDoc'); if(d.querySelector('[data-dim-zoom]')) return;
-  const b=document.createElement('button'); b.type='button'; b.className='dimIB dimZB'+(note?' dimZBn':' dimZBf'); b.setAttribute('data-dim-zoom','1'); b.setAttribute('aria-label','Plein écran'); b.setAttribute('data-noprint','1');
-  b.innerHTML='<span class="dimIBf">'+svg('expand')+'</span><span class="dimIBl">Plein écran</span>'; d.appendChild(b);
+  const w=mkIB('expand','Plein écran',{'data-dim-zoom':'1','data-noprint':'1'},'dimZB'+(note?' dimZBn':' dimZBf')); d.appendChild(w);
  }
+ setInterval(()=>{ const pv=document.getElementById('sbProfView'); if(!pv||pv.querySelector('.pv-lg-w')) return; const anchor=pv.querySelector('.pv-th-w')||pv.querySelector('#pvData'); if(!anchor) return;
+  const w=document.createElement('div'); w.className='pv-lg-w'; w.innerHTML='<div class="pv-l" style="margin-top:8px" data-dimfr="Langue">'+window.dimT('Langue')+'</div><div class="pv-th">'+[['fr','Français'],['en','English'],['ar','العربية']].map(l=>'<button type="button" data-lang="'+l[0]+'">'+l[1]+'</button>').join('')+'</div>';
+  anchor.parentNode.insertBefore(w,anchor.nextSibling); w.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.lang===lang)); w.onclick=e=>{ const b=e.target.closest('button[data-lang]'); if(b) window.dimSetLang(b.dataset.lang); }; },900);
  let raf=0;
  function scan(){ raf=0; const mb=document.getElementById('modalBody')||document.body;
   const R=[mb,...document.querySelectorAll('.dimDiffOv,.pcFeuOv,.dimModBox,#miniPromptOverlay,.dimCalcOverlay')];
   R.forEach(r=>{ r.querySelectorAll('button.ghost:not([data-dimui]),button.pcBtnSm:not([data-dimui])').forEach(doBtn);
    r.querySelectorAll('.pcPanel label:not([data-dimui]),.pcElsBody label:not([data-dimui]),.elsMDPane label:not([data-dimui]),.pcFeuCard label:not([data-dimui]),.dimDiffBox label:not([data-dimui])').forEach(doFld); });
   document.querySelectorAll('.fiche-exp-bar button:not([data-dimui]),#modalBody button[role="switch"]:not([data-dimui]),#modalBody .ppSeg button:not([data-dimui]),#modalBody button[data-beam-back]:not([data-dimui])').forEach(doBtn);
+  document.querySelectorAll('.elsMDLb:not([data-dimfr])').forEach(e=>{ const fr=e.textContent.trim(); e.setAttribute('data-dimfr',fr); const tr=TR(fr); if(tr!=null) e.textContent=tr; });
   mb.querySelectorAll('.pcDraw:not([data-dimuiz])').forEach(doDraw);
  }
  try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
@@ -20380,6 +20750,20 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .elsMDBtn.on .elsMDIc,.elsMDBtn:hover .elsMDIc{border-color:var(--ds-accent,#FFC400)}.elsMDBtn.on .elsMDIc{background:color-mix(in srgb,var(--ds-accent,#FFC400) 18%,transparent)}
 .elsMDBtn .elsMDTx{align-items:center;text-align:center}
 .elsMD{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important}
+.dimIB{display:inline-flex!important;align-items:center;justify-content:center;flex-direction:row;width:48px!important;height:48px!important;min-width:44px;min-height:44px!important;max-width:none!important;padding:0!important;margin:0!important;border:1.5px solid var(--ds-line,#9a9a9a)!important;border-radius:14px!important;background:transparent!important;box-shadow:none!important;color:var(--ds-ink,inherit)}
+.dimIB:hover{border-color:var(--ds-accent,#FFC400)!important}.dimIB:focus-visible{outline:3px solid var(--ds-accent,#FFC400);outline-offset:2px}
+.dimIB .dimBI{width:26px;height:26px}
+.dimIBw{display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin:4px;margin-inline-end:8px;vertical-align:top;max-width:132px}
+.dimIBw[data-npos="right"]{flex-direction:row;gap:8px;max-width:none}.dimIBw[data-npos="top"]{flex-direction:column-reverse}
+.dimIBw .dimIBl{display:block;font:600 15px/1.2 var(--ds-font-body,system-ui,sans-serif);text-align:center;cursor:pointer;color:var(--ds-ink,inherit);max-width:128px;overflow-wrap:anywhere}
+.dimIB[aria-checked="true"],.dimIB[aria-pressed="true"],.dimIB.on{border-color:var(--ds-accent,#FFC400)!important;background:color-mix(in srgb,var(--ds-accent,#FFC400) 18%,transparent)!important}
+.dimZBn{top:0;right:auto;inset-inline-end:0}.dimZBf{bottom:0;right:auto;inset-inline-end:0}
+.dimZTools .dimIBw{margin:0 2px}.dimZB{min-width:0!important}
+@media (min-width:601px){.dimFD{flex-direction:row!important;align-items:center!important;gap:12px!important}.dimFD .dimFDf{flex:0 1 360px;width:auto}.dimFD .dimFDn{flex:1 1 auto}}
+@media (max-width:600px){.dimFD{flex-direction:column-reverse!important}}
+.pcDraw svg,.pcDraw foreignObject,.dimZStage svg{direction:ltr}
+.dimFDf input,.dimFDf select{direction:ltr}:root[dir="rtl"] .dimFDf select{direction:rtl}
+.pv-lg-w .pv-th{display:flex;gap:6px;flex-wrap:wrap}.pv-lg-w button{min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid var(--ds-line,#9a9a9a);background:transparent;color:inherit;font:600 15px/1 system-ui}.pv-lg-w button.on{border-color:var(--ds-accent,#FFC400)}
 .mzLay{width:100%;border-collapse:collapse;margin:6px 0 10px}.mzLay th,.mzLay td{padding:4px 6px;text-align:left;font-size:var(--ds-fs-help,12px)}.mzLay input{width:92px;min-height:40px;box-sizing:border-box}.mzLay td:last-child{width:48px}
 .pjBeamRoot .pcModHead .pcNote{font-size:var(--ds-fs-help);opacity:1;padding:3px 10px!important;color:var(--ds-ink-soft)}
 .pjBeamRoot .pjBeam-top{min-height:56px;margin-bottom:6px;gap:8px}
