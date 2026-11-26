@@ -17834,7 +17834,8 @@ const PG_FEATS=[
           }catch(err){ sb.disabled=false; sb.textContent='Créer'; f.querySelector('.msg').textContent=err.message||String(err); }
         } }; };
   }
-  function badge(){ const b=document.getElementById('pgBadge'); if(!b) return; const n=cache?cache.notifs.length:0; b.hidden=!n; b.textContent=n; }
+  function badge(){ const b=document.getElementById('pgBadge'); if(!b) return; const n=(cache?cache.notifs.length:0)+(window.__iaPend||0); b.hidden=!n; b.textContent=n; }
+  window.pgBadgeRefresh=badge;
 
   function draw(){
     const w=wrap(); const p=PJ();
@@ -43317,6 +43318,108 @@ document.head.appendChild(st);
  G.DimSkill=API; if(typeof module!=='undefined'&&module.exports) module.exports=API;
 })(typeof window!=='undefined'?window:globalThis);
 </script>
+<script id="dimIaJs">
+/* ===================== Assistant IA : appel unique, limite d'usage, demandes d'autorisation du super administrateur =====================
+   Côté utilisateur : window.dimIaCall(body) envoie la demande à la fonction « fiche-ia » avec le jeton de session et le projet.
+   Première demande IA d'un utilisateur sur un projet = demande d'autorisation (vue par le super administrateur) ; tant qu'elle n'est pas
+   accordée, l'assistant répond poliment « en attente d'autorisation » et le reste de l'application fonctionne. Au-delà de la limite fixée :
+   message poli, sans blocage du reste. Côté super administrateur : badge + notification + fenêtre « Demandes d'accès à l'assistant IA »
+   (autoriser avec une limite réglable, refuser, ajuster, remettre à zéro, limite par défaut). */
+(function(){
+ 'use strict';
+ const T=s=>(window.dimT?window.dimT(s):s);
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const CODES={
+  connexion:"Connectez-vous pour utiliser l'assistant IA.",
+  compte:"Votre compte n'est pas encore validé : l'assistant IA n'est pas disponible pour l'instant.",
+  projet:"Vous n'avez pas accès à ce projet : l'assistant IA n'est pas disponible ici.",
+  attente:"Votre demande d'accès à l'assistant IA a été envoyée au super administrateur. Elle est en attente d'autorisation. Le reste de l'application fonctionne normalement.",
+  refuse:"L'accès à l'assistant IA n'a pas été accordé pour ce projet. Le reste de l'application fonctionne normalement.",
+  limite:"La limite d'usage de l'assistant IA est atteinte pour ce projet. Demandez au super administrateur d'augmenter la limite. Le reste de l'application fonctionne normalement."};
+ /* appel : {resp,j} ; en cas de refus d'usage, j.code vaut attente | refuse | limite | connexion | compte | projet */
+ window.dimIaCall=async function(body){
+  let tok=''; try{ tok=window.PILOTAGE_TOKEN?await window.PILOTAGE_TOKEN():''; }catch(_){ }
+  const pj=window.PILOTAGE_PROJET&&window.PILOTAGE_PROJET.id; const b=Object.assign({},body,pj?{projet:pj}:{});
+  const h={apikey:SUPABASE_KEY,'Content-Type':'application/json'}; if(tok) h.Authorization='Bearer '+tok;
+  const resp=await fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:h,body:JSON.stringify(b)});
+  const j=await resp.json().catch(()=>null);
+  if(j&&j.code&&CODES[j.code]) j.polite=T(CODES[j.code]);
+  return {resp,j};
+ };
+ window.dimIaPolite=function(j){ return (j&&j.code&&CODES[j.code])?T(CODES[j.code]):null; };
+
+ /* ---------- Super administrateur ---------- */
+ const isSuper=()=>!!(window.PILOTAGE_PROJET&&window.PILOTAGE_PROJET.global&&window.PILOTAGE_ADM);
+ let DATA=null, busyList=false;
+ const pend=()=>DATA?DATA.acces.filter(a=>a.statut==='attente'):[];
+ const frDate=iso=>{ try{ const d=new Date(iso); return d.toLocaleDateString('fr-FR')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }catch(_){ return ''; } };
+ function paint(){
+  const n=pend().length; window.__iaPend=n;
+  try{ if(window.pgBadgeRefresh) window.pgBadgeRefresh(); }catch(_){ }
+  document.querySelectorAll('[data-ia-count]').forEach(el=>{ el.textContent=n?' ('+n+')':''; });
+  const b=document.getElementById('pvIa'); if(b) b.classList.toggle('iaNew',!!n);
+ }
+ async function load(announce){
+  if(!isSuper()||busyList) return; busyList=true;
+  try{ const r=await window.PILOTAGE_ADM({action:'ia_list'}); const before=new Set((DATA?DATA.acces:[]).filter(a=>a.statut==='attente').map(a=>a.user_id+'|'+a.projet_id)); DATA=r;
+   if(announce){ let seen={}; try{ seen=JSON.parse(localStorage.getItem('dim_ia_seen')||'{}')||{}; }catch(_){ }
+    const fresh=pend().filter(a=>!seen[a.user_id+'|'+a.projet_id]); if(fresh.length){ try{ clipToast(T("Nouvelle demande d'accès à l'assistant IA")+' : '+(fresh[0].nom||fresh[0].email||'—')+(fresh.length>1?' (+'+(fresh.length-1)+')':'')); }catch(_){ } fresh.forEach(a=>{ seen[a.user_id+'|'+a.projet_id]=1; }); try{ localStorage.setItem('dim_ia_seen',JSON.stringify(seen)); }catch(_){ } } }
+   paint(); const ov=document.getElementById('iaOv'); if(ov&&ov._draw&&!ov._busy) ov._draw();
+  }catch(_){ }finally{ busyList=false; }
+ }
+ window.dimIaRefresh=()=>load(false);
+ let started=false; const start=()=>{ if(started||!isSuper()) return; started=true; load(true); setInterval(()=>load(true),120000); };
+ const wait=setInterval(()=>{ if(isSuper()){ clearInterval(wait); start(); } },1500); setTimeout(()=>clearInterval(wait),120000);
+
+ const svg=k=>window.dimBiSvg?window.dimBiSvg(k):'';
+ const ib=(icon,label,attrs)=>'<span class="dimIBw"><button type="button" class="dimIB" data-dimui="1" aria-label="'+esc(T(label))+'" title="'+esc(T(label))+'" '+(attrs||'')+'>'+svg(icon)+'</button><span class="dimIBl" data-dimfr="'+esc(label)+'">'+esc(T(label))+'</span></span>';
+ const lim=(id,v,extra)=>'<label class="dvFld"><span class="dvFl" data-dimfr="Limite d\'appels">'+esc(T("Limite d'appels"))+'</span><span class="dvFc"><input type="text" inputmode="numeric" data-ia-lim="'+esc(id)+'" value="'+esc(v)+'" aria-label="'+esc(T("Limite d'appels"))+'"'+(extra||'')+'></span><span class="dvErr" data-ia-err="'+esc(id)+'" role="alert"></span></label>';
+ const parse=raw=>{ const t=String(raw).trim(); if(!/^\d+$/.test(t)) return null; const n=+t; return n>=0&&n<=100000?n:null; };
+ window.dimIaAdminOpen=function(){
+  if(!isSuper()) return; const old=document.getElementById('iaOv'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='iaOv'; ov.className='pcFeuOv dvOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','iaT'); document.body.appendChild(ov);
+  let down=false; ov.addEventListener('mousedown',e=>{ down=(e.target===ov); }); try{ window.dimChEsc&&window.dimChEsc(ov); }catch(_){ }
+  const draw=()=>{
+   const keep=ov._dirty;
+   const P=pend(), A=DATA?DATA.acces.filter(a=>a.statut==='accepte'):[], R=DATA?DATA.acces.filter(a=>a.statut==='refuse'):[]; const df=DATA?DATA.defaut:'';
+   const key=a=>a.user_id+'|'+a.projet_id;
+   const card=(a,btns)=>'<div class="iaRow"><b>'+esc(a.nom||a.email||'—')+'</b>'+(a.nom&&a.email?' <small>'+esc(a.email)+'</small>':'')+'<br><small>'+esc(T('Projet'))+' : '+esc(a.projet_nom||a.projet_id)+' · '+esc(frDate(a.demande_le))+'</small>'+btns+'</div>';
+   ov.innerHTML='<div class="pcFeuCard dvCard iaCard"><h4 id="iaT" data-dimfr="Demandes d\'accès à l\'assistant IA">'+esc(T("Demandes d'accès à l'assistant IA"))+'</h4>'
+    +(DATA?'':'<p class="pcNote">'+esc(T('Chargement…'))+'</p>')
+    +'<h5 class="dvH5 iaH" data-ia-f="att">'+esc(T('En attente'))+' ('+P.length+')</h5><div class="iaB">'+(P.length?P.map(a=>card(a,lim(key(a),keep[key(a)]!==undefined?keep[key(a)]:df)+'<div class="dvBtns">'+ib('check','Autoriser','data-ia-x="ok" data-k="'+esc(key(a))+'"')+ib('close','Refuser','data-ia-x="no" data-k="'+esc(key(a))+'"')+'</div>')).join(''):'<p class="pcNote">'+esc(T('Aucune demande en attente.'))+'</p>')+'</div>'
+    +'<h5 class="dvH5 iaH" data-ia-f="acc">'+esc(T('Autorisés'))+' ('+A.length+')</h5><div class="iaB">'+(A.length?A.map(a=>card(a,'<p class="pcNote">'+esc(T('Utilisé'))+' : '+a.utilise+' / '+a.limite+'</p>'+lim(key(a),keep[key(a)]!==undefined?keep[key(a)]:a.limite)+'<div class="dvBtns">'+ib('save','Enregistrer la limite','data-ia-x="lim" data-k="'+esc(key(a))+'"')+ib('reset','Remettre à zéro','data-ia-x="raz" data-k="'+esc(key(a))+'"')+ib('close','Retirer l\'accès','data-ia-x="no" data-k="'+esc(key(a))+'"')+'</div>')).join(''):'<p class="pcNote">'+esc(T('Aucun utilisateur autorisé.'))+'</p>')+'</div>'
+    +(R.length?'<h5 class="dvH5 iaH" data-ia-f="ref">'+esc(T('Refusés'))+' ('+R.length+')</h5><div class="iaB">'+R.map(a=>card(a,'<div class="dvBtns">'+ib('check','Autoriser','data-ia-x="ok" data-k="'+esc(key(a))+'"')+'</div>'+lim(key(a),keep[key(a)]!==undefined?keep[key(a)]:df))).join('')+'</div>':'')
+    +'<h5 class="dvH5 iaH" data-ia-f="def">'+esc(T('Limite par défaut'))+'</h5><div class="iaB"><p class="pcNote">'+esc(T("S'applique quand vous autorisez sans préciser de limite."))+'</p>'+lim('__def',keep.__def!==undefined?keep.__def:df)+'<div class="dvBtns">'+ib('save','Enregistrer la limite','data-ia-x="def"')+'</div></div>'
+    +'<div class="dvBtns">'+ib('close','Fermer','data-ia-x="fermer"')+'</div></div>';
+   ov.querySelectorAll('.iaH').forEach(h=>{ const b=h.nextElementSibling; if(b&&window.dimFoldBlock) window.dimFoldBlock(h,b,'ia:'+h.dataset.iaF,h.dataset.iaF==='ref'||h.dataset.iaF==='def'); });
+  };
+  ov._dirty={}; ov.addEventListener('input',e=>{ const i=e.target.closest&&e.target.closest('[data-ia-lim]'); if(i) ov._dirty[i.dataset.iaLim]=i.value; });
+  ov._draw=draw; draw(); load(false);
+  const err=(k,m)=>{ const e=ov.querySelector('[data-ia-err="'+k+'"]'); if(e) e.textContent=m||''; };
+  const act=async(body,okMsg)=>{ ov._busy=true; try{ await window.PILOTAGE_ADM(body); try{ clipToast(T(okMsg)); }catch(_){ } ov._busy=false; await load(false); draw(); }catch(e){ ov._busy=false; try{ clipToast(e.message||String(e)); }catch(_){ } } };
+  ov.addEventListener('click',e=>{
+   const b=e.target.closest('[data-ia-x]'); if(!b){ if(e.target===ov&&down) ov.remove(); return; }
+   const x=b.dataset.iaX, k=b.dataset.k||''; if(x==='fermer'){ ov.remove(); return; }
+   const [uid,pid]=k.split('|'); const inp=ov.querySelector('[data-ia-lim="'+(x==='def'?'__def':k)+'"]'); const v=inp?parse(inp.value):undefined;
+   if((x==='ok'||x==='lim'||x==='def')&&v===null){ err(x==='def'?'__def':k,T('Entrez un nombre entier entre 0 et 100000.')); return; } err(x==='def'?'__def':k,'');
+   if(x==='def'){ act({action:'ia_defaut',limite:v},'Limite par défaut enregistrée.'); return; }
+   if(x==='ok'){ act({action:'ia_decider',user_id:uid,projet_id:pid,decision:'accepte',limite:v},'Accès à l\'assistant IA autorisé.'); return; }
+   if(x==='no'){ act({action:'ia_decider',user_id:uid,projet_id:pid,decision:'refuse'},'Accès refusé.'); return; }
+   if(x==='lim'){ act({action:'ia_decider',user_id:uid,projet_id:pid,limite:v},'Limite enregistrée.'); return; }
+   if(x==='raz'){ act({action:'ia_decider',user_id:uid,projet_id:pid,raz:true},'Compteur remis à zéro.'); return; } });
+ };
+ /* bouton « Demandes d'accès à l'IA » dans le profil du super administrateur + carte dans la page Notifications */
+ function inject(){
+  try{ if(!isSuper()) return;
+   const sec=document.querySelector('#sbProfView .pv-sec.pv-proj'); if(sec&&!document.getElementById('pvIa')){ const b=document.createElement('button'); b.type='button'; b.className='pv-row'; b.id='pvIa'; b.style.width='100%'; b.innerHTML='<span class="sb-ic">🔔</span><span>'+esc(T("Demandes d'accès à l'assistant IA"))+'<span data-ia-count></span></span><em>›</em>'; b.onclick=e=>{ e.stopPropagation(); try{ window.pgProfView&&window.pgProfView(false); }catch(_){ } window.dimIaAdminOpen(); }; sec.appendChild(b); paint(); }
+   const h2=[...document.querySelectorAll('.page.active .nt-h h2')].find(x=>/Notifications/.test(x.textContent)); const nt=h2&&h2.closest('.nt'); if(nt&&!nt.querySelector('#iaCard')&&pend().length){ const h=nt.querySelector('.nt-h'); const c=document.createElement('div'); c.id='iaCard'; c.className='nt-card nt-nf new'; c.innerHTML='<div><b>'+esc(T("Demandes d'accès à l'assistant IA"))+'</b> : '+pend().length+' '+esc(T('en attente'))+'</div><small>'+esc(T('Toucher pour répondre'))+'</small>'; c.onclick=()=>window.dimIaAdminOpen(); if(h) h.after(c); }
+  }catch(_){ } }
+ try{ new MutationObserver(()=>{ inject(); }).observe(document.body,{childList:true,subtree:true}); }catch(_){ }
+ const css=document.createElement('style'); css.id='dimIaCss';
+ css.textContent='.iaCard{max-width:560px;max-height:88vh;overflow:auto}.iaRow{padding:10px 0;border-bottom:1px solid var(--ds-line,#DAD8D1)}.iaRow small{color:var(--ds-ink-soft,#5f6a66)}.iaB .dvBtns{justify-content:flex-end}#pvIa.iaNew{font-weight:700}';
+ document.head.appendChild(css);
+})();
+</script>
 <script id="dimValidJs">
 /* ===================== Fenêtre de validation commune + méthodes décrites par l'utilisateur (tous modules) =====================
    Un seul composant : dimValidateWindow(spec, ctx). Il sert à la fiche (ligne « Choix » + bouton Calculer), aux Paramètres avancés
@@ -43484,9 +43587,9 @@ document.head.appendChild(st);
     if(navigator.onLine===false) throw new Error('Hors ligne : l\'assistant a besoin d\'une connexion Internet. Rien n\'a été modifié.');
     if(typeof SUPABASE_URL==='undefined'||typeof SUPABASE_KEY==='undefined') throw new Error('Le canal de l\'assistant IA n\'est pas configuré dans cette application (adresse et clé du serveur IA absentes). Vous pouvez écrire la méthode vous-même avec « Écrire moi-même ».');
     const body={mode:'methode',message:msg,historique:st.log.slice(-7,-1),contexte:{module:spec.pfx,methode:spec.titre,suppose:spec.supposes,ignore:spec.ignore,ne_convient_pas:spec.ne,valeurs:valsNow(dp,spec)},skill_courant:st.draft};
-    const resp=await fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const {resp,j}=await window.dimIaCall(body);
     if(resp.status===404) throw new Error('L\'assistant des méthodes utilise la même fonction serveur et la même clé que l\'assistant IA des fiches (« fiche-ia ») : cette fonction doit être déployée dans sa dernière version. Vous pouvez écrire la méthode vous-même avec « Écrire moi-même ».');
-    const j=await resp.json().catch(()=>null);
+    { const pol=window.dimIaPolite(j); if(pol){ st.log.push({role:'bot',text:pol}); st.busy=false; draw(); return; } }
     if(!resp.ok||!j||j.error||!j.data) throw new Error((j&&j.error)||('Le serveur IA a répondu une erreur ('+resp.status+'). Rien n\'a été modifié.'));
     const d=j.data; let txt=String(d.message||'').slice(0,1200);
     if(d.skill){ const v=window.DimSkill.validate(d.skill); if(v.skill&&v.ok){ st.draft=v.skill; txt=(txt?txt+' ':'')+'Voici le calcul proposé : vérifiez-le pas à pas avant de le valider.'; } else { txt=(txt?txt+' ':'')+'La définition reçue est incomplète ('+(v.errors||[]).slice(0,3).join(' ; ')+'). Précisez votre demande ou touchez « Modifier ».'; if(v.skill&&v.skill.etapes.length) st.draft=st.draft||v.skill; } }
@@ -43753,10 +43856,9 @@ async function send(txt){
  const L=log(); L.push({role:'user',text:txt}); renderLog();
  try{
   const {champs,map}=collect(); if(!champs.length) throw new Error('Aucun champ à remplir sur cette fiche.');
-  const resp=await fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},
-   body:JSON.stringify({message:txt,contexte:{titre:ficheTitle(),type:ficheType()},champs,historique:L.slice(-7,-1)})});
+  const {resp,j}=await window.dimIaCall({message:txt,contexte:{titre:ficheTitle(),type:ficheType()},champs,historique:L.slice(-7,-1)});
   if(resp.status===404) throw new Error('Assistant pas encore activé pour cette fiche : la fonction serveur « fiche-ia » doit être déployée.');
-  const j=await resp.json().catch(()=>null);
+  { const pol=window.dimIaPolite(j); if(pol){ L.push({role:'bot',text:pol}); busy=false; renderLog(); return; } }
   if(!resp.ok||!j||j.error||!j.data) throw new Error((j&&j.error)||('Erreur réseau ('+resp.status+')'));
   const n=await apply(j.data.valeurs,map);
   let m=(j.data.resume||'Fiche mise à jour.')+(n?'':' (aucun champ modifié)');
