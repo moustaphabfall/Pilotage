@@ -7025,7 +7025,7 @@ const DIM_I18N_DATA=[
   if(/recalcul/.test(X)) return 'refresh';
   if(/^(calculer|valider)/.test(X)) return 'play';
   if(/^(annuler|non|fermer)$/.test(X)||/^ne pas/.test(X)) return /^ne pas/.test(X)?'ban':'close';
-  if(/^(oui|utiliser|enregistrer)/.test(X)||/^utiliser/.test(X)) return /enregistrer/.test(X)?'save':'check';
+  if(/^(oui|utiliser|enregistrer|confirmer)/.test(X)||/^utiliser/.test(X)) return /enregistrer/.test(X)?'save':'check';
   if(/^je saisis|^autre méthode|saisi/.test(X)) return /autre/.test(X)?'swap':'edit';
   if(/tableau de bord|disposition/.test(X)) return 'grid';
   if(/^travaux/.test(X)) return 'build';
@@ -7438,6 +7438,26 @@ function dimResumeModifs(L,onOk,onCancel,nextInd){ nextInd=nextInd||'';
   if(w==='more'){ all=true; ov.querySelector('.dimDiffList').innerHTML=body(); return; } close(); if(w==='ok') onOk&&onOk(); else onCancel&&onCancel(); });
  const f=ov.querySelector('[data-dd="ok"]'); if(f) f.focus();
 }
+/* ===== Catalogue de profilés : la liste est TOUJOURS montrée à l'ingénieur (valeurs indicatives, à confirmer sur la fiche du fabricant) ; trois choix : « Confirmer », « Je saisis mes valeurs », « Ne pas utiliser le catalogue ». La confirmation (date, profilé, valeurs) est enregistrée avec l'ouvrage par l'appelant. opt = {titre, cols:[[clé,libellé]], rows:[{key,nom,groupe,v:{clé:valeur affichée}}], current, onConfirm(row), onManual(), onNone()} ===== */
+function dimCatalogueConfirm(opt){
+ const ov=document.createElement('div'); ov.className='dimDiffOv dimCatOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label',opt.titre||'Catalogue de profilés');
+ let sel=opt.current!=null&&opt.rows.some(r=>String(r.key)===String(opt.current))?String(opt.current):null;
+ const tag='<span class="pcElsTag dimCatTag">indicatif, à confirmer sur fiche fabricant</span>';
+ const rowsHtml=()=>{ let g=null, h=''; opt.rows.forEach(r=>{ if(r.groupe&&r.groupe!==g){ g=r.groupe; h+='<tr class="dimCatG"><th colspan="'+(opt.cols.length+2)+'" scope="colgroup">'+esc(g)+'</th></tr>'; }
+   const on=String(r.key)===sel; h+='<tr class="dimCatR'+(on?' on':'')+'" data-cat="'+esc(String(r.key))+'" role="radio" aria-checked="'+on+'" tabindex="0"><th scope="row">'+esc(r.nom)+'</th>'+opt.cols.map(c=>'<td>'+(r.v[c[0]]==null||r.v[c[0]]===''?'—':esc(String(r.v[c[0]])))+'</td>').join('')+'<td class="dimCatChk">'+(on?'✓':'')+'</td></tr>'; }); return h; };
+ const draw=()=>{ ov.querySelector('tbody').innerHTML=rowsHtml(); const ok=ov.querySelector('[data-dd="ok"]'); if(ok) ok.disabled=sel==null; };
+ ov.innerHTML='<div class="dimDiffBox dimCatBox"><h3>'+esc(opt.titre||'Catalogue de profilés')+'</h3><p class="dimCatInfo">Voici les profilés proposés et leurs valeurs, '+tag+'. Choisir une ligne puis confirmer, saisir ses propres valeurs, ou ne pas utiliser le catalogue.</p>'
+  +'<div class="dimDiffList dimCatList" role="radiogroup" aria-label="Profilés du catalogue"><table class="dimCatT"><thead><tr><th scope="col">Profilé</th>'+opt.cols.map(c=>'<th scope="col">'+esc(c[1])+'</th>').join('')+'<th scope="col"></th></tr></thead><tbody></tbody></table></div>'
+  +'<div class="dimDiffBtns"><button type="button" class="primary" data-dd="ok" disabled>Confirmer</button><button type="button" class="ghost" data-dd="man">Je saisis mes valeurs</button><button type="button" class="ghost" data-dd="none">Ne pas utiliser le catalogue</button></div></div>';
+ document.body.appendChild(ov); draw(); let kd=null; const close=()=>{ if(kd) window.removeEventListener('keydown',kd,true); ov.remove(); };
+ kd=e=>{ if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } }; window.addEventListener('keydown',kd,true);
+ const pick=tr=>{ if(!tr) return; sel=tr.dataset.cat; draw(); const n=ov.querySelector('.dimCatR.on'); if(n) n.focus(); };
+ ov.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.closest&&e.target.closest('.dimCatR')){ e.preventDefault(); e.stopPropagation(); pick(e.target.closest('.dimCatR')); } },true);
+ ov.addEventListener('click',e=>{ if(e.target===ov){ close(); return; } const tr=e.target.closest('.dimCatR'); if(tr){ pick(tr); return; } const b=e.target.closest('[data-dd]'); if(!b||b.disabled) return; const w=b.dataset.dd;
+  if(w==='ok'){ const r=opt.rows.find(x=>String(x.key)===sel); close(); if(r&&opt.onConfirm) opt.onConfirm(r); } else if(w==='man'){ close(); opt.onManual&&opt.onManual(); } else if(w==='none'){ close(); opt.onNone&&opt.onNone(); } });
+}
+/* état d'une confirmation de catalogue enregistrée avec l'ouvrage : conf = {statut:'confirme'|'saisi'|'aucun', date, profil, valeurs} */
+function dimCatStatut(conf,profilCourant){ if(!profilCourant) return conf&&conf.statut==='saisi'?'valeurs saisies par l\'ingénieur':'catalogue non utilisé'; if(conf&&conf.statut==='confirme'&&conf.profil===profilCourant) return 'confirmé le '+conf.date; return 'non confirmé'; }
 /* ===== Indice de révision des documents (tous les modules) : un indice commun à la note de calcul et au plan de ferraillage de l'ouvrage (dp.indiceDoc, format numérique 0, 1, 2…
    comme les documents de l'étude), incrémenté à chaque recalcul dont les données d'entrée ont changé ; l'ancienne version (PDF joint) reste dans doc.versions, marquée obsolète. ===== */
 /* Documents d'un même ouvrage portés par plusieurs modules (tête de pieux / portance du pieu, semelle / massif de candélabre) : chaque module a sa propre note, son indice et son nom */
@@ -20750,8 +20770,10 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .dimDiffInd{margin:10px 0 0;font-size:13px;color:var(--ds-ink-soft,var(--ink-soft,#6b7280))}
 .dimDiffMore{margin-top:8px;min-height:44px}
 .dimDiffBtns{display:flex;gap:10px;margin-top:12px}
+.dimCatOv .dimDiffBtns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:start}.dimCatOv .dimDiffBtns .dimIBw{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;min-width:0}.dimCatOv .dimDiffBtns .dimIBl{text-align:center;font-size:13px;line-height:1.2}
+.dimCatBox{max-width:620px}.dimCatInfo{margin:0 0 8px;font-size:14px;line-height:1.4}.dimCatTag{white-space:normal}.dimCatT{width:100%;border-collapse:collapse;font-size:14px}.dimCatT th,.dimCatT td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--ds-line,var(--line,#DAD8D1));font-weight:400}.dimCatT thead th{position:sticky;top:0;background:var(--ds-bg,var(--panel,#fff));font-weight:600;font-size:13px}.dimCatT tbody th[scope=row]{font-weight:600}.dimCatG th{background:transparent;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--ds-ink-soft,var(--ink-soft,#6b7280));padding-top:12px}.dimCatR{cursor:pointer;min-height:44px}.dimCatR.on{background:rgba(242,169,0,.18);outline:2px solid #F2A900;outline-offset:-2px}.dimCatR:focus-visible{outline:2px solid #F2A900;outline-offset:-2px}.dimCatChk{width:28px;text-align:center;font-weight:700}
 .dimDiffBtns button{flex:1;min-height:48px;font-size:15px}
-@media(max-width:600px){.dimDiffOv{align-items:flex-end;padding:0}.dimDiffBox{max-width:none;border-radius:16px 16px 0 0;padding-bottom:max(14px,env(safe-area-inset-bottom))}.dimDiffBtns{flex-direction:column-reverse}}
+@media(max-width:600px){.dimCatT{font-size:13px}.dimCatT th,.dimCatT td{padding:8px 4px}.dimDiffOv{align-items:flex-end;padding:0}.dimDiffBox{max-width:none;border-radius:16px 16px 0 0;padding-bottom:max(14px,env(safe-area-inset-bottom))}.dimDiffBtns{flex-direction:column-reverse}}
 .dimCalcBox{background:var(--ds-bg,var(--panel,#fff));color:var(--ds-ink,var(--ink,#16232B));border:1px solid var(--ds-line,var(--line,#DAD8D1));border-radius:var(--ds-r-win,12px);padding:26px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:300px;width:100%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.25)}
 .dimCalcBox b{font:700 14.5px var(--ds-font-title,'Space Grotesk',system-ui,sans-serif)}
 .dimCalcBox p{font:400 13px var(--ds-font-body,'IBM Plex Sans',system-ui,sans-serif);color:var(--ds-ink-soft,#5f6a66)}
@@ -33690,8 +33712,16 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<button type="button" class="ghost" data-els-reset="1">Rétablir les valeurs par défaut</button></div></details>';
   }
   function pmProfMod(dp){ const c=PM_PROF[dp.profil]; if(!c) return false; return +dp.hAme_mm!==c[0]||+dp.bSem_mm!==c[1]||+dp.eAme_mm!==c[2]||+dp.eSem_mm!==c[3]||(+dp.rConge_mm||0)!==c[4]; }
-  function pmProfInfoHtml(dp){ const c=PM_PROF[dp.profil]; if(!c) return '<p class="pcNote">Dimensions saisies : h, b sur le schéma ; épaisseurs et congé ci-dessous.</p>'; const md=pmProfMod(dp);
-   return '<p class="pcNote">'+esc(dp.profil)+' : h = '+c[0]+', b = '+c[1]+', t_w = '+c[2]+', t_f = '+c[3]+', r = '+c[4]+' mm ; A = '+pmF(c[5],1)+' cm², '+pmF(c[6],1)+' kg/m <span class="pcElsTag'+(md?' on':'')+'">'+(md?'saisi':'par défaut')+'</span></p>'+(md?'<button type="button" class="ghost" data-pm-act="profilReset">Rétablir les dimensions du profilé</button>':''); }
+  function pmProfInfoHtml(dp){ const c=PM_PROF[dp.profil]; const cat='<p class="pcNote" role="status">Catalogue : '+esc(dimCatStatut(dp.profConf,dp.profil||''))+' <span class="pcElsTag">indicatif, à confirmer sur fiche fabricant</span></p><div class="rcBtns"><button type="button" class="ghost pcBtnSm" data-pm-act="profOpen">Voir le catalogue de profilés</button></div>'; if(!c) return '<p class="pcNote">Dimensions saisies : h, b sur le schéma ; épaisseurs et congé ci-dessous.</p>'+cat; const md=pmProfMod(dp);
+   return '<p class="pcNote">'+esc(dp.profil)+' : h = '+c[0]+', b = '+c[1]+', t_w = '+c[2]+', t_f = '+c[3]+', r = '+c[4]+' mm ; A = '+pmF(c[5],1)+' cm², '+pmF(c[6],1)+' kg/m <span class="pcElsTag'+(md?' on':'')+'">'+(md?'saisi':'par défaut')+'</span></p>'+(md?'<button type="button" class="ghost" data-pm-act="profilReset">Rétablir les dimensions du profilé</button>':'')+cat; }
+  /* catalogue des profilés : toujours montré, valeurs indicatives à confirmer ; la confirmation (date, profilé, valeurs) est enregistrée avec l'ouvrage */
+  function pmCatOpen(id,dp,cur){
+   const rows=[]; PM_PROF_FAM.forEach(f=>pmProfNames(f).forEach(nm=>{ const c=PM_PROF[nm]; rows.push({key:nm,nom:nm,groupe:f,v:{h:c[0],b:c[1],A:pmF(c[5],1),m:pmF(c[6],1)}}); }));
+   dimCatalogueConfirm({titre:'Catalogue de profilés (poteau mixte)',cols:[['h','h (mm)'],['b','b (mm)'],['A','A (cm²)'],['m','Masse (kg/m)']],rows,current:cur,
+    onConfirm:r=>{ const c=PM_PROF[r.key]; dp.profil=r.key; pmProfApply(dp,r.key); dp.profConf={statut:'confirme',date:todayStr(),profil:r.key,valeurs:{h_mm:c[0],b_mm:c[1],tw_mm:c[2],tf_mm:c[3],r_mm:c[4],A_cm2:c[5],masse_kg_m:c[6]}}; try{persist();}catch(_){ } pmeRender(id); },
+    onManual:()=>{ dp.profil=''; dp.profConf={statut:'saisi',date:todayStr()}; try{persist();}catch(_){ } pmeRender(id); },
+    onNone:()=>{ dp.profil=''; dp.profConf={statut:'aucun',date:todayStr()}; try{persist();}catch(_){ } pmeRender(id); }});
+  }
   function pmProfApply(dp,nm){ const c=PM_PROF[nm]; if(!c) return; dp.hAme_mm=c[0]; dp.bSem_mm=c[1]; dp.eAme_mm=c[2]; dp.eSem_mm=c[3]; dp.rConge_mm=c[4]; }
   function pmStepHtml(n,dp){
    const opt=(arr,cur)=>arr.map(x=>'<option value="'+x[0]+'"'+(String(cur)===String(x[0])?' selected':'')+'>'+esc(x[1])+'</option>').join('');
@@ -33802,6 +33832,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     );
     return;
    }
+   if(e.target.closest('[data-pm-act="profOpen"]')){ const t=taskById(id); if(!t) return; const dp=pmData(t); pmCatOpen(id,dp,dp.profil||null); return; }
    const prs=e.target.closest('[data-pm-act="profilReset"]'); if(prs){ const t=taskById(id); if(!t) return; const dp=pmData(t); pmProfApply(dp,dp.profil); try{persist();}catch(_){ } pmeRender(id); return; }
    if(e.target.closest('[data-pm-act="printNote"]')){ pmeState(id).view='note'; pmeRender(id); return; }
    const rs=e.target.closest('[data-els-reset]'); if(rs&&rs.closest('details.pcEls[data-els-kind="pm"]')){ const t=taskById(id); if(!t) return; const dp=pmData(t); PM_ADV.forEach(sp=>{ delete dp[sp.k]; }); window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp._elsOpen=true; try{persist();}catch(_){ } pmeRender(id); return; }
@@ -33827,7 +33858,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(el.dataset.els){ pmAdvChange(dp,el,id); return; }
    if(el.matches('[data-pm="nom"]')){ dp.nom=el.value; t.nom=el.value; try{persist();}catch(_){ } return; }
    const key=el.dataset.pm; if(!key) return;
-   if(key==='profil'){ dp.profil=el.value; if(el.value) pmProfApply(dp,el.value); }
+   if(key==='profil'){ if(el.value){ pmCatOpen(id,dp,el.value); pmeRender(id); return; } dp.profil=''; dp.profConf={statut:'saisi',date:todayStr()}; }
    else if(key==='feu_on'){ dp.feu_on=el.value==='1'; }
    else if(el.tagName==='SELECT'||el.type==='text'){ dp[key]=(key==='phiBar'||key==='feu_duree')?+el.value:el.value; }
    else dp[key]=el.value===''?null:+el.value;
@@ -33842,7 +33873,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function pmNoteCalculHtml0(t,dp,res){
    const f=pmF, nm=esc(dp.nom||t.quoi||t.nom||'Poteau mixte'), g=pmGeom(dp);
    const hyp=[['Acier de construction',(dp.nuance||'S355')+' : f_y = '+f(res.fy,0)+' MPa, E_a = '+f(res.Ea,0)+' MPa','Saisi'],['Béton',dp.classeGlobale+' : f_ck = '+f(res.fck,0)+' MPa','Saisi'],['Armatures',(dp.classeAcier||'B500')+' : f_sk = '+f(res.fsk,0)+' MPa, E_s = '+f(res.Es,0)+' MPa','Saisi'],
-    ['Coefficients normatifs','γ_a = 1,0 ; γ_c = 1,5 ; γ_s = 1,15 ; coefficient de résistance du béton 0,85','Valeurs du modèle (lecture seule)'],
+    ['Coefficients normatifs','γ_a = 1,0 ; γ_c = 1,5 ; γ_s = 1,15 ; coefficient de résistance du béton 0,85','Valeurs du modèle (lecture seule)'],['Profilé',dp.profil?dp.profil+' (catalogue, valeurs indicatives)':'Dimensions saisies par l\'ingénieur',dp.profil?'Catalogue, '+dimCatStatut(dp.profConf,dp.profil):'Saisi'],
     ['Combinaison','N_Ed = 1,35·G + 1,5·Q = '+f(res.NEd,0)+' kN','Saisi'],['Longueur de flambement',dp.lf==='saisi'?'l_f = '+f(res.lf,2)+' m (saisie)':'l_f = '+f(res.lfC,1)+' · L = '+f(res.lf,2)+' m','Choix de l\'ingénieur']]
     .concat(pmAdvRowsHyp(dp).map(r=>[r[0],r[1],r[2]]));
    let h='<h3>Note de calcul — '+nm+'</h3><p class="pcNote">Poteau mixte acier-béton · profilé H '+esc(dp.nuance||'')+' enrobé de béton '+esc(dp.classeGlobale||'')+' · '+todayStr()+'</p>';
@@ -33857,6 +33888,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(res.fx) h+='<h5>Flexion composée</h5><p class="pcNote">M_pa = '+f(res.Mpa,1)+' kN·m ; M_ps = '+f(res.Mps,1)+' kN·m ; M_pl = '+f(res.Mpl,1)+' kN·m ; N_pc/N_pl = '+f(res.fx.ratioC,3)+' ; K = N_u/N_pl = '+f(res.fx.Kk,3)+' ; K_d = N_Ed/N_pl = '+f(res.fx.Kd,3)+' ; ψ = '+f(res.psi,2)+' ; µ_d = '+f(res.fx.mud,3)+' ; µ_k = '+f(res.fx.muk,3)+' ; µ = '+f(res.fx.mu,3)+' ; M_Ed = '+f(res.MEd,1)+' kN·m ; M_d,max = 0,9·µ·M_pl = '+f(res.fx.MdMax,1)+' kN·m.</p>';
    h+='<h5>Vérifications réglementaires</h5>'+pmVerifsHtml(res);
    h+='<h5>Ferraillage retenu</h5><table class="pcNCt"><thead><tr><th>Rep.</th><th>Désignation</th><th>Nb × Ø</th><th>Longueur (m)</th><th>Poids (kg)</th></tr></thead><tbody>'+res.rows.map(r=>'<tr><td>'+r.rep+'</td><td>'+esc(r.des)+'</td><td>'+r.nb+' × HA'+r.diam+'</td><td>'+f(r.longueur)+'</td><td>'+f(r.poids,1)+'</td></tr>').join('')+'<tr><td></td><td><b>Total</b></td><td></td><td></td><td><b>'+f(res.total,1)+'</b></td></tr></tbody></table>';
+   if(dp.profil) h+='<p class="ncPt" data-bad="0">'+esc('Profilé du catalogue ('+dp.profil+') : valeurs indicatives, à confirmer sur la fiche du fabricant ; '+dimCatStatut(dp.profConf,dp.profil)+'.')+'</p>';
    h+='<p class="ncPt" data-bad="0">Coefficients, courbes de flambement et d\'interaction de ce module : non vérifiés par un texte réglementaire fourni ; à confirmer par l\'ingénieur avant toute utilisation.</p>';
    (res.warn||[]).forEach(w=>{ h+='<p class="ncPt" data-bad="0">'+esc(w)+'</p>'; });
    res.verifs.filter(v=>v.etat==='ko').forEach(v=>{ h+='<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>'; });
@@ -35587,6 +35619,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<div class="rcBtns"><button type="button" class="ghost pcBtnSm" data-rp-act="addAn">+ Ajouter un ancrage</button></div>';
    h+='<hr class="pcFormSep"><h5>4 · Profilé</h5><p class="pcNote">Choisir un profilé du catalogue (module W<sub>el</sub> nominal, à confirmer sur la fiche du fabricant) ou saisir ses propres valeurs ; l\'inertie I sert à la déformée et aux appuis élastiques. Laisser vide : flexion du profilé non vérifiée.</p>'
     +'<label>Profilé '+rpSel('pfCat',dp.pfCat||'',[['','Aucun choix'],['saisi','Valeurs saisies']].concat(RC_CAT.map((c,i)=>[String(i),c[0]+' — W_el ≈ '+c[1]+' cm³/m'])))+'</label>'
+    +'<p class="pcNote" role="status">Catalogue : '+esc(dimCatStatut(dp.pfConf,rcCatNom(dp)))+' <span class="pcElsTag">indicatif, à confirmer sur fiche fabricant</span></p><div class="rcBtns"><button type="button" class="ghost pcBtnSm" data-rp-act="pfCatOpen">Voir le catalogue de profilés</button></div>'
     +rpNumIn('pfW',dp.pfW,'Module élastique W_el','cm³/m')+rpNumIn('pfI',dp.pfI,'Inertie I','cm⁴/m')
     +'<label>Nuance d\'acier '+rpSel('pfAcier',dp.pfAcier||'',[['','Aucun choix'],['autre','Valeur saisie']].concat(RC_ACIER.map(a=>[String(a[0]),a[1]+' — f_y = '+a[0]+' MPa'])))+'</label>'
     +rpNumIn('pfFy',dp.pfFy,'Limite d\'élasticité f_y','MPa');
@@ -35621,9 +35654,18 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const w=res.warn.concat(res.conf); if(w.length) h+='<div class="pcDimBox"><b>Avertissements</b><p class="pcNote">'+w.map(esc).join('<br>')+'</p></div>';
    return h+'<button type="button" class="ghost pcBtnSm" data-rp-act="printNote">🖶 Voir la note</button>';
   }
+  /* catalogue des palplanches : toujours montré, valeurs indicatives à confirmer ; la confirmation (date, profilé, valeurs) est enregistrée avec l'ouvrage */
+  function rcCatNom(dp){ return (dp.pfCat!==''&&dp.pfCat!=null&&dp.pfCat!=='saisi'&&RC_CAT[+dp.pfCat])?RC_CAT[+dp.pfCat][0]:''; }
+  function rcCatOpen(id,dp,cur){
+   const rows=RC_CAT.map((c,i)=>({key:String(i),nom:c[0],groupe:/^AZ/.test(c[0])?'Profilés en Z (AZ)':'Profilés en U (AU)',v:{W:c[1],I:'',m:''}}));
+   dimCatalogueConfirm({titre:'Catalogue de palplanches',cols:[['W','Module W_el (cm³/m)'],['I','Inertie I (cm⁴/m)'],['m','Masse (kg/m²)']],rows,current:cur,
+    onConfirm:r=>{ const c=RC_CAT[+r.key]; rcInit(dp); dp.pfCat=r.key; dp.pfW=c[1]; dp.pfConf={statut:'confirme',date:todayStr(),profil:c[0],valeurs:{W_cm3_m:c[1]}}; try{persist();}catch(_){ } rpRender(id); },
+    onManual:()=>{ dp.pfCat='saisi'; dp.pfConf={statut:'saisi',date:todayStr()}; try{persist();}catch(_){ } rpRender(id); },
+    onNone:()=>{ dp.pfCat=''; dp.pfW=''; dp.pfConf={statut:'aucun',date:todayStr()}; try{persist();}catch(_){ } rpRender(id); }});
+  }
   /* ---------- clics et saisies du calcul complet ---------- */
   function rcClick(e,id,dp){
-   const b=e.target.closest('[data-rp-act]'); if(!b) return false; const act=b.dataset.rpAct, i=+b.dataset.i; if(!/^(addCz|delCz|addAn|delAn|addFo|delFo|exemple|exempleR)$/.test(act)) return false;
+   const b=e.target.closest('[data-rp-act]'); if(!b) return false; const act=b.dataset.rpAct, i=+b.dataset.i; if(act==='pfCatOpen'){ rcCatOpen(id,dp,dp.pfCat); return true; } if(!/^(addCz|delCz|addAn|delAn|addFo|delFo|exemple|exempleR)$/.test(act)) return false;
    rcInit(dp);
    if(act==='addCz') dp.couches.push(rcCzNew()); else if(act==='delCz'&&dp.couches.length>1) dp.couches.splice(i,1);
    else if(act==='addAn') dp.ancrages.push({z:'',rigide:false,k:'',d:''}); else if(act==='delAn') dp.ancrages.splice(i,1);
@@ -35635,10 +35677,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function rcChange(el,dp,id){
    const key=el.dataset.rp, m=/^(couches|ancrages|forces)\.(\d+)\.(\w+)$/.exec(key||''); rcInit(dp);
    if(m){ const row=dp[m[1]][+m[2]]; if(!row) return true; row[m[3]]=el.type==='checkbox'?el.checked:(el.value===''?'':+String(el.value).replace(',','.')); if(m[3]==='rigide'&&el.checked) row.k=''; try{persist();}catch(_){ } rpRender(id); return true; }
-   if(key==='pfCat'){ dp.pfCat=el.value; const c=RC_CAT[+el.value]; if(c&&el.value!=='saisi'&&el.value!==''){ dp.pfW=c[1]; } try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='pfCat'){ const v=el.value; if(v!==''&&v!=='saisi'&&RC_CAT[+v]){ rcCatOpen(id,dp,v); rpRender(id); return true; } dp.pfCat=v; dp.pfConf={statut:v==='saisi'?'saisi':'aucun',date:todayStr()}; try{persist();}catch(_){ } rpRender(id); return true; }
    if(key==='pfAcier'){ dp.pfAcier=el.value; if(el.value&&el.value!=='autre') dp.pfFy=+el.value; try{persist();}catch(_){ } rpRender(id); return true; }
    if(key==='pfFy'){ dp.pfFy=el.value===''?'':+String(el.value).replace(',','.'); if(!RC_ACIER.some(a=>a[0]===+dp.pfFy)) dp.pfAcier=dp.pfFy===''?'':'autre'; else dp.pfAcier=String(dp.pfFy); try{persist();}catch(_){ } rpRender(id); return true; }
-   if(key==='pfW'||key==='pfI'){ dp[key]=el.value===''?'':+String(el.value).replace(',','.'); if(key==='pfW') dp.pfCat='saisi'; try{persist();}catch(_){ } rpRender(id); return true; }
+   if(key==='pfW'||key==='pfI'){ dp[key]=el.value===''?'':+String(el.value).replace(',','.'); if(key==='pfW'){ dp.pfCat='saisi'; dp.pfConf={statut:'saisi',date:todayStr()}; } try{persist();}catch(_){ } rpRender(id); return true; }
    if(key==='methode'){ dp.methode=el.value; if(el.value==='complet') rcInit(dp); try{persist();}catch(_){ } rpRender(id); return true; }
    if(key==='Kmeth'){ dp.Kmeth=el.value; try{persist();}catch(_){ } rpRender(id); return true; }
    return false;
@@ -35650,6 +35692,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>').join('')
     +res.conf.concat(res.warn).map(w=>'<p class="ncPt" data-bad="0">'+esc(w)+'</p>').join('')
     +'<p class="ncPt" data-bad="0">Non vérifié ou non traité : dimensionnement des tirants et butons, séisme, stabilité d\'ensemble, cisaillement et voilement du profilé, effets tridimensionnels, poussée de Coulomb ou à frottement de paroi (sauf coefficients saisis).</p>'
+    +(rcCatNom(dp)?'<p class="ncPt" data-bad="0">'+esc('Profilé du catalogue ('+rcCatNom(dp)+') : valeurs indicatives, à confirmer sur la fiche du fabricant ; '+dimCatStatut(dp.pfConf,rcCatNom(dp))+'.')+'</p>':'')
+    +(D.ancrages.length>1?'<p class="ncPt" data-bad="0">Rideau à plusieurs ancrages : non comparé à un cas de référence ; à confirmer par l\'ingénieur.</p>':'')
     +'<p class="ncPt" data-bad="0">Le niveau de contre-butée est celui où le moment de la poutre continue encastrée s\'annule ; la fiche majore la profondeur au-delà de la pression nulle du coefficient k.</p>';
    const org=(...ks)=>ks.some(k=>rpSaisi(dp,k))?'Saisi (paramètres avancés)':'Par défaut';
    const hypRows=[
@@ -35658,7 +35702,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     ['Poussée et butée',D.meth==='saisi'?'K_a et K_p saisis couche par couche':'Rankine (δ = 0) calculée avec φ'+(cf.ec?'<sub>d</sub>':''),D.meth==='saisi'?'Saisi':'Choix de l\'ingénieur'],
     ['Eau',D.gammaW>0?'γ<sub>w</sub> = '+f(D.gammaW,1)+' kN/m³ ; nappe '+(D.zwP!=null?f(D.zwP,2)+' m côté poussée':'absente côté poussée')+', '+(D.zwB!=null?f(D.zwB,2)+' m côté butée':'absente côté butée'):'Pas d\'eau','Saisie'],
     ['Fiche','fiche = k·(z<sub>c</sub> − z<sub>p</sub>) + (z<sub>p</sub> − f), k = '+f(rpVal(dp,'kFiche'),2),org('kFiche')],
-    ['Profilé',(dp.pfW?'W<sub>el</sub> = '+f(+dp.pfW,0)+' cm³/m':'W<sub>el</sub> non renseigné')+(dp.pfI?' ; I = '+f(+dp.pfI,0)+' cm⁴/m':'')+(dp.pfFy?' ; f<sub>y</sub> = '+f(+dp.pfFy,0)+' MPa':'')+' ; E = '+f(rpVal(dp,'E_MPa'),0)+' MPa','Saisie'],
+    ['Profilé',(rcCatNom(dp)?esc(rcCatNom(dp))+' : ':'')+(dp.pfW?'W<sub>el</sub> = '+f(+dp.pfW,0)+' cm³/m':'W<sub>el</sub> non renseigné')+(dp.pfI?' ; I = '+f(+dp.pfI,0)+' cm⁴/m':'')+(dp.pfFy?' ; f<sub>y</sub> = '+f(+dp.pfFy,0)+' MPa':'')+' ; E = '+f(rpVal(dp,'E_MPa'),0)+' MPa',rcCatNom(dp)?'Catalogue indicatif, '+esc(dimCatStatut(dp.pfConf,rcCatNom(dp))):'Saisie'],
     ['γ<sub>M0</sub>',f(rpVal(dp,'gM0'),2),org('gM0')]]
     .concat(RP_ADV.filter(sp=>sp.only!=='rupture'&&rpSaisi(dp,sp.k)&&rpVal(dp,sp.k)!==sp.def&&!['kFiche','gM0'].includes(sp.k)).map(sp=>[esc(sp.lbl),f(rpVal(dp,sp.k),3).replace(/,?0+$/,'')+(sp.unit?' '+sp.unit:''),'Saisi (paramètres avancés)']));
    const hyp='<h4>Hypothèses</h4><table class="pcNCt"><thead><tr><th>Paramètre</th><th>Valeur retenue</th><th>Origine</th></tr></thead><tbody>'+hypRows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('')+'</tbody></table>';
