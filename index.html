@@ -7049,6 +7049,7 @@ const DIM_I18N_DATA=[
   const T=(act+' '+txt).toLowerCase();
   if(b.getAttribute('role')==='switch') return 'toggle';
   const X=txt.toLowerCase();
+  if(b.hasAttribute('data-dim-modif')) return 'gear';
   if(b.classList.contains('pcModName')) return 'swap';
   if(b.classList.contains('close-x')) return 'close';
   if(b.classList.contains('pcIaFab')||/^ia$/.test(X)) return 'spark';
@@ -7522,6 +7523,7 @@ function dimDiffEntrees(dp){
  const add=(sec,txt)=>{ if(!seen.has(txt)){ seen.add(txt); L.push({sec,txt}); } };
  const has=(M,pre)=>Object.keys(M).some(q=>q.startsWith(pre));
  keys.forEach(path=>{ const a=A[path], b=B[path]; if(a===b) return; const parts=path.split('.'), top=parts[0], sp=dimSpecOf(top);
+  if(top==='valid'||top==='skills'||top==='validSeuils'){ let ti=''; try{ const id=parts[1]; Object.keys(window.dimValidSpecs||{}).forEach(k=>window.dimValidSpecs[k].forEach(x=>{ if(x.id===id) ti=x.titre; })); }catch(_){ } add('Validations et méthodes',top==='valid'?('Choix de validation modifié'+(ti?' : '+ti:'')):(top==='skills'?'Méthode décrite par l\'utilisateur modifiée':'Seuil de cas sensible modifié')); return; }
   const sec=DIM_CHG.has(top)?'Chargement':(DIM_MAT.has(top)?'Matériau':(sp?'Paramètres avancés':'Géométrie et options'));
   if((top==='portees'||top==='hauteurs')&&parts.length===2){ const nm=(top==='portees'?'Portée L':'Hauteur H')+(+parts[1]+1)+' (m)', fa=dimFmtVal(null,a), fb=dimFmtVal(null,b); add(sec,nm+' : '+(fa==null?'—':fa)+' → '+(fb==null?'—':fb)); return; }
   if(DIM_ARR[top]&&parts.length>=2){ const ar=DIM_ARR[top], i=+parts[1], nm=ar[0]+' '+(i+ar[1]), pre=top+'.'+i+'.', aIn=has(A,pre), bIn=has(B,pre);
@@ -7535,7 +7537,7 @@ function dimDiffEntrees(dp){
 }
 function dimResumeModifs(L,onOk,onCancel,nextInd){ nextInd=nextInd||'';
  const ov=document.createElement('div'); ov.className='dimDiffOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Modifications depuis le dernier calcul');
- const ORD=['Géométrie et options','Chargement','Matériau','Paramètres avancés'], MAX=12; let all=false;
+ const ORD=['Géométrie et options','Chargement','Matériau','Paramètres avancés','Validations et méthodes'], MAX=12; let all=false;
  const body=()=>{ const sh=all?L:L.slice(0,MAX); let h=''; ORD.forEach(s=>{ const it=sh.filter(x=>x.sec===s); if(!it.length) return; h+='<h4>'+esc(s)+'</h4><ul>'+it.map(x=>'<li>'+esc(x.txt)+'</li>').join('')+'</ul>'; });
   if(!all&&L.length>MAX) h+='<button type="button" class="ghost dimDiffMore" data-dd="more">+ '+(L.length-MAX)+' autre'+(L.length-MAX>1?'s':'')+'</button>'; return h; };
  ov.innerHTML='<div class="dimDiffBox"><h3>Modifications depuis le dernier calcul</h3><div class="dimDiffList">'+body()+'</div><p class="dimDiffInd">'+esc(nextInd)+'</p><div class="dimDiffBtns"><button type="button" class="primary" data-dd="ok">Valider et recalculer</button><button type="button" class="ghost" data-dd="no">Annuler</button></div></div>';
@@ -20903,6 +20905,7 @@ body.pz-cmd .pz-mid:hover::after{content:'−'}
 .pcMatWarn{color:var(--ds-ink-soft)}
 .dimCalcBox button[data-dim-doc]{display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .pjDocActs{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px;align-items:flex-start}
+.pjDocActsOne{justify-content:flex-end;margin-top:6px}
 .pjDocActs>button{flex:1 1 180px;box-sizing:border-box;min-height:44px;padding:0 16px;border-radius:var(--ds-r-ctl,6px);font:600 14px var(--ds-font-body,'IBM Plex Sans',system-ui,sans-serif);line-height:1.2;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
 @media (max-width:520px){.pjDocActs>button{flex-basis:100%}}
 .pjFmtBox{max-width:460px}.pjFmtG{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 4px;width:100%}.dimIBl .dimIBd{display:block;font:500 12px/1.2 var(--ds-font-body,system-ui,sans-serif);opacity:.75;white-space:nowrap;margin-top:2px}.dimIBw .dimIBl{overflow-wrap:normal}
@@ -23563,11 +23566,13 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
    +(soeur?'<button type="button" class="primary" data-vers-soeur="'+esc(soeur.id)+'">'+(soeurType==='Note de calcul'?PJ_ICO_NOTE:PJ_ICO_PLAN)+'<span>'+esc(soeurType)+'</span></button>':'')
    +((doc.docType==='Plan de ferraillage'&&doc.ouvrageTaskId&&window.pcPlanExportPdf)||(doc.docType==='Note de calcul'&&window.ncExportPdf)?'<button type="button" class="ghost" data-export-pdf="1">'+PJ_ICO_PDF+'<span>Exporter en PDF</span></button>':'')
    +'<button type="button" class="ghost" data-voir-infos="1">'+PJ_ICO_INFO+'<span>Informations du document</span></button>'
-   +'</div>');
+   +'</div>'
+   +((doc.docType==='Note de calcul'&&window.dimNoteModifierOk&&window.dimNoteModifierOk(doc))?'<div class="pjDocActs pjDocActsOne"><button type="button" class="ghost" data-dim-modif="1"><span>Modifier</span></button></div>':''));
   const mb=document.getElementById('modalBody'); const md=mb.closest('.modal'); if(md) md.classList.add('fiche-wide');
   if(window._docBackTask){ const tb=window._docBackTask; window._modalBackTo=()=>{ window._docBackTask=null; closeModal(); try{ openTaskDetail(tb); }catch(_){ } }; } /* appui hors de la fenêtre : même retour que le × */
   const vs=mb.querySelector('[data-vers-soeur]'); if(vs) vs.onclick=()=>openDocContenu(vs.dataset.versSoeur);
   const vi=mb.querySelector('[data-voir-infos]'); if(vi) vi.onclick=()=>openDocFiche(id);
+  const md2=mb.querySelector('[data-dim-modif]'); if(md2) md2.onclick=()=>{ try{ window.dimNoteModifier(doc); }catch(_){ } };
   const ex=mb.querySelector('[data-export-pdf]'); if(ex) ex.onclick=()=>pjFmtPicker(doc);
  }
  /* choix du format de feuille avant l'export PDF du plan (paysage ; A3 par défaut = comportement historique) */
@@ -43617,6 +43622,30 @@ document.head.appendChild(st);
   }catch(e){ console.warn('dimValidNote',e); return null; }
  };
  window.dimValidateWindow=dimValidateWindow; window.dimValidSpecs=SPECS; window.dimValidPending=pending;
+ /* ---------- Bouton « Modifier » de la note de calcul affichée : rouvre la fenêtre de validation (même composant), puis recalcule ---------- */
+ function modTargets(t,doc){ const mod=doc&&doc.module; let ps=Object.keys(PFX).filter(p=>t&&t[PFX[p].prop]); if(mod&&PFX[mod]&&ps.indexOf(mod)>=0) ps=[mod]; const o=[];
+  ps.forEach(p=>{ const dp=t[PFX[p].prop]; ALLOF(p).filter(s=>appliesTo(dp,s)||store(dp)[s.id]).forEach(s=>o.push({pfx:p,spec:s})); }); return o; }
+ window.dimNoteModifierOk=function(doc){ try{ if(!doc||doc.docType!=='Note de calcul'||!doc.ouvrageTaskId) return false; const t=getT(doc.ouvrageTaskId); return !!t&&modTargets(t,doc).length>0; }catch(_){ return false; } };
+ window.dimNoteModifier=function(doc){
+  try{
+   const id=doc.ouvrageTaskId, t=getT(id); if(!t) return; const L=modTargets(t,doc); if(!L.length){ clip('Rien à modifier dans cette note.'); return; }
+   const go=tg=>{
+    const dp0=getDp(tg.pfx,id); if(!dp0) return; const prevSt=dp0.statut||(dp0.resultats?'calcule':'a_calculer'), prevEntry=store(dp0)[tg.spec.id];
+    dp0.statut='a_calculer'; try{ persist(); }catch(_){ }
+    window._docBackTask=null; try{ closeModal(); }catch(_){ } try{ openTaskDetail(id); }catch(_){ }
+    let n=0; const wait=setInterval(()=>{ n++; const c=ctxNow(); if(!c&&n<40) return; clearInterval(wait);
+     if(!c||c.pfx!==tg.pfx||String(c.id)!==String(id)){ dp0.statut=prevSt; try{ persist(); }catch(_){ } return; }
+     dimValidateWindow(tg.spec,{pfx:c.pfx,id:c.id,dp:c.dp});
+     const w2=setInterval(()=>{ if(document.getElementById('dvOv')) return; clearInterval(w2);
+      const d2=getDp(tg.pfx,id)||c.dp;
+      if(store(d2)[tg.spec.id]!==prevEntry){ const c2=ctxNow(); if(c2&&c2.btn&&!c2.btn.disabled){ clip('Recalcul en cours avec votre choix.'); setTimeout(()=>{ try{ c2.btn.click(); }catch(_){ } },60); } }
+      else { d2.statut=prevSt; try{ persist(); }catch(_){ } try{ openTaskDetail(id); }catch(_){ } clip('Aucun changement : la note reste telle quelle.'); } },250); },100);
+   };
+   if(L.length===1){ go(L[0]); return; }
+   const ov=overlay(); ov.innerHTML='<div class="pcFeuCard dvCard"><h4 id="dvT">Que voulez-vous modifier ?</h4>'+L.map((x,i)=>window.dimChRow({icon:'edit',nom:x.spec.titre,aide:'Rouvrir la fenêtre de validation.',attr:'data-dv-pick="'+i+'"'})).join('')+window.dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-dv-pick=""'})+'</div>';
+   ov.addEventListener('click',e=>{ const b=e.target.closest('[data-dv-pick]'); if(!b){ if(e.target===ov&&ov._down) closeOv(ov); return; } const k=b.dataset.dvPick; closeOv(ov); if(k!=='') go(L[+k]); });
+  }catch(e){ console.warn('dimNoteModifier',e); }
+ };
 
  /* ---------- Styles ---------- */
  const css=document.createElement('style'); css.id='dimValidCss';
