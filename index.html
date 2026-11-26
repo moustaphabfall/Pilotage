@@ -4997,6 +4997,7 @@ document.addEventListener('keydown', e=>{
   if(a && a.id==='pc-nom'){ e.preventDefault(); pieceCreateOk(); return; }
   if(window.zoneFlow && zoneFlow.step==='line' && !modalOuverte() && tag!=='INPUT' && tag!=='TEXTAREA'){ e.preventDefault(); zoneLineDone(); return; }
   if(window.stairFlow && stairFlow.step==='edit' && !modalOuverte() && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT'){ e.preventDefault(); stairValidate(); return; }
+  { const fr=(typeof dimFicheRoot==='function')?dimFicheRoot():null; if(fr&&a&&fr.contains(a)&&(tag==='INPUT'||tag==='SELECT')&&!(a.closest&&a.closest('#miniPromptOverlay'))){ e.preventDefault(); try{ a.blur(); }catch(_){ } return; } } /* fiche de dimensionnement : Entrée valide seulement le champ (« Calculer » est le seul lanceur du calcul) */
   if(modalOuverte()){
     /* fenêtre ouverte : Entrée = bouton principal (hors suppression), sauf dans un champ multiligne ou sur un bouton */
     if(tag==='TEXTAREA'||tag==='BUTTON'||tag==='SELECT') return;
@@ -6430,13 +6431,16 @@ document.getElementById('overlay').addEventListener('click', e=>{ if(e.target.id
 /* ===================== MINI-PROMPT / MINI-CONFIRM / MINI-ALERT =====================
    Remplace window.prompt/confirm/alert, bloqués dans le bac à sable de l'aperçu Artifact. */
 let _miniPromptCb = null;
+/* Le bouton « Annuler / Non » de la fenêtre de confirmation est mis en forme (icône + nom) par l'interface commune : son libellé et son affichage passent par ces deux fonctions, sinon l'ancien nom resterait à côté du nouveau. */
+function _miniLbl(id,txt){ const b=document.getElementById(id); if(!b) return; const w=b.closest('.dimIBw'); if(w){ const l=w.querySelector('.dimIBl'); if(l){ l.textContent=txt; l.setAttribute('data-dimfr',txt); } b.setAttribute('aria-label',txt); b.setAttribute('title',txt); } else b.textContent=txt; }
+function _miniShow(on){ const b=document.getElementById('miniPromptCancelBtn'); if(!b) return; const w=b.closest('.dimIBw')||b; w.style.display=on?(w===b?'inline-block':''):'none'; }
 function miniPrompt(message, defaultValue, cb){
   _miniPromptCb = cb;
   document.getElementById('miniPromptMsg').textContent = message;
   const inp = document.getElementById('miniPromptInput');
   inp.style.display='block'; inp.value = defaultValue||'';
   document.getElementById('miniPromptOkBtn').textContent='Valider';
-  document.getElementById('miniPromptCancelBtn').style.display='inline-block';
+  _miniShow(true);
   document.getElementById('miniPromptOverlay').style.display='flex';
   setTimeout(()=>{ inp.focus(); inp.select(); },0);
 }
@@ -6456,8 +6460,8 @@ function miniConfirm(message, cb, okLbl, cancelLbl){
   const inp = document.getElementById('miniPromptInput');
   inp.style.display='none';
   document.getElementById('miniPromptOkBtn').textContent=okLbl||'Confirmer';
-  document.getElementById('miniPromptCancelBtn').textContent=cancelLbl||'Annuler'; _miniNoCb=null;
-  document.getElementById('miniPromptCancelBtn').style.display='inline-block';
+  _miniLbl('miniPromptCancelBtn',cancelLbl||'Annuler'); _miniNoCb=null;
+  _miniShow(true);
   document.getElementById('miniPromptOverlay').style.display='flex';
 }
 function miniAlert(message){
@@ -6466,7 +6470,7 @@ function miniAlert(message){
   const inp = document.getElementById('miniPromptInput');
   inp.style.display='none';
   document.getElementById('miniPromptOkBtn').textContent='OK';
-  document.getElementById('miniPromptCancelBtn').style.display='none';
+  _miniShow(false);
   document.getElementById('miniPromptOverlay').style.display='flex';
 }
 function miniPromptSubmit(){
@@ -6482,13 +6486,13 @@ function miniPromptCancel(){
   document.getElementById('miniPromptOverlay').style.display='none';
   _miniPromptCb=null;
   const no=_miniNoCb; _miniNoCb=null; if(no) no();
-  document.getElementById('miniPromptCancelBtn').textContent='Annuler';
+  _miniLbl('miniPromptCancelBtn','Annuler');
 }
 function miniAsk(msg, yesLbl, noLbl, yesCb, noCb){
-  miniConfirm(msg, ()=>{ document.getElementById('miniPromptCancelBtn').textContent='Annuler'; _miniNoCb=null; yesCb(); });
+  miniConfirm(msg, ()=>{ _miniLbl('miniPromptCancelBtn','Annuler'); _miniNoCb=null; yesCb(); });
   _miniNoCb = noCb;
   document.getElementById('miniPromptOkBtn').textContent=yesLbl;
-  document.getElementById('miniPromptCancelBtn').textContent=noLbl;
+  _miniLbl('miniPromptCancelBtn',noLbl);
 }
 
 /* ===================== Statut d'ouvrage (à calculer / calculé) — commun à tous les modules de
@@ -25032,7 +25036,7 @@ html[data-theme="sombre"] #pjGraph .pjgt-barlab{color:#FFE9A3}
       try{ persist(); }catch(_){}
       try{ renderAll(); }catch(_){ build(true); }
     });
-    try{ document.getElementById('miniPromptOkBtn').textContent='Oui'; document.getElementById('miniPromptCancelBtn').textContent='Non'; }catch(_){}
+    try{ document.getElementById('miniPromptOkBtn').textContent='Oui'; _miniLbl('miniPromptCancelBtn','Non'); }catch(_){}
   };
   let gDrag=null, ganttJustDragged=false, lastSpanDays=1, lastPxPerDay=22, gSplit=null, lastGanttRows=null, gCenterRaf=null, ganttAttend=null, gZoomLoop=null;
   function pjGanttCenterOn(taskId,keep){
@@ -26551,7 +26555,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     calcul:'M_travée voisine = '+f1(h.Mtrav)+' kN·m ; β1 = '+f1(rv.beta1*100,0)+' % ('+org('beta1Rive')+') ; M retenu = max(M_appui '+f1(h.Mface)+' ; β1·M_travée) = '+f1(h.Mreq)+' kN·m ; A_s requise = '+f1(h.AsReq/100,2)+' cm² ; posée = '+f1(h.AsPose/100,2)+' cm²',limite:'A_s posée ≥ A_s requise',etat:h.AsPose>=h.AsReq-1e-6?'ok':'ko'}));
    (rv.bas||[]).forEach(q=>{ const pc=q.nTot?q.nA/q.nTot:0, okP=pc>=rv.pctInf/100-1e-9;
     V.push({zone:'Appui '+q.appui,nom:'Appui de rive — armature inférieure ancrée',formule:'≥ '+f1(rv.pctInf,0)+' % de A_s de travée prolongé sur l\'appui, ancré pour F_E = |V_Ed|·a_l/z + N_Ed (EC2) ; avec σ_sd = f_yd = 435 MPa dans l_bd, F_E n\'a pas à être calculée ; l_bd calculé pour la même forme d\'ancrage, les mêmes conditions d\'adhérence et les mêmes coefficients α que la valeur retenue',
-     calcul:q.nA+' HA'+q.phi+' sur '+q.nTot+' ('+f1(100*pc,0)+' %, pourcentage '+org('pctInfRive')+') ; V_Ed = '+f1(q.V)+' kN ; F_E = '+f1(q.FE/1000)+' kN (N_Ed = 0) ; σ_sd = '+f1(q.sig,0)+' MPa ; l_bd = '+f1(q.lbd,0)+' mm ('+q.type+') pour '+f1(q.dispo,0)+' mm disponibles'+(q.fix?' (largeur du poteau prise comme longueur d\'ancrage disponible, à confirmer)':'')+' ; avec σ_sd = 435 MPa : l_bd = '+f1(q.lbdFyd,0)+' mm',
+     calcul:q.nA+' HA'+q.phi+' sur '+q.nTot+' ('+f1(100*pc,0)+' %, pourcentage '+org('pctInfRive')+') ; V_Ed = '+f1(q.V)+' kN ; F_E = '+f1(q.FE/1000)+' kN (N_Ed = 0) ; σ_sd = '+f1(q.sig,0)+' MPa ; l_bd = '+f1(q.lbd,0)+' mm ('+q.type+') pour '+f1(q.util!=null?q.util:q.dispo,0)+' mm disponibles'+(q.type!=='droit'?' (appui − enrobage, retour du crochet compris)':' (appui − enrobage)')+(q.fix?' (largeur du poteau prise comme longueur d\'ancrage disponible, à confirmer)':'')+' ; avec σ_sd = 435 MPa : l_bd = '+f1(q.lbdFyd,0)+' mm',
      limite:'≥ '+f1(rv.pctInf,0)+' % ; l_bd ancré ≤ longueur disponible (+ crochet)',etat:(okP&&!q.insuffisant)?'ok':'ko'}); });
    (P.torsion||[]).forEach(q=>{ const pf=P.peauTorsion;
     V.push({zone:'Travée '+(q.e+1),nom:'Torsion — cadres fermés retenus',formule:'A_sw/s ≥ V_Ed/(z·f_ywd·cotθ) + n_brins·A_t/s (cumul effort tranchant + torsion) ; s ≤ u/8 (EC2)',
@@ -27026,7 +27030,19 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const m=svg.getScreenCTM(); if(!m) return; const k=Math.hypot(m.a,m.b)||1; if(svg.__pcgK&&Math.abs(svg.__pcgK-k)<0.002) return; svg.__pcgK=k;
    const u=44/k, fo=[...svg.querySelectorAll('[data-pcg-fo]')]; if(!fo.length) return; const ax=+fo[0].dataset.ax;
    fo.forEach((n,i)=>{ n.setAttribute('height',u); n.setAttribute('y',2/k); n.setAttribute('width',i===0?u:Math.max(u,104/k)); n.setAttribute('x',i===0?ax:ax+u+8/k); n.style.setProperty('--u',String(1/k)); }); }
-  function pcgFitAll(){ document.querySelectorAll('.pcBeamDraw svg.pcSvg').forEach(pcgFit); }
+  /* bouton « + charge » : placé hors de toute étiquette (champs de cote, textes, boutons de travée ou d'appui) ; si sa place d'origine en couvre une, il est déplacé à droite, dessous, à gauche ou au-dessus */
+  function pcgAvoid(svg){
+   const fo=svg.querySelector('[data-pcg-fo="add"]'); if(!fo) return; const bt=fo.querySelector('button'); if(!bt) return; const m=svg.getScreenCTM(); if(!m) return; const inv=m.inverse();
+   const toV=r=>{ const p=svg.createSVGPoint(); p.x=r.left; p.y=r.top; const a=p.matrixTransform(inv); p.x=r.right; p.y=r.bottom; const b=p.matrixTransform(inv); return {l:Math.min(a.x,b.x),t:Math.min(a.y,b.y),r:Math.max(a.x,b.x),b:Math.max(a.y,b.y)}; };
+   const obs=[...svg.querySelectorAll('.pcDimWrap,text,.pcApBtn,.pcAddSpan,.pcgRule button')].filter(e=>!fo.contains(e)).map(e=>e.getBoundingClientRect()).filter(r=>r.width>2&&r.height>2).map(toV);
+   const D=+fo.getAttribute('width')||40, G=6, X=+fo.getAttribute('x'), Y=+fo.getAttribute('y'), vb=svg.viewBox.baseVal;
+   const hit=(x,y)=>obs.some(o=>x<o.r&&x+D>o.l&&y<o.b&&y+D>o.t), inside=(x,y)=>x>=vb.x&&x+D<=vb.x+vb.width&&y>=vb.y&&y+D<=vb.y+vb.height;
+   if(!hit(X,Y)) return;
+   const hs=obs.filter(o=>X<o.r&&X+D>o.l&&Y<o.b&&Y+D>o.t), L=Math.min(...hs.map(o=>o.l)), R=Math.max(...hs.map(o=>o.r)), T=Math.min(...hs.map(o=>o.t)), B=Math.max(...hs.map(o=>o.b));
+   const C=[[R+G,Y],[X,B+G],[L-D-G,Y],[X,T-D-G],[R+G,B+G],[L-D-G,B+G],[R+G,T-D-G],[L-D-G,T-D-G]];
+   for(const [x,y] of C){ if(inside(x,y)&&!hit(x,y)){ fo.setAttribute('x',x); fo.setAttribute('y',y); return; } }
+  }
+  function pcgFitAll(){ document.querySelectorAll('.pcBeamDraw svg.pcSvg').forEach(v=>{ pcgFit(v); try{ pcgAvoid(v); }catch(_){ } }); }
   (function(){ let q=0; const sch=()=>{ if(q) return; q=requestAnimationFrame(()=>{ q=0; try{ pcgFitAll(); }catch(_){ } }); };
    try{ const go=()=>{ new MutationObserver(sch).observe(document.body,{childList:true,subtree:true}); window.addEventListener('resize',()=>{ document.querySelectorAll('.pcBeamDraw svg.pcSvg').forEach(v=>{ v.__pcgK=0; }); sch(); }); };
     if(document.body) go(); else document.addEventListener('DOMContentLoaded',go); }catch(_){ } })();
@@ -27568,7 +27584,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const add=(b,zone,role,extra)=>{ const o=Object.assign({rep:String(b.rep),zone,role,nb:b.nb,diam:b.diam,x0:b.x0,x1:b.x1},extra||{}); M.set(o.rep,o); };
    P.travees.forEach((t,e)=>{
     (t.litInf||[]).forEach(b=>add(b,'inf',b.role||'filantes',{e,anc:b.ancrage}));
-    (t.litSup||[]).forEach(b=>{ if(!M.has(String(b.rep))) add(Object.assign({},b,{x0:b.xTotal0!=null?b.xTotal0:b.x0,x1:b.xTotal1!=null?b.xTotal1:b.x1}),'sup','montage',{e}); });
+    (t.litSup||[]).forEach(b=>{ if(!M.has(String(b.rep))) add(Object.assign({},b,{x0:b.xTotal0!=null?b.xTotal0:b.x0,x1:b.xTotal1!=null?b.xTotal1:b.x1}),'sup','montage',{e,mnote:b.mnote}); });
     (t.chapeaux||[]).forEach(b=>add(b,'sup',b.role||'chapeau',{e,appui:b.appui,anc:b.ancrage}));
     (t.peau||[]).forEach(b=>{ if(!M.has(String(b.rep))) add(b,'peau',b.role||'peau',{e}); });
    });
@@ -27709,7 +27725,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const free=(x,y,w)=>!placed.some(p=>Math.abs(p.y-y)<24&&x-14<p.x+p.w&&x+w>p.x-14)&&!secX.some(sx2=>Math.abs(sx2-x)<14);
    const bandTop=T0+hb*0.28, bandBot=bot-hb*0.28;
    vis.filter(b=>b.zone!=='peau').sort((a,b)=>(a.zone==='inf'?1:0)-(b.zone==='inf'?1:0)||(+a.rep)-(+b.rep)).forEach(b=>{
-    const lab=b.nb+' HA'+b.diam, w=24+fplTw(lab), a0=Math.max(b.x0,xmin)+0.1, b0=Math.min(b.x1,xmax)-0.1; if(b0<=a0) return;
+    const lab=b.nb+' HA'+b.diam+(b.role==='montage'&&b.mnote?' · '+b.mnote:''), w=24+fplTw(lab), a0=Math.max(b.x0,xmin)+0.1, b0=Math.min(b.x1,xmax)-0.1; if(b0<=a0) return;
     const ys=[]; for(let y=(b.zone==='inf'?bandBot:bandTop);b.zone==='inf'?y>=bandTop:y<=bandBot;y+=(b.zone==='inf'?-24:24)) ys.push(y);
     let done=false; for(const y of ys){ for(const f of [0.5,0.3,0.7,0.15,0.85,0.4,0.6,0.25,0.75,0.1,0.9]){ const x=X(a0+(b0-a0)*f); if(x-10<X(xmin)||x+w>X(xmax)) continue; if(free(x,y,w)){ placed.push({x,y,w}); const yb=yOf(b); fplL(S,x,yb+(yb>y?-3:3),x,y+(yb>y?10:-10),'lead'); fplBub(S,x,y,b.rep); fplT(S,x+15,y+4,lab,'ts','start'); done=true; break; } } if(done) break; }
    });
@@ -30560,6 +30576,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Flexion',k:'faceRedRive',lbl:'Réduction à la face aussi aux appuis de rive encastrés',t:'bool',def:false,only:'pc',na:dp=>pcRiveEncastree(dp)?null:'Non applicable : aucun appui de rive encastré. Un appui de rive simple (rotation libre) n\'a pas de moment à réduire ; son acier supérieur reste dimensionné sur β1 × le moment de la travée voisine, sans réduction à la face. Encastrer une rive (menu des appuis du schéma) pour activer cette option.',aide:'Appui de rive monolithique (rotation bloquée) : moment pris à la face, réduit de F_Ed,sup·t/8 mais jamais sous 0,65 × l\'encastrement parfait p·l²/12 de la travée voisine (EC2). Défaut non : appuis intermédiaires seulement. Un appui de rive sans retenue (rotation libre) n\'a pas de moment à réduire.'},
    {grp:'Appuis de rive et recouvrements',k:'beta1Rive',lbl:'β1 — moment d\'appui de rive (encastrement partiel)',t:'num',def:0.25,min:0.15,max:0.5,step:0.01,unit:'',only:'pc',aide:'Appui de rive : armature supérieure dimensionnée pour au moins β1 × le moment de la travée voisine (EC2). 25 % par défaut, sens de la sécurité (le module retenait 15 %) ; valeur par défaut, à confirmer.'},
    {grp:'Appuis de rive et recouvrements',k:'pctInfRive',lbl:'Armature inférieure prolongée sur l\'appui de rive',t:'num',def:25,min:25,max:100,step:5,unit:'% de A_s travée',only:'pc',aide:'Au moins ce pourcentage de la section de travée est prolongé jusqu\'à l\'appui de rive et ancré pour F_E = |V_Ed|·a_l/z + N_Ed (N_Ed = 0) (EC2) ; 25 % par défaut (valeur par défaut, à confirmer). Le plan corrige automatiquement le nombre de barres.'},
+   {grp:'Appuis de rive et recouvrements',k:'montageNC',lbl:'Barres de montage au-dessus d\'un appui non calculé',t:'sel',def:'continu',opts:[['continu','Continues (défaut)'],['interrompu','Interrompues à la face de l\'appui']],only:'pc',aide:'Quand un appui intermédiaire est « non calculé », les barres de montage restent constructives (non comptées comme acier d\'appui) : continues au-dessus de l\'appui, ou interrompues à sa face. Défaut : continues, à confirmer.'},
    {grp:'Appuis de rive et recouvrements',k:'lapEspTransv_mm',lbl:'Espacement des transversales de recouvrement',t:'num',def:150,min:50,max:300,step:10,unit:'mm',only:'pc',aide:'Recouvrement de barres Ø ≥ 20 mm : Σ A_st ≥ A_s d\'une barre recouverte, nombre de cadres = 1 + l₀/(3·s), espacement s = 150 mm (EC2). Cadres ou U ancrés si plus de 50 % recouvert avec a ≤ 10Ø ; en compression, une barre transversale à moins de 4Ø de chaque extrémité (EC2).'},
    {grp:'Flexion',k:'eluComb',lbl:'Combinaison ELU',t:'sel',def:'610',opts:[['610','1,35 G + 1,5 Q (défaut)'],['610b','1,25 G + 1,5 Q (alternative)']],only:'pc',aide:'1,25 G + 1,5 Q admise pour une seule action variable si G ≤ 4,5 Q ; défaut 1,35 G + 1,5 Q. Les coefficients γ restent normatifs.'},
    {grp:'Effort tranchant',k:'vBielle',lbl:'V pour la vérification de la bielle',t:'sel',def:'face',opts:[['face','V non réduit au nu (défaut, sécuritaire)'],['reduit','V réduit à d du nu'],['saisi','Autre : je saisis la valeur de V']],only:'pc',aide:'Base de V_Ed pour comparer à V_Rd,max : V non réduit au nu (défaut, sécuritaire), V réduit à d du nu, ou une valeur saisie. Indépendant du choix de cotθ ; toute base moins sécuritaire que V non réduit est signalée à confirmer dans la note.'},
@@ -40296,9 +40313,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    function ancrageRive(phi,nbA,V,gap,poor,kA){ const FE=0.5*V*1e3*cotTh(VcotRef,zS); /* ΔF = 0,5·V·cotθ */ const sig=Math.min(fyd,FE/(nbA*Ab(phi)));
     const fixA=riveFix(kA), dispo=fixA?potW:aApp-c, st=ancrage(phi,Math.max(sig,1),poor,gap,false);
     const hk=ancrage(phi,Math.max(sig,1),poor,gap,true), fydD=ancrage(phi,fyd,poor,gap,false).lbd, fydH=ancrage(phi,fyd,poor,gap,true).lbd; /* l_bd avec σ_sd = f_yd = 435 MPa (F_E n'a alors pas à être calculée) : même forme d'ancrage (droit ou crochet) et mêmes coefficients que la valeur retenue, donc une seule longueur dans la note et dans le plan */
-    if(st.lbd<=dispo) return {type:'droit',lbd:st.lbd,dispo,sig,lb:st.lb,FE,lbdFyd:fydD,fix:fixA};
-    if(hk.lbd<=dispo+10*phi) return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,FE,lbdFyd:fydH,fix:fixA};
-    return {type:'crochet 90°',lbd:hk.lbd,dispo,sig,lb:hk.lb,insuffisant:true,FE,lbdFyd:fydH,fix:fixA}; }
+    if(st.lbd<=dispo) return {type:'droit',lbd:st.lbd,dispo,util:dispo,sig,lb:st.lb,FE,lbdFyd:fydD,fix:fixA};
+    if(hk.lbd<=dispo+10*phi) return {type:'crochet 90°',lbd:hk.lbd,dispo,util:dispo+10*phi,sig,lb:hk.lb,FE,lbdFyd:fydH,fix:fixA};
+    return {type:'crochet 90°',lbd:hk.lbd,dispo,util:dispo+10*phi,sig,lb:hk.lb,insuffisant:true,FE,lbdFyd:fydH,fix:fixA}; }
    const Vf0=Vat(aApp/2000), VfN=Vat(Ltot-aApp/2000);
    for(let e=0;e<n;e++){
     const t=trav[e], ch=t.ch, phi=ch.phi; let nA=Math.max(2,Math.ceil(ch.n/2)), nB=ch.n-nA;
@@ -40318,11 +40335,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(isRiveE&&ch.n>0&&nA<pctInf*ch.n-1e-9) warn.push('Appui de rive (travée '+(e+1)+') : moins de '+r2(pctInf*100,0)+' % des barres de travée arrivent à l\'appui (EC2) — prolonger davantage de barres.');
     // appuis (rive) : ancrage des barres filantes
     let x0A, x1A, type0='droit', type1='droit', hk0=false, hk1=false;
-    if(e===0){ const r=ancrageRive(phi,nA,Vf0,gap,false,0); x0A=-apW(0)/2/1000+c/1000; type0=r.type; hk0=r.type!=='droit'; riveBas.push({appui:0,e,V:Vf0,FE:r.FE,nA,nTot:ch.n,phi,sig:r.sig,lbd:r.lbd,lbdFyd:r.lbdFyd,dispo:r.dispo,fix:!!r.fix,type:r.type,insuffisant:!!r.insuffisant});
-     ancAll.push({appui:0,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'inf',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui 0 : ancrage des barres inférieures insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles) — élargir l\'appui ou réduire le diamètre.'); }
+    if(e===0){ const r=ancrageRive(phi,nA,Vf0,gap,false,0); x0A=-apW(0)/2/1000+c/1000; type0=r.type; hk0=r.type!=='droit'; riveBas.push({appui:0,e,V:Vf0,FE:r.FE,nA,nTot:ch.n,phi,sig:r.sig,lbd:r.lbd,lbdFyd:r.lbdFyd,dispo:r.dispo,util:r.util,fix:!!r.fix,type:r.type,insuffisant:!!r.insuffisant});
+     ancAll.push({appui:0,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'inf',diam:phi,lbDispo:r2(r.util,0)}); if(r.insuffisant) warn.push('Appui 0 : ancrage des barres inférieures insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.util,0)+' mm disponibles) — élargir l\'appui ou réduire le diamètre.'); }
     else { x0A=node[e]-Lint; ancAll.push({appui:e,type:'droit',lbd:r2(Lint*1000,0),lbd_m:r2(Lint,3),lit:'inf',diam:phi,lbDispo:null}); }
-    if(e===n-1){ const r=ancrageRive(phi,nA,VfN,gap,false,n); x1A=Ltot+apW(n)/2/1000-c/1000; type1=r.type; hk1=r.type!=='droit'; riveBas.push({appui:n,e,V:VfN,FE:r.FE,nA,nTot:ch.n,phi,sig:r.sig,lbd:r.lbd,lbdFyd:r.lbdFyd,dispo:r.dispo,fix:!!r.fix,type:r.type,insuffisant:!!r.insuffisant});
-     ancAll.push({appui:n,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'inf',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui '+n+' : ancrage des barres inférieures insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles) — élargir l\'appui ou réduire le diamètre.'); }
+    if(e===n-1){ const r=ancrageRive(phi,nA,VfN,gap,false,n); x1A=Ltot+apW(n)/2/1000-c/1000; type1=r.type; hk1=r.type!=='droit'; riveBas.push({appui:n,e,V:VfN,FE:r.FE,nA,nTot:ch.n,phi,sig:r.sig,lbd:r.lbd,lbdFyd:r.lbdFyd,dispo:r.dispo,util:r.util,fix:!!r.fix,type:r.type,insuffisant:!!r.insuffisant});
+     ancAll.push({appui:n,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'inf',diam:phi,lbDispo:r2(r.util,0)}); if(r.insuffisant) warn.push('Appui '+n+' : ancrage des barres inférieures insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.util,0)+' mm disponibles) — élargir l\'appui ou réduire le diamètre.'); }
     else x1A=node[e+1]+Lint;
     // répartition en lits : groupe A (filantes) d'abord
     const lits=fill(ch.n,ch.nPer); const fA=fill(nA,ch.nPer);
@@ -40364,8 +40381,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     groups.forEach(g=>{
      const xl=reach(-1,g.As), xr=reach(1,g.As);
      let x0=xl-lbdc, x1=xr+lbdc, hk0=false, hk1=false;
-     if(a.k===0){ x0=-apW(0)/2000+c/1000; const r=ancrageRive(phi,g.nb,Vf0,gap,true,0); hk0=r.type!=='droit'; ancAll.push({appui:0,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'sup',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui 0 : ancrage des chapeaux Ø'+phi+' insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles dans l\'appui).'); }
-     if(a.k===n){ x1=Ltot+apW(n)/2000-c/1000; const r=ancrageRive(phi,g.nb,VfN,gap,true,n); hk1=r.type!=='droit'; ancAll.push({appui:n,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'sup',diam:phi,lbDispo:r2(r.dispo,0)}); if(r.insuffisant) warn.push('Appui '+n+' : ancrage des chapeaux Ø'+phi+' insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.dispo+10*phi,0)+' mm disponibles dans l\'appui).'); }
+     if(a.k===0){ x0=-apW(0)/2000+c/1000; const r=ancrageRive(phi,g.nb,Vf0,gap,true,0); hk0=r.type!=='droit'; ancAll.push({appui:0,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'sup',diam:phi,lbDispo:r2(r.util,0)}); if(r.insuffisant) warn.push('Appui 0 : ancrage des chapeaux Ø'+phi+' insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.util,0)+' mm disponibles dans l\'appui).'); }
+     if(a.k===n){ x1=Ltot+apW(n)/2000-c/1000; const r=ancrageRive(phi,g.nb,VfN,gap,true,n); hk1=r.type!=='droit'; ancAll.push({appui:n,type:r.type,lbd:r2(r.lbd,0),lbd_m:r2(r.lbd/1000,3),lit:'sup',diam:phi,lbDispo:r2(r.util,0)}); if(r.insuffisant) warn.push('Appui '+n+' : ancrage des chapeaux Ø'+phi+' insuffisant (l_bd = '+r2(r.lbd,0)+' mm > '+r2(r.util,0)+' mm disponibles dans l\'appui).'); }
      x0=Math.max(x0,node[a.k]-(adjL||0)); x1=Math.min(x1,node[a.k]+(adjR||0));
      if(a.k===0) x0=-apW(0)/2000+c/1000; if(a.k===n) x1=Ltot+apW(n)/2000-c/1000;
      const rep=nextRep(); const rec={rep,appui:a.k,nb:g.nb,diam:phi,x0:r2(x0,3),x1:r2(x1,3),lit:1,role:g.tag,AsReel:r2(g.nb*Ab(phi)/100),AsReelZone:r2((nc*Ab(phi)+AsMont)/100),AsReq:r2(a.AsReq/100),ancrage:hk0||hk1?'crochet 90°':'droit'};
@@ -40381,17 +40398,23 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {
     const xs=-aApp/2000+c/1000, xe=Ltot+aApp/2000-c/1000, Ltm=xe-xs;
     const l0=lap(phim,fyd,true,0,100)/1000;
-    const segs=[]; const mids=node.slice(0,n).map((x0,e)=>x0+spans[e]/2); let pos=xs, guard=0;
-    // tronçons de 12 m maximum ; coupures en milieu de travée (zone comprimée pour des barres supérieures), jamais sur un appui
-    while(xe-pos>12&&guard++<20){ const lim=pos+12-l0/2; let cut=null; mids.forEach(mm=>{ if(mm>pos+l0&&mm<=lim&&(cut==null||mm>cut)) cut=mm; }); if(cut==null) cut=lim;
-     segs.push([pos,cut+l0/2]); lapsAll.push({x0:r2(cut-l0/2,3),x1:r2(cut+l0/2,3),repSeg:segs.length}); pos=cut-l0/2; }
-    segs.push([pos,xe]);
-    segs.forEach((sg,i)=>{ const rep=nextRep(); sg.rep=rep; addNom(rep,'Barres de montage'+(segs.length>1?' (tronçon '+(i+1)+')':''),nm,phim,nm*Ab(phim),AsTopN,sg[1]-sg[0],'Droit','montage'); });
+    const segs=[]; const mids=node.slice(0,n).map((x0,e)=>x0+spans[e]/2);
+    /* barres de montage : continues par défaut ; si l'ingénieur choisit « interrompues », elles s'arrêtent à la face de chaque appui intermédiaire non calculé et reprennent de l'autre côté */
+    const mCoupe=elsSaisi(P,'montageNC')&&P.montageNC==='interrompu'; const bornes=[]; let a0m=xs;
+    if(mCoupe) nonCalc.filter(q=>q.appui>0&&q.appui<n).sort((p,q)=>p.appui-q.appui).forEach(q=>{ bornes.push([a0m,node[q.appui]-aApp/2000+c/1000]); a0m=node[q.appui]+aApp/2000-c/1000; });
+    bornes.push([a0m,xe]);
+    bornes.forEach(([bs,be])=>{ let pos=bs, guard=0;
+     /* tronçons de 12 m maximum ; coupures en milieu de travée (zone comprimée pour des barres supérieures), jamais sur un appui */
+     while(be-pos>12&&guard++<20){ const lim=pos+12-l0/2; let cut=null; mids.forEach(mm=>{ if(mm>pos+l0&&mm<=lim&&(cut==null||mm>cut)) cut=mm; }); if(cut==null) cut=lim;
+      segs.push([pos,cut+l0/2]); lapsAll.push({x0:r2(cut-l0/2,3),x1:r2(cut+l0/2,3),repSeg:segs.length}); pos=cut-l0/2; }
+     segs.push([pos,be]); });
+    const mNote=nonCalc.length?'montage, non compté comme acier d\'appui':''; if(mNote){ hyp.push('Appui non calculé ('+nonCalc.map(q=>q.appui).join(', ')+') : les barres de montage de la poutre '+(mCoupe?'sont interrompues à la face de cet appui (choix saisi)':'passent au-dessus de cet appui (par défaut)')+' ; ce sont des barres constructives, « '+mNote+' » : elles ne sont pas comptées dans la résistance. À confirmer par l\'ingénieur.'); }
+    segs.forEach((sg,i)=>{ const rep=nextRep(); sg.rep=rep; addNom(rep,'Barres de montage'+(mNote?' ('+mNote+')':'')+(segs.length>1?' (tronçon '+(i+1)+')':''),nm,phim,nm*Ab(phim),AsTopN,sg[1]-sg[0],'Droit','montage'); });
     lapsAll.forEach(l=>{ l.rep=segs[l.repSeg-1].rep; l.nb=nm; l.diam=phim; l.lo=r2(l0*1000,0); });
     // affectation aux travées (portion de chaque tronçon dans la travée)
     travOut.forEach((to,e)=>{ segs.forEach(sg=>{ const a0=Math.max(sg[0],node[e]-1e-9), a1=Math.min(sg[1],node[e+1]+1e-9);
       const ex0=e===0?sg[0]:null, ex1=e===n-1?sg[1]:null;
-      if(a1>a0) to.litSup.push({rep:sg.rep,nb:nm,diam:phim,x0:r2(e===0?Math.min(sg[0],a0):a0,3),x1:r2(e===n-1?Math.max(sg[1],a1):a1,3),lit:1,role:'montage',xTotal0:r2(sg[0],3),xTotal1:r2(sg[1],3),AsReel:r2(nm*Ab(phim)/100),AsReq:r2(AsTopN/100)}); }); });
+      if(a1>a0) to.litSup.push({rep:sg.rep,nb:nm,diam:phim,x0:r2(e===0?Math.min(sg[0],a0):a0,3),x1:r2(e===n-1?Math.max(sg[1],a1):a1,3),lit:1,role:'montage',mnote:mNote,xTotal0:r2(sg[0],3),xTotal1:r2(sg[1],3),AsReel:r2(nm*Ab(phim)/100),AsReq:r2(AsTopN/100)}); }); });
    }
    // chapeaux, arrêts, ancrages, recouvrements -> travées
    chapAll.forEach(ch=>{ const e=Math.min(ch.appui,n-1); travOut[e].chapeaux.push(ch); });
@@ -40488,7 +40511,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    hyp.push('Norme : Eurocode 2 (NF EN 1992-1-1), béton '+'C'+fck+', acier fyk = '+fyk+' MPa, γc = 1,5, γs = 1,15, α_cc = 1,0.');
    hyp.push('Enrobage nominal c = '+cEnr+' cm (donnée du formulaire, mesuré au cadre). Granulat 20 mm : espacement mini entre barres = max(Ø ; 25 ; 20 mm).');
    hyp.push('Moments et efforts : combinaison ELU '+(isCR?'(enveloppe de la charge roulante, coefficients 1)':(R._gammaG===1.25?'1,25G + 1,5Q':'1,35G + 1,5Q'))+' prise sur l\'enveloppe du calcul RDM ('+(R._pp&&R._pp.inclus?'poids propre inclus : '+R._pp.g_kNm+' kN/m':'poids propre non inclus si non saisi')+'). Appuis supposés de largeur '+aApp/10+' cm, portées entre axes d\'appuis.');
-   hyp.push('Sections d\'acier calculées (skill dimensionnement-beton-arme) avec la hauteur utile RÉELLE des lits choisis (d = h − c − Øcadre − Ø/2 ou centre de gravité des lits) ; K = M/(b·d²·fck), z = d·(0,5+√(0,25−K/1,333)) ≤ 0,95d, constante 1,333 = 2·αcc/γc avec αcc = 1, K lim = 0,21 (au-delà : armatures comprimées) ; As,min = max(0,26·fctm/fyk·b·d ; 0,0013·b·d) ; As,max = 0,04·Ac.');
+   hyp.push('Sections d\'acier calculées avec la hauteur utile RÉELLE des lits choisis (d = h − c − Øcadre − Ø/2 ou centre de gravité des lits) ; K = M/(b·d²·fck), z = d·(0,5+√(0,25−K/1,333)) ≤ 0,95d, constante 1,333 = 2·αcc/γc avec αcc = 1, K lim = 0,21 (au-delà : armatures comprimées) ; As,min = max(0,26·fctm/fyk·b·d ; 0,0013·b·d) ; As,max = 0,04·Ac.');
    hyp.push('Arrêts de barres : épure des moments décalée de a_l = z·cotθ/2 = '+r2(aL,0)+' mm avec cotθ = '+r2(cotUsed,2)+' unique pour les cadres, a_l et ΔF_td (EC2), puis prolongement de l_bd au-delà du point où la barre n\'est plus nécessaire.');
    hyp.push('Ancrages : l_bd = α1·α2·α3·α4·α5·l_b,rqd ≥ l_b,min (EC2) ; f_bd = 2,25·η1·η2·f_ctd (η1 = 1 lits inférieurs, 0,7 lits supérieurs h > 250 mm) ; α3 = α4 = α5 = 1 par défaut (valeurs usuelles) ; appui de rive : F = 0,5·V·cotθ, crochet 90° (α1 = 0,7 si cd > 3Ø) si l\'ancrage droit ne tient pas dans l\'appui.');
    hyp.push('Cadres : Ø'+phiT+', '+brins+' brins, cotθ = '+r2(cotUsed,2)+' ('+(elsSaisi(P,'cotImpose')?'imposé par l\'ingénieur':'1 ≤ cotθ ≤ 2,5, choisi sur V_Ed '+(P.cotV==='reduit'?'réduit à d du nu d\'appui = '+r2(VcotRef,1):'NON réduit au nu d\'appui = '+r2(VfaceMax,1))+' kN ≤ V_Rd,max')+'), A_sw/s calculé avec V_Ed réduit à d du nu d\'appui (EC2), écartement max = min(0,75d ; Asw/(ρw,min·b)) = '+smax+' mm ; premier cadre à 50 mm du nu de l\'appui.');
@@ -40498,7 +40521,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    { const E={ok:'conforme',ko:'NON conforme',nf:'non vérifié'}, vf=((R.ferraillage&&R.ferraillage.verifs)||[]), fl=vf.filter(v=>/flèche/.test(v.nom)), fi=vf.filter(v=>/fissuration/.test(v.nom));
      const tFl=fl.length?'flèche par la courbure ('+fl.map(v=>E[v.etat]).filter((x,i,a)=>a.indexOf(x)===i).join(' / ')+')':'flèche non calculée';
      const tFi=fi.length?(fi.every(v=>/DISPENSE APPLIQUÉE/.test(v.calcul))?'fissuration DISPENSÉE (voir la note de calcul)':'fissuration ('+fi.map(v=>E[v.etat]).filter((x,i,a)=>a.indexOf(x)===i).join(' / ')+')'):'fissuration non calculée';
-     hyp.push('États ELS (détail dans la note de calcul) : '+tFl+' ; '+tFi+'. Effort tranchant complété (voir la note) : bielle d\'about, charges concentrées proches des appuis, jonction table-âme (si section en T saisie), torsion (si T_Ed saisi). Contraintes ELS vérifiées (EC2, voir la note). Non vérifié : appuis indirects et suspentes (EC2), réservations. Cadres : resserrement près des appuis par zones d\'espacement variable calculées sur l\'effort tranchant (V réduit à d du nu) ; la zone d\'about n\'est pas forcée à ≈ 2d, sa longueur résulte du profil de V (skill ferraillage : ≈ 2d si V y est maximal) — à contrôler. Section en T : non dessinée (table prise en compte dans la flèche seulement). Limites : Poids = π/4·Ø²·7850 kg/m³ sur longueurs développées ; chutes de coupe non comptées.'); }
+     hyp.push('États ELS (détail dans la note de calcul) : '+tFl+' ; '+tFi+'. Effort tranchant complété (voir la note) : bielle d\'about, charges concentrées proches des appuis, jonction table-âme (si section en T saisie), torsion (si T_Ed saisi). Contraintes ELS vérifiées (EC2, voir la note). Non vérifié : appuis indirects et suspentes (EC2), réservations. Cadres : resserrement près des appuis par zones d\'espacement variable calculées sur l\'effort tranchant (V réduit à d du nu) ; la zone d\'about n\'est pas forcée à ≈ 2d, sa longueur résulte du profil de V (≈ 2d si V y est maximal) — à contrôler. Section en T : non dessinée (table prise en compte dans la flèche seulement). Limites : Poids = π/4·Ø²·7850 kg/m³ sur longueurs développées ; chutes de coupe non comptées.'); }
 
    if(torOut.length) hyp.push('Torsion (EC2) : '+torOut.map(q=>'travée '+(q.e+1)+' : T_Ed = '+q.Td+' kN·m, A_sw/s = '+String(q.At).replace('.',',')+' cm²/m par branche, ΣA_sl = '+String(q.Asl).replace('.',',')+' cm² (haut '+String(q.AslTop).replace('.',',')+' + bas '+String(q.AslBot).replace('.',',')+' + 2 × '+String(q.AslSide).replace('.',',')+' sur les faces latérales)').join(' ; ')+' ; cadres fermés Ø'+phiT+' cumulant effort tranchant et torsion (A_sw/s ≥ V/(z·f_ywd·cotθ) + '+brins+'·A_t/s), espacement ≤ u/8 = '+Math.floor(2*(b+h)/8)+' mm ; section pleine ramenée à la section creuse t_ef = A/u.');
    if(suspOut.length) hyp.push('Appuis indirects (EC2) : '+suspOut.map(q=>'appui '+q.k+' : F_Ed = '+String(q.F).replace('.',',')+' kN, '+(q.req?'A_s,susp = F_Ed/f_yd = '+String(q.As).replace('.',',')+' cm² → '+q.n+' cadres HA'+q.phi+' (2 branches) dans la zone de '+q.Z+' cm de large':'poutre porteuse h_p = '+q.hP+' cm ≤ h = '+q.h+' cm : pas de suspension requise')).join(' ; ')+'. Suspension en plus des cadres d\'effort tranchant, dans la poutre porteuse (dessinée à l\'appui) ; répartition sur b + 0,5·h_p de chaque côté à confirmer. Un plan de la zone de suspension de la porteuse peut être ajouté (bouton « Ajouter un plan pour la poutre porteuse », Paramètres avancés) : c\'est un plan de la zone de suspension, pas un dimensionnement complet de la porteuse.');
@@ -40514,6 +40537,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function pcChange(e,id){
    const t=taskById(id); if(!t) return; const dp=pcData(t);
    const el=e.target;
+   if(dimStatut(dp)==='calcule'&&!el.matches('[data-pc="nom"]')&&!(el.closest&&el.closest('#pcApPop'))){ try{ clipToast('Fiche calculée : « Recalculer l\'ouvrage » pour modifier.'); }catch(_){ } beamRender(id); return; }
    if(el.matches('[data-pc="nom"]')){ dimSetDesignation(t,dp,el); return; }
    if(el.dataset.els){ elsChange(dp,el,'pc',id); return; }
    if(el.matches('[data-pc="materiau"]')){ dp.materiau=pcMatKey(el.value); try{persist();}catch(_){ } beamRender(id); return; }
@@ -40652,6 +40676,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function pcClick(e,id){
    const t=taskById(id); if(!t) return; const dp=pcData(t);
+   /* fiche calculée : aucune modification (ajout ou retrait de travée, de charge, d'essieu, torsion…) avant « Recalculer l'ouvrage » */
+   if(dimStatut(dp)==='calcule'&&e.target.closest('[data-pc-act="addChg"],[data-pc-act="delChg"],[data-pc-act="addAxle"],[data-pc-act="delAxle"],[data-pc-act="addSpan"],[data-pc-act="removeSpan"],[data-pc-act="torToggle"],[data-pc-act="riveReset"],[data-pc-act="torReset"]')){ try{ clipToast('Fiche calculée : « Recalculer l\'ouvrage » pour modifier.'); }catch(_){ } return; }
    const add=e.target.closest('[data-pc-act="addChg"]'); if(add){ dp.charges=dp.charges||[]; dp.charges.push({type:'G',forme:'repartie',repere:'global',nu_gauche_m:0,valeur_gauche:10}); beamRender(id); return; }
    const del=e.target.closest('[data-pc-act="delChg"]'); if(del){ const di=+del.dataset.pcIdx; dp.charges.splice(di,1); if(dp._uiChg===di) dp._uiChg=null; else if(dp._uiChg>di) dp._uiChg--; beamRender(id); return; }
    const addA=e.target.closest('[data-pc-act="addAxle"]'); if(addA){ dp.convoi=dp.convoi||[]; const lastDx=dp.convoi.length?Math.max(...dp.convoi.map(a=>+a.dx||0)):0; dp.convoi.push({dx:+(lastDx+1.5).toFixed(2),P:50}); beamRender(id); return; }
@@ -40733,10 +40759,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +(fr&&fr.fissuration?fcChoixFissuration(fr.fissuration,true,dp).map(c=>'<p class="ncPt" data-bad="0">'+esc(c.texte)+'</p>').join(''):'')
     +(fr?dimNotesIngenieur('pc',dp,fr.fissuration,null).map(n=>'<p class="ncPt" data-bad="0">'+esc(n.texte)+'</p>').join(''):'')
     +elsSaisiNotes(dp,'pc').map(t=>'<p class="ncPt" data-bad="0">'+esc(t)+'</p>').join('')
+    +((fr&&(fr.appuis||[]).some((q,k)=>k>0&&k<fr.appuis.length-1&&q&&q.ferrSup&&(q.ferrSup.As==null||q.ferrSup.warn)))?'<p class="ncPt" data-bad="0">'+esc('Appui intermédiaire non calculé : les barres de montage (constructives) '+(dp.montageNC==='interrompu'?'sont interrompues à la face de l\'appui (choix saisi)':'passent au-dessus de l\'appui (par défaut)')+' ; « montage, non compté comme acier d\'appui ». À confirmer par l\'ingénieur.')+'</p>':'')
     +((dp.vBielle==='reduit'||(dp.vBielle==='saisi'&&elsSaisi(dp,'vBielleSaisi_kN')))?'<p class="ncPt" data-bad="0">'+esc('Bielle vérifiée sur '+(dp.vBielle==='reduit'?'V réduit à d du nu':'une valeur de V saisie')+', base moins sécuritaire que V non réduit au nu (défaut) ; à justifier par l\'ingénieur.')+'</p>':'')
     +'<p class="ncPt" data-bad="0">'+esc('Choix de calcul de la poutre (voir Paramètres avancés) : 1) A_s,min avec '+(dp.asMinFct==='fl'?'f_ct,eff = max((1,6 − h/1000)·f_ctm ; f_ctm) (option saisie)':'f_ctm (EC2, défaut)')+'. 2) cotθ choisi sur V '+(dp.cotV==='reduit'?'réduit à d du nu (option saisie)':'non réduit au nu (défaut, sécuritaire)')+' ; A_sw/s calculé sur V réduit à d ; bielle vérifiée sur '+(dp.vBielle==='reduit'?'V réduit à d du nu (option saisie)':(dp.vBielle==='saisi'?'une valeur de V saisie'+(elsSaisi(dp,'vBielleSaisi_kN')?' ('+String(+dp.vBielleSaisi_kN).replace('.',',')+' kN, option saisie)':' (vide : V non réduit)'):'V non réduit au nu (défaut, sécuritaire)'))+'. 3) Jonction table-âme : cotθ_f = '+(elsSaisi(dp,'cotJ')?String(+dp.cotJ).replace('.',','):'1 (45°, défaut)')+', table '+(dp.flangeTens===true?'tendue':'comprimée')+'. 4) Flèche par la courbure : '+(dp.flecheGuide===true?'méthode alternative (E_c28 = 1,05·E_cm, 0,9·f_ctm dans M_cr, α_e − 1)':'E_cm/(1+φ), f_ctm, α_e (EC2 ; défaut)')+'. 5) Combinaison ELU : '+(dp.eluComb==='610b'?'1,25 G + 1,5 Q (alternative), valable si G ≤ 4,5 Q':'1,35 G + 1,5 Q (défaut)')+'. 6) Moments d\'appui '+(dp.faceRed===true?'réduits à la face (F_Ed,sup·t/8, ≥ 0,65 de l\'encastrement parfait)'+(dp.faceRedRive===true?', appuis de rive encastrés compris (option saisie ; F·t/8 plus faible que la réduction exacte à la face, sens de la sécurité)':', appuis intermédiaires seulement (défaut)'):'pris à l\'axe des appuis (défaut, sécuritaire)')+'. 7) Appuis de rive : armature supérieure pour au moins β1 = '+(elsSaisi(dp,'beta1Rive')?String(Math.round(+dp.beta1Rive*1000)/10).replace('.',',')+' % (saisi)':'25 % (défaut, sens de la sécurité ; le module retenait 15 %, valeur recommandée par l\'EC2)')+' du moment de la travée voisine (EC2) ; au moins '+(elsSaisi(dp,'pctInfRive')?String(+dp.pctInfRive).replace('.',',')+' % (saisi)':'25 % (défaut)')+' de l\'armature inférieure de travée prolongé sur l\'appui et ancré pour F_E = |V_Ed|·a_l/z + N_Ed avec N_Ed = 0 (EC2), le plan corrigeant automatiquement le nombre de barres ; ces pourcentages sont des valeurs par défaut, à confirmer. 8) Recouvrements (barres de montage au-delà de 12 m) : armatures transversales ΣA_st ≥ A_s d\'une barre recouverte pour Ø ≥ 20 mm (nombre de cadres 1 + l₀/(3·s), s = '+(elsSaisi(dp,'lapEspTransv_mm')?String(+dp.lapEspTransv_mm)+' mm saisi':'150 mm par défaut')+', 2 branches par cadre), cadres ancrés si plus de 50 % recouvert avec a ≤ 10Ø, barre transversale à moins de 4Ø de chaque extrémité en compression (EC2) ; les cadres du plan sont comptés s\'ils sont dans l₀, sinon des cadres de recouvrement sont ajoutés au plan et à la nomenclature. 9) Non traités : réduction de la table tendue au-delà de cotθ_f = 1,25, recouvrements des barres inférieures ou des chapeaux de plus de 12 m (signalés, non positionnés), armatures de peau (valeur usuelle).')+'</p>'
     +'<p class="ncPt" data-bad="0">Contraintes ELS (EC2) : combinaison caractéristique G + Q (ψ0 = 1), α_e = E_s/E_c,eff avec le φ saisi (retrait et fluage par E_c,eff), acier posé (poutre : estimé, barres Ø16 en nombre entier), section non fissurée si σ_ct ≤ f_ct,eff sinon fissurée, bande de 1 m pour la dalle ; σ_c ≤ 0,6·f_ck vérifié seulement en classes XD, XF, XS, σ_s ≤ 0,8·f_yk en toutes classes ; effets de la température non traités.</p>'
-    +'<p class="ncPt" data-bad="0">Effort tranchant — compléments : 1) bielle d\'about : appui direct, l_bd = longueur d\'appui − enrobage (hypothèse sécuritaire), z = 0,9d. 2) Charges concentrées à 0 ≤ a_v < 2d du nu d\'appui : β = max(a_v/2d ; 1/4), charges supposées appliquées en face supérieure et armatures longitudinales ancrées au-delà du nu ; vérification V\'_Ed0 ≤ A_sw·f_ywd sur 0,75·a_v avec les cadres retenus, dimensionnés sans minoration β ; bielles vérifiées sans la minoration ; charge roulante non étudiée. 3) Jonction table-âme seulement si la section en T est saisie : Δx = L/4, k = 1,0 (pas de reprise de bétonnage), cotθ_f = 1. 4) Torsion seulement si le bouton « Torsion : saisir T_Ed » est actif : section pleine rectangulaire ramenée à la section creuse équivalente, θ = 45° par défaut (cotθ saisissable), V_Ed de la travée pris comme concomitant (sécuritaire) ; cadres fermés cumulant effort tranchant et torsion, barres longitudinales réparties sur le contour (haut et bas ajoutées aux armatures de flexion, faces latérales en barres dédiées), tous repris au plan et à la nomenclature ; bouton éteint : aucune ligne de torsion. 5) Appuis indirects (EC2) seulement si cochés par appui dans les Paramètres avancés : A_s,susp = F_Ed/f_yd avec F_Ed = réaction ELU de l\'appui, cadres de suspension en plus des cadres d\'effort tranchant, dans la zone b + 0,5·h_p de chaque côté (hauteur de la poutre porteuse à renseigner ; règle de répartition à confirmer) ; armatures de la poutre porteuse non dessinées. 6) Resserrement des cadres près des appuis (skill ferraillage) : zones d\'espacement variable calculées sur l\'effort tranchant (V réduit à d du nu) ; la zone d\'about n\'est pas forcée à ≈ 2d, sa longueur résulte du profil de V : à contrôler par l\'ingénieur.</p>'
+    +'<p class="ncPt" data-bad="0">Effort tranchant — compléments : 1) bielle d\'about : appui direct, l_bd = longueur d\'appui − enrobage (hypothèse sécuritaire), z = 0,9d. 2) Charges concentrées à 0 ≤ a_v < 2d du nu d\'appui : β = max(a_v/2d ; 1/4), charges supposées appliquées en face supérieure et armatures longitudinales ancrées au-delà du nu ; vérification V\'_Ed0 ≤ A_sw·f_ywd sur 0,75·a_v avec les cadres retenus, dimensionnés sans minoration β ; bielles vérifiées sans la minoration ; charge roulante non étudiée. 3) Jonction table-âme seulement si la section en T est saisie : Δx = L/4, k = 1,0 (pas de reprise de bétonnage), cotθ_f = 1. 4) Torsion seulement si le bouton « Torsion : saisir T_Ed » est actif : section pleine rectangulaire ramenée à la section creuse équivalente, θ = 45° par défaut (cotθ saisissable), V_Ed de la travée pris comme concomitant (sécuritaire) ; cadres fermés cumulant effort tranchant et torsion, barres longitudinales réparties sur le contour (haut et bas ajoutées aux armatures de flexion, faces latérales en barres dédiées), tous repris au plan et à la nomenclature ; bouton éteint : aucune ligne de torsion. 5) Appuis indirects (EC2) seulement si cochés par appui dans les Paramètres avancés : A_s,susp = F_Ed/f_yd avec F_Ed = réaction ELU de l\'appui, cadres de suspension en plus des cadres d\'effort tranchant, dans la zone b + 0,5·h_p de chaque côté (hauteur de la poutre porteuse à renseigner ; règle de répartition à confirmer) ; armatures de la poutre porteuse non dessinées. 6) Resserrement des cadres près des appuis : zones d\'espacement variable calculées sur l\'effort tranchant (V réduit à d du nu) ; la zone d\'about n\'est pas forcée à ≈ 2d, sa longueur résulte du profil de V : à contrôler par l\'ingénieur.</p>'
     +(pp.inclus?'':'<p class="ncPt" data-bad="0">poids propre de la poutre exclu du calcul (non coché) — '+fC(pp.g_kNm)+' kN/m à ajouter si non compris dans G.</p>');
    const chgSection=ppTxt+((dp.charges||[]).length?'<table class="pcNCt"><thead><tr><th>Charge</th><th>Forme</th><th>Repère</th><th>Position</th><th>Valeur</th></tr></thead><tbody>'+chLines+'</tbody></table>':'<p>Aucune charge fixe saisie.</p>')
     +(isCR?'<p>Convoi mobile (charge roulante), '+sensLbl+' :</p><table class="pcNCt"><thead><tr><th>Essieu</th><th>Écartement (dx)</th><th>Charge</th></tr></thead><tbody>'+axLines+'</tbody></table>'
@@ -42191,7 +42218,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    svg.querySelectorAll('foreignObject .pcApBtn,foreignObject .pcAddSpan,foreignObject .pcDimWrap,foreignObject .pcgBtn').forEach(el=>{
     const w=el.offsetWidth, h=el.offsetHeight; if(!w||!h) return;
     el.classList.add('pcTouch'); { const fo=el.closest&&el.closest('foreignObject'); if(fo) fo.style.overflow='visible'; } el.style.setProperty('--pt-x',Math.max(0,(need-w)/2).toFixed(1)+'px'); el.style.setProperty('--pt-y',Math.max(0,(need-h)/2).toFixed(1)+'px'); });
-   { const fr=[...svg.querySelectorAll('[data-pcg-fo^="r"]')]; if(fr.length>1){ const D=+fr[0].getAttribute('width'), x0=+fr[0].getAttribute('x'); fr.forEach((f,i)=>f.setAttribute('x',x0+i*Math.max(D+10,need))); } }
+   { const fr=[...svg.querySelectorAll('[data-pcg-fo^="r"]:not([data-onbar])')]; if(fr.length>1){ const D=+fr[0].getAttribute('width'), x0=+fr[0].getAttribute('x'); fr.forEach((f,i)=>f.setAttribute('x',x0+i*Math.max(D+10,need))); } }
    if(!draw.__pcTouchClick){ draw.__pcTouchClick=true; draw.addEventListener('pointerdown',e=>{ const w=e.target.closest&&e.target.closest('.pcDimWrap'); if(w&&!e.target.closest('input,select,button')){ const i=w.querySelector('input'); if(i){ e.preventDefault(); e.stopPropagation(); i.focus(); try{ i.select(); }catch(_){ } } } },true); draw.addEventListener('click',e=>{ const w=e.target.closest&&e.target.closest('.pcDimWrap'); if(w&&!e.target.closest('input')){ const i=w.querySelector('input'); if(i) i.focus(); } }); }
   }
   /* ===== Vue téléphone (<= 600 px) du schéma de la poutre : le schéma garde une échelle lisible (PC_PHONE_S × le viewBox), le cadre se déplace au doigt (déplacement borné, indication au premier affichage) ; pas de défilement horizontal de la page ===== */
@@ -42580,12 +42607,14 @@ window.dimScaleBarAdd=function(svg,opt){
   if(!(ppm>0)||!isFinite(ppm)) return svg;
   const vx=+m[1], vy=+m[2], vw=+m[3], vh=+m[4], fs=Math.max(10,Math.round(vw/80)), tgt=Math.min(vw*0.4,Math.max(110,fs*13));
   const STEPS=[0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,20,50,100,200,500]; let L=STEPS[0]; STEPS.forEach(q=>{ if(q*ppm<=tgt) L=q; });
+  /* règle avec cercles de commande : les cercles se posent SUR la règle (aux quarts de sa longueur), qui doit donc rester assez longue pour qu'on voie la barre de chaque côté */
+  if(opt&&opt.ctrl&&opt.ctrl.length){ const need=170; if(L*ppm<need){ const q2=STEPS.find(q=>q*ppm>=need); if(q2) L=q2; } }
   const bw=L*ppm, fmt=x=>(x>=1||Math.abs(x*100-Math.round(x*100))>1e-6&&false?String(+x.toFixed(2)):String(+(x*100).toFixed(1))).replace('.',','), unit=L>=1?'m':'cm', val=x=>unit==='m'?String(+x.toFixed(2)).replace('.',','):String(+(x*100).toFixed(1)).replace('.',',');
-  const CT=(opt&&opt.ctrl)||[], DC=40, extra=Math.max(Math.round(fs*4.2),CT.length?Math.round(DC+fs*1.6):0), x0=vx+fs, y0=vy+vh+fs*0.4, INK='var(--ds-ink,#222)', SOFT='var(--ds-ink-soft,#777)';
-  const g='<g class="dimScaleBar" style="pointer-events:none"><text x="'+x0+'" y="'+(y0+fs)+'" font-size="'+fs+'" fill="'+SOFT+'">Échelle</text>'
+  const CT=(opt&&opt.ctrl)||[], DC=40, extra=Math.max(Math.round(fs*4.2),CT.length?Math.round(DC+fs*1.6)+10:0), x0=vx+fs, LS=CT.length?10:0, y0=vy+vh+fs*0.4, INK='var(--ds-ink,#222)', SOFT='var(--ds-ink-soft,#777)';
+  const g='<g class="dimScaleBar" style="pointer-events:none"><text x="'+(CT.length?x0+bw+fs*3.2:x0)+'" y="'+(CT.length?y0+fs*1.75+4:y0+fs)+'" font-size="'+fs+'" fill="'+SOFT+'">Échelle</text>'
    +'<rect x="'+x0+'" y="'+(y0+fs*1.5)+'" width="'+(bw/2)+'" height="'+(fs*0.5)+'" fill="'+INK+'" stroke="'+INK+'" stroke-width="1"/><rect x="'+(x0+bw/2)+'" y="'+(y0+fs*1.5)+'" width="'+(bw/2)+'" height="'+(fs*0.5)+'" fill="none" stroke="'+INK+'" stroke-width="1"/>'
-   +[0,0.5,1].map((q,i)=>'<line x1="'+(x0+bw*q)+'" y1="'+(y0+fs*1.3)+'" x2="'+(x0+bw*q)+'" y2="'+(y0+fs*2.2)+'" stroke="'+INK+'" stroke-width="1"/><text x="'+(x0+bw*q)+'" y="'+(y0+fs*3.4)+'" font-size="'+fs+'" text-anchor="'+(i===2?'start':'middle')+'" fill="'+INK+'">'+(q===0?'0':val(L*q))+(i===2?' '+unit:'')+'</text>').join('')+CT.map((c,i)=>'<foreignObject class="pcgFo pcgRule" data-pcg-fo="r'+i+'" x="'+(x0+bw+fs*5+i*(DC+10))+'" y="'+(y0+fs*1.75-DC/2)+'" width="'+DC+'" height="'+DC+'"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="pcgBtn pcgRound" data-pcg-act="'+c.act+'" aria-haspopup="menu" aria-label="'+c.aria+'" title="'+c.title+'"><span class="pcgGl">'+c.g+'</span><span class="pcgVl">'+c.txt+'</span></button></foreignObject>').join('')+'</g>';
-  const nvw=Math.max(vw,bw+fs*8+CT.length*(DC+10)), nvh=vh+extra;
+   +[0,0.5,1].map((q,i)=>'<line x1="'+(x0+bw*q)+'" y1="'+(y0+fs*1.3)+'" x2="'+(x0+bw*q)+'" y2="'+(y0+fs*2.2)+'" stroke="'+INK+'" stroke-width="1"/><text x="'+(x0+bw*q)+'" y="'+(y0+fs*3.4+LS)+'" font-size="'+fs+'" text-anchor="'+(i===2?'start':'middle')+'" fill="'+INK+'">'+(q===0?'0':val(L*q))+(i===2?' '+unit:'')+'</text>').join('')+CT.map((c,i)=>'<foreignObject class="pcgFo pcgRule" data-pcg-fo="r'+i+'" data-onbar="1" x="'+(x0+bw*(i?0.75:0.25)-DC/2)+'" y="'+(y0+fs*1.75-DC/2)+'" width="'+DC+'" height="'+DC+'"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="pcgBtn pcgRound" data-pcg-act="'+c.act+'" aria-haspopup="menu" aria-label="'+c.aria+'" title="'+c.title+'"><span class="pcgGl">'+c.g+'</span><span class="pcgVl">'+c.txt+'</span></button></foreignObject>').join('')+'</g>';
+  const nvw=Math.max(vw,(x0-vx)+bw+(CT.length?fs*7.5:fs*8)), nvh=vh+extra;
   let out=svg.replace(m[0],'viewBox="'+vx+' '+vy+' '+nvw+' '+nvh+'"');
   const k=out.indexOf('>'), tag=out.slice(0,k), hm=/height="(\d+)"/.exec(tag); if(hm){ const nh=Math.round(+hm[1]*nvh/vh); out=tag.replace(hm[0],'height="'+nh+'"')+out.slice(k); }
   const e=out.lastIndexOf('</svg>'); return out.slice(0,e)+g+out.slice(e);
