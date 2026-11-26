@@ -6621,6 +6621,150 @@ function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return m
  const scan=()=>{ raf=0; const mb=document.getElementById('modalBody'); const st=mb&&mb.querySelector('.pcFormSticky'); sync(); if(st!==cur){ cur=st; if(ro){ try{ ro.disconnect(); }catch(_){ } ro=null; } if(st&&window.ResizeObserver){ ro=new ResizeObserver(sync); ro.observe(st); } } };
  try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
 })();
+/* ===== Composant commun d'interface des fiches : bouton et champ « icône dans un cadre arrondi, nom en dessous » + plein écran des schémas et plans =====
+   Une seule passe (dimUiScan) sur la fiche affichée : aucun module n'a sa copie. Les boutons d'action principaux (Calculer…), les bascules (ELU/ELS, modes), les cotes du schéma et les champs de cote restent tels quels. */
+(function(){
+ const IC={
+  note:'<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M9.5 12h6M9.5 15.5h6"/>',plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>',
+  trash:'<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',reset:'<path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5"/>',refresh:'<path d="M20 12a8 8 0 1 1-3-6.2M20 4v5h-5"/>',
+  swap:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>',ruler:'<rect x="3" y="9" width="18" height="6" rx="1"/><path d="M7 9v3M11 9v2M15 9v3M19 9v2"/>',down:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
+  save:'<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>',check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',print:'<path d="M7 9V4h10v5M7 17H5v-7h14v7h-2M8 14h8v6H8z"/>',
+  expand:'<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',play:'<path d="M8 5l11 7-11 7z"/>',close:'<path d="M6 6l12 12M18 6L6 18"/>',link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  len:'<path d="M3 12h18M3 8v8M21 8v8"/>',dim:'<rect x="5" y="7" width="14" height="11" rx="1"/><path d="M5 4h14"/>',load:'<path d="M12 3v13M7 11l5 5 5-5M5 21h14"/>',moment:'<path d="M5 17a7 7 0 1 1 14 0M15 17h4v-4"/>',
+  cover:'<rect x="3" y="3" width="18" height="18" rx="1"/><rect x="8" y="8" width="8" height="8"/>',concrete:'<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 10h.01M12 14h.01M15 9h.01M16 15h.01"/>',
+  rebar:'<path d="M4 8h16M4 12h16M4 16h16M7 5v14"/>',soil:'<path d="M3 8h18M3 13h18M3 18h18"/>',angle:'<path d="M5 19h14M5 19L15 7M10 19a5 5 0 0 0-1.2-3.3"/>',
+  back:'<path d="M15 5l-7 7 7 7"/>',up:'<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',brush:'<path d="M14 4l6 6-8 8H6v-6zM6 18l-2 3"/>',field:'<rect x="4" y="7" width="16" height="10" rx="2"/><path d="M8 12h8"/>',toggle:'<rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="2.5"/>',list:'<path d="M5 7h14M5 12h14M5 17h14"/>',text:'<path d="M5 7h14M5 12h14M5 17h9"/>',time:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',num:'<path d="M9 4L7 20M17 4l-2 16M4 9h16M3 15h16"/>'};
+ const svg=(k,cls)=>'<svg class="dimBI '+(cls||'')+'" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(IC[k]||IC.field)+'</svg>';
+ window.dimBiSvg=svg; window.DIM_BI=IC;
+ const strip=s=>String(s||'').replace(/^[\s←-⇿☀-➿️\u{1F300}-\u{1FAFF}＋+✕✓▶−]+/u,'').replace(/\s+/g,' ').trim();
+ /* bouton : icône d'après l'action puis d'après le texte */
+ function iconBtn(b,txt){
+  const a=[...b.attributes].find(x=>/^data-[a-z]+-act$/.test(x.name)), act=(a?a.value:'')+' '+(b.hasAttribute('data-els-reset')?'reset':'');
+  const T=(act+' '+txt).toLowerCase();
+  if(b.getAttribute('role')==='switch') return 'toggle';
+  if(b.hasAttribute('data-beam-back')||/^‹/.test(b.textContent.trim())) return 'back';
+  if(/fermer|✕|close/.test(T)&&!/supprimer/.test(T)) return 'close';
+  if(/export|partag|📤/.test(T)) return 'up';
+  if(/brush|pinceau|🖌|mise en forme/.test(T)) return 'brush';
+  if(/printnote|voirnote|note/.test(T)&&!/créer/.test(T)) return 'note';
+  if(/créer la note|notecalcul/.test(T)) return 'note';
+  if(/reset|rétablir|réinitial/.test(T)) return 'reset';
+  if(/del|supprimer|retirer|remove/.test(T)||/^🗑/.test(b.textContent.trim())) return 'trash';
+  if(/^(add|\+)|ajouter|addcouche|＋/.test(T)||/^＋/.test(b.textContent.trim())) return 'plus';
+  if(/gen|générer|refresh/.test(T)) return 'refresh';
+  if(/méthode|modal|methode/.test(T)) return 'swap';
+  if(/proposer|predim/.test(T)) return 'ruler';
+  if(/descente|openDescente/i.test(T)) return 'down';
+  if(/enregistrer|save/.test(T)) return 'save';
+  if(/appliquer|reporter|apply|report/.test(T)) return 'check';
+  if(/imprimer|print/.test(T)) return 'print';
+  if(/portique|lier|lien/.test(T)) return 'link';
+  if(/run|valider|calculer/.test(T)) return 'play';
+  return 'field';
+ }
+ const BSKIP='svg,foreignObject,.dimZOv,.pcNC,.ncDoc,.pjg-sel';
+ function doBtn(b){
+  b.dataset.dimui='1';
+  if(b.matches('.primary,.pcBtnMain,.pcModName,.close-x,[data-els-md],[data-mod-switch],[data-dim-zoom]')||(b.matches('.back-x')&&!b.hasAttribute('data-beam-back'))||b.closest(BSKIP)||b.querySelector('svg')) return;
+  const raw=b.textContent.trim(); let txt=strip(raw);
+  const aria=b.getAttribute('aria-label')||b.getAttribute('title')||'';
+  if(!txt||txt.length<=2||/^[−+＋✕🗑‹]$/.test(raw)) txt=strip(aria)||txt;
+  if(b.hasAttribute('data-beam-back')) txt='Retour';
+  if(!txt&&/✕/.test(raw)) txt='Fermer';
+  if(!txt) txt=b.classList.contains('tf-exp')?'Exporter':(b.classList.contains('td-brush-bar')?'Pinceau':'');
+  if(!txt) return;
+  const ic=iconBtn(b,txt);
+  let name=txt;
+  if(ic==='trash') name='Supprimer'; else if(ic==='plus'&&!/^(ajouter|créer|nouveau|nouvelle)/i.test(name)) name='Ajouter '+name.charAt(0).toLowerCase()+name.slice(1);
+  if(!b.getAttribute('aria-label')) b.setAttribute('aria-label',strip(aria)||txt);
+  b.classList.add('dimIB'); b.innerHTML='<span class="dimIBf">'+svg(ic)+'</span><span class="dimIBl">'+name.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</span>';
+ }
+ /* champ : icône d'après la grandeur */
+ function iconFld(name,key,el){
+  const T=(name+' '+key).toLowerCase();
+  if(el.tagName==='SELECT') { if(/béton|classe|exposition/.test(T)) return 'concrete'; if(/acier|nuance/.test(T)) return 'rebar'; if(/sol|catégorie|essai/.test(T)) return 'soil'; return 'list'; }
+  if(el.type==='checkbox') return 'toggle';
+  if(/enrobage|cover/.test(T)) return 'cover'; if(/moment|\bm[xyz]?_|kn·m/.test(T)) return 'moment';
+  if(/charge|effort|poids|\bn_|\bv_|\bh_kn|\bg_|\bq_|kn|surcharge|force|réaction/.test(T)) return 'load';
+  if(/angle|°|φ|inclinaison|rotation/.test(T)) return 'angle'; if(/béton|fck|f_c/.test(T)) return 'concrete'; if(/acier|armature|section|as\b|φ|diamètre|ø/.test(T)) return 'rebar';
+  if(/sol|pression|module|couche|e_m|α|alpha|k_v|kpa|mpa|cohésion|frottement/.test(T)) return 'soil';
+  if(/longueur|portée|hauteur|largeur|épaisseur|côté|profondeur|distance|dimension|entraxe|position|cote|\bh\b|\bb\b|\bl\b|\(m\)|\(cm\)|\(mm\)/.test(T)) return /épaisseur|largeur|côté|\bb\b|\bh\b/.test(T)?'dim':'len';
+  if(/durée|temps|feu|h\)/.test(T)) return 'time';
+  if(el.type==='text'||el.tagName==='TEXTAREA') return 'text';
+  return 'num';
+ }
+ function doFld(l){
+  l.dataset.dimui='1';
+  if(l.closest('svg,foreignObject,.pcDraw,.pcNC,.ncDoc,.dimZOv,.pcFld,.pcDimWrap,.pjg-sel')) return;
+  const ctl=[...l.querySelectorAll('input,select,textarea')].filter(x=>!['hidden','file','radio','button','submit'].includes((x.type||'').toLowerCase()));
+  if(ctl.length!==1||l.querySelector('button,[type=radio]')) return;
+  const el=ctl[0], key=el.getAttribute('data-sm')||el.getAttribute('data-pc')||el.getAttribute('data-pt')||el.getAttribute('data-dl')||el.getAttribute('data-vl')||el.getAttribute('data-mz')||el.getAttribute('data-cd')||el.getAttribute('data-pu')||el.getAttribute('data-pp')||el.getAttribute('data-pm')||el.getAttribute('data-pf')||el.getAttribute('data-gt')||el.getAttribute('data-mu')||el.getAttribute('data-els')||'';
+  const isChk=el.type==='checkbox';
+  let unit='', tag=l.querySelector('.pcElsTag'), tagH=tag?tag.outerHTML:'';
+  const ue=l.querySelector('.pcUnitEls,.pcUnit'); if(ue){ unit=ue.textContent.trim(); ue.remove(); }
+  else if(!isChk){ let n=el.nextSibling; while(n&&n.nodeType===3){ unit+=n.textContent; const nx=n.nextSibling; n.remove(); n=nx; } unit=unit.trim(); }
+  if(tag) tag.remove();
+  const nm=l.querySelector('.pcElsLbl'); let nameH;
+  if(nm) nameH=nm.innerHTML; else { const c=l.cloneNode(true); c.querySelectorAll('input,select,textarea,.pcElsCtl,.pcUnitEls,.pcElsTag').forEach(x=>x.remove()); nameH=c.innerHTML; }
+  nameH=nameH.replace(/\s+/g,' ').trim(); if(!nameH&&!isChk) nameH=esc2(el.getAttribute('aria-label')||el.getAttribute('title')||'');
+  const nameT=(()=>{ const d=document.createElement('div'); d.innerHTML=nameH; return d.textContent; })();
+  const ic=iconFld(nameT,key,el);
+  l.classList.add('dimFD'); if(isChk) l.classList.add('dimFDc'); if(el.tagName==='SELECT') l.classList.add('dimFDs');
+  l.textContent='';
+  const f=document.createElement('span'); f.className='dimFDf'; f.innerHTML=svg(ic); f.appendChild(el);
+  if(unit){ const u=document.createElement('span'); u.className='dimFDu'; u.textContent=unit; f.appendChild(u); }
+  const n=document.createElement('span'); n.className='dimFDn'; n.innerHTML=nameH+(tagH?' '+tagH:'');
+  l.appendChild(f); l.appendChild(n);
+ }
+ function esc2(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+ /* plein écran d'un schéma ou d'un plan : calque fixe, zoom − ⟲ ＋, pincement et glissement, lecture seule ; Échap, retour du geste ou × ferment seulement ce calque */
+ let ov=null;
+ function closeZ(fromPop){
+  if(!ov) return; const o=ov; ov=null; o.remove();
+  try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen().catch(()=>{}); }catch(_){ }
+  try{ if(screen.orientation&&screen.orientation.unlock) screen.orientation.unlock(); }catch(_){ }
+  if(!fromPop&&history.state&&history.state.dimZ){ try{ history.back(); }catch(_){ } }
+ }
+ function openZ(srcSvg,titre){
+  closeZ(true);
+  const s=srcSvg.cloneNode(true); s.removeAttribute('width'); s.removeAttribute('height'); s.removeAttribute('style'); s.setAttribute('preserveAspectRatio','xMidYMid meet'); s.querySelectorAll('input,select,textarea').forEach(x=>{ x.readOnly=true; x.tabIndex=-1; }); s.querySelectorAll('button').forEach(x=>x.remove());
+  ov=document.createElement('div'); ov.className='dimZOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label',titre||'Plein écran');
+  const tb=(k,l,a)=>'<button type="button" class="dimIB" data-z="'+a+'" aria-label="'+l+'"><span class="dimIBf">'+svg(k)+'</span><span class="dimIBl">'+l+'</span></button>';
+  ov.innerHTML='<div class="dimZBar"><div class="dimZTt">'+esc2(titre||'')+'</div><div class="dimZTools">'+tb('minus','Réduire','out')+tb('reset','Ajuster','fit')+tb('plus','Agrandir','in')+tb('close','Fermer','x')+'</div></div><div class="dimZStage"></div>';
+  const st=ov.querySelector('.dimZStage'); st.appendChild(s); document.body.appendChild(ov);
+  let k=1,x=0,y=0; const ptr=new Map(); let d0=0,k0=1;
+  const ap=()=>{ s.style.transform='translate('+x+'px,'+y+'px) scale('+k+')'; };
+  const zoom=(f,cx,cy)=>{ const r=st.getBoundingClientRect(); cx=(cx==null?r.left+r.width/2:cx)-r.left-r.width/2; cy=(cy==null?r.top+r.height/2:cy)-r.top-r.height/2; const nk=Math.max(0.5,Math.min(12,k*f)), q=nk/k; x=cx-(cx-x)*q; y=cy-(cy-y)*q; k=nk; ap(); };
+  ov.addEventListener('click',e=>{ const b=e.target.closest('[data-z]'); if(!b) return; const a=b.dataset.z; if(a==='x') closeZ(); else if(a==='in') zoom(1.3); else if(a==='out') zoom(1/1.3); else { k=1;x=0;y=0;ap(); } });
+  st.addEventListener('wheel',e=>{ e.preventDefault(); zoom(e.deltaY<0?1.15:1/1.15,e.clientX,e.clientY); },{passive:false});
+  st.addEventListener('pointerdown',e=>{ ptr.set(e.pointerId,{x:e.clientX,y:e.clientY}); try{ st.setPointerCapture(e.pointerId); }catch(_){ } if(ptr.size===2){ const [a,b]=[...ptr.values()]; d0=Math.hypot(a.x-b.x,a.y-b.y); k0=k; } });
+  st.addEventListener('pointermove',e=>{ const p=ptr.get(e.pointerId); if(!p) return; if(ptr.size===2){ ptr.set(e.pointerId,{x:e.clientX,y:e.clientY}); const [a,b]=[...ptr.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y); if(d0>0) zoom((k0*d/d0)/k,(a.x+b.x)/2,(a.y+b.y)/2); } else { x+=e.clientX-p.x; y+=e.clientY-p.y; ptr.set(e.pointerId,{x:e.clientX,y:e.clientY}); ap(); } });
+  const up=e=>{ ptr.delete(e.pointerId); }; st.addEventListener('pointerup',up); st.addEventListener('pointercancel',up);
+  try{ history.pushState({dimZ:1},''); }catch(_){ }
+  try{ if(ov.requestFullscreen) ov.requestFullscreen().then(()=>{ try{ if(screen.orientation&&screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{}); }catch(_){ } }).catch(()=>{}); }catch(_){ }
+  try{ const f=ov.querySelector('[data-z="x"]'); if(f) f.focus({preventScroll:true}); }catch(_){ }
+ }
+ window.dimZoomOpen=openZ;
+ window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&ov){ e.stopImmediatePropagation(); e.preventDefault(); closeZ(); } },true);
+ window.addEventListener('popstate',()=>{ if(ov) closeZ(true); });
+ document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-dim-zoom]'); if(!b) return; e.preventDefault(); e.stopPropagation(); const w=b.closest('.pcDraw'); const sv=w&&w.querySelector('svg:not(.dimBI)'); if(!sv) return; const nc=b.closest('.pcNC,.ncDoc'); openZ(sv,nc?'Plan et schémas de la note':'Schéma'); },true);
+ function doDraw(d){
+  d.dataset.dimuiz='1'; if(d.closest('.dimZOv,.dimCalcOverlay')) return; const sv=d.querySelector('svg:not(.dimBI)'); if(!sv) return;
+  const note=!!d.closest('.pcNC,.ncDoc'); if(d.querySelector('[data-dim-zoom]')) return;
+  const b=document.createElement('button'); b.type='button'; b.className='dimIB dimZB'+(note?' dimZBn':' dimZBf'); b.setAttribute('data-dim-zoom','1'); b.setAttribute('aria-label','Plein écran'); b.setAttribute('data-noprint','1');
+  b.innerHTML='<span class="dimIBf">'+svg('expand')+'</span><span class="dimIBl">Plein écran</span>'; d.appendChild(b);
+ }
+ let raf=0;
+ function scan(){ raf=0; const mb=document.getElementById('modalBody')||document.body;
+  const R=[mb,...document.querySelectorAll('.dimDiffOv,.pcFeuOv,.dimModBox,#miniPromptOverlay,.dimCalcOverlay')];
+  R.forEach(r=>{ r.querySelectorAll('button.ghost:not([data-dimui]),button.pcBtnSm:not([data-dimui])').forEach(doBtn);
+   r.querySelectorAll('.pcPanel label:not([data-dimui]),.pcElsBody label:not([data-dimui]),.elsMDPane label:not([data-dimui]),.pcFeuCard label:not([data-dimui]),.dimDiffBox label:not([data-dimui])').forEach(doFld); });
+  document.querySelectorAll('.fiche-exp-bar button:not([data-dimui]),#modalBody button[role="switch"]:not([data-dimui]),#modalBody .ppSeg button:not([data-dimui]),#modalBody button[data-beam-back]:not([data-dimui])').forEach(doBtn);
+  mb.querySelectorAll('.pcDraw:not([data-dimuiz])').forEach(doDraw);
+ }
+ try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
+})();
+
 /* Clic sur un bouton de fiche pendant qu'un champ modifié a encore le focus : le changement re-dessine la fiche et le clic était perdu (calcul lancé sans la dernière saisie, ou pas lancé). On laisse d'abord le champ valider sa saisie, puis on rejoue le clic sur le même bouton. */
 (function(){
  let pend=null;
@@ -20193,6 +20337,49 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .dimModIc{flex:0 0 auto;width:28px;text-align:center;font-size:18px}
 .dimModIc .ts-mini{width:28px;height:28px;margin:0;vertical-align:middle}
 #modalBody:has(.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot,.pjVoileRoot,.pjPortiqueRoot,.pjMurRoot,.pjRideauRoot,.pjMassifRoot) #tfViewBtn{display:none!important}
+/* ===== Composant commun : cadre arrondi + icône + nom dessous (boutons, champs, plein écran) ===== */
+.dimIB{display:inline-flex!important;flex-direction:column;align-items:center;justify-content:flex-start;gap:4px;min-width:72px;max-width:132px;min-height:44px;height:auto!important;padding:2px 4px!important;margin:4px 6px 4px 0;background:transparent!important;border:0!important;box-shadow:none!important;color:var(--ds-ink,inherit);font:600 15px/1.2 var(--ds-font-body,system-ui,sans-serif)!important;text-align:center;cursor:pointer;vertical-align:top;border-radius:12px;width:auto!important}
+.dimIBf{display:flex;align-items:center;justify-content:center;width:48px;height:48px;min-width:44px;min-height:44px;box-sizing:border-box;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:14px;background:transparent;color:var(--ds-ink,inherit)}
+.dimIBf .dimBI{width:26px;height:26px}
+.dimIBl{display:block;font-size:15px;line-height:1.2;overflow-wrap:anywhere;word-break:normal;max-width:128px}
+.dimIB:hover .dimIBf{border-color:var(--ds-accent,#FFC400)}
+.dimIB:focus-visible{outline:3px solid var(--ds-accent,#FFC400);outline-offset:2px}
+.dimIB[disabled],.dimIB[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.dimFD{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:4px!important;margin:0 0 14px!important;grid-template-columns:none!important}
+.dimFDf{display:flex;align-items:center;gap:8px;min-height:48px;box-sizing:border-box;padding:0 12px;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:14px;background:transparent;max-width:360px;width:100%}
+.dimFDf:focus-within{border-color:var(--ds-accent,#FFC400);box-shadow:0 0 0 3px color-mix(in srgb,var(--ds-accent,#FFC400) 35%,transparent)}
+.dimFDf:has([aria-invalid="true"]){border-color:var(--ds-danger,#c0392b)}
+.dimFDf .dimBI{flex:none;width:24px;height:24px;color:var(--ds-ink-soft,#777)}
+.dimFDf input,.dimFDf select,.dimFDf textarea{flex:1 1 auto;min-width:0;width:auto!important;max-width:none!important;min-height:44px!important;margin:0!important;padding:0 2px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;font:600 15px/1.2 var(--ds-font-body,system-ui,sans-serif)!important;color:var(--ds-ink,inherit)}
+.dimFDf input:focus,.dimFDf select:focus{outline:0!important}
+.dimFDf [aria-invalid="true"]{text-decoration:underline wavy var(--ds-danger,#c0392b);text-underline-offset:4px}
+.dimFDu{flex:none;color:var(--ds-ink-soft,#777);font:500 15px/1 var(--ds-font-body,system-ui,sans-serif);white-space:nowrap}
+.dimFDn{display:block;font:600 15px/1.25 var(--ds-font-body,system-ui,sans-serif);color:var(--ds-ink,inherit)}
+.dimFDn .pcElsTag{margin-left:6px;font-size:12px}
+.dimFDc .dimFDf{width:auto;min-width:72px;justify-content:center}.dimFDc input[type=checkbox]{flex:none;width:24px!important;height:24px!important;min-height:24px!important}
+.dimFDs .dimFDf{max-width:420px}
+.dimZB{position:absolute;z-index:6;background:color-mix(in srgb,var(--panel,#fff) 82%,transparent)!important;margin:6px!important;min-width:84px}
+.dimZBn{top:0;right:0}.dimZBf{bottom:0;right:0;display:none!important}
+.pcDraw{position:relative}
+@media (max-width:1024px){.dimZBf{display:inline-flex!important}}
+.dimZOv{position:fixed;inset:0;z-index:99999;width:100vw;height:100vh;height:100dvh;box-sizing:border-box;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);display:flex;flex-direction:column;background:var(--panel,#fff);color:var(--ds-ink,#111)}
+.dimZBar{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:6px 10px}
+.dimZTt{font:700 15px/1.3 var(--ds-font-title,system-ui);padding-top:12px;min-width:0}
+.dimZTools{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.dimZTools .dimIB{min-width:64px;margin:0}
+.dimZStage{flex:1 1 auto;min-height:0;overflow:hidden;touch-action:none;display:flex;align-items:center;justify-content:center;cursor:grab}
+.dimZStage svg{width:100%;height:100%;transform-origin:center center;max-width:100%;max-height:100%}
+.dimZStage svg input{pointer-events:none}
+@media (orientation:landscape) and (max-height:520px){.dimZBar{padding:2px 8px}.dimZTt{display:none}.dimZTools .dimIBl{font-size:13px}}
+@media print{.dimZB,.dimZOv{display:none!important}}
+.dimIB[aria-checked="true"] .dimIBf,.dimIB[aria-pressed="true"] .dimIBf,.dimIB.on .dimIBf{border-color:var(--ds-accent,#FFC400);background:color-mix(in srgb,var(--ds-accent,#FFC400) 18%,transparent)}
+.fiche-exp-bar .dimIB{opacity:1!important;pointer-events:auto}
+.pcModName{min-height:44px!important}
+.elsMDBtn{flex-direction:column!important;align-items:center!important;text-align:center!important;gap:4px!important;border:0!important;background:transparent!important;min-height:44px!important;padding:4px!important}
+.elsMDBtn .elsMDIc{width:48px!important;height:48px!important;padding:8px;box-sizing:border-box;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:14px;color:var(--ds-ink)}
+.elsMDBtn.on .elsMDIc,.elsMDBtn:hover .elsMDIc{border-color:var(--ds-accent,#FFC400)}.elsMDBtn.on .elsMDIc{background:color-mix(in srgb,var(--ds-accent,#FFC400) 18%,transparent)}
+.elsMDBtn .elsMDTx{align-items:center;text-align:center}
+.elsMD{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important}
 .mzLay{width:100%;border-collapse:collapse;margin:6px 0 10px}.mzLay th,.mzLay td{padding:4px 6px;text-align:left;font-size:var(--ds-fs-help,12px)}.mzLay input{width:92px;min-height:40px;box-sizing:border-box}.mzLay td:last-child{width:48px}
 .pjBeamRoot .pcModHead .pcNote{font-size:var(--ds-fs-help);opacity:1;padding:3px 10px!important;color:var(--ds-ink-soft)}
 .pjBeamRoot .pjBeam-top{min-height:56px;margin-bottom:6px;gap:8px}
