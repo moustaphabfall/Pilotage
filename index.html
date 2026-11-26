@@ -20098,6 +20098,12 @@ html[data-theme="sombre"] .fplSvg{--fp-acier:#FFC400;--fp-ink:#F5D86B;--fp-dim:#
 .pcZoomTools{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 12px)}
 .pcSvg foreignObject{overflow:visible}
 .pcSvg .dimAtt,.pcSvg .dimLn,.pcSvg .dimTk,.pcSvg text{pointer-events:none}
+@media (max-width:600px){
+ .pcBeamDraw.pcPhone{justify-content:flex-start;align-items:flex-start;max-height:54vh;touch-action:none;padding-top:108px;padding-bottom:56px}
+ .pcBeamDraw.pcPhone>svg.pcSvg{max-width:none;flex:0 0 auto;margin:0;transform-origin:0 0}
+ .pcBeamDraw.pcPhone.pcSized{max-height:none}
+ .pcPanHint{position:absolute;left:8px;bottom:34px;z-index:5;padding:6px 12px;border-radius:999px;border:1px solid var(--ds-line,#ccc);background:var(--panel,#fff);color:var(--ink,#16232B);font-size:13px;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+}
 .pcTouch{position:relative}
 .pcTouch::after{content:'';position:absolute;left:calc(-1*var(--pt-x,0px));right:calc(-1*var(--pt-x,0px));top:calc(-1*var(--pt-y,0px));bottom:calc(-1*var(--pt-y,0px))}
 .pcTouch>input,.pcTouch>select{position:relative;z-index:1}
@@ -26230,7 +26236,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const spansRaw=dp.travees.map(t=>+t.portee_m||0), vS=spansRaw.reduce((a,L)=>a+(L>0?L:0),0), nI=spansRaw.filter(L=>!(L>0)).length, Linv=vS>0?Math.max(0.6,0.2*vS/Math.max(0.3,1-0.2*nI)):1, spans=spansRaw.map(L=>L>0?L:Linv); const total=spans.reduce((a,b)=>a+b,0)||1; /* portée nulle : dessin neutre à largeur minimale, message à la place */
    const bcm=+dp.b_cm||20, hcm=+dp.h_cm||50; const mat=pcMatKey(dp.materiau);
    const BTN=18;
-   const W=878,padL=100,padR=340; const beamW=W-padL-padR; const sx=beamW/total;
+   const W=886,padL=108,padR=340; const beamW=W-padL-padR; const sx=beamW/total;
    const rectH=Math.max(10,Math.min(50,hcm*0.55));
    const pos=pcGlobalPositions(spans);
    // pré-passe : combien de « voies » de charges superposées faut-il réserver au-dessus de la poutre ?
@@ -26345,7 +26351,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    // boutons ＋ / － de travée : collés directement à la poutre, le － toujours côté poutre (le plus proche)
    const xEnd=padL+beamW; const bY=baseY-btnSz/2;
    /* zone tactile de chaque bouton ≈ 44 px à l'écran (HB unités svg), glyphe lisible ; ＋ à l'extérieur, － contre la poutre */
-   const HB=40, GF=Math.max(15,Math.round(btnSz*0.9)), hbY=baseY-HB/2;
+   const HB=44, GF=Math.max(15,Math.round(btnSz*0.9)), hbY=baseY-HB/2+5; /* +5 : dégage la zone de l'axe des ordonnées dessinée par-dessus */
    const sb=(x,act,side,glyph,title)=>'<foreignObject x="'+x+'" y="'+hbY+'" width="'+HB+'" height="'+HB+'"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="pcAddSpan'+(act==='removeSpan'?' pcRmSpan':'')+'" style="font-size:'+GF+'px" data-pc-act="'+act+'" data-pc-side="'+side+'" title="'+title+'" aria-label="'+title+'">'+glyph+'</button></foreignObject>';
    const GAPB=12; /* écart ＋/－ : les zones tactiles élargies de 44 px ne se chevauchent pas dès l'échelle 0,85 */
    const addBtns=sb(padL-2*HB-GAPB,'addSpan','left','＋','Ajouter une travée à gauche')
@@ -38737,9 +38743,26 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    { const f0=svg.querySelector('[data-pcg-fo="0"]'), f1=svg.querySelector('[data-pcg-fo="1"]'); if(f0&&f1){ const u=+f0.getAttribute('width'), w1=+f1.getAttribute('width'), ax=+f0.dataset.ax, h0=Math.max(u,need), h1=Math.max(w1,need), y=Math.max(2,(need-u)/2); f0.setAttribute('y',y); f1.setAttribute('y',y); f1.setAttribute('x',ax+u/2+(h0+h1)/2-w1/2); } }
    if(!draw.__pcTouchClick){ draw.__pcTouchClick=true; draw.addEventListener('pointerdown',e=>{ const w=e.target.closest&&e.target.closest('.pcDimWrap'); if(w&&!e.target.closest('input,select,button')){ const i=w.querySelector('input'); if(i){ e.preventDefault(); e.stopPropagation(); i.focus(); try{ i.select(); }catch(_){ } } } },true); draw.addEventListener('click',e=>{ const w=e.target.closest&&e.target.closest('.pcDimWrap'); if(w&&!e.target.closest('input')){ const i=w.querySelector('input'); if(i) i.focus(); } }); }
   }
+  /* ===== Vue téléphone (<= 600 px) du schéma de la poutre : le schéma garde une échelle lisible (PC_PHONE_S × le viewBox), le cadre se déplace au doigt (déplacement borné, indication au premier affichage) ; pas de défilement horizontal de la page ===== */
+  const PC_PHONE_S=1;
+  function pcPhoneOn(){ try{ return window.matchMedia('(max-width:600px)').matches; }catch(_){ return false; } }
+  function pcPhoneFit(draw){
+   if(!draw||!draw.classList||!draw.classList.contains('pcBeamDraw')) return; const svg=draw.querySelector('svg.pcSvg'); if(!svg) return; const vb=svg.viewBox&&svg.viewBox.baseVal; if(!vb||!vb.width) return;
+   if(pcPhoneOn()&&!draw.classList.contains('pcCollapsed')){
+    draw.classList.add('pcPhone'); svg.style.width=(vb.width*PC_PHONE_S)+'px'; svg.style.height=draw.classList.contains('pcSized')?'':((vb.height*PC_PHONE_S)+'px');
+    if(!draw.__pcHintDone&&!draw.querySelector('.pcPanHint')){ const h=document.createElement('div'); h.className='pcPanHint'; h.setAttribute('role','status'); h.textContent='↔ Faites glisser le schéma pour le déplacer'; draw.appendChild(h); setTimeout(()=>{ try{ h.remove(); }catch(_){ } draw.__pcHintDone=true; },7000); }
+   } else { draw.classList.remove('pcPhone'); svg.style.width=''; svg.style.height=''; const h=draw.querySelector('.pcPanHint'); if(h) h.remove(); }
+   pcPhoneClamp(draw);
+  }
+  function pcPhoneClamp(draw){
+   if(!draw.classList.contains('pcPhone')) return; const svg=draw.querySelector('svg.pcSvg'); if(!svg||!draw.__pcZ) return; const z=draw.__pcZ, cs=getComputedStyle(draw);
+   const aw=draw.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0), ah=draw.clientHeight-(parseFloat(cs.paddingTop)||0)-(parseFloat(cs.paddingBottom)||0);
+   const sr=svg.getBoundingClientRect(), sw=sr.width, sh=sr.height; z.x=Math.min(0,Math.max(Math.min(0,aw-sw),z.x)); z.y=Math.min(0,Math.max(Math.min(0,ah-sh),z.y));
+  }
   function pcZoomApply(draw){
    const svg=draw.querySelector('svg.pcSvg'); if(!svg) return;
-   const z=draw.__pcZ||{s:1,x:0,y:0};
+   const z=draw.__pcZ||{s:1,x:0,y:0}; pcPhoneClamp(draw);
+   if((z.x!==0||z.y!==0)&&draw.__pcHint!==1){ draw.__pcHint=1; draw.__pcHintDone=true; const h=draw.querySelector('.pcPanHint'); if(h) h.remove(); }
    svg.style.transform='translate('+z.x+'px,'+z.y+'px) scale('+z.s+')';
    draw.classList.toggle('pcDrawZoomed',z.s>1.001);
    if(draw.__pcTz!==z.s){ draw.__pcTz=z.s; pcTouchFix(draw); }
@@ -38795,7 +38818,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   try{
    new MutationObserver(()=>{
     const mb=document.getElementById('modalBody'); if(!mb) return;
-    mb.querySelectorAll('.pcDraw').forEach(d=>{ pcZoomSetup(d); pcTouchFix(d); });
+    mb.querySelectorAll('.pcDraw').forEach(d=>{ pcZoomSetup(d); pcPhoneFit(d); pcTouchFix(d); setTimeout(()=>{ try{ pcPhoneFit(d); pcTouchFix(d); }catch(_){ } },160); });
     mb.querySelectorAll('.fplDoc .fplDraw,.fplDoc .fplShape').forEach(fplFsSetup);
    }).observe(document.getElementById('modalBody')||document.body,{childList:true,subtree:true});
   }catch(_){ }
@@ -39037,7 +39060,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      const mb=document.getElementById('modalBody'); if(!mb) return;
      mb.querySelectorAll('.pcBeamDraw').forEach(setup);
     }).observe(document.getElementById('modalBody')||document.body,{childList:true,subtree:true});
-    window.addEventListener('resize',()=>{ document.querySelectorAll('.pcBeamDraw').forEach(d=>{ apply(d); pcTouchFix(d); }); });
+    window.addEventListener('resize',()=>{ document.querySelectorAll('.pcBeamDraw').forEach(d=>{ apply(d); pcPhoneFit(d); pcTouchFix(d); }); });
    }catch(_){ }
   })();
 
