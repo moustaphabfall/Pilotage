@@ -6613,7 +6613,24 @@ function dimProposerDocs(docNote,docPlan){
    Mécanisme commun à tous les modules (le conteneur de la fiche reçoit la classe dimCompact). DIM_COMPACT_MODE : 'calcul' = compact dès le clic sur Calculer et pendant le calcul ; 'off' = désactivé. */
 const DIM_COMPACT_MODE='calcul';
 function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return mb?mb.querySelector('.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot,.pjVoileRoot,.pjMixteRoot,.pjPortiqueRoot,.pjMurRoot,.pjRideauRoot,.pjMassifRoot'):null; }
-function dimCompactSections(root){
+
+/* Tous les modules : le haut du défilement de la fiche commence sous le schéma collant (un champ amené dans la vue n'est jamais caché sous lui) */
+(function(){
+ let ro=null, cur=null, raf=0;
+ const sync=()=>{ const mb=document.getElementById('modalBody'); if(!mb) return; const st=mb.querySelector('.pcFormSticky'); const h=st?Math.ceil(st.getBoundingClientRect().height+8):0; mb.style.scrollPaddingTop=h?h+'px':''; mb.style.setProperty('--pcStk',h+'px'); };
+ const scan=()=>{ raf=0; const mb=document.getElementById('modalBody'); const st=mb&&mb.querySelector('.pcFormSticky'); sync(); if(st!==cur){ cur=st; if(ro){ try{ ro.disconnect(); }catch(_){ } ro=null; } if(st&&window.ResizeObserver){ ro=new ResizeObserver(sync); ro.observe(st); } } };
+ try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
+})();
+/* Clic sur un bouton de fiche pendant qu'un champ modifié a encore le focus : le changement re-dessine la fiche et le clic était perdu (calcul lancé sans la dernière saisie, ou pas lancé). On laisse d'abord le champ valider sa saisie, puis on rejoue le clic sur le même bouton. */
+(function(){
+ let pend=null;
+ const sig=b=>[...b.attributes].filter(x=>/^data-/.test(x.name)).map(x=>'['+x.name+'="'+String(x.value).replace(/"/g,'\\"')+'"]').join('');
+ document.addEventListener('mousedown',e=>{ pend=null; const b=e.target.closest&&e.target.closest('button'), r=dimFicheRoot(); if(!b||!r||!r.contains(b)||!sig(b)) return; const a=document.activeElement;
+  if(a&&a!==b&&a.matches&&a.matches('input,select,textarea')&&r.contains(a)&&!a.readOnly) { pend={a,sel:sig(b)}; e.preventDefault(); } },true);
+ document.addEventListener('click',e=>{ if(!pend) return; const p=pend; pend=null; const b=e.target.closest&&e.target.closest('button'); if(!b||sig(b)!==p.sel) return;
+  e.stopImmediatePropagation(); e.preventDefault(); try{ p.a.blur(); }catch(_){ }
+  setTimeout(()=>{ try{ const nb=document.querySelector('#modalBody '+p.sel.replace(/\\"/g,'\\"')); if(nb) nb.click(); }catch(_){ } },30); },true);
+})();function dimCompactSections(root){
  const panel=root.querySelector('.pcPanel'); if(!panel) return [];
  const secs=[]; let cur={t:'',v:[]};
  [...panel.children].forEach(el=>{
@@ -6699,9 +6716,13 @@ function dimResumeModifs(L,onOk,onCancel,nextInd){ nextInd=nextInd||'';
 }
 /* ===== Indice de révision des documents (tous les modules) : un indice commun à la note de calcul et au plan de ferraillage de l'ouvrage (dp.indiceDoc, format numérique 0, 1, 2…
    comme les documents de l'étude), incrémenté à chaque recalcul dont les données d'entrée ont changé ; l'ancienne version (PDF joint) reste dans doc.versions, marquée obsolète. ===== */
-function dimIndiceDoc(t,dp){
+/* Documents d'un même ouvrage portés par plusieurs modules (tête de pieux / portance du pieu, semelle / massif de candélabre) : chaque module a sa propre note, son indice et son nom */
+const DIM_MODSUF={pu:' – tête de pieux',pp:' – portance du pieu',cd:' – massif de candélabre'};
+function dimDocMatch(d,mod){ return !d.module ? (!mod||mod==='pu'||mod==='sm') : d.module===mod; }
+function dimDocNom(type,t,dp,mod){ return type+' '+dimOuvrageNom(t,dp)+(DIM_MODSUF[mod]||''); }
+function dimIndiceDoc(t,dp,mod){
  try{
-  const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[])||[], docs=L.filter(d=>d&&t&&d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage'));
+  const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[])||[], docs=L.filter(d=>d&&t&&d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage')&&dimDocMatch(d,mod));
   let ind=dp.indiceDoc; if(ind==null||ind===''){ const n=docs.map(d=>parseInt(d.indice,10)).filter(x=>isFinite(x)); ind=String(n.length?Math.max(...n):0); }
   let L2=null; try{ L2=dimDiffEntrees(dp); }catch(_){ }
   if(L2&&L2.length) ind=String((parseInt(ind,10)||0)+1);
@@ -8518,7 +8539,7 @@ async function ficheExportPdf(id, mode){
   await saveFile(filename, blob);
   try{ clipToast(mode==='sms'?'PDF prêt : dans le menu de partage, choisissez « Messages »':'PDF prêt : dans le menu de partage, choisissez « Mail »'); }catch(e){}
 }
-function openTaskDetail(id){ window._ficheIaId=id; try{ localStorage.setItem('pg_lastFiche',String(id)); }catch(_){ } openTaskDetail0(id); try{ const mb=document.getElementById('modalBody'); if(mb && !mb.querySelector('.fiche-exp-bar')){ const bar=document.createElement('div'); bar.className='fiche-exp-bar'; bar.innerHTML=`<button type="button" class="tf-exp" onclick="ficheExportAsk('${String(id).replace(/'/g,'')}')" title="Exporter la fiche" aria-label="Exporter la fiche">📤</button>`; const x=mb.querySelector('.close-x'); if(x && x.nextSibling) mb.insertBefore(bar, x.nextSibling); else mb.prepend(bar); const br=mb.querySelector('h3 .td-brush[onclick^="brushOpen"]'); if(br){ br.classList.add('td-brush-bar'); bar.appendChild(br); } } }catch(e){ console.error(e); } { const bd=document.querySelector('#modalBody .modal-date-etat'); if(bd) bd.remove(); } setTimeout(()=>{ const q=document.getElementById("e-quoi"); if(q) bibAttach(q); try{ tpRender(id); }catch(e){ console.error(e); } },0); }
+function openTaskDetail(id){ try{ ['_dimView','_dimViewDL','_dimViewGT','_dimViewMU','_dimViewMZ','_dimViewPF','_dimViewPM','_dimViewPP','_dimViewPT','_dimViewPU','_dimViewRP','_dimViewSM','_dimViewVL'].forEach(k=>{ const o=window[k]; if(o&&o[id]&&o[id].view) o[id].view='form'; }); }catch(_){ } window._ficheIaId=id; try{ localStorage.setItem('pg_lastFiche',String(id)); }catch(_){ } openTaskDetail0(id); try{ const mb=document.getElementById('modalBody'); if(mb && !mb.querySelector('.fiche-exp-bar')){ const bar=document.createElement('div'); bar.className='fiche-exp-bar'; bar.innerHTML=`<button type="button" class="tf-exp" onclick="ficheExportAsk('${String(id).replace(/'/g,'')}')" title="Exporter la fiche" aria-label="Exporter la fiche">📤</button>`; const x=mb.querySelector('.close-x'); if(x && x.nextSibling) mb.insertBefore(bar, x.nextSibling); else mb.prepend(bar); const br=mb.querySelector('h3 .td-brush[onclick^="brushOpen"]'); if(br){ br.classList.add('td-brush-bar'); bar.appendChild(br); } } }catch(e){ console.error(e); } { const bd=document.querySelector('#modalBody .modal-date-etat'); if(bd) bd.remove(); } setTimeout(()=>{ const q=document.getElementById("e-quoi"); if(q) bibAttach(q); try{ tpRender(id); }catch(e){ console.error(e); } },0); }
 /* ===== Mini-plan dans la fiche : seule la pastille de l’ouvrage, à placer ou déplacer ===== */
 var tpZoom = 1, tpPlanSel = {};
 function tpPinShape(t){ const p=t.pos||{}, f=p.forme, z=p.sz; if(!f||f==='rond'||f==='libre') return ''; const c=tpColor(t); const base='margin:0;transform:translate(-50%,-50%);'; if(f==='cercle'&&z) return base+'background:transparent !important;border:3px solid '+c+';width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='rect'&&z) return base+'border-radius:3px;width:'+z.w*100+'%;height:'+z.h*100+'%;'; if(f==='ligne'&&z) return base+'border-radius:2px;height:5px;width:'+z.w*100+'%;'; if(f==='tri') return base+'border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%);'; return ''; }
@@ -12989,6 +13010,9 @@ document.addEventListener('keydown',e=>{
     else if(vis('fnOverlay')){ closeFonctionsMgr(); done=true; }
     else if(vis('niOverlay')){ niCancel(); done=true; }
     else if(document.getElementById('pdetOv')){ document.getElementById('pdetOv').remove(); try{pdet=null;}catch(_){} done=true; }
+    else if(document.querySelector('.dimDiffOv,.pcFeuOv,.dimCalcOverlay,.pcNfOv')){ const l=[...document.querySelectorAll('.dimDiffOv,.pcFeuOv,.dimCalcOverlay,.pcNfOv')]; l[l.length-1].remove(); done=true; }
+    else if(document.getElementById('overlay').classList.contains('open')&&document.querySelector('#modalBody .pcNCTop [data-beam-back="form"]')){ document.querySelector('#modalBody .pcNCTop [data-beam-back="form"]').click(); done=true; }
+    else if(document.getElementById('overlay').classList.contains('open')&&document.querySelector('#modalBody .pcNCwrap')&&typeof window.docViewerClose==='function'){ window.docViewerClose(); done=true; }
     else if(document.getElementById('overlay').classList.contains('open')){ closeModal(); done=true; }
     else if(document.getElementById('tabMenu')&&document.getElementById('tabMenu').classList.contains('open')){ closeTabMenu(); done=true; }
     else if(window.rtEscape&&document.getElementById('page-travaux')&&document.getElementById('page-travaux').classList.contains('active')&&window.rtEscape()){ done=true; }
@@ -22395,7 +22419,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
     if(ov0&&ov0.classList.contains('open')&&mb0&&!mb0.querySelector('.pcNCwrap')&&doc.ouvrageTaskId&&mb0.querySelector('.pcFormSticky,.pcPanel,.pcDimBox,.dimExpand,.dimCompact,.pcDraw')) window._docBackTask=doc.ouvrageTaskId;
     else if(!(ov0&&ov0.classList.contains('open')&&mb0&&mb0.querySelector('.pcNCwrap'))) window._docBackTask=null; }
   const soeurType=doc.docType==='Note de calcul'?'Plan de ferraillage':(doc.docType==='Plan de ferraillage'?'Note de calcul':null);
-  const soeur=soeurType&&doc.ouvrageTaskId?DOCS().find(d=>d.ouvrageTaskId===doc.ouvrageTaskId&&d.docType===soeurType&&!d.sub):null;
+  const soeur=soeurType&&doc.ouvrageTaskId?DOCS().find(d=>d.ouvrageTaskId===doc.ouvrageTaskId&&d.docType===soeurType&&!d.sub&&dimDocMatch(d,doc.module)):null;
   openModal('<button class="close-x" onclick="docViewerClose()" aria-label="Fermer" title="Fermer">×</button><div class="tf-kind">'+esc(doc.docType||'Document')+'</div>'
    +'<div class="pcNCwrap" style="padding-right:46px">'+((doc.docType==='Note de calcul'&&window.ncFormat)?window.ncFormat(doc.contenuHtml,{t:(ST().tasks||[]).find(x=>x.id===doc.ouvrageTaskId)}):doc.contenuHtml)+'</div>'
    +'<div class="pjDocActs">'
@@ -25118,8 +25142,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      if(res.poincon&&!res.poincon.nonGere) K.push({v:ncF(res.poincon.vEd1/res.poincon.vRdc*100,0)+' %',l:'Poinçonnement v_Ed(u1) / v_Rd,c',bad:!(res.poincon.ok_c&&res.poincon.ok_max)});
      if(res.barTravX&&!res.insuffisant) fer='Φ'+res.barTravX.phi+' e = '+res.barTravX.s+' mm';
     } else if(kind==='semelle'){
- const stR=(res.st||[]).find(x=>x.nom==='ELS')||(res.st||[])[0]||{qm:res.qp,q:res.qsol};
- K.push({v:ncF(stR.qm*1000,0)+' / '+ncF(stR.q*1000,0)+' kPa',l:'Contrainte appliquée / admissible du sol ('+(stR.nom||'ELS')+')',bad:!res.ok});
+ const stE=(res.st||[]).find(x=>/^ELS/.test(x.nom)), stU=(res.st||[]).find(x=>x.nom==='ELU'), stR=stE||(res.st||[])[0]||{qm:res.qp,q:res.qsol};
+ K.push({v:ncF(stR.qm*1000,0)+' / '+ncF(stR.q*1000,0)+' kPa',l:'Contrainte appliquée / admissible du sol à l\'ELS (q_ELS)',bad:stR.ok===false||(stR.ok===undefined&&!res.ok)});
+ if(stE&&stU) K.push({v:ncF(stU.qm*1000,0)+' / '+ncF(stU.q*1000,0)+' kPa',l:'Contrainte appliquée / admissible du sol à l\'ELU',bad:stU.ok===false});
  K.push({v:res.isolee?(ncF(res.A)+' × '+ncF(res.B)+' m'):(ncF(res.B)+' m/ml'),l:(res.isolee?'Dimensions A × B':'Largeur B')+' · Ht '+ncF(res.Ht*100,0)+' cm'});
  if(res.punch) K.push({v:ncF(res.punch.worst.ratio*100,0)+' %',l:'Poinçonnement v_Ed / v_Rd,c (contour le plus défavorable)',bad:res.punch.worst.ratio>1+1e-9});
  if(res.isolee&&res.barX) K.push({v:res.barX.n+' Ø'+res.barX.phi+' · '+res.barY.n+' Ø'+res.barY.phi,l:'Nappes // B et // A'});
@@ -25232,7 +25257,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     let projet='', indice='0', niv=(t&&t.niveau)||'', bat='';
     try{ projet=(t&&t.mbf&&t.mbf.projet)||(window.PILOTAGE_PROJET&&PILOTAGE_PROJET.nom)||''; }catch(_){}
     try{ const b=(state.batiments||[]).find(x=>x.id===(t&&t.batId)); bat=b?b.nom:''; }catch(_){}
-    try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; const d=t&&L.find(x=>x.ouvrageTaskId===t.id&&x.docType==='Note de calcul'); if(d&&d.indice!=null&&d.indice!=='') indice=String(d.indice); }catch(_){}
+    try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; const nmod=kind==='pieuport'?'pp':(kind==='pieu'?'pu':(kind==='cand'?'cd':(kind==='semelle'?'sm':undefined))), d=t&&L.find(x=>x.ouvrageTaskId===t.id&&x.docType==='Note de calcul'&&(nmod===undefined?!x.module:dimDocMatch(x,nmod))); if(d&&d.indice!=null&&d.indice!=='') indice=String(d.indice); }catch(_){}
     let typ=''; try{ typ=(t&&t.typeStructureId)?beTypeStructureNom(t.typeStructureId):''; }catch(_){}
     const date=(typeof todayStr==='function')?todayStr():'';
     const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(projet||'—')+'</td><td><b>Ouvrage</b>'+esc(nomO)+(typ?' · '+esc(typ):'')+'</td><td><b>Norme</b>'+esc(norme)+'</td></tr>'
@@ -25317,7 +25342,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(!v){ const prev=dp.nom||t.quoi||''; el.value=prev; if(prev){ try{clipToast('Une désignation est nécessaire : l\'ancienne est conservée.');}catch(_){ } } return; }
    t.quoi=v; t.nom=v; dp.nom=v;
    try{ const q=document.getElementById('e-quoi'); if(q) q.value=v; const ti=document.getElementById('e-titre'); if(ti&&!ti.querySelector('input')) ti.textContent=v; }catch(_){ }
-   try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; L.forEach(d=>{ if(d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage')){ d.nom=d.docType+' '+v+(d.sub?' – poutre porteuse'+(d.subSuffixe||''):'')+dimIndSuffix(d); d.ouvrage=v; } }); }catch(_){ }
+   try{ const L=(window.pjDocsList&&window.pjDocsList())||[]; L.forEach(d=>{ if(d.ouvrageTaskId===t.id&&(d.docType==='Note de calcul'||d.docType==='Plan de ferraillage')){ d.nom=d.docType+' '+v+(d.sub?' – poutre porteuse'+(d.subSuffixe||''):'')+(DIM_MODSUF[d.module]||'')+dimIndSuffix(d); d.ouvrage=v; } }); }catch(_){ }
    try{persist();}catch(_){ }
    try{ if(window.pjDbRefresh) window.pjDbRefresh(); }catch(_){ }
   }
@@ -30729,7 +30754,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Sol et excentricité',k:'gammaU',lbl:'Coefficient ELU de la résistance ultime qu',t:'num',def:2,min:1,max:5,step:0.1,unit:'',cond:smQuMode,aide:'q_ELU = qu/2 (coefficient partiel ELU). À confirmer.'},
    {grp:'Sol et excentricité',k:'gammaS',lbl:'Coefficient ELS de la résistance ultime qu',t:'num',def:3,min:1,max:6,step:0.1,unit:'',cond:smQuMode,aide:'q_ELS = qu/3 (coefficient partiel ELS). À confirmer.'},
    {grp:'Sol et excentricité',k:'refCharge',lbl:'Charge comparée à l\'admissible',t:'sel',def:'els',opts:[['els','ELS (N_ser) — usage BAEL'],['elu','ELU (N_u) — ancien comportement du module']],cond:dp=>!smQuMode(dp)&&!smNfMode(dp),aide:'Un admissible ELS se compare à N_ser (défaut). Choisir « ELU » pour comparer N_u à q.sol (plus sécuritaire, ×1,4 environ).'},
-   {grp:'Sol et excentricité',k:'coefExc',lbl:'Majoration admise de la contrainte maximale',t:'num',def:1.33,min:1,max:2,step:0.01,unit:'',cond:dp=>!smNfMode(dp),aide:'σ_max ≤ 1,33·q avec excentricité (usage DTU 13.12 / BAEL). À confirmer.'},
+   {grp:'Sol et excentricité',k:'coefExc',lbl:'Majoration admise de la contrainte maximale',t:'num',def:1.33,min:1,max:2,step:0.01,unit:'',cond:dp=>!smNfMode(dp),aide:'σ_max ≤ 1,33·q avec excentricité (usage courant). À confirmer.'},
    {grp:'Sol et excentricité',k:'pctCompMin',lbl:'Surface comprimée minimale',t:'num',def:100,min:10,max:100,step:5,unit:'%',cond:dp=>!smNfMode(dp),aide:'100 % = e ≤ L/6 (section entièrement comprimée). Un critère moins sévère (ex. 75 % ou 10 %) dépend de la norme : à confirmer.'},
    {grp:'Sol et excentricité',k:'eluDiag',lbl:'Diagramme de pression à l\'ELU',t:'sel',def:'trap',opts:[['trap','Trapèze ou triangle (défaut)'],['rect','Rectangle P/(L − 2e)']],cond:dp=>dp.sens!=='filante'&&!!dp.excentrique&&!smNfMode(dp),aide:'À l\'ELU la pression est rectangulaire sur la largeur réduite L − 2e (comparée à q_ELU sans majoration 1,33) ; défaut trapézoïdal plus sécuritaire ; à confirmer.'},
    {grp:'Sol et excentricité',k:'excSens',lbl:'Moment selon la dimension',t:'sel',def:'B',opts:[['B','B (grand côté)'],['A','A (petit côté)']],cond:dp=>dp.sens!=='filante'&&!!dp.excentrique,aide:'Dimension de la semelle dans le plan du moment M_ser transmis.'},
@@ -30741,7 +30766,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Géométrie',k:'debordType',lbl:'Type de débord',t:'sel',def:'homo',opts:[['homo','Homothétique'],['const','Constant']],only:'is',aide:'(1) débords homothétiques, (2) débord constant [√(4S1 + a² − 2ab + b²) − a − b]/4.'},
    {grp:'Géométrie',k:'debordMin_cm',lbl:'Débord minimal',t:'num',def:5,min:0,max:50,step:1,unit:'cm',aide:'A ≥ a + 2×débord (5 cm usuel, choix constructif).'},
    {grp:'Géométrie',k:'HtMin_cm',lbl:'Hauteur minimale de la semelle',t:'num',def:20,min:10,max:100,step:5,unit:'cm',aide:'Ht ≥ 20 cm : choix constructif du module, à confirmer.'},
-   {grp:'Géométrie',k:'margeHt_cm',lbl:'Marge de la hauteur Ht,min',t:'num',def:5,min:0,max:20,step:1,unit:'cm',aide:'Ht,min = (B − b)/4 + 5 cm (skill / BAEL, bielles) ; 5 cm = enrobage + demi-barre.'},
+   {grp:'Géométrie',k:'margeHt_cm',lbl:'Marge de la hauteur Ht,min',t:'num',def:5,min:0,max:20,step:1,unit:'cm',aide:'Ht,min = (B − b)/4 + 5 cm (méthode des bielles) ; 5 cm = enrobage + demi-barre.'},
    {grp:'Géométrie',k:'pas_cm',lbl:'Pas d\'arrondi des dimensions',t:'num',def:5,min:1,max:25,step:1,unit:'cm',aide:'A, B et Ht arrondis par excès à ce pas (5 cm usuel).'},
    {grp:'Flexion',k:'methodeFlexion',lbl:'Méthode de flexion',t:'sel',def:'ec2',opts:[['ec2','Eurocode 2 (M = N_Ed (A − 0,7a)²/8A, f_yd) — défaut'],['bael','Bielles BAEL (N_ser/8)(B − b)/(d·σst)']],aide:'EC2 (EN 1992-1-1). Les deux résultats sont écrits dans la note avec l\'écart ; une seule méthode sert au ferraillage.'},
    {grp:'Flexion',k:'zMode',lbl:'Bras de levier z',t:'sel',def:'z09',opts:[['z09','z = z/d · d (défaut, 0,9 d)'],['exact','z calculé (K) plafonné à 0,95 d (α_cc = 1)']],aide:'z = d[0,5 + √(0,25 − K/1,333)] ≤ 0,95 d ; défaut conservateur 0,9 d ; à confirmer.'},
@@ -30749,7 +30774,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Flexion',k:'secCrit',lbl:'Section critique du moment',t:'sel',def:'l035',opts:[['l035','0,35·l de l\'axe (défaut)'],['nu','Nu du poteau']],aide:'Moments critiques au nu du poteau, M = N_Ed (L − l)²/8L ; défaut 0,35 l : M = N_Ed (L − 0,7 l)²/8L ; à confirmer.'},
    {grp:'Flexion',k:'phiEst_mm',lbl:'Ø estimé des barres',t:'num',def:12,min:6,max:32,step:1,unit:'mm',aide:'Ø estimé pour la hauteur utile avant le choix des barres ; recalculé avec le diamètre retenu.'},
    {grp:'Flexion',k:'asMinOn',lbl:'Appliquer A_s,min de flexion',t:'bool',def:true,aide:'A_s,min = max(0,26·f_ctm/f_yk ; 0,0013)·W·d (EC2) : applicabilité aux semelles à confirmer.'},
-   {grp:'Flexion',k:'pctRepart',lbl:'Répartition (filante) en % de l\'armature principale',t:'num',def:25,min:10,max:100,step:1,unit:'%',only:'fi',aide:'Ay/4 (skill, BAEL) ; EC2 demande 20 % : à confirmer.'},
+   {grp:'Flexion',k:'pctRepart',lbl:'Répartition (filante) en % de l\'armature principale',t:'num',def:25,min:10,max:100,step:1,unit:'%',only:'fi',aide:'Ay/4 par défaut (méthode des bielles) ; une valeur de 20 % est possible : à confirmer.'},
    {grp:'Flexion',k:'dg_mm',lbl:'Granulat',t:'num',def:20,min:8,max:40,step:1,unit:'mm',aide:'d_g = 20 mm : espacement libre minimal max(Ø ; 20 ; d_g + 5 mm).'},
    {grp:'Enrobage',k:'classeExposition',lbl:'Classe d\'exposition',t:'sel',def:'XC2',opts:Object.keys(PC_EXPO).map(c=>[c,c]),aide:'XC2 pour « un grand nombre de fondations » : c_min,dur = 25 mm (classe S4), + 10 mm = 35 mm.'},
    {grp:'Enrobage',k:'contactSol',lbl:'Contact de la face inférieure',t:'sel',def:'proprete',opts:[['proprete','Sur béton de propreté'],['terre','Directement contre terre']],aide:'EN 1992-1-1 : à confirmer. L\'enrobage retenu est le plus grand de c_nom d\'exposition et de la valeur ci-dessous.'},
@@ -31102,7 +31127,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(res.ancY) push('Ancrage','Ancrage des barres transversales (Ø'+res.ancY.phi+')','l_bd = α·l_b,rqd ≥ l_b,min','l_bd = '+f(res.ancY.lbUse*100,0)+' cm ('+res.ancY.mode+')','l disponible = '+f(res.ancY.lav*100,0)+' cm',res.ancY.ok?'ok':'ko');
     push('Effort tranchant','Section à d du nu','V_Ed = q_net·(porte-à-faux − d) ≤ V_Rd,c','V_Ed = '+f(res.sh.VEd*1000,0)+' kN/ml','V_Rd,c = '+f(res.sh.VRd*1000,0)+' kN/ml',res.sh.ratio<=1+1e-9?'ok':'ko');
    }
-   if(!nf) push('Sol','Portance du sol (q.sol)','calcul pressiométrique ou pénétrométrique (Fascicule 62 titre V, DTU 13.12, NF P94-261)','donnée d\'entrée de l\'étude géotechnique','—','nf');
+   if(!nf) push('Sol','Portance du sol (q.sol)','calcul pressiométrique ou pénétrométrique de l\'étude géotechnique','donnée d\'entrée de l\'étude géotechnique','—','nf');
    push('Sol','Soulèvement biaxial, charge inclinée, semelle partiellement soulevée','calcul spécifique de la surface comprimée','non codé','—','nf');
    push('Tassement','Tassement de la semelle','module « Tassements & géotechnique » (ouvrage distinct)','non calculé ici','—','nf');
    push('ELS','Fissuration et flèche de la semelle','EC2','non vérifiées','—','nf');
@@ -31371,7 +31396,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nKo=res.verifs.filter(v=>v.etat==='ko').length, M=res.methode==='bael'?'BAEL':'EC2';
    const dim=res.isolee?(f(res.A)+' × '+f(res.B)+' m'):('B = '+f(res.B)+' m par ml');
    const fer=res.isolee?(res.barX.n+' Ø'+res.barX.phi+' // B et '+res.barY.n+' Ø'+res.barY.phi+' // A'):((res.barAy?('Ø'+res.barAy.phi+' e='+res.barAy.s+' mm'):'chaînage seul')+' + Ø'+res.barAx.phi+' e='+res.barAx.s+' mm');
-   const constat=nomO+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(dim+', Ht = '+cm(res.Ht)+', '+fer))+(res.nf?' — portance, excentrement, glissement, flexion ('+M+'), poinçonnement, tranchant et ancrage vérifiés ; tassement et soulèvement biaxial NON vérifiés':' — sol, flexion ('+M+'), poinçonnement, tranchant et ancrage vérifiés ; portance, soulèvement biaxial, tassement et ELS NON vérifiés');
+   const constat=nomO+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':(dim+', Ht = '+cm(res.Ht)+', '+fer))+(res.nf?' — portance, excentrement, glissement, flexion ('+M+'), '+(res.isolee?'poinçonnement, ':'')+'tranchant et ancrage vérifiés ; tassement et soulèvement biaxial NON vérifiés':' — sol, flexion ('+M+'), '+(res.isolee?'poinçonnement, ':'')+'tranchant et ancrage vérifiés ; portance, soulèvement biaxial, tassement et ELS NON vérifiés');
    const tab=(head,rows,cls)=>'<table'+(cls?' class="'+cls+'"':'')+'><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
    const q=res.punch;
    const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'.</p>').join('')
@@ -31432,8 +31457,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const html=smNoteCalculHtml(t,dp,dp.resultats);
    const nom='Note de calcul '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
-   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul'&&dimDocMatch(d,'sm'));
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; doc.module='sm'; L.unshift(doc); }
    dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
@@ -31574,8 +31599,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const html=smPlanHtml(t,dp,res);
    const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
-   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub&&dimDocMatch(d,'sm'));
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; doc.module='sm'; L.unshift(doc); }
    dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
@@ -31631,7 +31656,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return {blob,fn};
   }
   async function smCreerDocumentsDimensionnement(t,dp){
-   dimIndiceDoc(t,dp);
+   dimIndiceDoc(t,dp,'sm');
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
    const res=dp.resultats; const docNote=smCreerNoteCalcul(t,dp); const docPlan=smCreerPlanFerraillage(t,dp);
    if(res&&(docNote||docPlan)){ window.pjPdfPending=window.pjPdfPending||new Set(); [docNote,docPlan].forEach(d=>{ if(d) window.pjPdfPending.add(d.id); }); pcPdfEnArriere(t,dp,res,docNote,docPlan,{note:async()=>(await ncDocPdfBlob(docNote,'a4')).blob,plan:smPlanFerraillagePdf}).catch(err=>console.error(err)); }
@@ -32709,8 +32734,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Armatures',k:'ancCrochet',lbl:'Ancrage par crochet ou équerre',t:'sel',def:'non',opts:[['non','Non (barre droite)'],['oui','Oui (α1 = 0,7 si c_d > 3 Ø)']],cond:dp=>puMeth(dp)==='ec2',aide:'Barre courbe en traction : α1 = 0,7 seulement si l\'enrobage c_d > 3 Ø, sinon 1. Sinon l_bd = l_b,rqd.'},
    {grp:'Armatures',k:'etaAdh',lbl:'Conditions d\'adhérence (ancrage)',t:'sel',def:'1',opts:[['1','Bonnes (η1 = 1)'],['0.7','Médiocres (η1 = 0,7)']],cond:dp=>puMeth(dp)==='ec2',aide:'f_bd = 2,25·η1·η2·f_ctd. Tirants en face inférieure d\'une tête coulée à plat : bonnes conditions.'},
    {grp:'Vérifications',k:'betaPoincon',lbl:'Coefficient β de poinçonnement',t:'num',def:1.15,min:1,max:2,step:0.05,unit:'',cond:dp=>puMeth(dp)==='ec2',aide:'Poteau intérieur, charge centrée : 1,15 ; plus si moment transmis ou poteau de rive.'},
-   {grp:'Vérifications',k:'psi2',lbl:'Coefficient ψ2 (combinaison quasi permanente)',t:'num',def:0.3,min:0,max:1,step:0.05,unit:'',cond:dp=>!!dp.ppLien,aide:'Sert à comparer G + ψ2·Q à Q_c/1,40 de la portance reprise du Fascicule 62 V. NF EN 1990 (AN) : 0,3 habitation et bureaux, 0,6 réunion et commerces, 0,8 stockage (à confirmer selon la catégorie d\'usage).'},
-   {grp:'Vérifications',k:'portanceELS_kN',lbl:'Charge admissible par pieu (ELS)',t:'num',def:null,min:0,max:1e5,step:10,unit:'kN',aide:'Facultatif : donnée géotechnique (Fascicule 62 titre V, DTU 13.2, EC7). Comparée à la charge par pieu (G + Q + poids propre)/n. Vide : portance non vérifiée.'},
+   {grp:'Vérifications',k:'psi2',lbl:'Coefficient ψ2 (combinaison quasi permanente)',t:'num',def:0.3,min:0,max:1,step:0.05,unit:'',cond:dp=>!!dp.ppLien&&dp.ppLien!=='saisie'&&dp.ppLien!=='non',aide:'Sert à comparer G + ψ2·Q à Q_c/1,40 de la portance reprise. Valeurs usuelles : 0,3 habitation et bureaux, 0,6 réunion et commerces, 0,8 stockage (à confirmer selon la catégorie d\'usage).'},
+   {grp:'Vérifications',k:'portanceELS_kN',lbl:'Charge admissible par pieu (ELS)',t:'num',def:null,min:0,max:1e5,step:10,unit:'kN',aide:'Facultatif : donnée de l\'étude géotechnique. Comparée à la charge par pieu (G + Q + poids propre)/n. Vide : portance non vérifiée.'},
    {grp:'Vérifications',k:'portanceELU_kN',lbl:'Résistance de calcul par pieu (ELU)',t:'num',def:null,min:0,max:1e5,step:10,unit:'kN',cond:dp=>puMeth(dp)==='ec2',aide:'Facultatif : R_c,d donnée par le géotechnicien (N_Rd). Comparée à la charge ELU par pieu. Vide : non vérifiée.'}
   ];
   const puAdvOn=(sp,dp)=>(!sp.cond||sp.cond(dp));
@@ -32813,7 +32838,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    }
    /* effort par pieu */
    const Rser=(G+Q)/n, Rels=(1.35*G+1.5*Q)/n, Rccba=(G+1.2*Q)/n, ppSrc=ppSource(dp), psi2=puAdvNum(dp,'psi2'), Rqp=(G+(psi2==null?0.3:psi2)*Q)/n;
-   const okSrc=ppSrc&&!ppSrc.manque, Radm=okSrc?ppSrc.ELS:puAdvNum(dp,'portanceELS_kN'), Rcd=okSrc?ppSrc.ELU:puAdvNum(dp,'portanceELU_kN'), srcLbl=okSrc?'Fascicule 62 V, ouvrage « '+ppSrc.nom+' »':'saisie';
+   const okSrc=ppSrc&&!ppSrc.manque, Radm=okSrc?ppSrc.ELS:(dp.ppLien==='non'?null:puAdvNum(dp,'portanceELS_kN')), Rcd=okSrc?ppSrc.ELU:(dp.ppLien==='non'?null:puAdvNum(dp,'portanceELU_kN')), srcLbl=okSrc?'ouvrage « '+ppSrc.nom+' »':'saisie';
    if(ppSrc&&ppSrc.manque) warn.push('La portance du pieu liée n\'est plus disponible (ouvrage supprimé, passé en « Tête de pieux » ou non calculé) : retour aux valeurs saisies.');
    /* aciers complémentaires */
    let AacTotal=null, NacTotal=null, Aac=null, Aam=null, Nam=null, Nac=null, quadrillageMin=null, barCerces=null, barQuad=null, barMed=null;
@@ -32875,7 +32900,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    V('Armatures','Tirants','A_s,adoptée ≥ A_s,requise',f2(barInf.As/100)+' cm²','≥ '+f2(Math.max(Ainf,puAdvVal(dp,'asMin')==='non'?0:R.AsMin))+' cm²',barInf.insuff||barInf.As/100+1e-9<Ainf?'ko':'ok');
    if(cfg==='simple'&&Attente!=null) V('Armatures','Attente du pieu','A_s,att = max(0 ; (N_Ed − a·b·f_cd)/f_yd)',f2(Attente)+' cm²',attenteNote||'—',Attente>0?'ok':'na');
    /* non vérifié (hors périmètre, sources à fournir) */
-   [['Portance du pieu',okSrc?'reprise du module « Portance du pieu » (Fascicule 62 titre V) ; NF P 94-262 et EC7 non vérifiés':'EC7, NF P94-262, DTU 13.2 et texte de calcul des fondations profondes : non vérifiés'],['Effets de groupe, frottement négatif, flambement du pieu, battage','portance, frottement négatif, battage : non codés'],['Répartition par pieu sous moments et efforts horizontaux','méthode du module de réaction : charge centrée supposée'],['Poinçonnement de la tête par le pieu, arrachement','hors périmètre']].forEach(r=>V('Hors périmètre',r[0],r[1],'—','—','nf'));
+   [['Portance du pieu',okSrc?'reprise du module « Portance du pieu » ; autres méthodes de calcul de la portance non vérifiées':'autres méthodes de calcul de la portance : non vérifiées'],['Effets de groupe, frottement négatif, flambement du pieu, battage','portance, frottement négatif, battage : non codés'],['Répartition par pieu sous moments et efforts horizontaux','méthode du module de réaction : charge centrée supposée'],['Poinçonnement de la tête par le pieu, arrachement','hors périmètre']].forEach(r=>V('Hors périmètre',r[0],r[1],'—','—','nf'));
    return {mat,config:cfg,methode:meth,a,b,F,e,aPrime,aPrimeMin,aReleve,bPrime,h,d,dMin,dMax,hMin,P1,NEd,P,sig,maj,c:cnomMm,expo:expo.classe,direct,Gcap,inclPP,G,Q,Rser,Rels,Rccba,Radm,Rcd,ppSrc:okSrc?ppSrc:null,Rqp,
     T,Ainf,Asup,Ai:Ainf,As:Asup,AsMin:R.AsMin,barInf,barSup,barAi:barInf,barAs:barSup,
     qDeg,qRaw,sPrimeC28,sC28,limSigma,limPot,limPieux,sousPoteau,surPieux,nCtrl,okSousPoteau:sousPoteau==null||sousPoteau<=limPot+1e-9,okSurPieux:surPieux==null||surPieux<=limPieux+1e-9,tau,limTau,okTau:tau==null||tau<=limTau,
@@ -33134,7 +33159,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const NM=puNomenclature(res), svgs=puNoteSvgs(dp,res);
    const constat=nm+' : '+(nKo?nKo+' point'+(nKo>1?'s':'')+' bloquant'+(nKo>1?'s':'')+' à reprendre':'tirants '+res.barInf.n+' Ø'+res.barInf.phi+(cfg==='simple'?' par sens':' ('+nomC+')'))+' — vérifications de la tête faites ; portance du pieu, effets de groupe et efforts horizontaux non vérifiés';
    const pts=res.verifs.filter(v=>v.etat==='ko').map(v=>'<p class="ncPt" data-bad="1">'+esc(v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')')+'</p>').join('')
-    +'<p class="ncPt" data-bad="0">Non vérifié : '+(res.ppSrc?'portance du pieu reprise du Fascicule 62 titre V (ouvrage « '+esc(res.ppSrc.nom)+' ») ; NF P 94-262 et EC7 non vérifiés':'portance du pieu (EC7, NF P94-262, DTU 13.2, texte de calcul des fondations profondes)')+', frottement négatif, flambement du pieu, effets de groupe, battage, répartition par pieu sous moments et efforts horizontaux (charge centrée supposée).</p>'
+    +'<p class="ncPt" data-bad="0">Non vérifié : '+(res.ppSrc?'portance du pieu reprise de l\'ouvrage « '+esc(res.ppSrc.nom)+' » ; autres méthodes de calcul de la portance non vérifiées':'portance du pieu (autres méthodes de calcul de la portance)')+', frottement négatif, flambement du pieu, effets de groupe, battage, répartition par pieu sous moments et efforts horizontaux (charge centrée supposée).</p>'
     +(res.Radm==null?'<p class="ncPt" data-bad="0">Charge admissible par pieu non renseignée : la charge par pieu '+f2(ec?res.Rels:res.Rccba,0)+' kN n\'est comparée à aucune portance.</p>':'')
     +(cfg==='quadruple'?'<p class="ncPt" data-bad="0">4 pieux : tirant T = P(a\' − a/2)/(8d) par équilibre de la bielle du quart de poteau ; pas de formule de ferraillage pour cette configuration. À confirmer.</p>':'')
     +((cfg==='triple'||cfg==='quadruple')&&res.nCtrl===2?'<p class="ncPt" data-bad="0">Contrainte sur pieux calculée avec la surface de 2 pieux (valeur par défaut, conservatrice pour '+nomC+') : la surface réelle de '+PU_N[cfg]+' pieux est proposée dans les paramètres avancés ; limites à revalider.</p>':'')
@@ -33319,10 +33344,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function puCreerNoteCalcul(t,dp){
    const html=puNoteCalculHtml(t,dp,dp.resultats);
-   const nom='Note de calcul '+dimOuvrageNom(t,dp);
+   const nom=dimDocNom('Note de calcul',t,dp,'pu');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
-   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul'&&dimDocMatch(d,'pu'));
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; doc.module='pu'; L.unshift(doc); }
    dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
@@ -33330,10 +33355,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function puCreerPlanFerraillage(t,dp){
    const res=dp.resultats; if(!res) return null;
    const html=puPlanHtml(t,dp,res);
-   const nom='Plan de ferraillage '+dimOuvrageNom(t,dp);
+   const nom=dimDocNom('Plan de ferraillage',t,dp,'pu');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
-   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub);
-   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Plan de ferraillage'&&!d.sub&&dimDocMatch(d,'pu'));
+   if(!doc){ doc={id:uid('D'),docType:'Plan de ferraillage',nature:'graphique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; doc.module='pu'; L.unshift(doc); }
    dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
@@ -33343,7 +33368,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return await ncPdfNote(puNoteCalculHtml(t,dp,res),dimOuvrageNom(t,dp),{format:'a4'});
   }
   async function puCreerDocumentsDimensionnement(t,dp){
-   dimIndiceDoc(t,dp);
+   dimIndiceDoc(t,dp,'pu');
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null}; /* seul le béton armé (EC2) a un calcul */
    const res=dp.resultats; const docNote=puCreerNoteCalcul(t,dp); const docPlan=puCreerPlanFerraillage(t,dp);
    if(res&&(docNote||docPlan)){ window.pjPdfPending=window.pjPdfPending||new Set(); [docNote,docPlan].forEach(d=>{ if(d) window.pjPdfPending.add(d.id); });
@@ -33621,26 +33646,25 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   /* portance reprise par la tête de pieux : ouvrages « Portance du pieu » calculés du même projet */
   function ppListeSources(t){
-   const prj=t&&t.mbf&&t.mbf.projet; return (state.tasks||[]).filter(x=>x&&x.id!==(t&&t.id)&&ppMode(x)&&x.dimPP&&x.dimPP.resultats&&x.dimPP.resultats.cb&&(!prj||!(x.mbf&&x.mbf.projet)||x.mbf.projet===prj));
+   const prj=t&&t.mbf&&t.mbf.projet; return (state.tasks||[]).filter(x=>x&&x.dimPP&&x.dimPP.resultats&&x.dimPP.resultats.cb&&(!prj||!(x.mbf&&x.mbf.projet)||x.mbf.projet===prj));
   }
   function ppLienHtml(t,dp){
-   const L=ppListeSources(t); if(!L.length&&!dp.ppLien) return '';
-   const ok=L.some(x=>x.id===dp.ppLien);
-   return '<label>Portance du pieu <select data-pu="ppLien"><option value="">Saisie directe (paramètres avancés)</option>'
-    +L.map(x=>{ const r=x.dimPP.resultats; return '<option value="'+esc(x.id)+'"'+(dp.ppLien===x.id?' selected':'')+'>'+esc(dimOuvrageNom(x,x.dimPP))+' — ELS rare '+ppF0(r.cb.rare.Qmax)+' kN · ELU '+ppF0(r.cb.elu.Qmax)+' kN</option>'; }).join('')
-    +(dp.ppLien&&!ok?'<option value="'+esc(dp.ppLien)+'" selected>Ouvrage de portance introuvable ou non calculé</option>':'')+'</select></label>'
-    +'<p class="pcNote">Reprend la charge admissible d\'un ouvrage « Portance du pieu » calculé (Fascicule 62 titre V) : ELS rare Q<sub>c</sub>/1,10 et ELU fondamental Q<sub>u</sub>/1,40, comparées à la charge par pieu ; ELS quasi permanent Q<sub>c</sub>/1,40 comparé à G + ψ2·Q.</p>';
+   const L=ppListeSources(t), lien=dp.ppLien||'', ok=L.some(x=>x.id===lien)||lien===''||lien==='saisie'||lien==='non';
+   return '<label>Portance du pieu <select data-pu="ppLien"><option value=""'+(lien===''?' selected':'')+'>Choisir…</option>'
+    +L.map(x=>{ const r=x.dimPP.resultats; return '<option value="'+esc(x.id)+'"'+(lien===x.id?' selected':'')+'>'+esc(dimOuvrageNom(x,x.dimPP))+(x.id===t.id?' (cet ouvrage)':'')+' — ELS rare '+ppF0(r.cb.rare.Qmax)+' kN · ELU '+ppF0(r.cb.elu.Qmax)+' kN</option>'; }).join('')
+    +'<option value="saisie"'+(lien==='saisie'?' selected':'')+'>Je saisis la valeur (paramètres avancés)</option><option value="non"'+(lien==='non'?' selected':'')+'>Ne pas reprendre la portance</option>'+(!ok?'<option value="'+esc(lien)+'" selected>Ouvrage de portance introuvable ou non calculé</option>':'')+'</select></label>'
+    +'<p class="pcNote">Reprend la charge admissible d\'un ouvrage « Portance du pieu » calculé : ELS rare Q<sub>c</sub>/1,10 et ELU fondamental Q<sub>u</sub>/1,40, comparées à la charge par pieu ; ELS quasi permanent Q<sub>c</sub>/1,40 comparé à G + ψ2·Q.</p>';
   }
   function ppSource(dp){
-   if(!dp.ppLien) return null; const tt=taskById(dp.ppLien), r=tt&&ppMode(tt)&&tt.dimPP&&tt.dimPP.resultats; if(!r||!r.cb) return {manque:true};
+   if(!dp.ppLien||dp.ppLien==='saisie'||dp.ppLien==='non') return null; const tt=taskById(dp.ppLien), r=tt&&tt.dimPP&&tt.dimPP.resultats; if(!r||!r.cb) return {manque:true};
    return {nom:dimOuvrageNom(tt,tt.dimPP),ELS:r.cb.rare.Qmax,ELU:r.cb.elu.Qmax,QP:r.cb.qp.Qmax,Qu:r.Qu,Qc:r.Qc};
   }
   /* ---------- schéma coté : coupe du pieu dans le sol ---------- */
   function ppGeom(dp,HT){
-   const B=ppNum(dp.B)||0.8, L=ppNum(dp.L)||10, zT=Math.max(0,ppNum(dp.zT)||0), zTip=zT+L, a=B>1?B/2:0.5, cs=(dp.couches||[]).filter(c=>+c.h>0);
-   let tot=0; cs.forEach(c=>{ tot+=+c.h; });
+   const B=ppNum(dp.B)||0.8, L=ppNum(dp.L)||10, zT=Math.max(0,ppNum(dp.zT)||0), zTip=zT+L, a=B>1?B/2:0.5, cs=(dp.couches||[]).map((c,i)=>Object.assign({},c,{_i:i,hz:+c.h>0?+c.h:0.5,vide:!(+c.h>0)}));
+   let tot=0; cs.forEach(c=>{ tot+=c.hz; });
    const zmax=Math.max(zTip+Math.min(3*a,3),Math.min(tot,zTip*1.25+1),zTip+0.5);
-   const bk=new Set([0,zT,zTip,zmax]); let z=0; cs.forEach(c=>{ z+=+c.h; if(z<zmax-1e-9) bk.add(z); });
+   const bk=new Set([0,zT,zTip,zmax]); let z=0; cs.forEach(c=>{ z+=c.hz; if(z<zmax-1e-9) bk.add(z); });
    const bs=[...bk].sort((x,y)=>x-y), minPx=24, hs=[]; for(let i=0;i<bs.length-1;i++) hs.push(Math.max(minPx,(bs[i+1]-bs[i])/zmax*HT));
    const ys=[0]; hs.forEach(h=>ys.push(ys[ys.length-1]+h));
    const Y=zz=>{ let i=0; while(i<bs.length-2&&zz>bs[i+1]+1e-9) i++; const f=bs[i+1]>bs[i]?(zz-bs[i])/(bs[i+1]-bs[i]):0; return ys[i]+f*(ys[i+1]-ys[i]); };
@@ -33650,10 +33674,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const DC=window.dimCote, FL=window.dimField, parts=[], boxes=[], add=c=>{ parts.push(c.svg); boxes.push(c.box); };
    const G=ppGeom(dp,320), Y=G.Y, cs=G.cs, SW=260, pw=44, px=SW-86, H=G.H;
    let soil='', tx='', z=0;
-   cs.forEach((c,i)=>{ const z0=z, z1=Math.min(z+(+c.h),G.zmax); z+=(+c.h); if(z0>=G.zmax) return; const y0=Y(z0), y1=Y(z1);
-    soil+='<rect x="0" y="'+y0+'" width="'+SW+'" height="'+(y1-y0)+'" fill="var(--ds-ink-soft,#888)" fill-opacity="'+(i%2?0.10:0.20)+'" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="0.8"/>';
+   cs.forEach(c=>{ const i=c._i, z0=z, z1=Math.min(z+c.hz,G.zmax); z+=c.hz; if(z0>=G.zmax) return; const y0=Y(z0), y1=Y(z1);
+    soil+='<rect x="0" y="'+y0+'" width="'+SW+'" height="'+(y1-y0)+'" fill="'+(c.vide?'url(#ppHach)':'var(--ds-ink-soft,#888)')+'" fill-opacity="'+(c.vide?1:(i%2?0.10:0.20))+'" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="0.8"'+(c.vide?' stroke-dasharray="5 3"':'')+'/>';
     const lab=(c.nom||('Couche '+(i+1))).slice(0,16), val=c.v===''||c.v==null?'—':ppF(c.v)+' MPa';
-    tx+='<text x="8" y="'+(y0+15)+'" font-size="11.5" fill="var(--ds-ink,#222)">'+esc(lab+'  ·  '+(dp.essai==='penetro'?'qc ':'p*l ')+val)+'</text>';
+    tx+='<text x="8" y="'+(y0+15)+'" font-size="11.5" fill="var(--ds-ink,#222)">'+esc(c.vide?(lab+'  ·  à renseigner'):(lab+'  ·  '+(dp.essai==='penetro'?'qc ':'p*l ')+val))+'</text>';
     if(DC) add(DC({dir:'v',a:[0,y0],b:[0,y1],off:-22,key:'pp-h'+i,label:'h'+(i+1),val:c.h,unit:'m',attr:'data-pp-row="'+i+'|h"',title:'Épaisseur de la couche '+(i+1)}));
    });
    const yT=Y(G.zT), yP=Y(G.zTip), MF=pcMatFills(pcMatKey(dp.materiau));
@@ -33669,7 +33693,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    boxes.push({x:-6,y:-4,w:SW+12,h:H+16});
    let X0=Infinity,Y0=Infinity,X1=-Infinity,Y1=-Infinity; boxes.forEach(q=>{ X0=Math.min(X0,q.x); Y0=Math.min(Y0,q.y); X1=Math.max(X1,q.x+q.w); Y1=Math.max(Y1,q.y+q.h); }); X0-=20; X1+=20; Y0-=12; Y1+=16;
    return '<svg viewBox="'+X0+' '+Y0+' '+(X1-X0)+' '+(Y1-Y0)+'" width="100%" height="'+Math.round(Math.min(360,Y1-Y0))+'" class="pcSvg" role="img" aria-label="Pieu dans le profil de sol, coupe">'
-    +'<defs>'+pcMatDefs(pcMatKey(dp.materiau))+'</defs>'+soil+tx+ground+pile+tipTxt+parts.join('')+'</svg>';
+    +'<defs>'+pcMatDefs(pcMatKey(dp.materiau))+'<pattern id="ppHach" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="1.2" opacity=".55"/></pattern></defs>'+soil+tx+ground+pile+tipTxt+parts.join('')+'</svg>';
   }
   /* ---------- formulaire ---------- */
   const ppSel=(k,v,opts)=>'<select data-pp="'+k+'">'+opts.map(o=>'<option value="'+o[0]+'"'+(String(v)===String(o[0])?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
@@ -33728,7 +33752,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function ppFormHtml(id,t){
    const dp=ppData(t), body=[1,2,3,4].map(nn=>ppStepHtml(nn,dp,t)).join('<hr class="pcFormSep">'), er=(window._ppErr||{})[id];
    return '<div class="pcFormSticky">'
-    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('pieu','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Portance du pieu (Fascicule 62 V)<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+dimCalcHeadBtnHtml(dp,'pp',pcMatCalc(dp),typeof PC_MAT_MSG!=='undefined'?PC_MAT_MSG:'')+'</div>'
+    +'<div class="pcModHead"><span class="pcModIco">'+illuSvg('pieu','ts-mini')+'</span><button type="button" class="pcModName" data-mod-switch="1" aria-haspopup="dialog" title="Changer de module">Portance du pieu<span class="pcModCaret" aria-hidden="true">▾</span></button>'+dimStatutBadgeHtml(dp)+dimCalcHeadBtnHtml(dp,'pp',pcMatCalc(dp),typeof PC_MAT_MSG!=='undefined'?PC_MAT_MSG:'')+'</div>'
     +ppModeBarHtml(t)
     +'<div class="pjBeam-top"><button type="button" class="back-x" data-beam-back="modal" aria-label="Retour" title="Retour">‹</button><input type="text" class="pjBeam-ttl pjBeam-ttl-in" data-pp="nom" value="'+esc(dp.nom||t.quoi||t.nom||'')+'" placeholder="Ouvrage sans nom" aria-label="Désignation de l\'ouvrage" title="Nom de l\'ouvrage — cliquer pour renommer"></div>'
     +'<div class="pcDraw">'+ppSvg(dp)+'</div>'
@@ -33810,7 +33834,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const r2=x=>Math.round(x*100)/100, T=(x,y,s,a,cl)=>'<text class="'+(cl||'fp-ts')+'" x="'+r2(x)+'" y="'+r2(y)+'" text-anchor="'+(a||'start')+'">'+esc(s)+'</text>';
    const G=ppGeom(dp,230), Y=G.Y, SW=250, pw=34, px=SW-62, x0=70;
    let s='<svg class="pcSvg fplSvg" data-dim-done="1" viewBox="0 0 520 '+Math.round(G.H+60)+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pieu dans le profil de sol" style="width:100%;height:auto"><g transform="translate('+x0+',22)">';
-   let z=0; G.cs.forEach((c,i)=>{ const z0=z, z1=Math.min(z+(+c.h),G.zmax); z+=(+c.h); if(z0>=G.zmax) return; const y0=Y(z0), y1=Y(z1);
+   let z=0; G.cs.forEach(c=>{ const i=c._i, z0=z, z1=Math.min(z+c.hz,G.zmax); z+=c.hz; if(z0>=G.zmax) return; const y0=Y(z0), y1=Y(z1);
     s+='<rect class="fp-betf" x="0" y="'+r2(y0)+'" width="'+SW+'" height="'+r2(y1-y0)+'" style="fill:var(--fp-dim);fill-opacity:'+(i%2?0.07:0.16)+'"/>'+T(5,y0+12,String(c.nom||('Couche '+(i+1))).slice(0,15)+' — '+ppF(c.h)+' m')+((y1-y0)>=28?T(5,y0+25,(dp.essai==='penetro'?'qc = ':'p*l = ')+ppF(c.v)+' MPa'):''); });
    const yT=Y(G.zT), yP=Y(G.zTip), a=G.a, b=Math.min(a,res.h);
    s+='<line class="fp-bet" x1="-6" y1="0" x2="'+(SW+6)+'" y2="0"/><rect class="fp-bet" x="'+px+'" y="'+r2(yT)+'" width="'+pw+'" height="'+r2(yP-yT)+'" fill="none"/><path class="fp-bet" d="M'+px+' '+r2(yP)+' L'+(px+pw/2)+' '+r2(yP+8)+' L'+(px+pw)+' '+r2(yP)+'" fill="none"/>';
@@ -33828,18 +33852,18 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +res.conf.map(w=>'<p class="ncPt" data-bad="0">'+esc(w)+'</p>').join('')+res.warn.map(w=>'<p class="ncPt" data-bad="0">'+esc(w)+'</p>').join('')
     +(res.semi?'<p class="ncPt" data-bad="0">Pieu semi-profond (D_e/B &lt; 5) : frottement négligé sur 1,5 B en tête et q_sd = q_s/γ_m (γ_m = 1,4 à l\'ELU, 2,0 à l\'ELS 2.3) avant les coefficients du pieu : cumul des coefficients, plus sévère que le renvoi du texte aux justifications B.3.1 (γ_q = 2 à l\'ELU, 3 à l\'ELS). À trancher.</p>':'')
     +(res.qce!=null?'<p class="ncPt" data-bad="0">q_ce : calculé selon le texte seul.</p>':'')
-    +'<p class="ncPt" data-bad="0">Non vérifié ou non traité : NF P 94-262, effet de groupe, frottement négatif, efforts horizontaux, poids propre du pieu (charges nettes en tête), tassement du pieu, pieux tubulaires ouverts, pieux H et palplanches, micropieux.</p>'
+    +'<p class="ncPt" data-bad="0">Non vérifié ou non traité : autres méthodes de calcul de la portance, effet de groupe, frottement négatif, efforts horizontaux, poids propre du pieu (charges nettes en tête), tassement du pieu, pieux tubulaires ouverts, pieux H et palplanches, micropieux.</p>'
     +'<p class="ncPt" data-bad="0">Les coefficients de portance, les courbes de frottement et les valeurs limites sont à recouper avec le texte réglementaire.</p>'
     +(PP_ADV.filter(sp=>ppAdvOn(sp,dp)&&!ppSaisi(dp,sp.k)).length?'<p class="ncPt" data-bad="0">Valeurs par défaut retenues : '+ppAdvRowsHyp(dp).filter(r=>r[2]==='par défaut').map(r=>esc(r[0]+' = '+r[1])).join(' ; ')+'. Le validateur doit les confirmer.</p>':'');
    const hypRows=[
-    ['Référence','Fascicule 62 titre V (CCTG 1993) : (charges limites et de fluage), '+(pen?'C.4 (pénétromètre statique)':'C.3 (pressiomètre Ménard)')+', E.2 (valeurs équivalentes), C.4.1 (états-limites), D (pieux semi-profonds)','NF P 94-262 non vérifiée'],
+    ['Méthode','Charges limites et de fluage, '+(pen?'pénétromètre statique':'pressiomètre')+', valeurs équivalentes, états-limites, pieux semi-profonds','Autres méthodes de calcul de la portance non vérifiées'],
     ['Essai de sol',pen?'Pénétromètre statique, q<sub>c</sub> lissée (MPa)':'Pressiomètre Ménard, p*<sub>l</sub> nette (MPa)','Saisie'],
     ['Type de pieu',esc(PP_TYPEN(res.typePieu))+(dp.realesage&&(res.typePieu==='fore_simple'||res.typePieu==='fore_boue')?' · réalésage et rainurage':'')+(dp.foreSec&&res.typePieu==='fore_tube'?' · forage à sec, tube non louvoyé':''),'Saisie'],
     ['Mise en œuvre',res.refoul?'Avec refoulement du sol':'Sans refoulement du sol',dp.refoul==='oui'||dp.refoul==='non'?'Saisie':'Selon le type de pieu'],
     ['Facteur de portance '+res.kNom,f(res.k)+' ('+esc(res.kSrc)+')',/^saisi/.test(res.kSrc)?'Saisi (paramètres avancés)':'Par défaut'],
     ['Classement du pieu','D<sub>e</sub>/B = '+f(res.ratio)+(res.crit==='L'?' (longueur L/B)':'')+' → '+(res.classe==='profonde'?'fondation profonde':'fondation semi-profonde'),'Calculé'],
-    ['Coefficients de sécurité (lecture seule)','Compression : Q<sub>u</sub>/1,40 (ELU fond.), Q<sub>u</sub>/1,20 (ELU acc.), Q<sub>c</sub>/1,10 (ELS rare), Q<sub>c</sub>/1,40 (ELS q.p.) · traction : Q<sub>tu</sub>/1,40, /1,30 ; Q<sub>tc</sub>/1,40','Fascicule 62 V, C.4.1,12 et C.4.1,13 — non modifiables'],
-    ['Charges de fluage (lecture seule)',res.refoul?'Q<sub>c</sub> = 0,7·Q<sub>pu</sub> + 0,7·Q<sub>su</sub> ; Q<sub>tc</sub> = 0,7·Q<sub>su</sub>':'Q<sub>c</sub> = 0,5·Q<sub>pu</sub> + 0,7·Q<sub>su</sub> ; Q<sub>tc</sub> = 0,7·Q<sub>su</sub>','Fascicule 62 V — non modifiables']
+    ['Coefficients de sécurité (lecture seule)','Compression : Q<sub>u</sub>/1,40 (ELU fond.), Q<sub>u</sub>/1,20 (ELU acc.), Q<sub>c</sub>/1,10 (ELS rare), Q<sub>c</sub>/1,40 (ELS q.p.) · traction : Q<sub>tu</sub>/1,40, /1,30 ; Q<sub>tc</sub>/1,40','Coefficients normatifs — non modifiables'],
+    ['Charges de fluage (lecture seule)',res.refoul?'Q<sub>c</sub> = 0,7·Q<sub>pu</sub> + 0,7·Q<sub>su</sub> ; Q<sub>tc</sub> = 0,7·Q<sub>su</sub>':'Q<sub>c</sub> = 0,5·Q<sub>pu</sub> + 0,7·Q<sub>su</sub> ; Q<sub>tc</sub> = 0,7·Q<sub>su</sub>','Coefficients normatifs — non modifiables']
    ].concat(ppAdvRowsHyp(dp).map(r=>[r[0],r[1],r[2]==='saisi'?'Saisi (paramètres avancés)':'Par défaut (paramètres avancés)']));
    const hyp='<h4>Hypothèses</h4><table class="pcNCt"><thead><tr><th>Paramètre</th><th>Valeur retenue</th><th>Origine</th></tr></thead><tbody>'+hypRows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('')+'</tbody></table>';
    const curL=c=>c.curve==='aucun'?'aucun':(c.curve==='manuel'||+c.beta>0||+c.qsmax>0)&&pen?'saisi':/^[1-7]$/.test(String(c.curve))?'Q'+c.curve:'automatique';
@@ -33865,25 +33889,25 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<tr><td>ELS rare</td><td>Q<sub>c</sub>/1,10 = '+kN(cb.rare.Qmax)+'</td><td>Q<sub>tc</sub>/1,40 → '+ppF0(cb.rare.Qmin)+' kN</td></tr>'
     +'<tr><td>ELS quasi permanent</td><td>Q<sub>c</sub>/1,40 = '+kN(cb.qp.Qmax)+'</td><td>0 (pas de traction)</td></tr></tbody></table>';
    const ver='<h4>Vérifications réglementaires</h4>'+ppVerifsHtml(res);
-   const jsonO={norme:'Fascicule 62 titre V (CCTG 1993)',type_ouvrage:'pieu_portance',essai:res.essai,type_pieu:res.typePieu,classement:res.classe,pieu:{diametre_m:+res.B.toFixed(3),longueur_m:+res.L.toFixed(3),section_m2:+res.A.toFixed(4)},
+   const jsonO={type_ouvrage:'pieu_portance',essai:res.essai,type_pieu:res.typePieu,classement:res.classe,pieu:{diametre_m:+res.B.toFixed(3),longueur_m:+res.L.toFixed(3),section_m2:+res.A.toFixed(4)},
     portance_kN:{Qpu:Math.round(res.Qp),Qsu:Math.round(res.Qsu),Qu:Math.round(res.Qu),Qc:Math.round(res.Qc),ELU_fondamental:Math.round(cb.elu.Qmax),ELU_accidentel:Math.round(cb.acc.Qmax),ELS_rare:Math.round(cb.rare.Qmax),ELS_quasi_permanent:Math.round(cb.qp.Qmax),traction_ELU:Math.round(-cb.elu.Qmin),traction_ELS_rare:Math.round(-cb.rare.Qmin)}};
    const jsonBlk='<details class="ncJson"><summary>Données transmises à la tête de pieux (JSON « portance du pieu »)</summary><pre>'+esc(JSON.stringify(jsonO,null,1))+'</pre></details>';
    return '<div class="pcNC" data-norme="Fascicule 62 titre V (CCTG 1993)"><h3>Note de calcul — '+nm+'</h3><div class="ncConstat" style="display:none">'+constat+'</div>'
-    +'<p class="pcNote">Portance du pieu, '+esc(PP_TYPEN(res.typePieu).toLowerCase())+' · Fascicule 62 titre V · '+todayStr()+'</p>'
+    +'<p class="pcNote">Portance du pieu, '+esc(PP_TYPEN(res.typePieu).toLowerCase())+' · '+todayStr()+'</p>'
     +hyp+don+sol+ver+pts+jsonBlk
-    +'<p class="pcNote">⚠ Note de calcul générée automatiquement par la méthode du Fascicule 62 titre V pour un pieu isolé sous charge axiale. Effets de groupe, frottement négatif, efforts horizontaux et tassement ne sont pas traités. À vérifier et valider par un ingénieur géotechnicien avant exécution.</p></div>';
+    +'<p class="pcNote">⚠ Note de calcul générée automatiquement pour un pieu isolé sous charge axiale. Effets de groupe, frottement négatif, efforts horizontaux et tassement ne sont pas traités. À vérifier et valider par un ingénieur géotechnicien avant exécution.</p></div>';
   }
   function ppCreerNoteCalcul(t,dp){
-   const html=ppNoteCalculHtml(t,dp,dp.resultats), nom='Note de calcul '+dimOuvrageNom(t,dp);
+   const html=ppNoteCalculHtml(t,dp,dp.resultats), nom=dimDocNom('Note de calcul',t,dp,'pp');
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
-   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul'&&dimDocMatch(d,'pp'));
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; doc.module='pp'; L.unshift(doc); }
    dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
   }
   async function ppCreerDocumentsDimensionnement(t,dp){
-   dimIndiceDoc(t,dp);
+   dimIndiceDoc(t,dp,'pp');
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
    const res=dp.resultats, docNote=ppCreerNoteCalcul(t,dp);
    if(res&&docNote){ window.pjPdfPending=window.pjPdfPending||new Set(); window.pjPdfPending.add(docNote.id);
@@ -35007,10 +35031,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   /* ---------- documents ---------- */
   function mzCreerNoteCalcul(t,dp,fn){
-   const html=(fn||mzNoteCalculHtml)(t,dp,dp.resultats), nom='Note de calcul '+dimOuvrageNom(t,dp);
+   const mod=fn?'cd':'', html=(fn||mzNoteCalculHtml)(t,dp,dp.resultats), nom=dimDocNom('Note de calcul',t,dp,mod);
    const L=(typeof window.pjDocsList==='function'?window.pjDocsList():null); if(!L) return null;
-   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul');
-   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; L.unshift(doc); }
+   let doc=L.find(d=>d.ouvrageTaskId===t.id&&d.docType==='Note de calcul'&&(fn?d.module==='cd':!d.module));
+   if(!doc){ doc={id:uid('D'),docType:'Note de calcul',nature:'technique',ouvrageTaskId:t.id,discipline:'Gros œuvre / Structure',niveau:t.niveau||'',numero:'',indice:(dp&&dp.indiceDoc!=null?String(dp.indiceDoc):'0'),format:'',etat:'emis',fichier:'',taille:0}; if(fn) doc.module='cd'; L.unshift(doc); }
    dimDocApply(doc,dp); doc.nom=nom+dimIndSuffix(doc); doc.ouvrage=dimOuvrageNom(t,dp); doc.typeStructureId=t.typeStructureId||doc.typeStructureId||null; doc.etat='emis';
    doc.date=(typeof todayISO==='function'?todayISO():''); doc.contenuHtml=html;
    try{persist();}catch(_){ } return doc;
@@ -35156,7 +35180,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<p class="pcNote">⚠ Note de calcul générée automatiquement pour un massif isolé carré. Ferraillage, séisme et nappe ne sont pas traités. À vérifier et valider par un ingénieur structure avant exécution.</p></div>';
   }
   async function cdCreerDocumentsDimensionnement(t,dp){
-   dimIndiceDoc(t,dp);
+   dimIndiceDoc(t,dp,'cd');
    if(!pcMatCalc(dp)) return {docNote:null,docPlan:null};
    const res=dp.resultats, docNote=mzCreerNoteCalcul(t,dp,cdNoteCalculHtml);
    if(res&&docNote){ window.pjPdfPending=window.pjPdfPending||new Set(); window.pjPdfPending.add(docNote.id);
