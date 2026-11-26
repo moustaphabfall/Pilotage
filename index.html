@@ -7020,6 +7020,7 @@ const DIM_I18N_DATA=[
   if(/del|supprimer|retirer|remove/.test(T)||/^🗑/.test(b.textContent.trim())) return 'trash';
   if(/^(add|\+)|ajouter|addcouche|＋/.test(T)||/^＋/.test(b.textContent.trim())) return 'plus';
   if(/gen|générer|refresh/.test(T)) return 'refresh';
+  if(/modifier|changer/.test(T)) return 'swap';
   if(/méthode|modal|methode/.test(T)) return 'swap';
   if(/proposer|predim/.test(T)) return 'ruler';
   if(/descente|openDescente/i.test(T)) return 'down';
@@ -7233,7 +7234,7 @@ const DIM_I18N_DATA=[
    +'<table class="pcNCt"><thead><tr><th>Valeur</th><th>Départ</th><th></th></tr></thead><tbody>'+(opts.champs||[]).map(k=>{ const ed=st.ed[k]!==undefined, v=ed?st.ed[k]:prop(k); return '<tr><td>'+esc(CH[k][0])+'</td><td><input type="number" inputmode="decimal" step="any" data-sol-in="'+k+'" aria-label="'+esc(CH[k][0])+'" value="'+esc(v==null?'':v)+'"> '+esc(CH[k][1])+'</td><td><span class="pcElsTag'+(ed?' on':'')+'">'+(ed?'saisi':'proposé')+'</span></td></tr>'; }).join('')+'</tbody></table>'
    +'<p class="pcNote">Valeurs d\'ordre de grandeur, côté prudent pour la résistance : à confirmer par le géotechnicien.</p>'
    +'<button type="button" class="ghost pcBtnSm" data-sol-act="reset">Rétablir les valeurs proposées</button>'
-   +'<button type="button" class="primary pcFeuBtn" data-sol-act="use">Utiliser ces valeurs</button><button type="button" class="ghost pcFeuBtn" data-sol-act="manual">Je saisis mes valeurs</button><button type="button" class="ghost pcFeuBtn pcFeuCancel" data-sol-act="none">Ne pas utiliser</button></div>'; };
+   +dimChRow({icon:'check',nom:'Utiliser ces valeurs',aide:'Les valeurs ci-dessus (modifiables) sont reportées dans la fiche.',attr:'data-sol-act="use"',primary:true})+dimChRow({icon:'field',nom:'Je saisis mes valeurs',aide:'Fermer et saisir soi-même.',attr:'data-sol-act="manual"'})+dimChRow({icon:'minus',nom:'Ne pas utiliser',aide:'Fermer sans rien changer.',attr:'data-sol-act="none"'})+'</div>'; };
   ov.addEventListener('change',e=>{ const s=e.target.closest('[data-sol]'); if(s){ st[s.dataset.sol]=s.value; if(s.dataset.sol==='fam'){ st.etat='b'; } st.ed={}; draw(); return; }
    const i=e.target.closest('[data-sol-in]'); if(i){ st.ed[i.dataset.solIn]=i.value===''?null:+String(i.value).replace(',','.'); draw(); } });
   ov.addEventListener('click',e=>{ const b=e.target.closest('[data-sol-act]'); if(e.target===ov){ close(); return; } if(!b) return; const a=b.dataset.solAct;
@@ -7252,6 +7253,16 @@ const DIM_I18N_DATA=[
  document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-sol-open]'); if(!b) return; e.preventDefault(); const [m,...rest]=b.dataset.solOpen.split('|'); const h=(window.DIM_SOL_HOOKS||{})[m]; const id=window._ficheIaId; if(h&&id) h(rest.join('|'),id); });
 })();
 
+/* ===== Fenêtres de choix communes : chaque option = icône dans un cadre + nom hors du cadre (ligne cliquable, 56 px) ; choisir referme tout de suite ;
+   Echap et clic hors de la fenêtre referment sans rien changer ; le choix est rappelé ensuite par une ligne « Choix : … » avec un bouton « Modifier ». ===== */
+(function(){
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ window.dimChRow=function(o){ const nom=window.dimT?window.dimT(o.nom):o.nom;
+  return '<div class="dimChRow'+(o.primary?' on':'')+'" role="button" tabindex="0" '+(o.attr||'')+'><span class="dimIBf">'+(window.dimBiSvg?window.dimBiSvg(o.icon||'check'):'')+'</span><span class="dimChTx"><span class="dimChNm">'+esc(nom)+'</span>'+(o.aide?'<span class="dimChAide">'+esc(o.aide)+'</span>':'')+'</span></div>'; };
+ window.dimChLine=function(txt,attr,lbl){ return '<div class="dimChLine"><span class="dimChTxt">Choix : <b>'+txt+'</b></span><button type="button" class="ghost dimChMod" '+attr+'>'+(lbl||'Modifier')+'</button></div>'; };
+ document.addEventListener('keydown',e=>{ const r=e.target&&e.target.classList&&e.target.classList.contains('dimChRow')?e.target:null; if(r&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } });
+ window.dimChEsc=function(ov){ const h=e=>{ if(!ov.isConnected){ window.removeEventListener('keydown',h,true); return; } if(e.key==='Escape'){ e.stopImmediatePropagation(); e.preventDefault(); ov.remove(); window.removeEventListener('keydown',h,true); } }; window.addEventListener('keydown',h,true); };
+})();
 /* Clic sur un bouton de fiche pendant qu'un champ modifié a encore le focus : le changement re-dessine la fiche et le clic était perdu (calcul lancé sans la dernière saisie, ou pas lancé). On laisse d'abord le champ valider sa saisie, puis on rejoue le clic sur le même bouton. */
 (function(){
  let pend=null;
@@ -20838,6 +20849,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .dimIB{display:inline-flex!important;flex-direction:column;align-items:center;justify-content:flex-start;gap:4px;min-width:72px;max-width:132px;min-height:44px;height:auto!important;padding:2px 4px!important;margin:4px 6px 4px 0;background:transparent!important;border:0!important;box-shadow:none!important;color:var(--ds-ink,inherit);font:600 15px/1.2 var(--ds-font-body,system-ui,sans-serif)!important;text-align:center;cursor:pointer;vertical-align:top;border-radius:12px;width:auto!important}
 .dimIBf{display:flex;align-items:center;justify-content:center;width:48px;height:48px;min-width:44px;min-height:44px;box-sizing:border-box;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:14px;background:transparent;color:var(--ds-ink,inherit)}
 .dimIBf .dimBI{width:26px;height:26px}
+.dimChRow{display:flex;align-items:center;gap:14px;min-height:56px;padding:6px 8px;margin:0 0 6px;border-radius:14px;cursor:pointer;box-sizing:border-box}.dimChRow:hover,.dimChRow:focus-visible{background:var(--ds-bg-soft,rgba(128,128,128,.12));outline:none}.dimChRow:hover .dimIBf,.dimChRow:focus-visible .dimIBf,.dimChRow.on .dimIBf{border-color:var(--ds-accent,#FFC400)}.dimChRow .dimIBf{flex:none}.dimChTx{display:flex;flex-direction:column;gap:2px;min-width:0}.dimChNm{font-weight:600;font-size:16px;line-height:1.25}.dimChAide{font-size:13px;line-height:1.35;color:var(--ds-ink-soft,#777)}.dimChLine{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0;padding:6px 10px;border:1px solid var(--ds-line,#d6d3cc);border-radius:12px}.dimChTxt{font-size:14px;line-height:1.4;flex:1;min-width:180px}.dimChBlock{margin:10px 0}.pcFeuMore{margin:6px 0}.pcFeuMore summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
 .dimIBl{display:block;font-size:15px;line-height:1.2;overflow-wrap:anywhere;word-break:normal;max-width:128px}
 .dimIB:hover .dimIBf{border-color:var(--ds-accent,#FFC400)}
 .dimIB:focus-visible{outline:3px solid var(--ds-accent,#FFC400);outline-offset:2px}
@@ -29246,7 +29258,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<label>Poids propre du poteau <select data-pt="poidsPropre"><option value="ajoute"'+(dp.poidsPropre!=='inclus'?' selected':'')+'>Ajouté à N (1,35 × 25 kN/m³ × Ac × L)</option><option value="inclus"'+(dp.poidsPropre==='inclus'?' selected':'')+'>Déjà inclus dans N saisi</option></select></label>'
     +'<label>Effort tranchant V<sub>Ed</sub> (kN, facultatif) <input type="number" step="any" min="0" data-pt="V_kN" value="'+(dp.V_kN??'')+'" placeholder="déduit"></label>'
     +'<p class="pcNote">V<sub>Ed</sub> vide : déduit des moments d\'extrémité, V<sub>Ed</sub> = (M<sub>02</sub> − M<sub>01</sub>)/l.</p>'
-    +ptParamsBlockHtml(dp,t.id)
+    +ptChoixHtml(dp)+ptParamsBlockHtml(dp,t.id)
     +(dp.norme==='bael'?'<p class="pcNote">1 t = 10 kN. N saisi = valeur ELU (1,35·G + 1,5·Q) ; BAEL 91 : moments M_pied et M_tête pris en flexion composée (section rectangulaire) ; moments nuls : compression centrée.</p>':'')
     +(dp.norme==='bael'?'':'<p class="pcNote">1 t = 10 kN. N et M saisis = valeurs ELU (1,35·G + 1,5·Q). Moment du second ordre ajouté automatiquement si l\'élancement dépasse la limite EC2 ; excentricités e_i = l₀/400 et Δe₀ = max(20 mm ; h/30) ajoutées.</p>')
     +'<button type="button" class="ghost pcBtnSm" data-pt-act="openDescente">📥 Descente de charges</button>'
@@ -29267,10 +29279,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function ptFeuIntroHtml(dp){
    const on=!!dp.feu_on, m=dp.feu_methode==='saisie'?'saisie':'c011';
    const sw='<button type="button" class="pcFeuSw" role="switch" aria-checked="'+(on?'true':'false')+'" data-pt-act="feuToggle"><span class="pcFeuKnob" aria-hidden="true"></span><span>Calcul au feu <b>('+(on?'activé':'désactivé')+')</b></span></button>';
-   if(!on) return sw+'<div class="pcFeuDesc"><p class="pcNote">Désactivé : aucun calcul ni aucune ligne au feu dans la note. L\'activation propose la méthode de calcul intégrée ou une valeur saisie par l\'ingénieur.</p></div>';
-   const chg='<button type="button" class="ghost pcFeuChg" data-pt-act="feuMethode">Changer de méthode</button>';
-   if(m==='saisie') return sw+'<div class="pcFeuDesc"><p class="pcNote"><b>Méthode : valeur saisie par l\'ingénieur.</b> Aucune méthode de calcul intégrée n\'est appliquée ; l\'application compare seulement N_fi à la valeur saisie, sans la vérifier.</p>'+chg+'</div>';
-   return sw+'<div class="pcFeuDesc"><p class="pcNote"><b>Méthode : calcul au feu intégré à l\'application.</b></p>'+PT_FEU_PRINC.map(x=>'<p class="pcNote">'+esc(x)+'</p>').join('')+ptFeuAlgoHtml()+chg+'</div>';
+   if(!on) return sw+'<div class="pcFeuDesc"><p class="pcNote">Désactivé : aucun calcul ni aucune ligne au feu dans la note. L\'activation propose la méthode de calcul intégrée, une valeur saisie par l\'ingénieur, ou de ne rien intégrer.</p></div>';
+   if(m==='saisie') return sw+'<div class="pcFeuDesc">'+dimChLine('valeur saisie par l\'ingénieur (aucune méthode intégrée)','data-pt-act="feuMethode"')+'<p class="pcNote">L\'application compare seulement N_fi à la valeur saisie, sans la vérifier.</p></div>';
+   return sw+'<div class="pcFeuDesc">'+dimChLine('calcul au feu intégré à l\'application','data-pt-act="feuMethode"')+'<details class="pcFeuMore"><summary>Principe et formules</summary>'+PT_FEU_PRINC.map(x=>'<p class="pcNote">'+esc(x)+'</p>').join('')+ptFeuAlgoHtml()+'</details></div>';
   }
   const PT_FEU_S=[
    {k:'dur',lbl:'Durée de stabilité au feu justifiée',unit:'h',min:0.25,max:6,step:0.25,ph:'à saisir',aide:'Durée justifiée par l\'ingénieur (ex. 0,5 h, 1 h, 2 h) ; bornes 0,25 à 6 h.'},
@@ -29283,36 +29294,48 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const ref=String(dp.feu_s_ref||'');
    return f+'<label class="pcFeuRef"><span class="pcElsLbl">Méthode utilisée / référence</span><textarea rows="3" maxlength="400" data-feus="ref" placeholder="Méthode, norme, tableau ou logiciel utilisé (texte libre)">'+esc(ref)+'</textarea><span class="pcElsTag'+(ref.trim()?' on':'')+'">'+(ref.trim()?'saisi':'à renseigner')+'</span></label><p class="pcNote">Reprise telle quelle dans la note (Hypothèses et Points à confirmer), non vérifiée par l\'application.</p>';
   }
-  /* Fenêtre de choix de la méthode feu (style feuille iPhone) */
+  /* Fenêtre de choix de la méthode feu : trois options toujours proposées ; le choix referme la fenêtre ; Echap et clic dehors : aucun changement */
   function ptFeuModal(id){
    const old=document.getElementById('pcFeuOv'); if(old) old.remove();
    const ov=document.createElement('div'); ov.id='pcFeuOv'; ov.className='pcFeuOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','pcFeuOvT');
    ov.innerHTML='<div class="pcFeuCard"><h4 id="pcFeuOvT">Calcul au feu : quelle méthode ?</h4>'
     +'<ul class="pcFeuUl">'+PT_FEU_PRINC.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>'+ptFeuAlgoHtml()
-    +'<button type="button" class="primary pcFeuBtn" data-feu-choix="c011">Utiliser cette méthode</button>'
-    +'<button type="button" class="ghost pcFeuBtn" data-feu-choix="saisie">Autre méthode : je saisis la valeur</button>'
-    +'<button type="button" class="ghost pcFeuBtn pcFeuCancel" data-feu-choix="">Annuler</button></div>';
+    +dimChRow({icon:'check',nom:'Utiliser cette méthode',aide:'Méthode de calcul au feu intégrée à l\'application.',attr:'data-feu-choix="c011"',primary:true})
+    +dimChRow({icon:'field',nom:'Je saisis ma valeur',aide:'Autre méthode : la résistance au feu est calculée par l\'ingénieur puis saisie.',attr:'data-feu-choix="saisie"'})
+    +dimChRow({icon:'minus',nom:'Ne pas intégrer le calcul au feu',aide:'Aucun calcul ni aucune ligne au feu dans la note.',attr:'data-feu-choix="off"'})
+    +dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-feu-choix=""'})+'</div>';
    ov.addEventListener('click',e=>{ const b=e.target.closest('[data-feu-choix]'); if(!b&&e.target!==ov) return; const c=b?b.dataset.feuChoix:''; ov.remove();
-    if(!c) return; const t=taskById(id); if(!t) return; const dp=ptData(t); dp.feu_on=true; dp.feu_methode=c; dp._thOpen=dp._thOpen||{}; dp._thOpen.feu=true; dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); });
-   ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
-   document.body.appendChild(ov); const f=ov.querySelector('[data-feu-choix="c011"]'); if(f) f.focus({preventScroll:true});
+    if(!c) return; const t=taskById(id); if(!t) return; const dp=ptData(t); dp._thOpen=dp._thOpen||{};
+    if(c==='off'){ dp.feu_on=false; dp._thOpen.feu=false; } else { dp.feu_on=true; dp.feu_methode=c; dp._thOpen.feu=(c==='saisie'); if(c==='saisie') dp._elsOpen=true; }
+    try{persist();}catch(_){ } pteRender(id); });
+   dimChEsc(ov);
+   document.body.appendChild(ov); const f=ov.querySelector('.dimChRow'); if(f) f.focus({preventScroll:true});
   }
   /* Fenêtre de présentation de l'approche sécuritaire pour la section circulaire avec moment (style feuille iPhone, comme le choix de la méthode feu) */
   function ptCircModal(id){
    const old=document.getElementById('pcFeuOv'); if(old) old.remove();
    const ov=document.createElement('div'); ov.id='pcFeuOv'; ov.className='pcFeuOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','pcFeuOvT');
-   ov.innerHTML='<div class="pcFeuCard"><h4 id="pcFeuOvT">Section circulaire avec moment : approche sécuritaire</h4>'
-    +'<ul class="pcFeuUl"><li>La flexion composée est calculée sur la section carrée inscrite dans le cercle, de côté a = D/√2.</li>'
+   ov.innerHTML='<div class="pcFeuCard"><h4 id="pcFeuOvT">Section circulaire avec moment : quelle approche ?</h4>'
+    +'<ul class="pcFeuUl"><li>Approche sécuritaire : la flexion composée est calculée sur la section carrée inscrite dans le cercle, de côté a = D/√2.</li>'
     +'<li>L\'acier du cercle est ramené à ce carré, en deux lits à l\'enrobage ; la méthode est celle de la section rectangulaire (équilibre des déformations internes).</li>'
     +'<li>Le carré ne représente que 64 % de la section du cercle : la capacité réelle est sous-estimée, c\'est le sens de la sécurité.</li>'
     +'<li>Résultat à confirmer ; l\'hypothèse et la perte de capacité sont écrites dans la note de calcul.</li>'
-    +'<li>Choix réversible à tout moment dans les paramètres avancés.</li></ul>'
-    +'<button type="button" class="primary pcFeuBtn" data-circ-choix="1">Utiliser cette approche</button>'
-    +'<button type="button" class="ghost pcFeuBtn pcFeuCancel" data-circ-choix="">Annuler</button></div>';
+    +'<li>Choix réversible à tout moment.</li></ul>'
+    +dimChRow({icon:'check',nom:'Utiliser l\'approche sécuritaire',aide:'Section carrée inscrite, calcul intégré à l\'application.',attr:'data-circ-choix="1"',primary:true})
+    +dimChRow({icon:'field',nom:'Je saisis ma valeur',aide:'Autre méthode : valeur saisie par l\'ingénieur, non vérifiée par l\'application.',attr:'data-circ-choix="2"'})
+    +dimChRow({icon:'minus',nom:'Ne pas intégrer',aide:'Moment non vérifié, signalé dans la note.',attr:'data-circ-choix="0"'})
+    +dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-circ-choix=""'})+'</div>';
    ov.addEventListener('click',e=>{ const b=e.target.closest('[data-circ-choix]'); if(!b&&e.target!==ov) return; const c=b?b.dataset.circChoix:''; ov.remove();
-    if(!c) return; const t=taskById(id); if(!t) return; const dp=ptData(t); dp.c_bfCirc=1; dp._thOpen=dp._thOpen||{}; dp._thOpen.bf=true; dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); });
-   ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
-   document.body.appendChild(ov); const f=ov.querySelector('[data-circ-choix="1"]'); if(f) f.focus({preventScroll:true});
+    if(c==='') return; const t=taskById(id); if(!t) return; const dp=ptData(t); dp.c_bfCirc=+c; dp._thOpen=dp._thOpen||{}; dp._thOpen.bf=(+c===2); if(+c===2) dp._elsOpen=true; try{persist();}catch(_){ } pteRender(id); });
+   dimChEsc(ov);
+   document.body.appendChild(ov); const f=ov.querySelector('.dimChRow'); if(f) f.focus({preventScroll:true});
+  }
+  /* Rappel des choix de calcul faits : ligne « Choix : … » avec bouton « Modifier » (hors du bloc des paramètres avancés) */
+  function ptChoixHtml(dp){
+   const L=[];
+   if(dp.feu_on) L.push(dimChLine('calcul au feu '+(dp.feu_methode==='saisie'?'avec une valeur saisie par l\'ingénieur':'par la méthode intégrée à l\'application'),'data-pt-act="feuMethode"'));
+   if(dp.forme==='circ'&&dp.norme==='bael'){ const c=+dp.c_bfCirc||0; L.push(dimChLine('section circulaire avec moment : '+(c===1?'approche sécuritaire (carré inscrit)':(c===2?'valeur saisie par l\'ingénieur':'non intégrée (non vérifiée)')),'data-pt-act="circModal"')); }
+   return L.length?'<div class="dimChBlock">'+L.join('')+'</div>':'';
   }
   function ptParamsBlockHtml(dp,id){
    const cls=pcEnrobageNom(dp).classe, req=/^XD/.test(cls), err=(window._elsErr||{})[id], th=dp._thOpen||{};
@@ -29429,7 +29452,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function dcDegBlockHtml(dd,err){
    const mode=dcDeg(dd), tag=(x,l)=>'<span class="pcElsTag'+(x?' on':'')+'">'+l+'</span>', num=(key,v,min,max,step,unit,ph)=>'<input type="number" inputmode="decimal" step="'+step+'" min="'+min+'" max="'+max+'" data-dc-d="'+key+'" value="'+v+'"'+(v===''?' placeholder="'+ph+'"':'')+'>'+(unit?'<span class="pcUnitEls">'+unit+'</span>':'');
    const lbl=DC_DEG.find(x=>x[0]===mode)[1];
-   let h='<p class="pcNote"><b>Dégression des charges d\'exploitation : '+esc(lbl)+'</b>'+(mode==='aucune'?' (défaut)':'')+'.</p><button type="button" class="ghost pcDegChg" data-dc-act="degModal">Changer de méthode</button>';
+   let h=dimChLine('dégression des charges d\'exploitation : '+esc(lbl)+(mode==='aucune'?' (par défaut)':''),'data-dc-act="degModal"');
    const toitF='<label><span class="pcElsLbl">Toiture (première ligne) traitée à part</span><span class="pcElsCtl"><select data-dc-d="toit"><option value="1"'+(dcToit(dd)?' selected':'')+'>Oui : Q0 non réduit, hors du compte n</option><option value="0"'+(dcToit(dd)?'':' selected')+'>Non : comptée comme un étage</option></select></span>'+tag(!dcToit(dd),dcToit(dd)?'par défaut':'saisi')+'</label><p class="pcNote">La dégression ne porte que sur les étages de même catégorie ; la toiture est une autre catégorie (Eurocode 1, à confirmer).</p>';
    if(mode==='en1991'){ const p=dcPsiVal(dd);
     h+='<label><span class="pcElsLbl">ψ0 (obligatoire, à fournir par l\'ingénieur)</span><span class="pcElsCtl">'+num('psi0',p==null?'':p,0.5,1,0.05,'','à fournir')+'</span>'+tag(p!=null,p!=null?'saisi':'à fournir')+'</label>'
@@ -29457,10 +29480,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const done=(m,extra)=>{ const t1=taskById(id); if(!t1) return; const d=dcData(t1); d.deg=m; if(extra) Object.assign(d,extra); d.resultats=null; d._open=true; try{persist();}catch(_){ } ov.remove(); pteRender(id); };
    const r1=()=>{ ov.innerHTML='<div class="pcFeuCard"><h4 id="pcDegOvT">Dégression des charges d\'exploitation : quelle approche ?</h4>'
      +'<p class="pcNote">Choix réversible (« Changer de méthode »). Sans choix, aucune dégression n\'est appliquée.</p>'
-     +'<button type="button" class="ghost pcFeuBtn" data-deg-pick="aucune">Ne pas intégrer la dégression</button>'
-     +'<button type="button" class="primary pcFeuBtn" data-deg-pick="integrer">Intégrer la dégression</button>'
-     +'<button type="button" class="ghost pcFeuBtn" data-deg-pick="saisie">Autre approche : je calcule moi-même</button>'
-     +'<button type="button" class="ghost pcFeuBtn pcFeuCancel" data-deg-pick="">Annuler</button></div>'; };
+     +dimChRow({icon:'check',nom:'Utiliser la dégression',aide:'Eurocode 1 ou BAEL : choisir la loi à l\'étape suivante.',attr:'data-deg-pick="integrer"',primary:true})
+     +dimChRow({icon:'field',nom:'Je saisis ma valeur',aide:'Autre approche : coefficients a_n saisis par niveau.',attr:'data-deg-pick="saisie"'})
+     +dimChRow({icon:'minus',nom:'Ne pas intégrer la dégression',aide:'Aucune réduction des charges d\'exploitation.',attr:'data-deg-pick="aucune"'})
+     +dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-deg-pick=""'})+'</div>'; };
    const lines=()=>st.law==='bael'
      ?{p:['Principe : à partir du n-ième étage chargé (seuil, 5 par défaut), les charges q des étages sont multipliées par (3 + n)/(2n).','À confirmer par l\'ingénieur : loi et seuil à confirmer.'],
        a:[['n','nombre d\'étages portant une charge q > 0, toiture exclue (Q0 à part)'],['ΣQ = Σ q·aire·k','charges des étages (kN), k coefficient de continuité'],['α_n = (3 + n)/(2·n) si n ≥ seuil, sinon 1','coefficient de dégression'],['Q = Q0 + α_n·ΣQ + Σ q′·aire·k','charges d\'exploitation retenues (kN) ; q′ non réduit'],['N_Ed = γ_G·ΣG + γ_Q·Q','effort normal ELU (kN)']]}
@@ -29483,8 +29506,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(e.target.closest('[data-deg-back]')){ r1(); return; }
     if(e.target.closest('[data-deg-ok]')){ if(!okOk()) return; done(st.law,st.law==='bael'?{seuil:seuilN()}:{psi0:psiN()}); return; }
     if(e.target===ov) ov.remove(); });
-   ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
-   r1(); document.body.appendChild(ov); const f=ov.querySelector('button'); if(f) f.focus({preventScroll:true});
+   dimChEsc(ov);
+   r1(); document.body.appendChild(ov); const f=ov.querySelector('.dimChRow'); if(f) f.focus({preventScroll:true});
   }
   /* Résumés repris dans la note (Hypothèses, Points à confirmer) : uniquement si la dégression est intégrée ou saisie (« aucune » : note inchangée) */
   function dcDegInfo(dd,res,last){
@@ -29631,6 +29654,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    }
    const fSw=e.target.closest('[data-pt-act="feuToggle"]'); if(fSw){ const t1=taskById(id); if(!t1) return; const d1=ptData(t1); if(d1.feu_on){ d1.feu_on=false; d1._thOpen=d1._thOpen||{}; d1._thOpen.feu=true; d1._elsOpen=true; try{persist();}catch(_){ } pteRender(id); } else { d1._thOpen=d1._thOpen||{}; d1._thOpen.feu=true; d1._elsOpen=true; ptFeuModal(id); } return; }
    if(e.target.closest('[data-pt-act="feuMethode"]')){ ptFeuModal(id); return; }
+   if(e.target.closest('[data-pt-act="circModal"]')){ ptCircModal(id); return; }
    const kaB=e.target.closest('[data-ka-act]'); if(kaB){
     const t0=taskById(id); if(!t0) return; const dp0=ptData(t0); const act=kaB.dataset.kaAct;
     if(act==='reset'){ delete dp0.ka; window._elsErr=window._elsErr||{}; delete window._elsErr[id]; dp0._thOpen=dp0._thOpen||{}; dp0._thOpen.ka=true; dp0._elsOpen=true; try{persist();}catch(_){ } pteRender(id); return; }
@@ -31278,7 +31302,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(e.target.closest('[data-dl-ap-close]')){ dlApClose(); dleRender(op.id); return; }
     if(dimStatut(dp)==='calcule') return;
     const ad=e.target.closest('[data-dl-cd-add]'); if(ad&&ad.getAttribute('aria-disabled')!=='true'){ dlCdAdd(dp,ad.dataset.dlCdAdd); window._dlApOpen=null; try{ persist(); }catch(_){ } dleRender(op.id); return; }
-    const o=e.target.closest('[data-dl-ap-type]'); if(o&&o.getAttribute('aria-disabled')!=='true'){ dlApApply(dp,op.side,o.dataset.dlApType); try{ persist(); }catch(_){ } dleRender(op.id); } });
+    const o=e.target.closest('[data-dl-ap-type]'); if(o&&o.getAttribute('aria-disabled')!=='true'){ dlApApply(dp,op.side,o.dataset.dlApType); dlApClose(); try{ persist(); }catch(_){ } dleRender(op.id); } });
    window.addEventListener('keydown',e=>{ const pop=document.getElementById('dlApPop'); if(!pop) return;
     if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); const id=window._dlApOpen&&window._dlApOpen.id; dlApClose(); try{ dleRender(id); const b=document.querySelector('.dlApBtn'); if(b) b.focus(); }catch(_){ } return; }
     if(!pop.contains(document.activeElement)) return; const opts=[...pop.querySelectorAll('.pcApOpt')], k=opts.indexOf(document.activeElement);
@@ -32443,16 +32467,16 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const draw=()=>{ ov.innerHTML='<div class="pcFeuCard"><h4 id="pcNfOvT">Portance du sol : quelle méthode ?</h4>'
      +'<ul class="pcFeuUl">'+L.map(x=>'<li>'+x+'</li>').join('')+'</ul>'
      +'<p class="pcNote">Méthode de calcul de q_net :</p><div class="pcDegSeg pcNfSeg">'+SM_NF_METH.map(x=>'<button type="button" class="ghost" data-nf-m="'+x[0]+'" aria-pressed="'+(st.m===x[0]?'true':'false')+'">'+x[1]+'</button>').join('')+'</div>'
-     +'<button type="button" class="primary pcFeuBtn" data-nf-ok="1">Utiliser la NF P 94-261</button>'
-     +'<button type="button" class="ghost pcFeuBtn" data-nf-saisie="1">Autre méthode : je saisis la valeur</button>'
-     +'<button type="button" class="ghost pcFeuBtn pcFeuCancel" data-nf-cancel="1">Annuler</button></div>'; };
+     +dimChRow({icon:'check',nom:'Utiliser la NF P 94-261',aide:'Méthode choisie ci-dessus, calcul intégré à l\'application.',attr:'data-nf-ok="1"',primary:true})
+     +dimChRow({icon:'field',nom:'Je saisis ma valeur',aide:'Autre méthode : valeur saisie par l\'ingénieur.',attr:'data-nf-saisie="1"'})
+     +dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-nf-cancel="1"'})+'</div>'; };
    const done=m=>{ const t1=taskById(id); if(!t1) return; const d=smData(t1); d.solMode='nf'; d.nfMeth=m; d._elsOpen=true; try{persist();}catch(_){ } ov.remove(); smeRender(id); };
    ov.addEventListener('click',e=>{
     const mb=e.target.closest('[data-nf-m]'); if(mb){ st.m=mb.dataset.nfM; draw(); return; }
     if(e.target.closest('[data-nf-ok]')){ done(st.m); return; }
     if(e.target.closest('[data-nf-saisie]')){ done('saisie'); return; }
     if(e.target.closest('[data-nf-cancel]')||e.target===ov){ ov.remove(); } });
-   ov.addEventListener('keydown',e=>{ if(e.key==='Escape') ov.remove(); });
+   dimChEsc(ov);
    draw(); document.body.appendChild(ov); const f=ov.querySelector('[data-nf-ok]'); if(f) f.focus({preventScroll:true});
   }
   function smFormHtml(id,t){
@@ -40489,8 +40513,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(e.target.closest('[data-ap-close]')){ pcApClose(id,true); return; }
     const rs=e.target.closest('[data-ap-reset]'); if(rs){ if(dimStatut(dp)==='calcule') return; dp.appuis[i].raideur_kN_m=PC_AP_COEF_DEF; dp.appuis[i].kSaisi=false; try{persist();}catch(_){ } beamRender(id); return; }
     if(dimStatut(dp)==='calcule') return;
-    const ind=e.target.closest('[data-ap-indir]'); if(ind){ dp['indir'+i]=!(dp['indir'+i]===true); try{persist();}catch(_){ } beamRender(id); return; }
-    const op=e.target.closest('[data-ap-type]'); if(op&&op.getAttribute('aria-disabled')!=='true'){ pcApApply(dp,i,op.dataset.apType); try{persist();}catch(_){ } beamRender(id); }
+    const ind=e.target.closest('[data-ap-indir]'); if(ind){ dp['indir'+i]=!(dp['indir'+i]===true); try{persist();}catch(_){ } pcApClose(id,false); return; }
+    const op=e.target.closest('[data-ap-type]'); if(op&&op.getAttribute('aria-disabled')!=='true'){ pcApApply(dp,i,op.dataset.apType); try{persist();}catch(_){ } if(op.dataset.apType==='elastique') beamRender(id); else pcApClose(id,false); }
    });
    document.addEventListener('input',e=>{ const inp=e.target.closest&&e.target.closest('#pcApPop [data-ap-coef]'); if(!inp||inp.readOnly) return; const t=taskById(window._apPopId), dp=t&&pcData(t); if(dp) pcApCoefSet(dp,inp,true); });
    document.addEventListener('change',e=>{ const inp=e.target.closest&&e.target.closest('#pcApPop [data-ap-coef]'); if(!inp||inp.readOnly) return; const t=taskById(window._apPopId), dp=t&&pcData(t); if(dp){ pcApCoefSet(dp,inp,false); try{persist();}catch(_){ } beamRender(t.id); } });
