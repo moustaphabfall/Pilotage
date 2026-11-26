@@ -6973,6 +6973,8 @@ const DIM_I18N_DATA=[
 ['Plan et schémas de la note','Plan and diagrams of the note','المخطط والرسوم في المذكرة'],
 ['Schéma','Diagram','رسم'],
 ['Langue','Language','اللغة'],
+['Masquer la section','Hide the section','إخفاء القسم'],['Afficher la section','Show the section','إظهار القسم'],['erreur(s) dans cette section','error(s) in this section','أخطاء في هذا القسم'],
+['Masquer','Hide','إخفاء'],['Afficher','Show','إظهار'],
 ['Français','Français','Français'],
 ['English','English','English'],
 ['العربية','العربية','العربية']
@@ -6997,7 +6999,7 @@ const DIM_I18N_DATA=[
   len:'<path d="M3 12h18M3 8v8M21 8v8"/>',dim:'<rect x="5" y="7" width="14" height="11" rx="1"/><path d="M5 4h14"/>',load:'<path d="M12 3v13M7 11l5 5 5-5M5 21h14"/>',moment:'<path d="M5 17a7 7 0 1 1 14 0M15 17h4v-4"/>',
   cover:'<rect x="3" y="3" width="18" height="18" rx="1"/><rect x="8" y="8" width="8" height="8"/>',concrete:'<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 10h.01M12 14h.01M15 9h.01M16 15h.01"/>',
   rebar:'<path d="M4 8h16M4 12h16M4 16h16M7 5v14"/>',soil:'<path d="M3 8h18M3 13h18M3 18h18"/>',angle:'<path d="M5 19h14M5 19L15 7M10 19a5 5 0 0 0-1.2-3.3"/>',
-  back:'<path d="M15 5l-7 7 7 7"/>',up:'<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',brush:'<path d="M14 4l6 6-8 8H6v-6zM6 18l-2 3"/>',field:'<rect x="4" y="7" width="16" height="10" rx="2"/><path d="M8 12h8"/>',toggle:'<rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="2.5"/>',list:'<path d="M5 7h14M5 12h14M5 17h14"/>',text:'<path d="M5 7h14M5 12h14M5 17h9"/>',time:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',num:'<path d="M9 4L7 20M17 4l-2 16M4 9h16M3 15h16"/>'};
+  back:'<path d="M15 5l-7 7 7 7"/>',up:'<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',brush:'<path d="M14 4l6 6-8 8H6v-6zM6 18l-2 3"/>',eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',eyeoff:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>',field:'<rect x="4" y="7" width="16" height="10" rx="2"/><path d="M8 12h8"/>',toggle:'<rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="2.5"/>',list:'<path d="M5 7h14M5 12h14M5 17h14"/>',text:'<path d="M5 7h14M5 12h14M5 17h9"/>',time:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',num:'<path d="M9 4L7 20M17 4l-2 16M4 9h16M3 15h16"/>'};
  const svg=(k,cls)=>'<svg class="dimBI '+(cls||'')+'" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(IC[k]||IC.field)+'</svg>';
  window.dimBiSvg=svg; window.DIM_BI=IC;
  const strip=s=>String(s||'').replace(/^[\s←-⇿☀-➿️\u{1F300}-\u{1FAFF}＋+✕✓▶−]+/u,'').replace(/\s+/g,' ').trim();
@@ -7124,6 +7126,53 @@ const DIM_I18N_DATA=[
  setInterval(()=>{ const pv=document.getElementById('sbProfView'); if(!pv||pv.querySelector('.pv-lg-w')) return; const anchor=pv.querySelector('.pv-th-w')||pv.querySelector('#pvData'); if(!anchor) return;
   const w=document.createElement('div'); w.className='pv-lg-w'; w.innerHTML='<div class="pv-l" style="margin-top:8px" data-dimfr="Langue">'+window.dimT('Langue')+'</div><div class="pv-th">'+[['fr','Français'],['en','English'],['ar','العربية']].map(l=>'<button type="button" data-lang="'+l[0]+'">'+l[1]+'</button>').join('')+'</div>';
   anchor.parentNode.insertBefore(w,anchor.nextSibling); w.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.lang===lang)); w.onclick=e=>{ const b=e.target.closest('button[data-lang]'); if(b) window.dimSetLang(b.dataset.lang); }; },900);
+
+ /* ===== Tout ce qui regroupe est pliable : petit œil (ouvert = visible, barré = masqué), état mémorisé par ouvrage, blocs en erreur jamais masqués ===== */
+ const FK='dim_fold';
+ const foldGet=()=>{ try{ return JSON.parse(localStorage.getItem(FK)||'{}')||{}; }catch(_){ return {}; } };
+ const foldSave=o=>{ try{ localStorage.setItem(FK,JSON.stringify(o)); }catch(_){ } };
+ const foldOwner=()=>String(window._ficheIaId||'app');
+ const foldKey=(h)=>{ const c=h.cloneNode(true); c.querySelectorAll('.dimEye,.dimEyeN').forEach(x=>x.remove()); return nk(c.textContent).replace(/^\d+\s*[·.\-]\s*/,'').slice(0,60); };
+ const ERRSEL='[aria-invalid="true"],.pcElsErr,.dimErrBox,.ncSt.ko';
+ function eyeBtn(title,hidden,nErr){
+  const b=document.createElement('button'); b.type='button'; b.className='dimEye'; b.dataset.dimui='1'; b.setAttribute('aria-pressed',hidden?'false':'true');
+  const lab=(nErr?nErr+' '+window.dimT('erreur(s) dans cette section')+' — ':'')+window.dimT(hidden?'Afficher la section':'Masquer la section')+' : '+title;
+  b.setAttribute('aria-label',lab); b.setAttribute('title',lab); b.innerHTML=svg(hidden?'eyeoff':'eye')+(nErr?'<span class="dimEyeN" aria-hidden="true">'+nErr+'</span>':'');
+  if(nErr) b.setAttribute('data-err','1'); return b;
+ }
+ function foldRefresh(head,body,key){
+  const st=foldGet(), mine=st[foldOwner()]||{}; const nErr=body.querySelectorAll(ERRSEL).length; let hidden=!!mine[key];
+  if(nErr) hidden=false;
+  body.hidden=hidden; const old=head.querySelector(':scope>.dimEye'); const nb=eyeBtn(key,hidden,nErr); if(nErr) nb.disabled=false;
+  if(old) old.replaceWith(nb); else head.insertBefore(nb,head.firstChild);
+ }
+ function foldBlock(head,body,key){ head.classList.add('dimFoldH'); head.dataset.dimfold=key; body.dataset.dimfoldb=key; foldRefresh(head,body,key); }
+ document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.dimEye'); if(!b) return; e.preventDefault(); e.stopPropagation();
+  const head=b.parentElement, key=head.dataset.dimfold, body=head.nextElementSibling&&head.nextElementSibling.dataset.dimfoldb===key?head.nextElementSibling:null; if(!body) return;
+  if(body.querySelectorAll(ERRSEL).length){ return; }
+  const st=foldGet(), o=foldOwner(); st[o]=st[o]||{}; if(body.hidden) delete st[o][key]; else st[o][key]=1; foldSave(st); foldRefresh(head,body,key); },true);
+ const STOP='.pcFormSticky,.pcNav,.pcFormHint,.dimErrBox,details.pcEls,.pcBtnMain,hr.pcFormSep,.pcModHead,.pjBeam-top,.ppSeg,.pcDraw,.pcSchemaCap';
+ function doFold(mb){
+  /* sections d'une fiche : chaque titre h5 et son contenu jusqu'au titre suivant */
+  mb.querySelectorAll('.pcPanel,[data-dim-fiche],.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot,.pjVoileRoot,.pjMixteRoot,.pjPortiqueRoot,.pjMurRoot,.pjRideauRoot,.pjMassifRoot').forEach(c=>{
+   [...c.children].filter(h=>h.tagName==='H5'&&!h.dataset.dimfold).forEach(h=>{
+    const nodes=[]; let n=h.nextElementSibling; while(n&&n.tagName!=='H5'&&!n.matches(STOP)){ nodes.push(n); n=n.nextElementSibling; }
+    if(!nodes.length) return; const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,foldKey(h)); });
+  });
+  /* paramètres avancés et sous-blocs : l'œil pilote l'ouverture */
+  mb.querySelectorAll('details.pcEls>summary:not([data-dimfold]),details.pcElsSub>summary:not([data-dimfold])').forEach(sm=>{
+   const d=sm.parentElement; sm.dataset.dimfold='1'; const mk=()=>{ const old=sm.querySelector('.dimEye'); const nErr=d.querySelectorAll(ERRSEL).length; const nb=eyeBtn(nk(sm.textContent),!d.open,nErr); if(nErr&&!d.open) d.open=true; if(old) old.replaceWith(nb); else sm.insertBefore(nb,sm.firstChild); };
+   mk(); d.addEventListener('toggle',()=>{ const o=sm.querySelector('.dimEye'); if(o){ mk(); } });
+   sm.addEventListener('click',e=>{ const b=e.target.closest('.dimEye'); if(!b) return; e.preventDefault(); e.stopPropagation(); if(d.querySelectorAll(ERRSEL).length) return; d.open=!d.open; },true); });
+  /* tableaux de saisie (couches de sol…) */
+  mb.querySelectorAll('.gtTW:not([data-dimfold]),.mzLay:not([data-dimfold])').forEach(tb=>{
+   if(tb.closest('.pcNC,.ncDoc')) return; tb.dataset.dimfold='x'; const prev=tb.previousElementSibling; if(prev&&prev.dataset&&prev.dataset.dimfold==='tab') return;
+   const head=document.createElement('div'); head.className='dimTabH'; const t=window.dimT('Tableau'); head.innerHTML='<span class="dimTabT">'+esc2(t)+'</span>'; const nx=tb.nextElementSibling;
+   tb.before(head); const body=document.createElement('div'); body.className='dimFoldB'; tb.before(body); body.appendChild(tb); /* les boutons d'ajout qui suivent restent visibles */ foldBlock(head,body,'tableau:'+(tb.querySelector('th')?nk(tb.querySelector('th').textContent):'')+':'+[...mb.querySelectorAll('.gtTW,.mzLay')].indexOf(tb)); });
+  /* notes : une section pliable par titre */
+  mb.querySelectorAll('.pcNC .ncSec>h4:not([data-dimfold]),.ncDoc .ncSec>h4:not([data-dimfold])').forEach(h=>{
+   const sec=h.parentElement, nodes=[...sec.children].filter(x=>x!==h); if(!nodes.length) return; const body=document.createElement('div'); body.className='dimFoldB'; h.after(body); nodes.forEach(x=>body.appendChild(x)); foldBlock(h,body,'note:'+foldKey(h)); });
+ }
  let raf=0;
  function scan(){ raf=0; const mb=document.getElementById('modalBody')||document.body;
   const R=[mb,...document.querySelectorAll('.dimDiffOv,.pcFeuOv,.dimModBox,#miniPromptOverlay,.dimCalcOverlay')];
@@ -7132,6 +7181,7 @@ const DIM_I18N_DATA=[
   document.querySelectorAll('.fiche-exp-bar button:not([data-dimui]),#modalBody button[role="switch"]:not([data-dimui]),#modalBody .ppSeg button:not([data-dimui]),#modalBody button[data-beam-back]:not([data-dimui])').forEach(doBtn);
   document.querySelectorAll('.elsMDLb:not([data-dimfr])').forEach(e=>{ const fr=e.textContent.trim(); e.setAttribute('data-dimfr',fr); const tr=TR(fr); if(tr!=null) e.textContent=tr; });
   mb.querySelectorAll('.pcDraw:not([data-dimuiz])').forEach(doDraw);
+  try{ doFold(mb); }catch(err){ console.error(err); }
  }
  try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
 })();
@@ -20775,6 +20825,15 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .pcDraw svg,.pcDraw foreignObject,.dimZStage svg{direction:ltr}
 .dimFDf input,.dimFDf select{direction:ltr}:root[dir="rtl"] .dimFDf select{direction:rtl}
 .pv-lg-w .pv-th{display:flex;gap:6px;flex-wrap:wrap}.pv-lg-w button{min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid var(--ds-line,#9a9a9a);background:transparent;color:inherit;font:600 15px/1 system-ui}.pv-lg-w button.on{border-color:var(--ds-accent,#FFC400)}
+.dimEye{display:inline-flex;position:relative;align-items:center;justify-content:center;flex:none;width:44px;height:44px;min-width:44px;box-sizing:border-box;margin:0;margin-inline-end:10px;padding:0;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:12px;background:transparent;color:var(--ds-ink,inherit);cursor:pointer;vertical-align:middle}
+.dimEye .dimBI{width:24px;height:24px}.dimEye:hover{border-color:var(--ds-accent,#FFC400)}.dimEye:focus-visible{outline:3px solid var(--ds-accent,#FFC400);outline-offset:2px}
+.dimEye[aria-pressed="false"]{color:var(--ds-ink-soft,#777)}
+.dimEye[data-err]{border-color:var(--ds-danger,#c0392b);color:var(--ds-danger,#c0392b)}
+.dimEyeN{position:absolute;top:-8px;inset-inline-end:-8px;min-width:20px;height:20px;padding:0 4px;box-sizing:border-box;border-radius:10px;background:var(--ds-danger,#c0392b);color:#fff;font:700 12px/20px system-ui;text-align:center}
+.dimFoldH{display:flex!important;align-items:center;gap:0}
+details>summary .dimEye{margin-block:4px}
+.dimFoldB[hidden]{display:none!important}
+.dimTabH{display:flex;align-items:center;gap:0;margin:6px 0 2px;font:600 15px/1.2 system-ui}.dimTabT{color:var(--ds-ink-soft,#777)}
 .mzLay{width:100%;border-collapse:collapse;margin:6px 0 10px}.mzLay th,.mzLay td{padding:4px 6px;text-align:left;font-size:var(--ds-fs-help,12px)}.mzLay input{width:92px;min-height:40px;box-sizing:border-box}.mzLay td:last-child{width:48px}
 .pjBeamRoot .pcModHead .pcNote{font-size:var(--ds-fs-help);opacity:1;padding:3px 10px!important;color:var(--ds-ink-soft)}
 .pjBeamRoot .pjBeam-top{min-height:56px;margin-bottom:6px;gap:8px}
