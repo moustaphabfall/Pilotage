@@ -49458,6 +49458,8 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
 .dcLg{display:inline-flex;align-items:center;gap:6px;font-size:13px}
 .dcLg i{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid var(--ds-ink,#16232B)}
 .dcPlan li{margin:3px 0}
+.dcProg{display:block;width:100%;height:14px;margin:6px 0;accent-color:var(--ds-accent,#FFC400)}
+.dcLots li{margin:6px 0}
 </style>
 <script id="dcExchangeJs">
 (function(root){
@@ -49746,7 +49748,65 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   return doc;
  }
  function aPlat(doc){ var L=[]; doc.batiments.forEach(function(b,ib){ b.niveaux.forEach(function(n,inv){ n.ouvrages.forEach(function(o,io){ L.push({id:'b'+ib+'n'+inv+'o'+io,bat:b.nom,niveau:n.nom,ouvrage:o}); }); }); }); return L; }
- root.DcExchange={FORMAT:FORMAT,VERSION:VERSION,TYPES:TYPES,GEO:GEO,CHARGES:CHARGES,OUTILS:OUTILS,key:key,fmt:fmt,num:num,clean:clean,read:read,check:check,tree:tree,compte:compte,locate:locate,plan:plan,massing:massing,proj:proj,faces:faces,sample:sample,aPlat:aPlat};
+
+ /* ---------- gros PDF de plans : limites, découpage en lots, fusion des résultats ---------- */
+ var LIMITES={fichiersMax:6,pagesMax:40,octetsPdfMax:30e6,piecesParLot:4,octetsParLot:3.5e6,octetsPiece:1.2e6,essaisParLot:2};
+ /* items : [{nom,pages,octets,type}] ; renvoie {ok,messages[],pages,fichiers} avec des messages simples */
+ function controleLimites(items){
+  var msg=[], pages=0;
+  if(items.length>LIMITES.fichiersMax) msg.push('Trop de fichiers : '+items.length+' déposés, '+LIMITES.fichiersMax+' au plus. Retirez-en quelques-uns.');
+  items.forEach(function(it){
+   pages+=(it.pages||1);
+   if(it.type==='application/pdf'&&it.octets>LIMITES.octetsPdfMax) msg.push('« '+it.nom+' » est trop lourd : '+Math.round(it.octets/1e6)+' Mo, '+Math.round(LIMITES.octetsPdfMax/1e6)+' Mo au plus par PDF. Réduisez ou découpez le PDF.');
+  });
+  if(pages>LIMITES.pagesMax) msg.push('Trop de pages : '+pages+' au total, '+LIMITES.pagesMax+' au plus. Retirez des pages ou découpez le PDF en plusieurs parties.');
+  return {ok:msg.length===0,messages:msg,pages:pages,fichiers:items.length};
+ }
+ /* pieces : [{octets}] (taille de chaque page ou image envoyée). Renvoie {lots:[[indices]],tropGrosses:[indices]} : au plus piecesParLot pièces et octetsParLot octets par lot, ordre conservé. */
+ function decouperLots(pieces,opt){
+  opt=opt||{}; var maxP=opt.piecesParLot||LIMITES.piecesParLot, maxO=opt.octetsParLot||LIMITES.octetsParLot, lots=[], cur=[], oct=0, trop=[];
+  pieces.forEach(function(pc,i){
+   var o=pc.octets||0;
+   if(o>maxO){ trop.push(i); return; }
+   if(cur.length&&(cur.length>=maxP||oct+o>maxO)){ lots.push(cur); cur=[]; oct=0; }
+   cur.push(i); oct+=o;
+  });
+  if(cur.length) lots.push(cur);
+  return {lots:lots,tropGrosses:trop};
+ }
+ function sigGeo(o){ var g=o.geometrie||{}; return Object.keys(g).sort().map(function(k){ return k+'='+(Math.round(g[k]*100)/100); }).join(';'); }
+ /* fusion de plusieurs propositions (une par lot) en un seul découpage ; tout reste « non vérifié » ; les doublons sont signalés */
+ function fusionner(docs,nomProjet){
+  var out={format:FORMAT,version:VERSION,source:{outil:'Agent IA'},projet:{nom:clean(nomProjet||'')},batiments:[]}, dbl=[], av=[], noms={}, geos={};
+  docs.forEach(function(d){
+   if(!d) return;
+   if(!out.projet.nom&&d.projet&&clean(d.projet.nom)) out.projet.nom=clean(d.projet.nom);
+   if(d.projet&&d.projet.sol&&!out.projet.sol) out.projet.sol=JSON.parse(JSON.stringify(d.projet.sol));
+   d.batiments.forEach(function(b){
+    var ob=out.batiments.filter(function(x){ return key(x.nom)===key(b.nom); })[0]; if(!ob){ ob={nom:b.nom,niveaux:[]}; out.batiments.push(ob); }
+    b.niveaux.forEach(function(n){
+     var on=ob.niveaux.filter(function(x){ return key(x.nom)===key(n.nom); })[0];
+     if(!on){ on={nom:n.nom,cote_m:n.cote_m,ouvrages:[]}; if(n.hauteur_m!==undefined) on.hauteur_m=n.hauteur_m; ob.niveaux.push(on); }
+     else{ if(Math.abs(on.cote_m-n.cote_m)>0.01) av.push('Niveau « '+n.nom+' » : deux cotes différentes selon les pages ('+fmt(on.cote_m)+' m et '+fmt(n.cote_m)+' m). La première est gardée.'); if(on.hauteur_m===undefined&&n.hauteur_m!==undefined) on.hauteur_m=n.hauteur_m; }
+     n.ouvrages.forEach(function(o0){
+      var o=JSON.parse(JSON.stringify(o0)), k=key(o.nom), sg=sigGeo(o);
+      if(noms[k]){
+       if(noms[k].type===o.type&&noms[k].sig===sg){ dbl.push({genre:'exact',message:'« '+o.nom+' » apparaît deux fois à l’identique (page répétée) : un seul est gardé.'}); return; }
+       var i=2, c; do{ c=o.nom+' ('+i+')'; i++; }while(noms[key(c)]);
+       dbl.push({genre:'nom',message:'Deux ouvrages portent le nom « '+o.nom+' » avec des formes différentes : le second est renommé « '+c+' ». À vérifier.'});
+       o.nom=c; k=key(c);
+      }
+      var gk=key(ob.nom)+'|'+key(on.nom)+'|'+o.type+'|'+sg;
+      if(geos[gk]) dbl.push({genre:'geometrie',message:'« '+geos[gk]+' » et « '+o.nom+' » ont la même forme au même endroit : doublon possible. À vérifier.'});
+      else geos[gk]=o.nom;
+      noms[k]={type:o.type,sig:sg}; o.statut='non_verifie'; on.ouvrages.push(o);
+     });
+    });
+   });
+  });
+  var r=check(out); r.doublons=dbl; r.avertissements=(r.avertissements||[]).concat(av); return r;
+ }
+ root.DcExchange={FORMAT:FORMAT,VERSION:VERSION,TYPES:TYPES,GEO:GEO,CHARGES:CHARGES,OUTILS:OUTILS,key:key,fmt:fmt,num:num,clean:clean,read:read,check:check,tree:tree,compte:compte,locate:locate,plan:plan,massing:massing,proj:proj,faces:faces,sample:sample,aPlat:aPlat,LIMITES:LIMITES,controleLimites:controleLimites,decouperLots:decouperLots,fusionner:fusionner};
 })(typeof window!=='undefined'?window:this);
 </script>
 <script id="dcV2UiJs">
@@ -49800,7 +49860,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  var DS=window.__dcV2State=window.__dcV2State||{ecran:'accueil',doc:null,origine:'',verdict:null,fichiers:[],consigne:'',projetNom:'',ack:{},ecart:{},mod:{},open:{},edit:null,editErr:'',sel:null,vue:{yaw:-0.6,pitch:0.5},msg:'',msgKo:false,occupe:false,cree:null,colle:''};
  function racine(){ var mb=document.getElementById('modalBody'); return mb&&mb.querySelector('.dcV2Root'); }
  function estIA(){ return DS.origine==='agent'; }
- function reset(){ DS.doc=null; DS.verdict=null; DS.ack={}; DS.ecart={}; DS.mod={}; DS.open={}; DS.edit=null; DS.editErr=''; DS.sel=null; DS.cree=null; DS.msg=''; DS.msgKo=false; }
+ function reset(){ DS.doc=null; DS.verdict=null; DS.ack={}; DS.ecart={}; DS.mod={}; DS.open={}; DS.edit=null; DS.editErr=''; DS.sel=null; DS.cree=null; DS.msg=''; DS.msgKo=false; DS.doublons=[]; }
  function charger(res,origine,nomFichier){
   reset(); DS.origine=origine; DS.verdict=res; DS.doc=res.ok?res.doc:null; DS.fichierNom=nomFichier||'';
   DS.vue={yaw:-0.6,pitch:0.5};
@@ -49960,14 +50020,30 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var ok=typeof SUPABASE_URL!=='undefined'&&typeof SUPABASE_KEY!=='undefined'&&navigator.onLine!==false;
   return ok?'<span class="dcChip dcChipOk">'+T('connexion possible')+'</span>':'<span class="dcChip dcChipNv">'+T('agent non connecté')+'</span>';
  }
+ function pagesTxt(e){ return e.erreur?e.erreur:(e.pages===null?T('comptage des pages…'):e.pages+' '+T(e.pages>1?'pages':'page')); }
+ function jobHtml(){
+  var j=DS.job; if(!j) return '';
+  var ok=j.lots.filter(function(l){ return l.etat==='ok'; }).length, tot=j.lots.length, h='';
+  if(j.phase==='preparation') return '<p class="dcNote" role="status">'+esc(j.txt||T('Préparation des pages…'))+'</p><progress class="dcProg" aria-label="'+esc(T('Préparation'))+'"></progress>';
+  h+='<p class="dcNote" role="status">'+(j.phase==='envoi'?esc(T('Lot')+' '+(j.courant+1)+' '+T('sur')+' '+tot+' : '+T('analyse en cours')+(j.essai>0?' ('+T('nouvel essai')+' '+j.essai+')':'')+'…'):esc(ok+' '+T('lot(s) lu(s) sur')+' '+tot))+'</p>';
+  h+='<progress class="dcProg" max="'+tot+'" value="'+ok+'" aria-label="'+esc(T('Avancement'))+'"></progress>';
+  var det='<ul class="dcUl dcLots">'+j.lots.map(function(l,i){ return '<li>'+T('Lot')+' '+(i+1)+' <span class="dcChip'+(l.etat==='ok'?' dcChipOk':(l.etat==='echec'?' dcChipNv':''))+'">'+esc(T(l.etat==='ok'?'lu':(l.etat==='echec'?'à reprendre':(l.etat==='en cours'?'en cours':'en attente'))))+'</span>'+(l.erreur?'<p class="dcErr" role="alert">'+esc(l.erreur)+'</p>':'')+'</li>'; }).join('')+'</ul>';
+  h+=sec('agent.lots','Détail des lots',det,{gen:j.phase!=='arret'});
+  if(j.phase==='envoi') h+=row([btn('close','Arrêter','job_stop')],true);
+  if(j.phase==='arret') h+=row([btn('send','Reprendre','job_reprendre',{primary:1}),btn('check','Utiliser ce qui est reçu','job_partiel',{disabled:!ok}),btn('close','Annuler','job_annule')]);
+  return h;
+ }
  function ecranAgent(){
-  var h=entete('Avec l’agent IA','accueil');
-  h+='<p class="dcNote">'+T('Déposez vos plans (PDF, images) et, si vous voulez, des photos. L’agent propose la maquette et le découpage. Tout ce qu’il propose est « non vérifié » tant que vous ne l’avez pas accepté.')+'</p>';
-  var liste=DS.fichiers.length?'<ul class="dcUl dcFiles">'+DS.fichiers.map(function(f,i){ return '<li><span class="dcFn">'+esc(f.name)+'</span> <span class="dcLvl">'+Math.max(1,Math.round(f.size/1024))+' Ko</span> <button type="button" class="dcX" data-dc="rmf" data-i="'+i+'" aria-label="'+esc(T('Retirer ce fichier'))+'" title="'+esc(T('Retirer ce fichier'))+'">'+svg('close')+'</button></li>'; }).join('')+'</ul>':'<p class="dcNote">'+T('Aucun fichier déposé.')+'</p>';
-  h+=sec('agent.depot','Plans et photos','<p class="dcNote">'+T('État')+' : '+etatAgent()+'</p><div class="dcDrop" data-dc-drop tabindex="0" role="button" aria-label="'+esc(T('Déposer des plans ou des photos'))+'">'+svg('upload')+'<span>'+T('Glissez vos plans et photos ici')+'</span></div><input type="file" multiple accept="application/pdf,image/*" hidden data-dc-file="plans">'+liste
+  var h=entete('Avec l’agent IA','accueil'), lim=limitesEtat(), L=X.LIMITES, occ=DS.occupe;
+  h+='<p class="dcNote">'+T('Déposez vos plans (PDF, images) et, si vous voulez, des photos. Les gros PDF sont lus page par page, par lots. L’agent propose la maquette et le découpage. Tout ce qu’il propose est « non vérifié » tant que vous ne l’avez pas accepté.')+'</p>';
+  var liste=DS.fichiers.length?'<ul class="dcUl dcFiles">'+DS.fichiers.map(function(f,i){ return '<li><span class="dcFn">'+esc(f.name)+'</span> <span class="dcLvl">'+(f.size>=1e6?fm(Math.round(f.size/1e5)/10)+' Mo':Math.max(1,Math.round(f.size/1024))+' Ko')+' · '+esc(pagesTxt(f))+'</span> <button type="button" class="dcX" data-dc="rmf" data-i="'+i+'"'+(occ?' disabled':'')+' aria-label="'+esc(T('Retirer ce fichier'))+'" title="'+esc(T('Retirer ce fichier'))+'">'+svg('close')+'</button></li>'; }).join('')+'</ul>':'<p class="dcNote">'+T('Aucun fichier déposé.')+'</p>';
+  var limTxt='<p class="dcNote">'+T('Limites')+' : '+L.fichiersMax+' '+T('fichiers')+', '+L.pagesMax+' '+T('pages en tout')+', '+Math.round(L.octetsPdfMax/1e6)+' '+T('Mo par PDF')+'. '+(DS.fichiers.length?T('Pages déposées')+' : '+lim.pages+'.':'')+'</p>'+(lim.ok?'':'<div class="dcErr" role="alert">'+lim.messages.map(function(m){ return '<p>'+esc(T(m))+'</p>'; }).join('')+'</div>');
+  var bloqueTexte=DS.fichiers.some(function(e){ return e.pages===null; });
+  h+=sec('agent.depot','Plans et photos','<p class="dcNote">'+T('État')+' : '+etatAgent()+'</p><div class="dcDrop" data-dc-drop tabindex="0" role="button" aria-label="'+esc(T('Déposer des plans ou des photos'))+'">'+svg('upload')+'<span>'+T('Glissez vos plans et photos ici')+'</span></div><input type="file" multiple accept="application/pdf,image/*" hidden data-dc-file="plans">'+liste+limTxt
    +'<div class="dcFld"><label for="dcConsigne">'+T('Consigne pour l’agent (facultatif)')+'</label><textarea id="dcConsigne" class="dcTa" rows="3" data-dc-consigne placeholder="'+esc(T('Par exemple : bâtiment à trois niveaux sur sous-sol, structure poteaux-poutres'))+'">'+esc(DS.consigne)+'</textarea></div>'
    +'<div class="dcFld"><label for="dcPNom">'+T('Nom du projet (facultatif)')+'</label><input id="dcPNom" type="text" class="dcIn" data-dc-pnom maxlength="120" value="'+esc(DS.projetNom)+'" placeholder="'+esc(T('Nom du projet'))+'"></div>'
-   +row([btn('upload','Ajouter des plans ou photos','choisir_plans'),btn('spark',DS.occupe?'Analyse en cours…':'Demander à l’agent','agent_go',{disabled:DS.occupe||!nbFichiers(),primary:1}),btn('book','Exemple','exemple_agent')])+msgHtml());
+   +row([btn('upload','Ajouter des plans ou photos','choisir_plans',{disabled:occ}),btn('spark',occ?'Analyse en cours…':'Demander à l’agent','agent_go',{disabled:occ||!nbFichiers()||!lim.ok||bloqueTexte||DS.fichiers.some(function(e){ return e.erreur; }),primary:1}),btn('book','Exemple','exemple_agent',{disabled:occ})])+jobHtml()+msgHtml());
+  if(DS.doublons&&DS.doublons.length) h+=sec('agent.doublons','Doublons signalés','<div class="dcWarn"><b>'+T('À vérifier')+'</b><ul>'+DS.doublons.slice(0,60).map(function(d){ return '<li>'+esc(d.message)+'</li>'; }).join('')+(DS.doublons.length>60?'<li>… '+(DS.doublons.length-60)+' '+T('autres')+'</li>':'')+'</ul></div>');
   if(DS.verdict) h+=sec('agent.controle','Contrôle de la proposition',verdictHtml(),{gen:true});
   if(DS.doc){
    h+='<p class="dcBanner" role="note">'+T('Non vérifié : proposition de l’agent IA. Rien n’est créé tant que vous n’avez pas tout accepté.')+'</p>';
@@ -50034,42 +50110,106 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function lireTexte(f,cb){ if(f.size>20e6){ cb(null,T('Fichier trop gros (plus de 20 Mo).')); return; } var r=new FileReader(); r.onload=function(){ cb(String(r.result||'')); }; r.onerror=function(){ cb(null,T('Lecture du fichier impossible.')); }; r.readAsText(f); }
  function ouvrirTexte(txt,nom){ charger(X.read(txt),'plugin',nom); if(DS.verdict&&!DS.verdict.ok){ FOLD['plugin.controle']=2; } rendre(); }
  function aB64(f,cb){
-  if(/^image\//.test(f.type)){
-   var url=URL.createObjectURL(f), im=new Image();
-   im.onload=function(){ var k=Math.min(1,1600/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k)); c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url); var u=c.toDataURL('image/jpeg',0.8); cb({nom:f.name,type:'image/jpeg',data:u.split(',')[1]}); };
-   im.onerror=function(){ URL.revokeObjectURL(url); cb(null); }; im.src=url; return;
-  }
-  if(f.type==='application/pdf'&&f.size<=3.5e6){ var r=new FileReader(); r.onload=function(){ cb({nom:f.name,type:'application/pdf',data:String(r.result).split(',')[1]}); }; r.onerror=function(){ cb(null); }; r.readAsDataURL(f); return; }
-  cb(null);
+  var url=URL.createObjectURL(f), im=new Image();
+  im.onload=function(){ var k=Math.min(1,1600/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k)); c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url); var q=0.8, u=c.toDataURL('image/jpeg',q); while(u.length>X.LIMITES.octetsPiece&&q>0.45){ q-=0.15; u=c.toDataURL('image/jpeg',q); } cb({nom:f.name,type:'image/jpeg',data:u.split(',')[1],octets:u.length}); };
+  im.onerror=function(){ URL.revokeObjectURL(url); cb(null); }; im.src=url;
+ }
+ function compterPages(e){
+  if(typeof loadPdfJs!=='function'){ e.pages=0; e.erreur=T('Lecture des PDF indisponible'); rendre(); return; }
+  loadPdfJs().then(function(lib){ return e.f.arrayBuffer().then(function(buf){ return lib.getDocument({data:buf}).promise; }); }).then(function(pdf){ e.pages=pdf.numPages; try{ pdf.destroy(); }catch(_){ } rendre(); }).catch(function(){ e.pages=0; e.erreur=T('PDF illisible ou protégé'); rendre(); });
  }
  function ajouterFichiers(list){
-  var n=0; Array.prototype.forEach.call(list,function(f){ if(DS.fichiers.length>=6){ return; } if(!/^image\//.test(f.type)&&f.type!=='application/pdf') return; DS.fichiers.push(f); n++; });
-  if(list.length>n){ DS.msg=T('Seuls les PDF et les images sont pris, six fichiers au plus.'); DS.msgKo=false; } else DS.msg='';
-  rendre();
+  var ajoutes=[], ignores=0;
+  Array.prototype.forEach.call(list,function(f){
+   var pdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name||''), img=/^image\//.test(f.type);
+   if(!pdf&&!img){ ignores++; return; }
+   var e={f:f,name:f.name,size:f.size,type:pdf?'application/pdf':f.type,pages:pdf?null:1,erreur:''}; DS.fichiers.push(e); if(pdf) ajoutes.push(e);
+  });
+  DS.msg=ignores?T('Seuls les PDF et les images sont pris.'):''; DS.msgKo=false; rendre();
+  ajoutes.forEach(compterPages);
  }
- function agentGo(){
+ function limitesEtat(){ return X.controleLimites(DS.fichiers.map(function(e){ return {nom:e.name,type:e.type,pages:e.pages||1,octets:e.size}; })); }
+ function aB64p(f){ return new Promise(function(res){ aB64(f,res); }); }
+ /* une page de PDF devient une image JPEG réduite (taille bornée) */
+ async function pageEnPiece(pdf,num,nom){
+  var page=await pdf.getPage(num), v0=page.getViewport({scale:1}), sc=Math.min(2.5,1600/Math.max(v0.width,v0.height)), essais=0, u='';
+  for(;;){
+   var vp=page.getViewport({scale:sc}), c=document.createElement('canvas'); c.width=Math.max(1,Math.round(vp.width)); c.height=Math.max(1,Math.round(vp.height));
+   var cx=c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,c.width,c.height); await page.render({canvasContext:cx,viewport:vp}).promise;
+   var q=0.8; u=c.toDataURL('image/jpeg',q); while(u.length>X.LIMITES.octetsPiece&&q>0.45){ q-=0.15; u=c.toDataURL('image/jpeg',q); }
+   if(u.length<=X.LIMITES.octetsPiece||essais>=3) break; essais++; sc*=0.75;
+  }
+  return {nom:nom,type:'image/jpeg',data:u.split(',')[1],octets:u.length};
+ }
+ async function preparerPieces(){
+  var pieces=[], totalPages=DS.fichiers.reduce(function(a,e){ return a+(e.pages||1); },0), fait=0;
+  for(var i=0;i<DS.fichiers.length;i++){
+   var e=DS.fichiers[i];
+   if(e.type==='application/pdf'){
+    var lib=await loadPdfJs(), pdf=await lib.getDocument({data:await e.f.arrayBuffer()}).promise;
+    for(var p=1;p<=pdf.numPages;p++){ DS.job.txt=T('Préparation')+' : '+T('page')+' '+(fait+1)+' '+T('sur')+' '+totalPages+'…'; rendre(); pieces.push(await pageEnPiece(pdf,p,e.name+' p.'+p)); fait++; }
+    try{ pdf.destroy(); }catch(_){ }
+   } else { DS.job.txt=T('Préparation')+' : '+T('page')+' '+(fait+1)+' '+T('sur')+' '+totalPages+'…'; rendre(); var r=await aB64p(e.f); if(r) pieces.push(r); fait++; }
+  }
+  return pieces;
+ }
+ function contexteLots(){
+  var bats=[], noms=[];
+  DS.job.lots.forEach(function(l){ if(l.etat!=='ok'||!l.doc) return; l.doc.batiments.forEach(function(b){ bats.push({nom:b.nom,niveaux:b.niveaux.map(function(n){ return {nom:n.nom,cote_m:n.cote_m}; })}); b.niveaux.forEach(function(n){ n.ouvrages.forEach(function(o){ if(noms.length<300) noms.push(o.nom); }); }); }); });
+  return {batiments:bats.slice(0,40),ouvrages:noms};
+ }
+ function attendre(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+ async function envoyerLot(i){
+  var j=DS.job, L=j.lots[i], erreur='';
+  for(var essai=0;essai<=X.LIMITES.essaisParLot;essai++){
+   if(j.stop) return {ok:false,erreur:T('Arrêté par vous.')};
+   j.essai=essai; rendre();
+   var ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ try{ ctl&&ctl.abort(); }catch(_){ } },150000);
+   try{
+    var r=await fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({mode:'descente',consigne:DS.consigne.slice(0,3000),projet_nom:DS.projetNom.slice(0,120),format_version:X.VERSION,lot:{numero:i+1,total:j.lots.length},deja_connu:contexteLots(),fichiers:L.pieces.map(function(p){ return {nom:p.nom,type:p.type,data:p.data}; })}),signal:ctl?ctl.signal:undefined});
+    var jr=await r.json().catch(function(){ return {}; }); clearTimeout(to);
+    var doc=jr&&jr.data&&jr.data.document;
+    if(!r.ok||!doc){ erreur=T('Agent non connecté ou pas à jour : aucune proposition reçue pour ce lot.'); }
+    else{
+     doc=JSON.parse(JSON.stringify(doc)); doc.format=X.FORMAT; doc.source={outil:'Agent IA'};
+     var v=X.read(doc); if(v.ok) return {ok:true,doc:v.doc}; erreur=T('La réponse de l’agent pour ce lot est inutilisable.');
+    }
+   }catch(e){ clearTimeout(to); erreur=T((e&&e.name==='AbortError')?'L’agent n’a pas répondu à temps pour ce lot.':'La demande n’a pas abouti pour ce lot.'); }
+   if(essai<X.LIMITES.essaisParLot) await attendre(1500*(essai+1));
+  }
+  return {ok:false,erreur:erreur};
+ }
+ function finaliser(partiel){
+  var j=DS.job, docs=j.lots.filter(function(l){ return l.etat==='ok'&&l.doc; }).map(function(l){ return l.doc; }), nb=docs.length, tot=j.lots.length;
+  var fus=X.fusionner(docs,DS.projetNom); charger(fus,'agent',''); DS.doublons=fus.doublons||[]; DS.occupe=false; DS.job=null;
+  DS.msg=partiel&&nb<tot?(nb+' '+T('lot(s) sur')+' '+tot+' '+T('seulement ont été lus : le découpage est incomplet.')):''; DS.msgKo=false;
+  if(DS.verdict&&!DS.verdict.ok) FOLD['agent.controle']=2; rendre();
+ }
+ async function traiter(){
+  var j=DS.job; DS.occupe=true; j.stop=false; j.phase='envoi'; rendre();
+  for(var i=0;i<j.lots.length;i++){
+   var L=j.lots[i]; if(L.etat==='ok') continue;
+   if(j.stop){ j.phase='arret'; DS.occupe=false; rendre(); return; }
+   L.etat='en cours'; L.erreur=''; j.courant=i; rendre();
+   var res=await envoyerLot(i);
+   if(res.ok){ L.etat='ok'; L.doc=res.doc; L.pieces=L.pieces.map(function(p){ return {nom:p.nom}; }); }
+   else{ L.etat='echec'; L.erreur=res.erreur; j.phase='arret'; DS.occupe=false; rendre(); return; }
+  }
+  finaliser(false);
+ }
+ async function agentGo(){
   if(DS.occupe||!DS.fichiers.length) return;
   if(typeof SUPABASE_URL==='undefined'||typeof SUPABASE_KEY==='undefined'){ DS.msg=T('Agent non connecté : le canal de l’agent n’est pas configuré dans cette application. Vous pouvez essayer le jeu d’exemple.'); DS.msgKo=true; rendre(); return; }
   if(navigator.onLine===false){ DS.msg=T('Hors ligne : l’agent a besoin d’Internet. Vous pouvez essayer le jeu d’exemple.'); DS.msgKo=true; rendre(); return; }
-  DS.occupe=true; DS.msg=T('Préparation des fichiers…'); DS.msgKo=false; rendre();
-  var out=[], i=0, ignores=0;
-  (function suite(){
-   if(i<DS.fichiers.length){ aB64(DS.fichiers[i++],function(r){ if(r) out.push(r); else ignores++; suite(); }); return; }
-   if(!out.length){ DS.occupe=false; DS.msg=T('Aucun fichier utilisable (PDF de 3,5 Mo au plus, ou image).'); DS.msgKo=true; rendre(); return; }
-   DS.msg=T('L’agent analyse vos plans…'); rendre();
-   var ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ try{ ctl&&ctl.abort(); }catch(_){ } },150000);
-   fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({mode:'descente',consigne:DS.consigne.slice(0,3000),projet_nom:DS.projetNom.slice(0,120),format_version:X.VERSION,fichiers:out}),signal:ctl?ctl.signal:undefined})
-   .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return {ok:r.ok,j:j}; }); })
-   .then(function(x){
-    clearTimeout(to); DS.occupe=false;
-    var doc=x.j&&x.j.data&&x.j.data.document;
-    if(!x.ok||!doc){ DS.msg=T('Agent non connecté ou pas à jour : aucune proposition reçue. Rien n’a été modifié. Vous pouvez essayer le jeu d’exemple.'); DS.msgKo=true; rendre(); return; }
-    doc=JSON.parse(JSON.stringify(doc)); doc.format=X.FORMAT; doc.source={outil:'Agent IA'}; if(DS.projetNom&&doc.projet) doc.projet.nom=DS.projetNom;
-    charger(X.read(doc),'agent','');
-    DS.msg=ignores?T('Certains fichiers n’ont pas pu être envoyés (trop gros ou illisibles).'):''; DS.msgKo=false; if(DS.verdict&&!DS.verdict.ok) FOLD['agent.controle']=2; rendre();
-   })
-   .catch(function(e){ clearTimeout(to); DS.occupe=false; DS.msg=T((e&&e.name==='AbortError')?'L’agent n’a pas répondu à temps. Rien n’a été modifié.':'Agent non connecté : la demande n’a pas abouti. Rien n’a été modifié.'); DS.msgKo=true; rendre(); });
-  })();
+  var lim=limitesEtat(); if(!lim.ok){ DS.msg=lim.messages.join(' '); DS.msgKo=true; rendre(); return; }
+  DS.occupe=true; DS.msg=''; DS.msgKo=false; DS.doublons=[]; DS.job={phase:'preparation',lots:[],courant:0,essai:0,txt:'',stop:false}; rendre();
+  var pieces;
+  try{ pieces=await preparerPieces(); }catch(e){ DS.occupe=false; DS.job=null; DS.msg=T('Un fichier n’a pas pu être lu. Rien n’a été envoyé.'); DS.msgKo=true; rendre(); return; }
+  var dl=X.decouperLots(pieces);
+  if(!dl.lots.length){ DS.occupe=false; DS.job=null; DS.msg=T('Aucune page utilisable.'); DS.msgKo=true; rendre(); return; }
+  DS.job.lots=dl.lots.map(function(ix){ return {pieces:ix.map(function(k){ return pieces[k]; }),etat:'attente',doc:null,erreur:''}; });
+  DS.msg=dl.tropGrosses.length?(dl.tropGrosses.length+' '+T('page(s) trop lourde(s) ont été laissées de côté.')):'';
+  await traiter();
  }
  /* ---------- validation des noms ---------- */
  function nomValide(id,nom){
@@ -50112,6 +50252,10 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
    lire_colle:function(){ var ta=r.querySelector('[data-dc-colle]'); DS.colle=ta?ta.value:DS.colle; if(!X.clean(DS.colle)){ DS.msg=T('Rien à lire : collez d’abord le contenu du fichier.'); DS.msgKo=true; return; } charger(X.read(DS.colle),'plugin','contenu collé'); if(DS.verdict&&!DS.verdict.ok) FOLD['plugin.controle']=2; },
    rmf:function(){ DS.fichiers.splice(+b.getAttribute('data-i'),1); },
    agent_go:function(){ agentGo(); return 1; },
+   job_stop:function(){ if(DS.job) DS.job.stop=true; return 1; },
+   job_reprendre:function(){ if(DS.job&&!DS.occupe) traiter(); return 1; },
+   job_partiel:function(){ if(DS.job&&!DS.occupe) finaliser(true); return 1; },
+   job_annule:function(){ DS.job=null; DS.occupe=false; DS.msg=''; },
    sel:function(){ DS.sel=(DS.sel===id)?null:id; },
    ok:function(){ accepter(id); DS.edit=null; },
    okall:function(){ accepter('p'); },
