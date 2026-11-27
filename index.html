@@ -6651,12 +6651,15 @@ function dimProposerDocs(docNote,docPlan){
 const DIM_COMPACT_MODE='calcul';
 function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return mb?mb.querySelector('.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot,.pjVoileRoot,.pjMixteRoot,.pjPortiqueRoot,.pjMurRoot,.pjRsRoot,.pjAssembRoot,.pjPrecRoot,.pjAcierRoot,.pjDallageRoot,.pjRideauRoot,.pjMassifRoot,.pjEscRoot,.pjSectionRoot,.pjPontRoot'):null; }
 
+/* Bloc collant (titre + schéma) : s'il occupe plus de 60 % de la hauteur visible de la fiche, il cesse d'être collant (sinon le bas du bloc, par exemple « Ajouter une charge » et les réglages de bords, reste hors d'atteinte et la fiche ne défile plus) ; retourne la hauteur à réserver en haut du défilement */
+function dimStkFit(mb,st){ if(!st) return 0; if(st.classList.contains('pcStkOff')) st.classList.remove('pcStkOff'); const h=st.getBoundingClientRect().height, off=h>Math.max(220,(mb.clientHeight||window.innerHeight)*0.6); if(off) st.classList.add('pcStkOff'); return off?0:Math.ceil(h+8); }
 /* Tous les modules : le haut du défilement de la fiche commence sous le schéma collant (un champ amené dans la vue n'est jamais caché sous lui) */
 (function(){
  let ro=null, cur=null, raf=0;
- const sync=()=>{ const mb=document.getElementById('modalBody'); if(!mb) return; const st=mb.querySelector('.pcFormSticky'); const h=st?Math.ceil(st.getBoundingClientRect().height+8):0; mb.style.scrollPaddingTop=h?h+'px':''; mb.style.setProperty('--pcStk',h+'px'); };
+ const sync=()=>{ const mb=document.getElementById('modalBody'); if(!mb) return; const st=mb.querySelector('.pcFormSticky'); const h=dimStkFit(mb,st); mb.style.scrollPaddingTop=h?h+'px':''; mb.style.setProperty('--pcStk',h+'px'); };
  const scan=()=>{ raf=0; const mb=document.getElementById('modalBody'); const st=mb&&mb.querySelector('.pcFormSticky'); sync(); if(st!==cur){ cur=st; if(ro){ try{ ro.disconnect(); }catch(_){ } ro=null; } if(st&&window.ResizeObserver){ ro=new ResizeObserver(sync); ro.observe(st); } } };
  try{ new MutationObserver(()=>{ if(!raf) raf=requestAnimationFrame(scan); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
+ try{ window.addEventListener('resize',()=>{ if(!raf) raf=requestAnimationFrame(scan); }); }catch(_){ }
 })();
 /* ===== Composant commun d'interface des fiches : bouton et champ « icône dans un cadre arrondi, nom en dessous » + plein écran des schémas et plans =====
    Une seule passe (dimUiScan) sur la fiche affichée : aucun module n'a sa copie. Les boutons d'action principaux (Calculer…), les bascules (ELU/ELS, modes), les cotes du schéma et les champs de cote restent tels quels. */
@@ -7164,6 +7167,7 @@ const DIM_I18N_DATA=[
   if(!ov) return; const o=ov; ov=null; o.remove();
   try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen().catch(()=>{}); }catch(_){ }
   try{ if(screen.orientation&&screen.orientation.unlock) screen.orientation.unlock(); }catch(_){ }
+  window.__fsSkipAt=Date.now(); /* le retour d'historique du plein écran ne doit jamais fermer la fiche (voir le gestionnaire du bouton retour de l'application) */
   if(!fromPop&&history.state&&history.state.dimZ){ try{ history.back(); }catch(_){ } }
  }
  function openZ(srcSvg,titre){
@@ -7187,7 +7191,7 @@ const DIM_I18N_DATA=[
  }
  window.dimZoomOpen=openZ;
  window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&ov){ e.stopImmediatePropagation(); e.preventDefault(); closeZ(); } },true);
- window.addEventListener('popstate',()=>{ if(ov) closeZ(true); });
+ window.addEventListener('popstate',()=>{ if(ov){ window.__fsSkipAt=Date.now(); closeZ(true); } });
  document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-dim-zoom]'); if(!b) return; e.preventDefault(); e.stopPropagation(); const w=b.closest('.pcDraw'); const sv=w&&w.querySelector('svg:not(.dimBI)'); if(!sv) return; const nc=b.closest('.pcNC,.ncDoc'); openZ(sv,nc?'Plan et schémas de la note':'Schéma'); },true);
  function doDraw(d){
   d.dataset.dimuiz='1'; if(d.closest('.dimZOv,.dimCalcOverlay')) return; const sv=d.querySelector('svg:not(.dimBI)'); if(!sv) return;
@@ -20995,6 +20999,7 @@ html:not([dir=rtl]) .pcFrm>.pcZoomTools{right:6px;left:auto}
 :root[data-theme="blanc"] .pcFormSticky,:root[data-theme="blanc"] .pcFormSticky::before,:root[data-theme="blanc"] .pcFormSticky::after{background-color:#fff}
 :root:not([data-theme="sombre"]):not([data-theme="blanc"]) .pcFormSticky,:root:not([data-theme="sombre"]):not([data-theme="blanc"]) .pcFormSticky::before,:root:not([data-theme="sombre"]):not([data-theme="blanc"]) .pcFormSticky::after{background-color:#fff}
 .pcFormSticky .pcDraw{margin-bottom:0;position:relative}
+.pcFormSticky.pcStkOff{position:static;box-shadow:none;will-change:auto;transform:none;-webkit-transform:none}
 .pcDraw .pcApPanel{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;font-size:12px;color:var(--ink-soft,#777);white-space:normal}
 .pcDraw .pcApLbl{display:flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto}
 .pcDraw .pcApNum{width:96px;min-width:96px;font-size:12px;box-sizing:border-box}
@@ -26596,7 +26601,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    wrap.innerHTML = st.view==='grid' ? beamGridHtml() : st.view==='note' ? pcNoteViewHtml(t) : st.view==='wizard' ? pcWizardHtml(id,t,st.step) : pcFormHtml(id,t);
    try{ pcApSync(id); }catch(e){ console.error(e); }
    try{ /* zone cliquable : le haut du défilement commence sous le schéma collant, donc un bouton amené dans la vue (focus, clavier, défilement automatique) n'est jamais caché sous lui */
-    const st0=mb.querySelector('.pcFormSticky'); const sync=()=>{ const h=st0?Math.ceil(st0.getBoundingClientRect().height+8):0; mb.style.scrollPaddingTop=h?h+'px':''; mb.style.setProperty('--pcStk',h+'px'); };
+    const st0=mb.querySelector('.pcFormSticky'); const sync=()=>{ const h=dimStkFit(mb,st0); mb.style.scrollPaddingTop=h?h+'px':''; mb.style.setProperty('--pcStk',h+'px'); };
     sync(); if(window._pcStkRO){ try{ window._pcStkRO.disconnect(); }catch(_){ } window._pcStkRO=null; } if(st0&&window.ResizeObserver){ window._pcStkRO=new ResizeObserver(sync); window._pcStkRO.observe(st0); } }catch(e){ console.error(e); }
    try{ dimMarkInvalid(wrap,pcValidate(pcData(t)).errors,'data-pc-i'); }catch(_){ }
   }
@@ -31441,7 +31446,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const mat=pcMatKey(dp.materiau); // volume 3D rempli du matériau (face, dessus, tranche), comme la poutre ; cotes, charges et appuis inchangés
     let g1=lxOk?pcBox3d(mat,x0,y0,W1,hh,12,-10,true):('<rect x="'+x0+'" y="'+y0+'" width="'+W1+'" height="'+hh+'" fill="none" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="1.5" stroke-dasharray="6 5"/><text x="'+(x0+W1/2)+'" y="'+(y0+hh/2+5)+'" text-anchor="middle" font-size="13" fill="var(--ds-ink-soft,#777)">Saisir la portée lx</text>');
     const tri=xx=>'<path d="M'+(xx-10)+' '+(y0+hh+14)+' L'+xx+' '+(y0+hh)+' L'+(xx+10)+' '+(y0+hh+14)+' Z" fill="none" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="1.5"/>'
-     +'<rect x="'+(xx-18)+'" y="'+(y0+hh-4)+'" width="36" height="30" fill="transparent" data-dl-act="apToggle" data-dl-ap="'+(xx===x0?'W':'E')+'" style="cursor:pointer"><title>Type de l\'appui</title></rect>';
+     +'<rect x="'+(xx-24)+'" y="'+(y0+hh-8)+'" width="48" height="44" fill="transparent" data-dl-act="apToggle" data-dl-ap="'+(xx===x0?'W':'E')+'" style="cursor:pointer"><title>Type de l\'appui</title></rect>';
     if(lxOk) g1+=tri(x0)+tri(x0+W1);
     boxes.push({x:x0-10,y:y0-10,w:W1+32,h:hh+24});
     add(DC({dir:'h',a:[x0,y0+hh],b:[x0+W1,y0+hh],off:14+22,key:'dl-lx',label:'lx',val:(dp.lx_m==null?'':dp.lx_m),unit:'m',attr:'data-dl="lx_m" min="0.5"',title:'Portée lx'}));
@@ -31472,7 +31477,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const mat2=pcMatKey(dp.materiau);
    let g=lxOk2?('<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="'+pcMatFills(mat2).t+'" stroke="'+SB+'" stroke-width="2"/>'
     +'<clipPath id="dlClip"><rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'"/></clipPath><g clip-path="url(#dlClip)">'+hatch+'</g>'):('<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" fill="none" stroke="var(--ds-ink-soft,#8a8a8a)" stroke-width="1.5" stroke-dasharray="6 5"/><text x="'+(rx+rw/2)+'" y="'+(ry+rh/2)+'" text-anchor="middle" font-size="13" fill="var(--ds-ink-soft,#777)">Saisir les portées lx et ly</text>');
-   if(lxOk2) g+='<rect x="'+(rx-8)+'" y="'+ry+'" width="16" height="'+rh+'" fill="transparent" data-dl-act="apToggle" data-dl-ap="W" style="cursor:pointer"><title>Bord gauche</title></rect><rect x="'+(rx+rw-8)+'" y="'+ry+'" width="16" height="'+rh+'" fill="transparent" data-dl-act="apToggle" data-dl-ap="E" style="cursor:pointer"><title>Bord droit</title></rect><rect x="'+rx+'" y="'+(ry-8)+'" width="'+rw+'" height="16" fill="transparent" data-dl-act="apToggle" data-dl-ap="Y" style="cursor:pointer"><title>Bords haut et bas</title></rect><rect x="'+rx+'" y="'+(ry+rh-8)+'" width="'+rw+'" height="16" fill="transparent" data-dl-act="apToggle" data-dl-ap="Y" style="cursor:pointer"><title>Bords haut et bas</title></rect>';
+   if(lxOk2){ /* bords cliquables : bande transparente de 44 px d'écran (trait sans mise à l'échelle), souris et tactile ; posée sous les cotes et les poignées */
+    const eh=(x1,y1,x2,y2,ap,tt)=>'<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="transparent" stroke-width="44" vector-effect="non-scaling-stroke" pointer-events="stroke" fill="none" class="dlEdgeHit" data-dl-act="apToggle" data-dl-ap="'+ap+'" style="cursor:pointer"><title>'+tt+'</title></line>';
+    g+=eh(rx+8,ry,rx+8,ry+rh,'W','Bord gauche')+eh(rx+rw-8,ry,rx+rw-8,ry+rh,'E','Bord droit')+eh(rx,ry+8,rx+rw,ry+8,'Y','Bords haut et bas')+eh(rx,ry+rh-8,rx+rw,ry+rh-8,'Y','Bords haut et bas'); }
    boxes.push({x:rx,y:ry,w:rw,h:rh});
    add(DC({dir:'h',a:[rx,ry+rh],b:[rx+rw,ry+rh],off:22,key:'dl-lx',label:'lx',val:(dp.lx_m==null?'':dp.lx_m),unit:'m',attr:'data-dl="lx_m" min="0.5"',title:'Portée lx'}));
    if(dp.sens==='deux') add(DC({dir:'v',a:[rx+rw,ry],b:[rx+rw,ry+rh],off:22,key:'dl-ly',label:'ly',val:(dp.ly_m==null?'':dp.ly_m),unit:'m',attr:'data-dl="ly_m" min="0.5"',title:'Portée ly'}));
@@ -45836,14 +45843,16 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    pcZoomApply(draw);
    if(draw.__pcZoomReady) return;
    draw.__pcZoomReady=true;
-   let panning=false,lastX=0,lastY=0,pts={},pinchD0=0,pinchS0=1;
+   let panning=false,pend=null,lastX=0,lastY=0,pts={},pinchD0=0,pinchS0=1;
    const isFormEl=t=>!!(t.closest&&t.closest('input,button,select,textarea,.pcZoomTools'));
    draw.addEventListener('pointerdown',e=>{
     if(isFormEl(e.target)) return;
     pts[e.pointerId]={x:e.clientX,y:e.clientY};
     const ids=Object.keys(pts);
-    if(ids.length===1){ panning=true; lastX=e.clientX; lastY=e.clientY; try{ draw.setPointerCapture(e.pointerId); }catch(_){ } draw.classList.add('pcDrawGrab'); }
-    else if(ids.length===2){ panning=false; const p=ids.map(k=>pts[k]); pinchD0=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1; pinchS0=draw.__pcZ.s; }
+    if(e.defaultPrevented&&ids.length===1){ delete pts[e.pointerId]; return; }
+    /* le glissement ne démarre (et ne capture le pointeur) qu'après un vrai déplacement : un simple clic ou toucher sur un bord, une poignée ou un appui du schéma reste un clic sur cet élément */
+    if(ids.length===1){ pend={id:e.pointerId,x:e.clientX,y:e.clientY}; lastX=e.clientX; lastY=e.clientY; }
+    else if(ids.length===2){ pend=null; panning=false; draw.classList.remove('pcDrawGrab'); const p=ids.map(k=>pts[k]); pinchD0=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1; pinchS0=draw.__pcZ.s; }
    });
    draw.addEventListener('pointermove',e=>{
     if(!(e.pointerId in pts)) return;
@@ -45853,12 +45862,14 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      const p=ids.map(k=>pts[k]); const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1;
      draw.__pcZ.s=Math.max(0.5,Math.min(4,pinchS0*(d/pinchD0)));
      pcZoomApply(draw);
+    } else if(!panning&&pend&&pend.id===e.pointerId){
+     if(Math.hypot(e.clientX-pend.x,e.clientY-pend.y)>=5){ panning=true; pend=null; lastX=e.clientX; lastY=e.clientY; try{ draw.setPointerCapture(e.pointerId); }catch(_){ } draw.classList.add('pcDrawGrab'); }
     } else if(panning){
      draw.__pcZ.x+=(e.clientX-lastX); draw.__pcZ.y+=(e.clientY-lastY); lastX=e.clientX; lastY=e.clientY;
      pcZoomApply(draw);
     }
    });
-   const endPt=e=>{ delete pts[e.pointerId]; if(!Object.keys(pts).length){ panning=false; draw.classList.remove('pcDrawGrab'); } try{ draw.releasePointerCapture(e.pointerId); }catch(_){ } };
+   const endPt=e=>{ delete pts[e.pointerId]; pend=null; if(!Object.keys(pts).length){ panning=false; draw.classList.remove('pcDrawGrab'); } try{ draw.releasePointerCapture(e.pointerId); }catch(_){ } };
    draw.addEventListener('pointerup',endPt); draw.addEventListener('pointercancel',endPt);
    draw.addEventListener('wheel',e=>{
     if(isFormEl(e.target)) return;
@@ -45998,7 +46009,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    segF.addEventListener('click',e=>{ const b=e.target.closest('[data-f]'); if(!b) return; fmt=b.dataset.f; try{ localStorage.setItem('pg_fplFmt',fmt); }catch(_){ } refresh(); });
    segO.addEventListener('click',e=>{ const b=e.target.closest('[data-o]'); if(!b) return; ori=b.dataset.o; refresh(); });
    refresh();
-   const close=()=>{ if(closed) return; closed=true; fplFsOn=null;
+   const onPop=()=>{ if(closed) return; window.__fsSkipAt=Date.now(); close(true); };
+   const close=(fromPop)=>{ if(closed) return; closed=true; fplFsOn=null; window.removeEventListener('popstate',onPop); window.__fsSkipAt=Date.now();
+    if(fromPop!==true&&history.state&&history.state.fplFs){ try{ history.back(); }catch(_){ } }
     window.removeEventListener('keydown',onKey,true); document.removeEventListener('fullscreenchange',onFsc); document.removeEventListener('webkitfullscreenchange',onFsc);
     try{ if((document.fullscreenElement||document.webkitFullscreenElement)===layer){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); } }catch(_){ }
     layer.remove(); root.style.overflow=prevOv[0]; document.body.style.overflow=prevOv[1]; fplPrintEnd();
@@ -46012,6 +46025,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     else if(a==='print'){ panel.hidden=!panel.hidden; if(!panel.hidden){ const f=segF.querySelector('[aria-pressed=true]'); if(f) f.focus(); } }
     else if(a==='go'){ fplPrintView(clone,fmt,ori,opener); } });
    fplFsOn={close,layer};
+   try{ history.pushState({fplFs:1},''); window.addEventListener('popstate',onPop); }catch(_){ }
    const rf=layer.requestFullscreen||layer.webkitRequestFullscreen;
    if(rf){ try{ const p=rf.call(layer); if(p&&p.catch) p.catch(()=>{}); }catch(_){ } }
    try{ layer.querySelector('.fplFsQ').focus({preventScroll:true}); }catch(_){ }
@@ -47404,7 +47418,7 @@ html{overscroll-behavior-y:none}
  new MutationObserver(()=>{ if(!sa()) return; const open=ov.classList.contains('open');
   if(open&&!pushed){ pushed=true; try{ history.pushState({be11ov:1},''); }catch(_){ } }
   else if(!open&&pushed){ pushed=false; if(!popping){ try{ if(history.state&&history.state.be11ov) history.back(); }catch(_){ } } } }).observe(ov,{attributes:true,attributeFilter:['class']});
- window.addEventListener('popstate',()=>{ if(!pushed) return; popping=true; pushed=false; try{ if(ov.classList.contains('open')){ if(window._modalBackTo&&typeof modalBack==='function') modalBack(); else closeModal(); } }catch(_){ } popping=false; });
+ window.addEventListener('popstate',()=>{ if(Date.now()-(window.__fsSkipAt||0)<900) return; if(!pushed) return; popping=true; pushed=false; try{ if(ov.classList.contains('open')){ if(window._modalBackTo&&typeof modalBack==='function') modalBack(); else closeModal(); } }catch(_){ } popping=false; });
  /* clavier à l'écran : le champ actif reste visible */
  document.addEventListener('focusin',e=>{ const t=e.target; if(t&&/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)&&window.matchMedia('(max-width:1024px)').matches){ setTimeout(()=>{ try{ t.scrollIntoView({block:'center',behavior:'smooth'}); }catch(_){ } },320); } });
 }catch(_){ } })();
