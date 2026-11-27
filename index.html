@@ -24613,7 +24613,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v531';
+  const VER='v532';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -26264,6 +26264,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   function beStatusBadge(s){ return '<span class="be-st '+(BE_STCLS[s]||'')+'">'+(BE_ST[s]||s)+'</span>'; }
   function beMissionOptionsHtml(sel){ return '<option value="">— Aucune mission —</option>'+L_missions().map(m=>'<option value="'+esc(m.id)+'"'+(sel===m.id?' selected':'')+'>'+esc(m.client||'(Sans nom)')+'</option>').join(''); }
   function beMissionNom(id){ const m=L_missions().find(x=>x.id===id); return m?(m.client||''):''; }
+  /* missions sans échelon projet : formations, sécurité incendie, accessibilité (le type de mission est choisi avant le projet) */
+  function beMissionSansProjet(id){ return /formation|incendie|accessibilit/i.test(beTypeMissionNom(id)||''); }
   function beTypeMissionNom(id){ const t=L_typesMission().find(x=>x.id===id); return t?t.nom:''; }
   window.beMissionOptionsHtml=beMissionOptionsHtml;
   window.beMissionNom=beMissionNom;
@@ -26430,8 +26432,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(showForm){
       const typeOpts='<option value="">— Choisir —</option>'+L_typesMission().map(t=>'<option value="'+esc(t.id)+'"'+(m.typeMissionId===t.id?' selected':'')+'>'+esc(t.nom)+'</option>').join('');
       body='<div class="field"><label>Mission (client)</label><input type="text" id="be-m-a" value="'+esc(m.client||'')+'"></div>'
-        +'<div class="field"><label>Projet <span style="color:var(--rust);">*</span></label><select id="be-m-p">'+beProjetOptsHtml(m.projet||'').replace('— Aucun —','— Choisir —')+'</select></div>'
         +'<div class="field"><label>Type de mission</label><select id="be-m-t">'+typeOpts+'</select></div>'
+        +'<div class="field" id="be-m-pf"'+(beMissionSansProjet(m.typeMissionId)?' hidden':'')+'><label>Projet <span style="color:var(--rust);">*</span></label><select id="be-m-p">'+beProjetOptsHtml(m.projet||'').replace('— Aucun —','— Choisir —')+'</select></div>'
         +'<div class="field"><label>Date de début</label><input type="date" id="be-m-c" value="'+esc(m.dateDebut||'')+'"></div>'
         +'<div class="field"><label>Date de fin</label><input type="date" id="be-m-d" value="'+esc(m.dateFin||'')+'"></div>'
         +'<div class="field" style="display:flex;align-items:center;gap:8px;margin-top:-4px;"><input type="checkbox" id="be-m-ia" style="width:auto;" '+(m.chatbotIA?'checked':'')+'><label for="be-m-ia" style="margin:0;">🤖 Activer le chatbot IA (assistant de dimensionnement) sur cette mission</label></div>'
@@ -26443,7 +26445,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     }else{
       body='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">'
         +'<div style="min-width:0;"><h1 style="font-size:22px;margin:0 0 2px;line-height:1.25;word-break:break-word;color:var(--ink);">'+esc(m.client||'—')+'</h1>'
-        +'<p style="margin:0;font-size:14.5px;color:var(--ink-soft);">'+(m.projet?esc(m.projet):'Projet non renseigné')+'</p></div>'
+        +'<p style="margin:0;font-size:14.5px;color:var(--ink-soft);">'+(m.projet?esc(m.projet):(beMissionSansProjet(m.typeMissionId)?'':'Projet non renseigné'))+'</p></div>'
         +'<button type="button" class="ghost" aria-label="Modifier la mission" style="flex:0 0 auto;" onclick="beMissionEdit(L_missions().find(x=>x.id===\''+esc(m.id)+'\'),true)">✎</button>'
         +'</div>'
         +'<div class="be-sub" style="padding-top:8px;"><p style="margin:2px 0;font-size:14px;"><b>Type :</b> '+(esc(beTypeMissionNom(m.typeMissionId))||'—')+'</p>'
@@ -26454,6 +26456,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       +body
       +(!nw&&beIsDimMission(m)?beMissionDimSectionsHtml(m):''));
     if(showForm){
+      const tSel=document.getElementById('be-m-t'), pF=document.getElementById('be-m-pf');
+      if(tSel&&pF) tSel.onchange=()=>{ pF.hidden=beMissionSansProjet(tSel.value); };
       const pSel=document.getElementById('be-m-p');
       if(pSel) pSel.onchange=()=>{
         if(pSel.value!=='__new__') return;
@@ -46104,13 +46108,14 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   };
   window.beMissionSave=function(id){
     const client=document.getElementById('be-m-a').value.trim();
-    const projetEl=document.getElementById('be-m-p'); const projet=projetEl?projetEl.value.trim():'';
     const typeMissionId=document.getElementById('be-m-t').value||'';
+    const sansProjet=beMissionSansProjet(typeMissionId);
+    const projetEl=document.getElementById('be-m-p'); const projet=(projetEl&&!sansProjet&&projetEl.value!=='__new__')?projetEl.value.trim():'';
     const dateDebut=document.getElementById('be-m-c').value||'';
     const dateFin=document.getElementById('be-m-d').value||'';
     const chatbotIA=!!document.getElementById('be-m-ia').checked;
     if(!client){ miniAlert('Le nom du client est requis.'); return; }
-    if(!projet){ miniAlert('Le projet associé à la mission est requis.'); return; }
+    if(!projet&&!sansProjet){ miniAlert('Le projet associé à la mission est requis.'); return; }
     let mm;
     if(!id){ mm={id:uid('MI'),client,projet,typeMissionId,dateDebut,dateFin,chatbotIA}; L_missions().push(mm); }
     else{ mm=L_missions().find(x=>x.id===id); if(mm){ mm.client=client; mm.projet=projet; mm.typeMissionId=typeMissionId; mm.dateDebut=dateDebut; mm.dateFin=dateFin; mm.chatbotIA=chatbotIA; } }
