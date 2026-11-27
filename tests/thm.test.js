@@ -32,3 +32,10 @@ near(r.dD*1000,2,1e-9,'réservoir ΔD mm');near(Math.abs(r.Nring),1860,1e-6,'ré
 console.log(T.svg({}, g2, T.calc({thDT:20,thGrad:10},g2)).length>500?'svg ok':'svg court');
 console.log(T.svg({}, {ok:true,kind:'shell',D:10,H:8,e:0.3,E:31000,alpha0:10,h:0.3}, T.calc({thDT:20},{ok:true,kind:'shell',D:10,H:8,e:0.3,E:31000,alpha0:10,h:0.3})).length>300?'svg shell ok':'x');
 
+
+/* appuis encastrés : une travée encastrée aux deux bouts, M = -EIκ aux deux appuis ; encastré-articulé : M = -1,5 EIκ à l'encastrement */
+{ const gF=Object.assign({},g1,{fixL:true,fixR:true}); let r=T.calc({thGrad:10},gF); near(r.M[0],-EI*2e-4,1e-6,'encastré-encastré : moment sur appui = -EIκ'); near(r.M[1],-EI*2e-4,1e-6,'encastré-encastré : second appui');
+  const gE=Object.assign({},g1,{fixL:true}); r=T.calc({thGrad:10},gE); near(r.M[0],-1.5*EI*2e-4,1e-6,'encastré-articulé : -1,5 EIκ'); near(r.M[1],0,1e-9,'encastré-articulé : appui articulé nul'); }
+/* cas thermique prêt pour les combinaisons : réactions en équilibre, M linéaire entre appuis, ψ appliqué */
+window.THM_GEOM={tst:{prop:'x',geom:()=>g2}};
+{ const xs=[[0,2.5,5],[0,2,4]]; const c=T.beamCase('tst',{thGrad:10,thPsi:0.5},xs); const sum=c.R.reduce((a,b)=>a+b,0); near(sum,0,1e-9,'somme des réactions thermiques = 0'); near(c.M[0][2],-1.5*EI*2e-4*0.5,1e-6,'M sur appui × ψ'); near(c.M[0][1],c.M[0][2]/2,1e-9,'M linéaire à mi-travée'); near(c.V[0][0],(c.M[0][2]-c.M[0][0])/5,1e-9,'V = dM/dx'); near(Math.abs(c.Defl[0][2]),0,1e-12,'flèche nulle sur appui'); }
