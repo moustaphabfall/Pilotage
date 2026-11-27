@@ -18265,6 +18265,43 @@ const PG_FEATS=[
 })();
 </script>
 
+<script id="geoJs">
+/* Moteur de position au pointage : mesure la plus précise possible, jamais bloquant. Aucune lecture sans accord : la mesure n'est lancée qu'après « J'accepte ». */
+(function(){
+  var BON=50, ESSAIS=3, DELAI=12000;
+  var LIB={ok:'Position reçue',refus:'Position refusée',permission:'Position refusée (réglage du téléphone)',indisponible:'Position non disponible'};
+  function rad(x){ return x*Math.PI/180; }
+  function distance(a,b){ var R=6371000, dLa=rad(b.lat-a.lat), dLo=rad(b.lng-a.lng), s=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLo/2)*Math.sin(dLo/2); return Math.round(2*R*Math.asin(Math.min(1,Math.sqrt(s)))); }
+  function okPos(p){ return p&&p.coords&&isFinite(p.coords.latitude)&&isFinite(p.coords.longitude); }
+  /* mesure : opts.geo = objet de type navigator.geolocation ; opts.annule() = true pour arrêter ; renvoie toujours une promesse résolue {etat, lat, lng, acc, faible, essais} */
+  function mesure(opts){ opts=opts||{}; var geo=opts.geo, delai=opts.delai||DELAI, essais=opts.essais||ESSAIS, bon=opts.bon||BON;
+    return new Promise(function(res){
+      if(!geo||typeof geo.getCurrentPosition!=='function'){ res({etat:'indisponible',essais:0}); return; }
+      var best=null, n=0, derniere=null;
+      function fin(){ if(best) res({etat:'ok',lat:+best.coords.latitude.toFixed(6),lng:+best.coords.longitude.toFixed(6),acc:Math.round(best.coords.accuracy),faible:!(best.coords.accuracy<=bon),essais:n}); else res({etat:derniere==='permission'?'permission':'indisponible',essais:n}); }
+      function un(){ if(opts.annule&&opts.annule()){ fin(); return; } n++; var clos=false;
+        function suite(){ if(best&&best.coords.accuracy<=bon){ fin(); return; } if(n>=essais){ fin(); return; } un(); }
+        var t=setTimeout(function(){ if(clos) return; clos=true; derniere=derniere||'indisponible'; suite(); },delai+1500);
+        try{ geo.getCurrentPosition(function(p){ if(clos) return; clos=true; clearTimeout(t); if(okPos(p)&&(!best||p.coords.accuracy<best.coords.accuracy)) best=p; suite(); },function(e){ if(clos) return; clos=true; clearTimeout(t); if(e&&e.code===1){ derniere='permission'; fin(); return; } derniere='indisponible'; suite(); },{enableHighAccuracy:true,timeout:delai,maximumAge:0}); }catch(x){ clos=true; clearTimeout(t); derniere='indisponible'; fin(); }
+      }
+      un();
+    });
+  }
+  /* enregistrement du pointage : seulement des valeurs réellement mesurées ; l'écart au site n'existe que si le site a une position connue */
+  function fiche(m,site,quand){ var r={etat:(m&&m.etat)||'indisponible',at:quand||new Date().toISOString()};
+    if(r.etat==='ok'){ r.lat=m.lat; r.lng=m.lng; r.acc=m.acc; if(m.faible) r.faible=true; if(m.essais) r.essais=m.essais;
+      if(site&&typeof site.lat==='number'&&typeof site.lng==='number'){ r.site={lat:+site.lat,lng:+site.lng}; r.ecart=distance({lat:r.lat,lng:r.lng},r.site); } }
+    return r; }
+  /* lit une ancienne fiche (avant cette version) ou une fiche absente */
+  function etat(g){ if(!g) return 'absent'; if(g.etat) return g.etat; if(g.lat!=null) return 'ok'; if(g.refus) return 'refus'; return /téléphone/.test(g.err||'')?'permission':'indisponible'; }
+  function libelle(g){ var e=etat(g); if(e==='absent') return 'Position non disponible'; return LIB[e]||LIB.indisponible; }
+  function raison(e){ return e==='refus'?'l’agent a refusé':e==='permission'?'réglage du téléphone qui bloque la position':'position impossible à obtenir'; }
+  /* texte envoyé au manager (sans reproche) */
+  function messageManager(nom,e,type,dateTxt,heure,site){ var qui=nom||'Un agent', quoi=type==='out'?'départ':'arrivée', corps=(e==='refus'||e==='permission')?qui+' a refusé de se géolocaliser':qui+' n’a pas pu être géolocalisé';
+    return corps+' — '+quoi+' le '+dateTxt+' à '+heure+(site?', site : '+site:'')+'. Raison : '+raison(e)+'. Le pointage est bien enregistré.'; }
+  window.geoPt={mesure:mesure,fiche:fiche,distance:distance,etat:etat,libelle:libelle,raison:raison,messageManager:messageManager,BON:BON};
+})();
+</script>
 <script>
 /* ===================== Variante « Nettoyage & services » : demandes clients, affectations, pointage, rapports =====================
    Affichée uniquement pour un projet de type « nettoyage ». Données dans state.net (sauvegardées avec le reste). */
@@ -18353,18 +18390,20 @@ const PG_FEATS=[
   }
   /* saisie d'adresse assistée : base nationale d'adresses (api publique, sans clé) ; en cas d'échec, saisie libre */
   function addrAuto(inp){ const wrap=inp.parentElement; if(!wrap) return; wrap.style.position='relative'; inp.setAttribute('autocomplete','off');
-    const box=document.createElement('div'); box.className='nt-addr'; box.hidden=true; wrap.appendChild(box); let tm=null, seq=0, items=[], cur=-1;
+    const box=document.createElement('div'); box.className='nt-addr'; box.hidden=true; wrap.appendChild(box); let tm=null, seq=0, items=[], cur=-1, coords=[];
     const hide=()=>{ box.hidden=true; cur=-1; };
-    const pick=i=>{ if(!items[i]) return; inp.value=items[i]; hide(); inp.dispatchEvent(new Event('change',{bubbles:true})); };
+    const pick=i=>{ if(!items[i]) return; inp.value=items[i]; if(coords[i]&&typeof coords[i][0]==='number'){ inp.dataset.lng=coords[i][0]; inp.dataset.lat=coords[i][1]; inp.dataset.at=items[i]; } else { delete inp.dataset.at; } hide(); inp.dispatchEvent(new Event('change',{bubbles:true})); };
     const mark=()=>[...box.children].forEach((c,i)=>c.classList.toggle('on',i===cur));
     const show=L=>{ items=L; cur=-1; if(!L.length){ hide(); return; } box.innerHTML=L.map((t,i)=>'<div data-i="'+i+'">📍 '+esc(t)+'</div>').join(''); box.hidden=false; };
     box.addEventListener('pointerdown',e=>{ const d=e.target.closest('[data-i]'); if(d){ e.preventDefault(); pick(+d.dataset.i); } });
     inp.addEventListener('input',()=>{ clearTimeout(tm); const q=inp.value.trim(); if(q.length<3){ hide(); return; } const my=++seq;
-      tm=setTimeout(()=>{ fetch('https://data.geopf.fr/geocodage/search?autocomplete=1&limit=5&q='+encodeURIComponent(q)).then(r=>r.json()).then(j=>{ if(my===seq&&document.activeElement===inp) show((j.features||[]).map(f=>f.properties&&f.properties.label).filter(Boolean)); }).catch(()=>hide()); },250); });
+      tm=setTimeout(()=>{ fetch('https://data.geopf.fr/geocodage/search?autocomplete=1&limit=5&q='+encodeURIComponent(q)).then(r=>r.json()).then(j=>{ if(my===seq&&document.activeElement===inp){ const F=(j.features||[]).filter(f=>f.properties&&f.properties.label); coords=F.map(f=>f.geometry&&f.geometry.coordinates); show(F.map(f=>f.properties.label)); } }).catch(()=>hide()); },250); });
     inp.addEventListener('keydown',e=>{ if(box.hidden) return; if(e.key==='ArrowDown'){ e.preventDefault(); cur=Math.min(items.length-1,cur+1); mark(); } else if(e.key==='ArrowUp'){ e.preventDefault(); cur=Math.max(0,cur-1); mark(); } else if(e.key==='Enter'&&cur>=0){ e.preventDefault(); pick(cur); } else if(e.key==='Escape'){ e.stopPropagation(); hide(); } });
     inp.addEventListener('blur',()=>setTimeout(hide,150));
   }
   const val = (o,id)=>{ const e=o.querySelector('#'+id); return e?e.value.trim():''; };
+  /* position du site : gardée seulement si elle vient d'une adresse choisie dans la liste (sinon on n'invente rien) */
+  const adrPos = (o,id)=>{ const e=o.querySelector('#'+id); if(!e||!e.dataset.at||e.dataset.at!==e.value||isNaN(+e.dataset.lat)||isNaN(+e.dataset.lng)) return null; return {lat:+e.dataset.lat,lng:+e.dataset.lng}; };
   const opt = (arr,sel,fn)=>arr.map(x=>{ const [v,l]=fn(x); return '<option value="'+esc(v)+'"'+(String(v)===String(sel)?' selected':'')+'>'+esc(l)+'</option>'; }).join('');
 
   /* ---------- Demandes ---------- */
@@ -18602,7 +18641,7 @@ const PG_FEATS=[
       const openClientModal=()=>{ clientForm(null,cc=>{ const op=document.createElement('option'); op.value=cc.id; op.textContent=cc.nom; sCl.insertBefore(op,sCl.lastElementChild); sCl.value=cc.id; lastCl=cc.id; fillPj(); }); };
       sCl.onchange=()=>{ if(sCl.value==='__new'){ sCl.value=lastCl||'__new'; openClientModal(); return; } lastCl=sCl.value; fillPj(); };
       sPj.onchange=showAdr;
-      o.querySelector('#dPjOk').onclick=()=>{ const c=by(n.clients,val(o,'dPjCl')); const nm=val(o,'dPjNm'); if(!c){ alert('Choisissez la société du projet.'); return; } if(!nm){ alert('Indiquez le nom du projet.'); return; } const pj={id:uid(),nom:nm,adresse:val(o,'dPjAd'),statut:'encours'}; projsOf(c).push(pj); save(); sCl.value=c.id; fillPj(pj.id); o.querySelector('#dPjNm').value=''; o.querySelector('#dPjAd').value=''; };
+      o.querySelector('#dPjOk').onclick=()=>{ const c=by(n.clients,val(o,'dPjCl')); const nm=val(o,'dPjNm'); if(!c){ alert('Choisissez la société du projet.'); return; } if(!nm){ alert('Indiquez le nom du projet.'); return; } const pj={id:uid(),nom:nm,adresse:val(o,'dPjAd'),statut:'encours'}; { const gp=adrPos(o,'dPjAd'); if(gp){ pj.lat=gp.lat; pj.lng=gp.lng; } } projsOf(c).push(pj); save(); sCl.value=c.id; fillPj(pj.id); o.querySelector('#dPjNm').value=''; o.querySelector('#dPjAd').value=''; };
       if(!n.clients.length){ sPj.disabled=true; openClientModal(); } else { if(!d.clientId) sCl.selectedIndex=0; fillPj(d.projetId); }
       const prep=()=>{ if(sPj.value==='__new'&&val(o,'dPjNm')) o.querySelector('#dPjOk').click();
         const cl=val(o,'dCl'); if(!cl||cl==='__new'){ alert('Choisissez ou créez une société.'); return null; } const c=by(n.clients,cl), pj=c&&projsOf(c).find(x=>x.id===val(o,'dPj')); if(!pj){ alert('Choisissez ou créez le projet de la société.'); return null; } return {c,pj}; };
@@ -18984,7 +19023,7 @@ const PG_FEATS=[
       +(L.length?L.map(x=>{ const lu=(x.lu||[]).includes(k); return '<div class="nt-card nt-nf'+(lu?'':' new')+'" data-nf="'+x.id+'"><div>'+esc(x.txt)+'</div><small>'+ago(x.at)+(x.to.indexOf('client:')===0?' · pour la société':'')+'</small></div>'; }).join(''):'<p class="nt-e">Aucune notification.</p>')+'</div>';
     const mark=x=>{ x.lu=x.lu||[]; if(!x.lu.includes(k)) x.lu.push(k); };
     const all=w.querySelector('#nfAll'); if(all) all.onclick=()=>{ L.forEach(mark); save(); render('net-notifs'); badgeNotif(); };
-    w.querySelectorAll('[data-nf]').forEach(c=>c.onclick=()=>{ const x=by(net().notifs,c.dataset.nf); if(!x) return; mark(x); save(); badgeNotif(); if(x.ref&&x.ref.page){ showPage(x.ref.page); } else render('net-notifs'); });
+    w.querySelectorAll('[data-nf]').forEach(c=>c.onclick=()=>{ const x=by(net().notifs,c.dataset.nf); if(!x) return; mark(x); save(); badgeNotif(); if(x.ref&&x.ref.page){ if(x.ref.geoFiltre){ jEtat=x.ref.geoFiltre; jPer='tout'; jAg=''; } showPage(x.ref.page); } else render('net-notifs'); });
   }
 
   /* photo : compressée (1280 px max, JPEG) pour rester légère dans la sauvegarde */
@@ -18998,14 +19037,53 @@ const PG_FEATS=[
     return '<h3>🧭 Mes missions <small>('+tot+')</small></h3>'+affs.map(a=>{ const d=by(n.demandes,a.demandeId)||{}, c=by(n.clients,d.clientId)||{nom:''};
       return a.missions.filter(m=>!m.fait).map(m=>'<div class="nt-card mo-c"><h3>'+esc(c.nom)+(a.poste?' · '+esc(a.poste):'')+'</h3><p>📍 '+esc(d.site||'adresse non précisée')+'<br>🧭 <b>'+esc(m.action)+'</b>'+(m.type==='zone'?' <small>(zone sur le plan)</small>':' <small>(point sur le plan)</small>')+'</p><div class="mo-b"><button class="pri" data-mfait="'+a.id+'|'+m.id+'">📷 Photo + Fait</button></div></div>').join(''); }).join(''); }
 
-  /* ---------- Géolocalisation au pointage (avec consentement, une fois par utilisateur) ---------- */
-  function geoAsk(cb){ const k='net-geo-'+notifKey(); let v=null; try{ v=localStorage.getItem(k); }catch(e){}
-    if(v===null){ v=confirm('Pointage : autorisez-vous l’enregistrement de votre position au moment où vous pointez (arrivée et départ) ?\n\nElle sert uniquement à vérifier la présence sur le site. Vous pouvez refuser et pointer quand même.')?'oui':'non'; try{ localStorage.setItem(k,v); }catch(e){} }
-    if(v!=='oui'||!navigator.geolocation){ cb(v==='oui'?{err:'indisponible'}:{refus:true}); return; }
-    let done=false; const fin=x=>{ if(!done){ done=true; cb(x); } };
-    setTimeout(()=>fin({err:'délai dépassé'}),12000);
-    navigator.geolocation.getCurrentPosition(p=>fin({lat:+p.coords.latitude.toFixed(6),lng:+p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy)}),e=>fin({err:e.code===1?'refusée par le téléphone':'indisponible'}),{enableHighAccuracy:true,timeout:10000,maximumAge:60000}); }
-  const geoTag = g=>!g?'':g.lat!=null?' <a href="https://www.openstreetmap.org/?mlat='+g.lat+'&mlon='+g.lng+'#map=18/'+g.lat+'/'+g.lng+'" target="_blank" rel="noopener" title="Position au pointage (± '+g.acc+' m)">📍</a>':' <span title="Position non enregistrée ('+(g.refus?'non autorisée':esc(g.err||''))+')">⦸</span>';
+  /* ---------- Position au pointage : demande claire à chaque pointage, mesure la plus précise possible, jamais bloquant ---------- */
+  let jEtat='tous', jAg='', jPer='jour';
+  const GEO_EYE_ON='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const GEO_EYE_OFF='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg>';
+  function geoAsk(cb,type){ let fini=false;
+    const ov=document.createElement('div'); ov.className='geoOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Position au pointage');
+    const quoi=type==='out'?'Départ':'Arrivée';
+    const fin=m=>{ if(fini) return; fini=true; ov.remove(); cb(m); };
+    const ask=()=>{ ov.innerHTML='<div class="geoBox"><div class="geoHd"><span class="geoIco">📍</span><b>Position · '+quoi+'</b></div><h3>Acceptez-vous que votre position soit communiquée ?</h3>'
+      +'<ul class="geoUl"><li><b>Pourquoi ?</b> Pour montrer que vous êtes bien sur le site.</li><li><b>Qui la voit ?</b> Votre manager.</li><li><b>Quand ?</b> Seulement quand vous pointez. Jamais en continu.</li></ul>'
+      +'<p class="geoNote">Si vous refusez, votre pointage est enregistré quand même.</p><div class="geoBt"><button type="button" data-g="non">Je refuse</button><button type="button" class="pri" data-g="oui">J’accepte</button></div></div>';
+      ov.querySelector('[data-g=non]').onclick=()=>fin({etat:'refus'});
+      ov.querySelector('[data-g=oui]').onclick=cherche; };
+    const cherche=()=>{ ov.innerHTML='<div class="geoBox"><div class="geoHd"><span class="geoIco">📍</span><b>Position · '+quoi+'</b></div><h3>Recherche de votre position…</h3><p class="geoNote">Cela peut prendre quelques secondes. Restez dehors ou près d’une fenêtre pour une meilleure précision.</p><div class="geoBt"><button type="button" data-g="skip">Pointer sans position</button></div></div>';
+      ov.querySelector('[data-g=skip]').onclick=()=>fin({etat:'indisponible'});
+      geoPt.mesure({geo:navigator.geolocation,annule:()=>fini}).then(fin); };
+    ask(); document.body.appendChild(ov); const b=ov.querySelector('[data-g=oui]'); if(b) try{ b.focus(); }catch(e){} }
+  const fmtDist = m=>m<1000?m+' m':(m/1000).toFixed(1).replace('.',',')+' km';
+  const osmLink = (g,txt)=>'<a href="https://www.openstreetmap.org/?mlat='+g.lat+'&mlon='+g.lng+'#map=18/'+g.lat+'/'+g.lng+'" target="_blank" rel="noopener">'+txt+'</a>';
+  const geoTag = g=>{ const e=geoPt.etat(g); if(e==='absent') return ''; if(e==='ok') return ' '+osmLink(g,'📍 ± '+g.acc+' m')+(g.faible?' <span class="geoBd w">précision faible</span>':'')+(g.ecart!=null?' <small>('+fmtDist(g.ecart)+' du site)</small>':''); return ' <span class="geoBd k">⦸ '+esc(geoPt.libelle(g))+'</span>'; };
+  /* position attendue du site : seulement si l'adresse du projet a été choisie dans la liste d'adresses */
+  function siteOf(a){ const n=net(), d=by(n.demandes,a.demandeId)||{}, c=by(n.clients,d.clientId), pj=c&&projsOf(c).find(x=>x.id===d.projetId); return pj&&typeof pj.lat==='number'&&typeof pj.lng==='number'?{lat:pj.lat,lng:pj.lng}:null; }
+  /* pas de position : le pointage reste enregistré, le manager est prévenu une seule fois (une notification par pointage) */
+  function geoNotif(a,type,rec){ if(!rec||!rec.geo) return; const e=geoPt.etat(rec.geo); if(e==='ok') return; const n=net();
+    if(n.notifs.some(x=>x.ref&&x.ref.pid===rec.id)) return;
+    const g=by(n.agents,a.agentId)||{}, d=by(n.demandes,a.demandeId)||{};
+    notify('manager',geoPt.messageManager(g.nom||rec.par,e,type,fr(rec.date),rec.hhmm,d.site||''),{page:'net-pointage',pid:rec.id,geoFiltre:(e==='indisponible'?'indispo':'refus')}); }
+  function geoPointer(a,type,apply){ geoAsk(m=>{ const g=geoPt.fiche(m,siteOf(a)); apply(g); const n=net(); const rec=n.pointages.filter(x=>x.affId===a.id&&x.date===moiDate&&x.type===type).pop(); geoNotif(a,type,rec); render('net-moi'); },type); }
+  /* journal des positions (manager) : filtrable, pliable */
+  function geoRows(){ const n=net(), L=[]; n.pointages.forEach(p=>{ if(p.type!=='in'&&p.type!=='out') return; const a=by(n.affectations,p.affId), ag=by(n.agents,p.agentId)||{nom:p.par||'?'}, d=(a&&by(n.demandes,a.demandeId))||{}, e=geoPt.etat(p.geo);
+      L.push({p,ag,d,e,k:e==='ok'?(p.geo.faible?'faible':'ok'):(e==='refus'||e==='permission')?'refus':'indispo'}); });
+    return L.sort((x,y)=>(x.p.date+x.p.hhmm)<(y.p.date+y.p.hhmm)?1:-1); }
+  function geoJournal(){ const all=geoRows(), lim=new Date(); lim.setDate(lim.getDate()-6); const l7=lim.getFullYear()+'-'+String(lim.getMonth()+1).padStart(2,'0')+'-'+String(lim.getDate()).padStart(2,'0');
+    const pass=r=>(jPer==='tout'||(jPer==='7j'?r.p.date>=l7:r.p.date===pDate))&&(!jAg||r.p.agentId===jAg)&&(jEtat==='tous'||(jEtat==='ok'?r.k==='ok'||r.k==='faible':jEtat==='faible'?r.k==='faible':r.k===jEtat));
+    const L=all.filter(pass), n=net(); let open=true; try{ open=localStorage.getItem('net-geo-journal')!=='0'; }catch(e){}
+    const alerte=all.filter(r=>r.k==='refus'&&r.p.date===pDate).length;
+    const row=r=>{ const g=r.p.geo, bd=r.k==='ok'?'<span class="geoBd o">Position reçue</span>':r.k==='faible'?'<span class="geoBd w">Précision faible</span>':r.k==='refus'?'<span class="geoBd k">Position refusée</span>':'<span class="geoBd k">Non disponible</span>';
+      const det=(r.e==='ok'?'± '+g.acc+' m · '+g.lat+', '+g.lng+(g.ecart!=null?' · '+fmtDist(g.ecart)+' du site':' · position du site inconnue')+' · '+osmLink(g,'Voir sur la carte'):(r.e==='absent'?'Pointage saisi sans position':esc(geoPt.libelle(g))+' ('+esc(geoPt.raison(r.e))+')'));
+      return '<div class="geoRow"><div><b>'+esc(r.ag.nom)+'</b> · '+(r.p.type==='out'?'départ':'arrivée')+' · '+fr(r.p.date)+' '+esc(r.p.hhmm)+'<br><small>'+esc(r.d.site||'site non précisé')+'</small></div><div>'+bd+'<br><small>'+det+'</small></div></div>'; };
+    return '<div class="nt-card geoJ"><div class="geoJh"><h3>📍 Journal des positions <small>('+L.length+')</small></h3><button type="button" class="geoEye'+(!open&&alerte?' red':'')+'" id="jEye" aria-pressed="'+open+'" aria-label="Voir ou cacher le journal des positions" title="Voir ou cacher">'+(open?GEO_EYE_ON:GEO_EYE_OFF)+'</button></div>'
+      +'<div id="jBody"'+(open?'':' hidden')+'><div class="geoFl"><label>Période<select id="jPer"><option value="jour"'+(jPer==='jour'?' selected':'')+'>Jour choisi</option><option value="7j"'+(jPer==='7j'?' selected':'')+'>7 derniers jours</option><option value="tout"'+(jPer==='tout'?' selected':'')+'>Tout</option></select></label>'
+      +'<label>Agent<select id="jAg"><option value="">Tous</option>'+n.agents.map(g=>'<option value="'+g.id+'"'+(jAg===g.id?' selected':'')+'>'+esc(g.nom)+'</option>').join('')+'</select></label>'
+      +'<label>Position<select id="jEt">'+[['tous','Toutes'],['ok','Position reçue'],['faible','Précision faible'],['refus','Position refusée'],['indispo','Non disponible']].map(o=>'<option value="'+o[0]+'"'+(jEtat===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></label></div>'
+      +(L.length?L.slice(0,200).map(row).join(''):'<p class="nt-e">Aucun pointage pour ce filtre.</p>')+'</div></div>'; }
+  function geoJournalBind(w){ const g=(id)=>w.querySelector(id), eye=g('#jEye'); if(!eye) return;
+    eye.onclick=()=>{ let open=g('#jBody').hidden; try{ localStorage.setItem('net-geo-journal',open?'1':'0'); }catch(e){} render('net-pointage'); };
+    g('#jPer').onchange=e=>{ jPer=e.target.value; render('net-pointage'); }; g('#jAg').onchange=e=>{ jAg=e.target.value; render('net-pointage'); }; g('#jEt').onchange=e=>{ jEtat=e.target.value; render('net-pointage'); }; }
 
   /* ---------- Demandes d'absence ---------- */
   const AB_MOT=['Congés payés','Maladie','Formation','Événement familial','Sans solde','Autre'];
@@ -19104,10 +19182,12 @@ const PG_FEATS=[
     w.innerHTML='<div class="nt"><div class="nt-h"><h2>⏱ Pointage</h2><div><button id="pPrev">◀</button> <input type="date" id="pDt" value="'+pDate+'"> <button id="pNext">▶</button> <button id="pToday">Aujourd’hui</button></div></div>'
       +'<div class="nt-card"><label>Projet<select id="pPj">'+list.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===pProj?' selected':'')+(x.id!==cur&&cur?' disabled':'')+'>'+esc(x.nom)+(x.id!==cur&&cur?' (non chargé)':'')+'</option>').join('')+'</select></label></div>'
       +(()=>{ const T=n.ptv.filter(r=>r.stage!=='valide'); return '<div class="nt-card"><h3>✔ Pointages à valider <small>('+T.length+')</small></h3>'+(T.length?T.map(r=>ptvRow(r,'<button class="pri" data-resp="'+r.id+'">✔ Valider (responsable)</button>')).join('')+(T.length>1?'<div class="nt-b"><button id="pAllOk">Tout valider</button></div>':''):'<p class="nt-e">Aucun pointage en attente de validation.</p>')+'</div>'; })()
+      +geoJournal()
       +'<h3>🟢 En cours — à pointer <small>('+enc.length+')</small></h3>'+(enc.length?'<div class="nt-dcs">'+enc.map(d=>card(d,true)).join('')+'</div>':'<p class="nt-e">Aucune demande en cours le '+fr(pDate)+'.</p>')
       +'<h3>⏳ À traiter <small>('+att.length+')</small></h3>'+(att.length?'<div class="nt-dcs">'+att.map(d=>card(d,false)).join('')+'</div>':'<p class="nt-e">Rien à traiter.</p>')
       +'<h3>✔ Déjà traitées <small>('+tra.length+')</small></h3>'+(tra.length?'<div class="nt-dcs">'+tra.map(d=>card(d,false)).join('')+'</div>':'<p class="nt-e">Aucune.</p>')
       +'<p class="nt-s">Ouvrez une demande en cours : un clic simple sur une personne fait avancer (attendu → présent → terminé), un appui long ouvre le choix (présent, en retard, absent, terminé). Le pointage est enregistré à l’heure actuelle, avec le nom de la personne connectée.</p></div>';
+    geoJournalBind(w);
     const dt=w.querySelector('#pDt'); dt.onchange=()=>{ pDate=dt.value||today(); later('net-pointage'); };
     const sh=k=>{ const d=new Date(pDate+'T12:00:00'); d.setDate(d.getDate()+k); pDate=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); render('net-pointage'); };
     w.querySelector('#pPrev').onclick=()=>sh(-1); w.querySelector('#pNext').onclick=()=>sh(1); w.querySelector('#pToday').onclick=()=>{ pDate=today(); render('net-pointage'); };
@@ -19174,8 +19254,8 @@ const PG_FEATS=[
     const q=x=>w.querySelector(x), qa=x=>w.querySelectorAll(x), shift=k=>{ const d=new Date(moiDate+'T12:00:00'); d.setDate(d.getDate()+k); moiDate=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); render('net-moi'); };
     q('#mPrev').onclick=()=>shift(-1); q('#mNext').onclick=()=>shift(1); q('#mToday').onclick=()=>{ moiDate=today(); render('net-moi'); }; q('#mDt').onchange=e=>{ moiDate=e.target.value||today(); render('net-moi'); };
     const as=q('#mAs'); if(as) as.onchange=()=>{ moiAs=as.value; render('net-moi'); };
-    qa('[data-in]').forEach(b=>b.onclick=()=>{ const a=by(n.affectations,b.dataset.in); geoAsk(geo=>{ pointSet(a,moiDate,'present',geo.lat!=null?geo:null); render('net-moi'); }); });
-    qa('[data-out]').forEach(b=>b.onclick=()=>{ const a=by(n.affectations,b.dataset.out); geoAsk(geo=>{ ptAdd(a,moiDate,'out',null,geo.lat!=null?{geo}:{}); render('net-moi'); }); });
+    qa('[data-in]').forEach(b=>b.onclick=()=>{ const a=by(n.affectations,b.dataset.in); geoPointer(a,'in',g=>pointSet(a,moiDate,'present',g)); });
+    qa('[data-out]').forEach(b=>b.onclick=()=>{ const a=by(n.affectations,b.dataset.out); geoPointer(a,'out',g=>ptAdd(a,moiDate,'out',null,{geo:g})); });
     qa('[data-mfait]').forEach(b=>b.onclick=()=>{ const [aid,mid]=b.dataset.mfait.split('|'), a=by(n.affectations,aid), m=a&&a.missions&&a.missions.find(x=>x.id===mid); if(!m) return;
       pickPhoto(photo=>{ m.fait=true; m.photo=photo; m.faitLe=new Date().toISOString(); m.faitPar=who()||(ag&&ag.nom)||'?'; save();
         notify('manager','Mission terminée par '+m.faitPar+' : '+m.action+(a.poste?' — '+a.poste:''),{page:'net-affect'}); render('net-moi'); }); });
@@ -19277,7 +19357,7 @@ const PG_FEATS=[
     modal('<h3>'+(nw?'➕ Nouveau projet — ':'✏️ ')+esc(c.nom)+'</h3><label>Nom du projet<input id="pNo" value="'+esc(pj.nom||'')+'"></label><label>Adresse / site d’intervention<input id="pAd" data-addr value="'+esc(pj.adresse||'')+'" placeholder="ex. 12 rue des Lilas, 69003 Lyon"></label>'
       +'<label>Statut<select id="pSt"><option value="encours"'+(pj.statut!=='termine'?' selected':'')+'>En cours</option><option value="termine"'+(pj.statut==='termine'?' selected':'')+'>Terminé</option></select></label>'
       +'<div class="nt-b">'+(nw?'':'<button class="del" id="pDel">Supprimer</button>')+'<button data-x>Annuler</button><button class="pri" id="pOk">Enregistrer</button></div>',
-    o=>{ o.querySelector('#pOk').onclick=()=>{ const nm=val(o,'pNo'); if(!nm){ alert('Le nom du projet est requis.'); return; } const r={nom:nm,adresse:val(o,'pAd'),statut:val(o,'pSt')}; if(nw) projsOf(c).push(Object.assign({id:uid()},r)); else Object.assign(pj,r);
+    o=>{ o.querySelector('#pOk').onclick=()=>{ const nm=val(o,'pNo'); if(!nm){ alert('Le nom du projet est requis.'); return; } const r={nom:nm,adresse:val(o,'pAd'),statut:val(o,'pSt')}; { const gp=adrPos(o,'pAd'); if(gp){ r.lat=gp.lat; r.lng=gp.lng; } else if(nw||r.adresse!==pj.adresse){ r.lat=null; r.lng=null; } } if(nw) projsOf(c).push(Object.assign({id:uid()},r)); else Object.assign(pj,r);
         n.demandes.forEach(d=>{ if(d.projetId===pj.id) d.site=r.adresse||r.nom; }); save(); o.remove(); render('net-clients'); };
       const dl=o.querySelector('#pDel'); if(dl) dl.onclick=()=>{ if(n.demandes.some(d=>d.projetId===pj.id)){ alert('Ce projet a des demandes : supprimez-les d’abord.'); return; } if(!confirm('Supprimer ce projet ?')) return; c.projets=projsOf(c).filter(x=>x.id!==pj.id); save(); o.remove(); render('net-clients'); }; });
   }
@@ -19341,6 +19421,14 @@ const PG_FEATS=[
     .af-box{margin:10px 0;padding:12px;border:2px solid #2e9e4f;border-radius:14px;background:#f2faf4} .af-box h4{margin:0 0 6px} .af-sl{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0} .af-sc{border:1px solid #cfd8d2;border-radius:12px;padding:6px 8px;background:#fff} .af-sc.on{border-color:#2e9e4f;box-shadow:0 0 0 2px rgba(46,158,79,.25)} .af-sc>button{display:block;width:100%;text-align:left;background:none;border:0;padding:2px;font-weight:700;cursor:pointer;color:#16232B} .af-ch{display:inline-block;margin:3px 4px 0 0;padding:2px 8px;border-radius:12px;background:#16232B;color:#fff;font-size:12px} .af-ch i{cursor:pointer;margin-left:6px;font-style:normal;opacity:.8}
     .af-ag{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid #d8d4c8;border-radius:12px;padding:8px 10px;margin:6px 0;background:#fff} .af-ag.ok{border-left:5px solid #2e9e4f} .af-ag.part{border-left:5px solid #e08a00} .af-ag.ko{border-left:5px solid #d03030;opacity:.75} .af-ag small{color:#5b6770;display:block} .af-g{color:#1f7a3a} .af-o{color:#b36a00} .af-r{color:#b02020}
 .nt-chips select{width:auto !important;max-width:240px;align-self:center} .wf{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px} .wf span{flex:1 1 140px;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;border:1.5px solid #d8d4c8;background:#fff;color:#16232B;font-size:12.5px;font-weight:600;line-height:1.2} .wf i{flex:none;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;background:#eee;color:#555} .wf span.done{background:#ecebe6;color:#8a8f94;border-color:#e0ddd3} .wf span.done i{background:#c9cbc9;color:#fff} .wf span.cur{background:#fdf1cf;border-color:#F2A900} .wf span.cur i{background:#F2A900;color:#16232B} .wf span.fin{background:#e2f4e8;border-color:#2e9e4f;color:#1f7a3a} .wf span.fin i{background:#2e9e4f;color:#fff}
+    .geoOv{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px} .geoBox{background:#fff;color:#16232B;border-radius:18px;width:100%;max-width:380px;padding:18px;box-shadow:0 16px 48px rgba(0,0,0,.3);max-height:92vh;overflow:auto}
+    .geoBox button{border:2px solid #8a929a !important;border-radius:12px;background:transparent !important;cursor:pointer;font:inherit;color:inherit !important;font-weight:600} .geoBox button.pri{background:#F2A900 !important;border-color:#F2A900 !important;color:#16232B !important;font-weight:700}
+    .geoHd{display:flex;align-items:center;gap:10px;margin-bottom:6px} .geoIco{width:44px;height:44px;border:2px solid #F2A900;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:22px;background:#fff8e1;flex:none} .geoBox h3{margin:8px 0;font-size:18px;line-height:1.25} .geoUl{margin:8px 0;padding-left:18px;font-size:15px;line-height:1.4} .geoUl li{margin:4px 0} .geoNote{font-size:14px;color:#5b6a72;margin:8px 0}
+    .geoBt{display:flex;gap:10px;justify-content:flex-end;margin-top:12px} .geoBt button{min-height:44px;min-width:44px;flex:1 1 0;padding:10px 12px;font-size:16px;border-radius:12px} .geoBt button:only-child{flex:0 1 auto;margin-left:auto}
+    .geoJh{display:flex;align-items:center;justify-content:space-between;gap:8px} .geoJh h3{margin:0} .nt .geoEye{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;padding:0} .nt .geoEye.red{background:#B4432D;color:#fff;border-color:#B4432D}
+    .geoFl{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0} .geoFl label{display:flex;flex-direction:column;gap:2px;font-size:13px;flex:1 1 130px;min-width:0} .geoFl select{min-height:44px;width:100%}
+    .geoRow{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;padding:8px 0;border-top:1px solid #e6eaec} .geoRow>div{min-width:0;overflow-wrap:anywhere} .geoRow>div:last-child{text-align:right;flex:1 1 200px}
+    .geoBd{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600} .geoBd.o{background:#e2f4e8;color:#1f7a3a} .geoBd.w{background:#fdf1cf;color:#8a5a00} .geoBd.k{background:#f8dedb;color:#b3261e}
 .mo-c h3{margin:0 0 4px} .mo-b{display:flex;flex-wrap:wrap;gap:8px} .mo-b button{padding:12px 16px;font-size:15px} .mo-v{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid #d8d4c8;border-radius:12px;padding:8px 10px;margin:6px 0;background:#fff}
 .df-x[hidden],.df-r[hidden]{display:none !important} .rh-tabs{display:flex;gap:8px;margin:6px 0 12px} .rh-tabs button{padding:8px 16px;border-radius:999px;font-weight:700} .rh-tabs button.on{background:#16232B;color:#fff}
 .nt-box.nt-wide{width:min(1500px,100%)} .df{display:grid;grid-template-columns:1fr;gap:14px} .df-l,.df-r{display:flex;flex-direction:column;gap:10px;min-width:0} @media (min-width:1000px){ .nt-box.nt-wide .df{grid-template-columns:minmax(360px,36%) 1fr;align-items:start} .nt-wide .nt-vp{height:min(72vh,800px)} }
