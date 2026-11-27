@@ -1,6 +1,6 @@
 /* Test de la garde d'usage de supabase/fiche-ia.ts avec des doubles (aucun réseau, aucune base).
    Lancer : node --experimental-strip-types tests/fiche-ia.test.mjs */
-import { handle } from '../supabase/fiche-ia.ts';
+import { handle, ANIMATIONS, MISES_EN_PAGE, THEMES } from '../supabase/fiche-ia.ts';
 let n = 0, ko = 0;
 const eq = (a, b, m) => { n++; if (JSON.stringify(a) !== JSON.stringify(b)) { ko++; console.log('ECHEC', m, 'attendu', JSON.stringify(b), 'recu', JSON.stringify(a)); } };
 /* base simulée : mêmes règles que ia_consommer / ia_rembourser (migration-ia-limite.sql) */
@@ -11,7 +11,7 @@ function monde() {
   const acces = new Map(); const defaut = 3; const w = { appelsIA: 0, consommer: 0, rembourser: 0, derniereCle: null };
   const d = {
     apiKey: 'k',
-    fetch: async (url, init) => { w.appelsIA++; w.derniereCle = init.headers['x-api-key']; const body = JSON.parse(init.body);
+    fetch: async (url, init) => { w.appelsIA++; w.derniereCle = init.headers['x-api-key']; const body = JSON.parse(init.body); w.dernierBody = body;
       if (w.echec) return new Response(JSON.stringify({ error: { message: 'boom' } }), { status: 500 });
       return new Response(JSON.stringify({ content: [{ type: 'tool_use', input: body.tools[0].name === 'definir_methode' ? { message: 'ok' } : { valeurs: [], resume: 'ok', manquant: [] } }] }), { status: 200 }); },
     getUser: async (t) => users[t] || null,
@@ -95,6 +95,14 @@ const run = async (d, tok, body) => { const r = await handle(req(tok, body), d);
   const r3 = await run(d, 'tA', { ...sc, sources: [] }); eq(r3.s, 400, 'support sans source'); eq(acces.get('uA|P1').utilise, 1, 'support sans source : rien consomme');
   const r4 = await run(d, 'tA', { ...sc, sources: [{ nom: 'x', texte: '', images: [{ type: 'image/gif', data: 'AAAA' }] }] }); eq(r4.s, 400, 'support image refusee');
   w.echec = true; const r5 = await run(d, 'tA', sc); eq(r5.s, 400, 'support echec serveur'); eq(acces.get('uA|P1').utilise, 1, 'support echec : appel rendu');
+}
+{ /* support_cours : schema de presentation, listes blanches d'animation, aucun code libre */
+  const { d, w, acces } = monde(); await run(d, 'tA', { mode: 'support_cours', projet: 'P1', modele: { nom: 'x', structure: 'y' }, sources: [{ nom: 's', texte: 't' }] }); acces.get('uA|P1').statut = 'accepte';
+  await run(d, 'tA', { mode: 'support_cours', projet: 'P1', modele: { nom: 'x', structure: 'y' }, sources: [{ nom: 's', texte: 't' }] });
+  const tool = w.dernierBody.tools[0]; eq(tool.name, 'rediger_presentation', 'outil presentation');
+  const it = tool.input_schema.properties.diapositives.items.properties; eq(it.animation.enum, ['aucune', 'fondu', 'glissement', 'zoom', 'points'], 'animations : liste blanche'); eq(it.mise_en_page.enum, MISES_EN_PAGE, 'mises en page : liste blanche');
+  eq(tool.input_schema.properties.theme.enum, THEMES, 'themes : liste blanche'); eq(ANIMATIONS.includes('script'), false, 'pas d\'animation libre'); eq(w.dernierBody.tool_choice.name, 'rediger_presentation', 'outil impose');
+  eq(/AUCUN fait/.test(w.dernierBody.system), true, 'consigne : aucun fait invente'); eq(/mur de texte/.test(w.dernierBody.system), true, 'consigne : style cartes');
 }
 { /* simulation de l'environnement Deno : la fonction s'enregistre et répond */
   let h = null; globalThis.Deno = { serve: (f) => { h = f; }, env: { get: () => undefined } };
