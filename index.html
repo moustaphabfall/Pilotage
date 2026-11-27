@@ -7329,7 +7329,7 @@ const DIM_I18N_DATA=[
   if(vb){ const r=vb.getBoundingClientRect(); if(r.width>4) bar.style.top=Math.round(r.top)+'px'; }
   /* le bouton n'existe que sur le tableau de bord, juste à côté de l'onglet « Tableau de bord » quand il est visible */
   const tb=document.querySelector('.tab[data-page="dashboard"]'); const tr=tb&&tb.getBoundingClientRect();
-  if(tr&&tr.width>4&&tr.height>4){ bar.style.left=Math.round(document.documentElement.dir==='rtl'?Math.max(8,tr.left-bar.offsetWidth-8):tr.right+8)+'px'; bar.style.right='auto'; bar.style.top=Math.round(tr.top)+'px'; }
+  if(tr&&tr.width>4&&tr.height>4&&tr.right>0&&tr.left<innerWidth){ bar.style.left=Math.round(document.documentElement.dir==='rtl'?Math.max(8,tr.left-bar.offsetWidth-8):tr.right+8)+'px'; bar.style.right='auto'; bar.style.top=Math.round(tr.top)+'px'; }
   else { bar.style.left=''; }
  }
  document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-fv]'); if(!b) return; e.preventDefault(); e.stopPropagation(); const sc=fvScope(b); fvApply(sc,b.dataset.fv==='toggle'?fvState(sc)!=='close':b.dataset.fv==='close'); fvRefresh(); },true);
@@ -22664,7 +22664,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
  function popClose(){ if(window.__pjOff){ document.removeEventListener('pointerdown',window.__pjOff,true); window.__pjOff=null; } const o=document.getElementById('pjPop'); if(o) o.remove(); document.querySelectorAll('.pjb.on').forEach(b=>b.classList.remove('on')); }
  function popOpen(anchor,html,bind){
   popClose(); const d=document.createElement('div'); d.id='pjPop'; d.innerHTML=html; document.body.appendChild(d);
-  const r=anchor.getBoundingClientRect(); d.style.left=Math.max(8,Math.min(r.left,innerWidth-d.offsetWidth-8))+'px'; d.style.top=Math.min(r.bottom+6,innerHeight-80)+'px';
+  const r=anchor.getBoundingClientRect(); d.style.left=Math.max(8,Math.min(r.left,innerWidth-d.offsetWidth-8))+'px'; d.style.maxHeight=(innerHeight-16)+'px'; d.style.overflowY='auto'; { const h=d.offsetHeight; let t=r.bottom+6; if(t+h>innerHeight-8) t=(r.top-6-h>=8)?(r.top-6-h):Math.max(8,innerHeight-8-h); d.style.top=t+'px'; }
   if(anchor.classList.contains('pjb')) anchor.classList.add('on');
   bind&&bind(d);
   setTimeout(()=>{ const off=e=>{ if(!d.contains(e.target)&&!anchor.contains(e.target)){ popClose(); } }; window.__pjOff=off; if(document.getElementById('pjPop')===d) document.addEventListener('pointerdown',off,true); },0);
@@ -46486,7 +46486,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function pcPhoneClamp(draw){
    if(!draw.classList.contains('pcPhone')) return; const svg=draw.querySelector('svg.pcSvg'); if(!svg||!draw.__pcZ) return; const z=draw.__pcZ, cs=getComputedStyle(draw);
    const aw=draw.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0), ah=draw.clientHeight-(parseFloat(cs.paddingTop)||0)-(parseFloat(cs.paddingBottom)||0);
-   const sr=svg.getBoundingClientRect(), sw=sr.width, sh=sr.height; z.x=Math.min(0,Math.max(Math.min(0,aw-sw),z.x)); z.y=Math.min(0,Math.max(Math.min(0,ah-sh),z.y));
+   /* bornes calculees avec la vraie géométrie (origine de la transformation au centre : la partie gauche et haute du schéma zoomé reste atteignable au doigt) */
+   const tf=svg.style.transform; svg.style.transform='none'; const r0=svg.getBoundingClientRect(), dr0=draw.getBoundingClientRect(); svg.style.transform=tf;
+   const og=(getComputedStyle(svg).transformOrigin||'0 0').split(' ').map(parseFloat), ox=og[0]||0, oy=og[1]||0, sc=z.s||1, pl=parseFloat(cs.paddingLeft)||0, pt=parseFloat(cs.paddingTop)||0;
+   const bx=(r0.left-dr0.left-(draw.clientLeft||0))+ox*(1-sc), by=(r0.top-dr0.top-(draw.clientTop||0))+oy*(1-sc), sw=r0.width*sc, sh=r0.height*sc;
+   const mxX=pl-bx, mnX=pl+aw-sw-bx, mxY=pt-by, mnY=pt+ah-sh-by;
+   z.x=mnX>mxX?(mnX+mxX)/2:Math.min(mxX,Math.max(mnX,z.x)); z.y=mnY>mxY?(mnY+mxY)/2:Math.min(mxY,Math.max(mnY,z.y));
   }
   function pcZoomApply(draw){
    const svg=draw.querySelector('svg.pcSvg'); if(!svg) return;
@@ -48467,6 +48472,80 @@ html{overscroll-behavior-y:none}
  .pcDraw.pcHasTools:not(.pcCollapsed),.pcBeamDraw.pcPhone.pcHasTools{padding-top:166px}
 }
 </style>
+<style id="d5tour">
+/* ===== Tour tablette et telephone, tous modules : regles communes ===== */
+select.dimSelHid.dimSelHid.dimSelHid{width:1px!important;min-width:0!important;max-width:1px!important;height:1px!important;padding:0!important;border:0!important;margin:0!important;clip-path:inset(50%)}
+/* tableaux : colonnes jamais coupees lettre par lettre, le tableau defile dans son cadre */
+.gtT,.mzLay,.asLay{min-width:max-content}
+td .dimSelW,th .dimSelW{flex-wrap:wrap}
+td .dimSelTx,th .dimSelTx{min-width:5.5em;overflow-wrap:break-word}
+td .dimIBw,th .dimIBw{max-width:none;min-width:76px}
+td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
+/* plein ecran des schemas, plans et notes : au plus 3 boutons par ligne (rang 1 : titre entier + imprimer, rang 2 : reduire, ajuster, agrandir), titre jamais tronque */
+#fplFs .fplFsBar.fplFsBar{flex-wrap:wrap;row-gap:6px}
+#fplFs .fplFsBar.fplFsBar::after{content:'';flex:0 0 100%;order:2;height:0}
+#fplFs .fplFsBar.fplFsBar .fplFsAct{display:contents}
+#fplFs .fplFsBar.fplFsBar .fplFsT{order:0;flex:1 1 0;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.25}
+#fplFs .fplFsBar.fplFsBar .fplFsB[data-a="print"]{order:1}
+#fplFs .fplFsBar.fplFsBar .fplFsB[data-a="out"],#fplFs .fplFsBar.fplFsBar .fplFsB[data-a="reset"],#fplFs .fplFsBar.fplFsBar .fplFsB[data-a="in"]{order:3}
+#fplFs .fplFsBar.fplFsBar .fplFsB[data-a="out"]{margin-inline-start:auto}
+#fplFs .fplFsPanel.fplFsPanel{top:calc(128px + env(safe-area-inset-top))}
+/* fiche generale et fenetres : jamais plus large que l'ecran, au plus 3 boutons par ligne */
+.pjARC-fr.pjAT-g{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+.quadrant-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.quadrant-picker .qp-btn{min-width:0;width:100%}
+.elsMD.elsMD:not(.on){grid-template-columns:repeat(3,minmax(0,1fr))!important}
+@media (max-width:600px){.elsMD.elsMD:not(.on){grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media (min-width:601px) and (max-width:700px){.elsMD.on .elsMDNav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.elsMD.on .elsMDBtn{max-width:none;min-width:0}}
+@media (max-width:900px){
+ .tf-grid,.tf-grid.cols,.tf-grid.pjdf{grid-template-columns:minmax(0,1fr)}
+}
+.tf-grid>*{min-width:0}
+@media (max-width:1024px),(pointer:coarse){
+ .modal .modal-actions.mb-sticky{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;overflow:visible}
+ .modal .modal-actions.mb-sticky>button{width:100%;min-width:0;white-space:normal;line-height:1.2;min-height:44px}
+ .modal .modal-actions.mb-sticky>button.primary{flex:none}
+ .fiche-exp-bar{flex-wrap:wrap;padding-inline-end:56px!important}
+ #pjPop .pp-i{min-height:44px}
+}
+@media ((max-width:1024px) or (pointer:coarse)) and (max-height:520px){ .modal .modal-actions.mb-sticky{position:static;box-shadow:none;margin-bottom:0} }
+@media (pointer:coarse){
+ .dimSelBtn.dimSelBtn{min-height:44px}
+ .pjDallageRoot .pcZoomBtn,.pjEscRoot .pcZoomBtn{min-width:44px;min-height:44px}
+ .modal summary{min-height:44px;box-sizing:border-box}
+ html .ncDoc details.ncJson>summary{min-height:44px;box-sizing:border-box;padding-block:0}
+ .modal .close-x.close-x{min-width:44px;min-height:44px}
+ .modal .td-brush,#tfViewBtn.td-brush{min-height:44px;min-width:44px}
+ .modal input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]),.modal select{min-height:44px}
+ input.pjBeam-ttl,input.pjBeam-ttl-in{min-height:44px;box-sizing:border-box}
+}
+/* listes deroulantes a bouton Modifier : le texte n'est jamais ecrase (le bouton passe dessous si la place manque), champs de choix pleine largeur dans les grilles a deux colonnes */
+.dimSelW.dimSelW{flex-wrap:wrap}
+.dimSelW .dimSelTx{min-width:min(6em,100%)}
+@media (max-width:600px){ .pcChgRow>label:has(.dimSelW),.pcChgRow>.field:has(.dimSelW),.pcChgRow>div:has(>.dimSelW){grid-column:1/-1} }
+.dimChRow .dimIBf{flex:0 0 48px;width:48px}
+.dimChRow .dimChTx{flex:1 1 auto}
+/* tableaux des notes de calcul et des plans : mots jamais coupes, le tableau garde au moins la largeur de ses mots et defile dans son cadre */
+.ncDoc table,.fplDoc table,.pcNC table{min-width:min-content}
+.ncDoc table :is(th,td),.fplDoc table :is(th,td),.pcNC table :is(th,td){overflow-wrap:normal;word-break:normal;hyphens:none}
+:is(.ncDoc,.fplDoc,.pcNC) :is(div,section):has(>table),:is(.ncDoc,.pcNC):has(>table){overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media (pointer:coarse){.fplDoc .pcZoomBtn,.pcDraw .pcZoomBtn{min-width:44px;min-height:44px}.fplDoc .pcZoomBtn{width:44px;height:44px}}
+/* liste des ouvrages : cibles de 44 px au toucher, barre d'actions et filtres a 3 boutons au plus par ligne */
+@media (pointer:coarse){ #pjDb .pjd-badge,#pjDb .pjd-t .pjd-edb{width:44px;height:44px;min-width:44px;min-height:44px} #pjDb .pjd-slot{flex:0 0 44px;width:44px;height:44px} }
+@media (max-width:1024px),(pointer:coarse){ #pjDb .pjd-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;align-items:stretch} #pjDb .pjd-bar>*{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere} #pjDb .pjd-bar>:last-child:nth-child(3n+1){grid-column:3} #pjDb .pjd-bar>:last-child:nth-child(3n+2){grid-column:2 / 4} }
+[dir=rtl] #pjDb .pjd-bar>:last-child:nth-child(3n+1){grid-column:1}
+/* lanceurs d'applications et fenetres d'acces : 3 tuiles par ligne, boutons de retour et de fermeture de 44 px */
+@media (max-width:1024px),(pointer:coarse){
+ .pa-grid,#paWin .pa-grid,#ovWin .pa-grid,#dwWin .pa-grid,#modalBody .pa-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+ #dwWin #dwBk,#dwWin #dwX,#paWin .pa-h button,#ovWin .pa-h button,#paWin .pa-bk{min-width:44px!important;min-height:44px!important}
+}
+/* boutons du visualiseur note / plan : noms alignes a gauche, meme position pour tous */
+.pjDocActs>.dimIBw{max-width:none;justify-content:flex-start}
+.pjDocActs>.dimIBw .dimIBl{flex:1 1 auto;text-align:start;max-width:none}
+@media (max-width:520px){.pjDocActs>.dimIBw{flex:1 1 100%;width:100%}}
+/* fenetre apres calcul : noms des boutons alignes a gauche, meme position pour tous */
+.dimCalcBox .dimIBw{width:100%;max-width:none;justify-content:flex-start}
+.dimCalcBox .dimIBw .dimIBl{flex:1 1 auto;text-align:start;max-width:none}
 <script id="rsp6js">
 /* Application installée : le geste « retour » ferme la fenêtre ouverte au lieu de quitter l'application ; la rotation garde l'état (aucune réinitialisation) */
 (function(){ try{
