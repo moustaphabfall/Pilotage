@@ -31476,6 +31476,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
 
   /* marqueurs des charges supplémentaires sur le schéma : coupe (un sens) ou vue en plan (deux sens) ; poignées à glisser */
+  /* poignée de valeur de P : champ « Pn = valeur kN » dans le dessin ; le contrôleur commun lui pose la poignée verticale (échelle propre, bulle en direct, cadenas si verrouillé) ; côté droit ou gauche du repère pour rester dans le cadre */
+  function dlChPField(add,boxes,i,c,px,py,half,g,plan){
+   const FLD=window.dimField, left=px>g.x0+g.w*0.5, n=i+1, fw=window.dimFieldW('P'+n,c.P_kN,'kN');
+   const o=FLD({x:left?px-half-18:px+half+18,y:py-14,align:left?'right':'left',label:'P'+n,val:(c.P_kN==null?'':c.P_kN),unit:'kN',attr:'data-dl-cdp="'+i+'" data-dgl-own="1" min="1"',title:'Valeur de la charge ponctuelle P'+n});
+   if(left) o.svg=o.svg.replace('<foreignObject class="dimFo"','<foreignObject class="dimFo" data-dgl-side="left"');
+   add(o); boxes.push({x:left?o.box.x-44:o.box.x+o.box.w,y:o.box.y,w:44,h:o.box.h});
+  }
   function dlChMarkers(dp,g,plan,yTop,add,boxes){
    const L=dlChList(dp), drag=window._dlCd; if(!L.length) return '';
    const COL=c=>c.cat==='Q'?'#d9822b':'var(--ds-draw,#2e6ea6)', fm=x=>String(+(+x).toFixed(2)).replace('.',','); let o='';
@@ -31483,8 +31490,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    L.forEach((c,i)=>{ const col=COL(c), n=i+1;
     if(c.type==='ponct'){ const px=g.x0+Math.max(0,Math.min(g.L,+c.x_m||0))/g.L*g.w;
      if(plan){ const py=g.y0+Math.max(0,Math.min(g.W,+c.y_m||0))/g.W*g.h, ww=Math.max(6,(+c.a_m||0.2)/g.L*g.w), hh=Math.max(6,(+c.b_m||0.2)/g.W*g.h);
-      o+='<rect x="'+(px-ww/2)+'" y="'+(py-hh/2)+'" width="'+ww+'" height="'+hh+'" fill="'+col+'" fill-opacity=".35" stroke="'+col+'" stroke-width="1.6"/><text x="'+(px+12)+'" y="'+(py-8)+'" font-size="12" font-weight="700" fill="'+col+'">P'+n+' = '+fm(c.P_kN)+' kN</text>'+hd(i,'xy',px,py,col); boxes.push({x:px-30,y:py-24,w:150,h:40}); }
-     else { const y1=yTop-22*(i%3)-8; o+='<line x1="'+px+'" y1="'+y1+'" x2="'+px+'" y2="'+(g.y0-2)+'" stroke="'+col+'" stroke-width="2.4" marker-end="url(#dlArrQ)"/><text x="'+(px+12)+'" y="'+(y1+4)+'" font-size="12" font-weight="700" fill="'+col+'">P'+n+' = '+fm(c.P_kN)+' kN</text>'+hd(i,'x',px,y1,col); boxes.push({x:px-12,y:y1-14,w:140,h:28}); } }
+      o+='<rect x="'+(px-ww/2)+'" y="'+(py-hh/2)+'" width="'+ww+'" height="'+hh+'" fill="'+col+'" fill-opacity=".35" stroke="'+col+'" stroke-width="1.6"/>'+hd(i,'xy',px,py,col); dlChPField(add,boxes,i,c,px,py,ww/2,g,true); }
+     else { const y1=yTop-32*(i%3)-8; o+='<line x1="'+px+'" y1="'+y1+'" x2="'+px+'" y2="'+(g.y0-2)+'" stroke="'+col+'" stroke-width="2.4" marker-end="url(#dlArrQ)"/>'+hd(i,'x',px,y1,col); dlChPField(add,boxes,i,c,px,y1,0,g,false); boxes.push({x:px-12,y:y1-14,w:24,h:28}); } }
     else { const x1=g.x0+Math.max(0,Math.min(g.L,+c.x_m||0))/g.L*g.w, x2=g.x0+Math.max(0,Math.min(g.L,(+c.x_m||0)+(+c.a_m||0)))/g.L*g.w;
      if(plan){ const y1=g.y0+Math.max(0,Math.min(g.W,+c.y_m||0))/g.W*g.h, y2=g.y0+Math.max(0,Math.min(g.W,(+c.y_m||0)+(+c.b_m||1)))/g.W*g.h;
       o+='<rect x="'+x1+'" y="'+y1+'" width="'+Math.max(2,x2-x1)+'" height="'+Math.max(2,y2-y1)+'" fill="'+col+'" fill-opacity=".18" stroke="'+col+'" stroke-width="1.6" stroke-dasharray="6 4"/><text x="'+(x1+6)+'" y="'+(y1+16)+'" font-size="12" font-weight="700" fill="'+col+'">q'+n+' = '+fm(c.q_kNm2)+' kN/m²</text>'+hd(i,'c1',x1,y1,col)+hd(i,'c2',x2,y2,col); }
@@ -31829,6 +31836,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const t=taskById(id); if(!t) return; const dp=dlData(t); const el=e.target;
    if(el.matches('[data-dl="nom"]')){ dp.nom=el.value; t.nom=el.value; return; }
    if(el.dataset.els){ elsChange(dp,el,'dl',id); return; }
+   if(el.dataset.dlCdp!=null&&el.dataset.dlCdp!==''){ const c=dlChList(dp)[+el.dataset.dlCdp]; if(c) c.P_kN=el.value===''?null:+el.value; dleRender(id); return; }
    if(el.dataset.dlCdf){ const row=el.closest('[data-dl-cdrow]'), c=row&&(dp.chargesSup||[])[+row.dataset.dlCdrow]; if(c){ const k=el.dataset.dlCdf; if(k==='cat') c.cat=el.value; else c[k]=el.value===''?null:+el.value; } dleRender(id); return; }
    const key=el.dataset.dl; if(key){
     if(key==='riveSolidaire'||key==='poincon') dp[key]=!!el.value;
@@ -46265,8 +46273,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    function scaleRestore(d){ const svg=d.querySelector('svg.pcSvg'), g=svg&&barOf(svg); if(!g||isBeamD(d)) return; const q=barParse(g); if(q) barDraw(g,q.L0); }
    function ctrlHtml(act,gl,txt,title,x,y,D){ return '<foreignObject class="pcgFo pcgRule dgsFo" data-dgs-fo="'+act+'" x="'+x+'" y="'+y+'" width="'+D+'" height="'+D+'"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="pcgBtn pcgRound" data-dgs-act="'+act+'" aria-haspopup="menu" aria-label="'+title+'" title="'+title+'"><span class="pcgGl">'+gl+'</span><span class="pcgVl">'+txt+'</span></button></foreignObject>'; }
    const VLAB=['unités','dizaines','centaines','milliers'], VMUL=['×1','×10','×100','×1k'], VRNG=['0 – 10','0 – 100','0 – 1 000','0 – 10 000'], VSTEP=[0.1,1,10,100];
+   /* pas simple et lisible d'une poignée à échelle propre (charge ponctuelle) : 1, 5, 10 ou 50 selon la valeur */
+   const ownStep=v=>{ v=Math.abs(v); return v<20?1:(v<100?5:(v<500?10:50)); };
    function loadList(svg){ return [...svg.querySelectorAll('g.dgLoad')]; }
-   function vAuto(svg){ let mx=0; loadList(svg).forEach(h=>{ const v=Math.abs(parseFloat(String(h.__in&&h.__in.value||'0').replace(',','.'))); if(isFinite(v)) mx=Math.max(mx,v); }); for(let k=0;k<3;k++) if(mx<=Math.pow(10,k+1)+1e-9) return k; return 3; }
+   function vAuto(svg){ let mx=0; loadList(svg).forEach(h=>{ if(h.__own) return; const v=Math.abs(parseFloat(String(h.__in&&h.__in.value||'0').replace(',','.'))); if(isFinite(v)) mx=Math.max(mx,v); }); for(let k=0;k<3;k++) if(mx<=Math.pow(10,k+1)+1e-9) return k; return 3; }
    function vK(d){ const s=S(d); if(s.v!=null) return s.v; const svg=d.querySelector('svg.pcSvg'); return svg?vAuto(svg):0; }
    function scaleSetup(d){
     if(isBeamD(d)) return; const svg=d.querySelector('svg.pcSvg'); if(!svg) return; const g=barOf(svg); if(!g) return; const q=barParse(g); if(!q) return; const s=S(d);
@@ -46299,12 +46309,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const fos=[...svg.querySelectorAll('foreignObject.dimFo')].filter(fo=>{ const u=fo.querySelector('.pcUnit'), i=fo.querySelector('input'); return u&&i&&LOADU.test((u.textContent||'').trim()); });
     const sig=fos.length+(lk?'L':'U')+fos.map(fo=>fo.getAttribute('x')+','+fo.getAttribute('y')+','+fo.getAttribute('width')).join(';'); if(svg.__dgl===sig&&svg.querySelectorAll('g.dgLoad').length===fos.length) return; svg.__dgl=sig;
     svg.querySelectorAll('g.dgLoad').forEach(n=>n.remove());
-    fos.forEach((fo,i)=>{ const x=+fo.getAttribute('x'), y=+fo.getAttribute('y'), w=+fo.getAttribute('width'), h=+fo.getAttribute('height'), cx=x+w+16, cy=y+h/2, inp=fo.querySelector('input'), nm=((fo.querySelector('.dimNm')||{}).textContent||'').replace('=','').trim(), un=(fo.querySelector('.pcUnit').textContent||'').trim();
+    fos.forEach((fo,i)=>{ const x=+fo.getAttribute('x'), y=+fo.getAttribute('y'), w=+fo.getAttribute('width'), h=+fo.getAttribute('height'), cx=(fo.getAttribute('data-dgl-side')==='left')?x-16:x+w+16, cy=y+h/2, inp=fo.querySelector('input'), nm=((fo.querySelector('.dimNm')||{}).textContent||'').replace('=','').trim(), un=(fo.querySelector('.pcUnit').textContent||'').trim();
      const g=document.createElementNS('http://www.w3.org/2000/svg','g'); g.setAttribute('class','dgLoad'+(lk?' dgLoadLk':'')); g.setAttribute('data-dgl',String(i)); g.setAttribute('tabindex','0'); g.setAttribute('role','slider'); g.dataset.cy=String(cy);
      g.setAttribute('aria-label','Charge '+nm+' en '+un+(lk?' : verrouillée, recalculer l\'ouvrage pour modifier':' : glisser vers le haut ou le bas, ou flèches haut et bas'));
      g.setAttribute('aria-disabled',lk?'true':'false'); g.style.cursor=lk?'not-allowed':'ns-resize'; g.style.touchAction='none';
      g.innerHTML='<circle cx="'+cx+'" cy="'+cy+'" r="22" fill="rgba(0,0,0,0)"/><circle cx="'+cx+'" cy="'+cy+'" r="13" fill="var(--panel,#fff)" stroke="var(--ds-accent,#FFC400)" stroke-width="2"/><text x="'+cx+'" y="'+(cy+5)+'" text-anchor="middle" font-size="15" fill="var(--ink,#16232B)" style="pointer-events:none;user-select:none">'+(lk?'🔒':'↕')+'</text>';
-     g.__in=inp; g.__nm=nm; g.__un=un; svg.appendChild(g);
+     g.__in=inp; g.__nm=nm; g.__un=un; g.__own=!!(inp&&inp.hasAttribute('data-dgl-own')); svg.appendChild(g);
      g.addEventListener('pointerdown',e=>loadDown(e,d,g)); g.addEventListener('keydown',e=>loadKey(e,d,g));
      g.addEventListener('click',e=>{ e.stopPropagation(); if(g.classList.contains('dgLoadLk')) toast('Recalculer l\'ouvrage pour modifier'); });
     });
@@ -46317,16 +46327,16 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    function loadDown(e,d,g){
     e.stopPropagation(); if(e.button>0) return; if(g.classList.contains('dgLoadLk')){ toast('Recalculer l\'ouvrage pour modifier'); return; }
     const inp=g.__in; if(!inp||!inp.isConnected){ const sv=g.ownerSVGElement; if(sv){ sv.__dgl=null; loadSetup(d); } return; } if(inp.disabled||inp.readOnly) return; e.preventDefault();
-    const y0=e.clientY, v0=numOf(inp), k=vK(d), per=Math.pow(10,k+1)/200, step=VSTEP[k], lab=()=>g.__nm+' = '+fr(numOf(inp))+' '+g.__un; let moved=false;
+    const y0=e.clientY, v0=numOf(inp), own=g.__own&&S(d).v==null, k=vK(d), per=own?Math.max(0.25,Math.abs(v0)/50):Math.pow(10,k+1)/200, stepOf=v=>own?ownStep(v):VSTEP[k], lab=()=>g.__nm+' = '+fr(numOf(inp))+' '+g.__un; let moved=false;
     try{ g.setPointerCapture(e.pointerId); }catch(_){ } g.classList.add('dgLoadOn'); bubble(lab(),e.clientX,e.clientY);
-    const mv=ev=>{ if(ev.pointerId!==e.pointerId) return; const dy=y0-ev.clientY; if(Math.abs(dy)>2) moved=true; const raw=v0+dy*per; setNum(inp,Math.round(raw/step)*step,false); bubble(lab(),ev.clientX,ev.clientY); };
+    const mv=ev=>{ if(ev.pointerId!==e.pointerId) return; const dy=y0-ev.clientY; if(Math.abs(dy)>2) moved=true; const raw=v0+dy*per, st=stepOf(raw); setNum(inp,Math.round(raw/st)*st,false); bubble(lab(),ev.clientX,ev.clientY); };
     const up=ev=>{ if(ev.pointerId!==e.pointerId) return; g.removeEventListener('pointermove',mv); g.removeEventListener('pointerup',up); g.removeEventListener('pointercancel',up); try{ g.releasePointerCapture(e.pointerId); }catch(_){ }
      g.classList.remove('dgLoadOn'); bubbleOff(); if(moved&&numOf(inp)!==v0) setNum(inp,numOf(inp),true); else inp.value=String(+v0.toFixed(3)); };
     g.addEventListener('pointermove',mv); g.addEventListener('pointerup',up); g.addEventListener('pointercancel',up);
    }
    function loadKey(e,d,g){
     if(e.key!=='ArrowUp'&&e.key!=='ArrowDown') return; e.preventDefault(); if(g.classList.contains('dgLoadLk')){ toast('Recalculer l\'ouvrage pour modifier'); return; }
-    const inp=g.__in; if(!inp||inp.disabled||inp.readOnly) return; const st=VSTEP[vK(d)]*(e.shiftKey?0.1:1); setNum(inp,numOf(inp)+(e.key==='ArrowUp'?1:-1)*st,true);
+    const inp=g.__in; if(!inp||inp.disabled||inp.readOnly) return; const st=((g.__own&&S(d).v==null)?ownStep(numOf(inp)):VSTEP[vK(d)])*(e.shiftKey?0.1:1); setNum(inp,numOf(inp)+(e.key==='ArrowUp'?1:-1)*st,true);
     const idx=g.getAttribute('data-dgl'); setTimeout(()=>{ try{ const dd=document.querySelector('#modalBody .pcFrm'); const n=dd&&dd.querySelector('g.dgLoad[data-dgl="'+idx+'"]'); if(n) n.focus({preventScroll:true}); }catch(_){ } },60);
    }
    /* ---------- ＋/− charge et appuis (boutons du formulaire pilotés depuis le cadre) ---------- */
