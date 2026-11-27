@@ -12,6 +12,7 @@ function monde() {
   const d = {
     apiKey: 'k',
     fetch: async (url, init) => { w.appelsIA++; w.derniereCle = init.headers['x-api-key']; const body = JSON.parse(init.body); w.dernierBody = body;
+      if (w.reponseTool) return new Response(JSON.stringify({ content: [{ type: 'tool_use', input: w.reponseTool }] }), { status: 200 });
       if (w.echec) return new Response(JSON.stringify({ error: { message: 'boom' } }), { status: 500 });
       return new Response(JSON.stringify({ content: [{ type: 'tool_use', input: body.tools[0].name === 'definir_methode' ? { message: 'ok' } : { valeurs: [], resume: 'ok', manquant: [] } }] }), { status: 200 }); },
     getUser: async (t) => users[t] || null,
@@ -103,6 +104,16 @@ const run = async (d, tok, body) => { const r = await handle(req(tok, body), d);
   const it = tool.input_schema.properties.diapositives.items.properties; eq(it.animation.enum, ['aucune', 'fondu', 'glissement', 'zoom', 'points'], 'animations : liste blanche'); eq(it.mise_en_page.enum, MISES_EN_PAGE, 'mises en page : liste blanche');
   eq(tool.input_schema.properties.theme.enum, THEMES, 'themes : liste blanche'); eq(ANIMATIONS.includes('script'), false, 'pas d\'animation libre'); eq(w.dernierBody.tool_choice.name, 'rediger_presentation', 'outil impose');
   eq(/AUCUN fait/.test(w.dernierBody.system), true, 'consigne : aucun fait invente'); eq(/mur de texte/.test(w.dernierBody.system), true, 'consigne : style cartes');
+}
+{ /* support_cours avec images : seules des miniatures et legendes partent ; un identifiant inconnu est retire */
+  const { d, w, acces } = monde(); await run(d, 'tA', { mode: 'support_cours', projet: 'P1', modele: { nom: 'x', structure: 'y' }, sources: [{ nom: 's', texte: 't' }] }); acces.get('uA|P1').statut = 'accepte';
+  w.reponseTool = { titre: 'T', theme: 'rose', diapositives: [{ titre: 'A', mise_en_page: 'image', image_id: 'img2' }, { titre: 'B', mise_en_page: 'image', image_id: 'http://x/evil.png' }, { titre: 'C', mise_en_page: 'cartes', cartes: [{ titre: 'c', image_id: 'img9' }, { titre: 'd', image_id: 'img1' }], animation: 'vole', image_id: 'img1' }], manquant: [] };
+  const imgs = [{ id: 'img1', page: 2, legende: 'Coupe', miniature: { type: 'image/jpeg', data: 'AAAA' } }, { id: 'img2', page: 3, legende: '', miniature: { type: 'image/jpeg', data: 'BBBB' } }, { id: 'evil', page: 1, miniature: { type: 'image/jpeg', data: 'CC' } }, { id: 'img3', page: 1, miniature: { type: 'image/gif', data: 'CC' } }, { id: 'img4', page: 1, miniature: { type: 'image/jpeg', data: 'x'.repeat(70000) } }];
+  const r = await run(d, 'tA', { mode: 'support_cours', projet: 'P1', modele: { nom: 'x', structure: 'y' }, sources: [{ nom: 's', texte: 't' }], images_disponibles: imgs });
+  eq(r.s, 200, 'support avec images accepte'); const content = w.dernierBody.messages[0].content; const nImg = content.filter((c) => c.type === 'image').length; eq(nImg, 2, 'seules les miniatures valides partent');
+  eq(/Identifiants d'images utilisables \(données\) : img1, img2/.test(JSON.stringify(content)), true, 'liste des identifiants fournie');
+  const sl = r.j.data.diapositives; eq([sl[0].image_id, sl[1].image_id, sl[2].image_id, sl[2].cartes[0].image_id, sl[2].cartes[1].image_id], ['img2', undefined, 'img1', undefined, 'img1'], 'identifiant inconnu = pas d\'image'); eq([sl[1].mise_en_page, sl[2].animation, r.j.data.theme], ['points', 'aucune', 'ardoise'], 'listes blanches serveur');
+  eq(w.dernierBody.tools[0].input_schema.properties.diapositives.items.properties.image_id.type, 'string', 'schema : image_id facultatif'); eq(MISES_EN_PAGE.includes('image'), true, 'mise en page image');
 }
 { /* simulation de l'environnement Deno : la fonction s'enregistre et répond */
   let h = null; globalThis.Deno = { serve: (f) => { h = f; }, env: { get: () => undefined } };
