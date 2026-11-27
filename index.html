@@ -40998,8 +40998,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(r.wk<=wLim+1e-9) break; As*=1.05; }
    s.wk=r.wk; s.wLim=wLim; s.As=Math.max(s.As,As/100); return s;
   }
+  /* température : traction annulaire et moment de paroi retenus (ψ déjà appliqué, kN/m et kN·m/m) ; vides sans variation saisie */
+  function rsThTerms(dp){ const o={on:false,Nt:0,M:0}; try{ if(!(window.thm&&window.thm.on(dp))) return o; const g=window.thm.gOf('rs',dp), r=g&&g.ok&&window.thm.calc(dp,g); if(!r||!r.ok) return o; o.on=true; o.Nt=Math.max(0,r.Nring||0)*r.psi; o.M=Math.abs(r.Mwall||0)*r.psi; }catch(_){ } return o; }
   function rsCalc(dp){
-   const silo=dp.kind==='silo', fck=pcFck(dp.classeGlobale), fyk=PC_FYK[dp.classeAcier]||500, fctm=smFctm(fck), Ecm=rsP(dp,'Eeff');
+   const thR=rsThTerms(dp), silo=dp.kind==='silo', fck=pcFck(dp.classeGlobale), fyk=PC_FYK[dp.classeAcier]||500, fctm=smFctm(fck), Ecm=rsP(dp,'Eeff');
    const g={D:+dp.D_m,H:+dp.H_m,e:(+dp.e_cm)/100,er:(+dp.er_cm)/100,c:(+dp.enrobage_cm)*10}; g.R=g.D/2; g.Re=g.R+g.e;
    const ctx={fck,fyk,fctm,Ecm}, nu=rsP(dp,'nu'), gB=rsP(dp,'gammaBeton'), E=Ecm*1000;
    const bB=dp.appuiBas||'enc', bT=dp.appuiHaut||'lib';
@@ -41012,18 +41014,19 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const sh=use.map(l=>rsShell(g.H,g.R,g.e,E,nu,l.pf,bB,bT,160));
    const N0=sh[0].x.length, prof={x:sh[0].x,N:[],M:[],V:[],p:[]};
    for(let i=0;i<N0;i++){ let nM=-1e18,mM=0,vM=0,pp=0; sh.forEach((s,q)=>{ if(s.N[i]>nM) nM=s.N[i]; if(Math.abs(s.M[i])>Math.abs(mM)) mM=s.M[i]; if(Math.abs(s.V[i])>Math.abs(vM)) vM=s.V[i]; pp=Math.max(pp,use[q].pf(s.x[i])); }); prof.N.push(Math.max(0,nM)); prof.M.push(mM); prof.V.push(vM); prof.p.push(pp); }
+   if(thR.on&&thR.Nt>0) prof.N=prof.N.map(n=>n+thR.Nt); /* traction annulaire thermique ajoutée à la traction du contenu (action variable d'accompagnement) */
    const nB=Math.max(1,Math.round(rsP(dp,'nBandes')));
    const bands=[]; for(let b=0;b<nB;b++){ const x0=g.H*b/nB, x1=g.H*(b+1)/nB; let nm=0; prof.x.forEach((x,i)=>{ if(x>=x0-1e-9&&x<=x1+1e-9) nm=Math.max(nm,prof.N[i]); }); const hp=rsHoop(nm,dp,g,ctx); hp.x0=x0; hp.x1=x1; bands.push(hp); }
-   let iM=0; prof.M.forEach((m,i)=>{ if(Math.abs(m)>Math.abs(prof.M[iM])) iM=i; }); const Mser=Math.abs(prof.M[iM]), Vser=Math.abs(prof.V.reduce((a,v)=>Math.abs(v)>Math.abs(a)?v:a,0)), gu=rsP(dp,'gammaU');
-   const vert=rsVert(gu*Mser,Mser,gu*Vser,dp,g,ctx,16); vert.xM=prof.x[iM]; vert.Mser=Mser; vert.Vser=Vser;
+   let iM=0; prof.M.forEach((m,i)=>{ if(Math.abs(m)>Math.abs(prof.M[iM])) iM=i; }); const Mser=Math.abs(prof.M[iM])+thR.M, Vser=Math.abs(prof.V.reduce((a,v)=>Math.abs(v)>Math.abs(a)?v:a,0)), gu=rsP(dp,'gammaU');
+   const vert=rsVert(gu*(Mser-thR.M)+1.5*thR.M,Mser,gu*Vser,dp,g,ctx,16); vert.xM=prof.x[iM]; vert.Mser=Mser; vert.Vser=Vser;
    vert.bar=smChooseBars(Math.max(vert.As,0)*100,rsP(dp,'sMax_mm')); vert.barFace=vert.bar;
    /* radier */
    const Pw=gB*Math.PI*(Math.pow(g.Re,2)-Math.pow(g.R,2))*g.H, Aeff=Math.PI*g.Re*g.Re;
    let qServ, qLabel;
    if(!silo){ qServ=(+dp.gl_kNm3)*(+dp.hw_m)+(+dp.p0_kPa||0)+gB*g.er+Pw/Aeff; qLabel='liquide + radier + paroi'; }
    else { qServ=Math.max(silop.e1.vb,silop.e2.vb)+gB*g.er+Pw/Aeff+(+dp.qh_kNm||0)*2*Math.PI*g.Re/Aeff; qLabel='produit (pression verticale) + radier + paroi'; }
-   const Mb=bB==='enc'?Math.abs(prof.M[0]):0, dR=Math.max(5,g.er*100-g.c/10-6);
-   const rad=muSection(gu*Mb,Mb,0,dR,{reg:'ec2',fck,fyk,muLim:rsP(dp,'muLim'),sLim:dp.fmode==='sigma'?rsP(dp,'sigmaSlim'):0.8*fyk,n:rsP(dp,'nEquiv'),eta1:1}); rad.Mb=Mb; rad.bar=smChooseBars(Math.max(rad.As,0)*100,rsP(dp,'sMax_mm'));
+   const thRb=bB==='enc'?thR.M:0, Mb=bB==='enc'?Math.abs(prof.M[0])+thRb:0, dR=Math.max(5,g.er*100-g.c/10-6);
+   const rad=muSection(gu*(Mb-thRb)+1.5*thRb,Mb,0,dR,{reg:'ec2',fck,fyk,muLim:rsP(dp,'muLim'),sLim:dp.fmode==='sigma'?rsP(dp,'sigmaSlim'):0.8*fyk,n:rsP(dp,'nEquiv'),eta1:1}); rad.Mb=Mb; rad.bar=smChooseBars(Math.max(rad.As,0)*100,rsP(dp,'sMax_mm'));
    /* vérifications */
    const hpMax=bands.reduce((a,b)=>b.Nser>a.Nser?b:a,bands[0]);
    chk('Paroi','Traction annulaire maximale (ELS)',f2(hpMax.Nser,1)+' kN/m','—',true);
@@ -41041,7 +41044,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return {kind:dp.kind,geo:g,ctx,prof,bands,vert,rad,qServ,qLabel,silop,verifs,nKo,fck,fyk,mode:dp.fmode==='sigma'?'sigma':'wk',lam:sh[0].lam,
     Nmax:Math.max(...prof.N),Mmax:Mser,Vmax:Vser,pmax:Math.max(...prof.p),xM:vert.xM};
   }
-  function rsCompute(t){ const dp=rsData(t); dimThrow(rsValidateV(dp)); return rsCalc(dp); }
+  function rsCompute(t){ const dp=rsData(t); dimThrow(rsValidateV(dp)); const res=rsCalc(dp);
+   try{ if(window.thm&&window.thm.on(dp)){ const r0=rsCalc(window.thm.strip(dp)), sg=r=>JSON.stringify([r.verifs.map(x=>[x.calcul,x.etat]),r.bands.map(b=>b.bar&&[b.bar.As,b.bar.phi,b.bar.s]),r.vert&&r.vert.As,r.rad&&r.rad.As]), gov=sg(r0)!==sg(res), f=x=>(+x).toFixed(2).replace('.',','); res._th={gov,txt:gov?('Aciers verticaux de paroi : '+f(r0.vert.As)+' cm²/m sans température, '+f(res.vert.As)+' cm²/m avec ; traction annulaire maximale '+f(r0.Nmax)+' puis '+f(res.Nmax)+' kN/m.'):''}; } }catch(e){ console.error(e); }
+   return res; }
   const rs2=(x,d)=>mu2(x,d);
   /* ----- coupe verticale cotée à l'échelle : paroi, radier, contenu ----- */
   function rsSvg(dp,res){ return window.dimScaleBarAdd(rsSvg0(dp,res)); }
@@ -47751,7 +47756,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   window.THM_GEOM.dg={prop:'dimDG',geom:dp=>{ const L=+dp.L_m, B=+dp.B_m, h=(+dp.h_cm)/100; if(!(L>0)||!(B>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les dimensions du dallage.'}; const J=dgJ(dp), Lj=Math.max(J.px,J.py); return {ok:true,kind:'dallage',integrated:true,psi0:0.5,perM:true,spans:[Lj],Lj,B,Lfull:L,h,A:h,I:h*h*h/12,E:dgP(dp,'Ecm_MPa'),alpha0:10,mat:'beton',fric:dgP(dp,'muFrot')*dgP(dp,'gammaBeton')*h*Lj/2,lblL:'Allongement libre d\'un panneau (entre joints)'}; }};
   window.THM_GEOM.stl={prop:'dimSTL',geom:dp=>{ const L=+(dp.Lel_m||dp.lcry_m||dp.lcrz_m); let S=null; try{ S=stlSec(dp); }catch(_){ S=null; } if(!(L>0)||!S||!(S.A>0)) return {ok:false,msg:'Renseigner d\'abord la longueur et le profilé.'}; const E=(+dp.E_MPa>0)?+dp.E_MPa:210000; const ap=dp.appui; return {ok:true,kind:'beam',integrated:true,fixL:(ap==='enc_app'||ap==='bi_enc'),fixR:ap==='bi_enc',spans:[L],h:S.h/1000,A:S.A*1e-6,I:S.Iy*1e-12,E,alpha0:12,mat:'acier'}; }};
   window.THM_GEOM.bp={prop:'dimBP',geom:dp=>{ const need=['L_m','hs_cm','bs_cm','bi_cm','ts_cm','ti_cm','tw_cm']; if(need.some(k=>!(+dp[k]>0))) return {ok:false,msg:'Renseigner d\'abord la portée et la section de la poutre métallique.'}; const G=bpGeomD(dp), hw=G.hs-G.ti-G.ts, el=[[G.bi,G.ti,G.ti/2],[G.tw,hw,G.ti+hw/2],[G.bs,G.ts,G.hs-G.ts/2]], A=el.reduce((a,e)=>a+e[0]*e[1],0), yc=el.reduce((a,e)=>a+e[0]*e[1]*e[2],0)/A, I=el.reduce((a,e)=>a+e[0]*Math.pow(e[1],3)/12+e[0]*e[1]*Math.pow(e[2]-yc,2),0); return {ok:true,kind:'beam',integrated:true,bridge:true,spans:[G.L],h:G.hs+G.h0,A,I,E:210000,alpha0:12,mat:'mixte',mixte:true,alphaS:12,alphaB:10}; }};
-  window.THM_GEOM.rs={prop:'dimRS',geom:dp=>{ const D=+dp.D_m, H=+dp.H_m, e=(+dp.e_cm)/100; if(!(D>0)||!(H>0)||!(e>0)) return {ok:false,msg:'Renseigner d\'abord le diamètre, la hauteur et l\'épaisseur de la paroi.'}; return {ok:true,kind:'shell',perM:true,D,H,e,h:e,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
+  window.THM_GEOM.rs={prop:'dimRS',geom:dp=>{ const D=+dp.D_m, H=+dp.H_m, e=(+dp.e_cm)/100; if(!(D>0)||!(H>0)||!(e>0)) return {ok:false,msg:'Renseigner d\'abord le diamètre, la hauteur et l\'épaisseur de la paroi.'}; return {ok:true,kind:'shell',integrated:true,perM:true,D,H,e,h:e,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   /* fin adaptateurs température */
 
   let beTries=0;
