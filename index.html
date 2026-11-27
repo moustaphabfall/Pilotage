@@ -22065,6 +22065,8 @@ body.sb-off #pjDb{left:0} @media (max-width:899px){ #pjDb{left:0} }
 #pjDb .pjd-slots{flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-inline-start:auto}
 #pjDb .pjd-slot{flex:0 0 34px;width:34px;height:34px;display:flex;align-items:center;justify-content:center}
 #pjDb .pjd-badge,#pjDb .pjd-t .pjd-edb{margin:0;width:32px;height:32px;min-width:32px;min-height:32px;padding:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid var(--ds-accent,#FFC400);border-radius:8px;background:transparent;color:var(--ds-ink,inherit);font-size:15px;line-height:1;cursor:pointer}
+#pjDb .pjd-badge{position:relative}
+#pjDb .pjd-badge .pjd-cnt{position:absolute;top:-6px;inset-inline-end:-6px;min-width:16px;height:16px;border-radius:8px;background:var(--ds-accent,#FFC400);color:#1a1a1a;font:700 10px/16px 'IBM Plex Sans',system-ui,sans-serif;font-style:normal;text-align:center;pointer-events:none}
 #pjDb .pjd-badge svg{width:20px;height:20px}
 #pjDb .pjd-badge-old{margin-left:6px; cursor:pointer; font-size:13px; display:inline-flex; vertical-align:middle; line-height:0}
 #pjDb .pjd-badge svg{display:block}
@@ -22760,12 +22762,12 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
   /* Icônes de pièces liées (Note de calcul / Plan de ferraillage), directement sur la ligne de
      l'ouvrage en mode Exé — évite de devoir ouvrir l'ouvrage pour savoir si le dimensionnement a déjà
      produit ses documents. */
-  const docBadges=tid=>{ const note=DOCS().find(d=>d.ouvrageTaskId===tid&&d.docType==='Note de calcul'), plan=DOCS().find(d=>d.ouvrageTaskId===tid&&d.docType==='Plan de ferraillage'&&!d.sub);
+  const docBadges=tid=>{ const notes=DOCS().filter(d=>d.ouvrageTaskId===tid&&d.docType==='Note de calcul').sort((x,y)=>String(x.nom||'').localeCompare(String(y.nom||''),'fr')), plans=DOCS().filter(d=>d.ouvrageTaskId===tid&&d.docType==='Plan de ferraillage'&&!d.sub).sort((x,y)=>String(x.nom||'').localeCompare(String(y.nom||''),'fr')), note=notes[0], plan=plans[0];
    /* Note de calcul = document texte (DOC, type Word) ; plan = CAO (CAD). Badges au thème : cadre accent, texte encre. */
    const bdg=(lab,doc)=>'<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M2.5 2.5h'+(doc?'12l5 5v12':'17v17')+'h-17z" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6" stroke-linejoin="round"/>'+(doc?'<path d="M14.5 2.5v5h5" fill="none" stroke="var(--ds-accent,#FFC400)" stroke-width="1.6" stroke-linejoin="round"/>':'')+'<text x="11" y="15.5" text-anchor="middle" font-size="6.6" font-weight="800" font-family="Inter,Arial,sans-serif" fill="var(--ds-ink,currentColor)">'+lab+'</text></svg>';
    const icX=bdg('DOC',true), icC=bdg('CAD',false);
-   const slot=(x,tp,ic)=>x?'<span class="pjd-slot"><span class="pjd-badge" role="button" tabindex="0" data-opendoc="'+esc(x.id)+'" title="'+tp+'" aria-label="'+tp+'">'+ic+'</span></span>':'<span class="pjd-slot" aria-hidden="true"></span>';
-   return slot(note,'Note de calcul',icX)+slot(plan,'Plan de ferraillage',icC); };
+   const slot=(x,tp,ic,all)=>{ if(!x) return '<span class="pjd-slot" aria-hidden="true"></span>'; const m=all&&all.length>1; return '<span class="pjd-slot"><span class="pjd-badge" role="button" tabindex="0" data-opendoc="'+esc(x.id)+'"'+(m?' data-opendocs="'+esc(all.map(y=>y.id).join(','))+'" aria-haspopup="menu"':'')+' title="'+(m?tp+' : '+all.length+' documents':tp)+'" aria-label="'+(m?tp+' : '+all.length+' documents':tp)+'">'+ic+(m?'<i class="pjd-cnt" aria-hidden="true">'+all.length+'</i>':'')+'</span></span>'; };
+   return slot(note,'Note de calcul',icX,notes)+slot(plan,'Plan de ferraillage',icC,plans); };
   const cell0=(r,k)=>{ let v=r[k]; if(k==='debut'||k==='fin') v=frDate(v); if(k==='avancement'&&v!=='') v+=' %'; const t=(k==='pieceArchi'&&v&&PAI[v]?'<span class="pa-i">'+PAI[v]+'</span>':'')+esc(v||''); if(k==='ouvrage'&&r.t&&r.t.typeStructureId&&window.tsMiniHtml){ const ic=window.tsMiniHtml(r.t.typeStructureId); return (ic?'<span class="pjd-tsic">'+ic+'</span>':'')+t; } return k==='tache'?'<div class="pjd-nmw"><span class="pjd-nm">'+t+'</span><span class="pjd-open">OUVRIR</span><span class="pjd-open" data-bloc="1" title="Enregistrer comme bloc dans la bibliothèque">→ BLOC</span><span class="pjd-slots">'+docBadges(r.id)+'@@PEN@@</span></div>':t; };
   if(!d._pd){ d._pd=1; d.addEventListener('pointerdown',e=>{ rowDrag(e); colDragStart(e); dopenLong(e); }); }
   const minW=cs.reduce((a,k)=>a+cw(k),0)+34+58;
@@ -22851,7 +22853,7 @@ body.pjd-moving{cursor:grabbing!important;user-select:none;-webkit-user-select:n
     (S.tasks||[]).forEach(t=>{ if(t.dependances) t.dependances=t.dependances.filter(x=>!ids.includes(x)); });
     SEL.clear(); try{ persist(); }catch(_){} dbRender();
    },'Supprimer','Garder'); return; }
-  const od=e.target.closest('[data-opendoc]'); if(od){ e.stopPropagation(); if(window.pjOpenDocContenu) window.pjOpenDocContenu(od.dataset.opendoc); return; }
+  const od=e.target.closest('[data-opendoc]'); if(od){ e.stopPropagation(); if(od.dataset.opendocs){ const ids=od.dataset.opendocs.split(','), L=DOCS(); popOpen(od,'<div class="pp-t">'+esc(od.getAttribute('aria-label')||'Documents')+'</div>'+ids.map(i=>{ const dd=L.find(x=>x.id===i); return dd?'<button type="button" class="pp-i" data-pickdoc="'+esc(dd.id)+'">'+esc(dd.nom||'Document')+'</button>':''; }).join(''),pp=>{ pp.querySelectorAll('[data-pickdoc]').forEach(x=>x.onclick=()=>{ popClose(); if(window.pjOpenDocContenu) window.pjOpenDocContenu(x.dataset.pickdoc); }); }); return; } if(window.pjOpenDocContenu) window.pjOpenDocContenu(od.dataset.opendoc); return; }
   if(e.target.closest('.pjd-g')) return gutterClick(e);
   const ra=e.target.closest('[data-rowadd]'); if(ra){ e.stopPropagation(); pjQuickAddRow(ra.dataset.rowadd); return; }
   const x=e.target.closest('[data-x]'); if(x){ e.stopPropagation(); const k=x.dataset.x; if(k==='metlock'){ pjExitDimLock(); return; } if(k==='niv') FL.niv=[]; if(k==='etat') FL.etat=[]; if(k==='met') FL.met=[]; if(k==='chrono') FL.from=FL.to=''; after(); return; }
@@ -35749,7 +35751,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(okN||errN||incomplets.length){
     const msg=okN+' tête'+(okN>1?'s':'')+' de pieux dimensionnée'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'');
     try{ clipToast(msg); }catch(_){ }
-    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
+    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'&&dimDocMatch(d,'pu')); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
     else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
    }
    return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
@@ -36103,11 +36105,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   }
   function ppModeBarHtml(t){
    const m=ppMode(t);
-   return '<div class="ppSeg" role="group" aria-label="Objet du calcul">'+dimChLine('objet du calcul : '+(m?'portance du pieu':'tête de pieux'),'data-pp-objet-open="1" aria-haspopup="dialog"')+'</div>';
+   return '<div class="ppSeg" role="group" aria-label="Objet du calcul" data-pp-cur="'+(m?'portance':'tete')+'">'+dimChLine('objet du calcul : '+(m?'portance du pieu':'tête de pieux'),'data-pp-objet-open="1" aria-haspopup="dialog"')+'</div>';
   }
   /* Objet du calcul (tête de pieux / portance du pieu) : fenêtre à deux lignes ; choisir referme tout de suite ; Echap et clic dehors sans changement ; le choix rejoue le clic historique sur data-pp-objet dans la fiche */
   document.addEventListener('click',e=>{ const o=e.target.closest&&e.target.closest('[data-pp-objet-open]'); if(!o) return; e.preventDefault(); const wrap=o.closest('[class*="Root"]')||document.getElementById('modalBody'); if(!wrap||document.getElementById('dimPpObjOv')) return;
-   const cur=o.closest('.ppSeg')&&/portance du pieu/.test(o.parentElement.textContent)?'portance':'tete';
+   const sg=o.closest('.ppSeg'), cur=sg&&sg.getAttribute('data-pp-cur')==='portance'?'portance':'tete';
    const ov=document.createElement('div'); ov.id='dimPpObjOv'; ov.className='pcFeuOv dimSelOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Objet du calcul');
    ov.innerHTML='<div class="pcFeuCard"><h4>Objet du calcul</h4>'+dimChRow({icon:cur==='tete'?'check':'dot',nom:'Tête de pieux',aide:'Dimensionner la semelle sur pieux (têtes de 1 à 4 pieux).',attr:'data-pp-pick="tete"',primary:cur==='tete'})+dimChRow({icon:cur==='portance'?'check':'dot',nom:'Portance du pieu',aide:'Calculer la portance et le tassement d\'un pieu.',attr:'data-pp-pick="portance"',primary:cur==='portance'})+dimChRow({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-pp-pick=""'})+'</div>';
    dimChEsc(ov); ov.addEventListener('click',x=>{ if(x.target===ov){ ov.remove(); return; } const r=x.target.closest('[data-pp-pick]'); if(!r) return; const k=r.getAttribute('data-pp-pick'); ov.remove(); if(!k||k===cur||!wrap.isConnected) return; const b=document.createElement('button'); b.type='button'; b.hidden=true; b.setAttribute('data-pp-objet',k); wrap.appendChild(b); b.click(); b.remove(); });
@@ -36296,7 +36298,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    try{ persist(); }catch(_){ }
    if(okN||errN||incomplets.length){
     try{ clipToast(okN+' portance'+(okN>1?'s':'')+' de pieu calculée'+(okN>1?'s':'')+(incomplets.length?' · '+incomplets.length+' en attente de données':'')+(errN?' · '+errN+' erreur'+(errN>1?'s':''):'')); }catch(_){ }
-    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
+    if(okN===1&&lastOkT){ const L=(typeof window.pjDocsList==='function'?window.pjDocsList():[]); const noteDoc=L.find(d=>d.ouvrageTaskId===lastOkT.id&&d.docType==='Note de calcul'&&dimDocMatch(d,'pp')); if(noteDoc&&window.pjOpenDocContenu) window.pjOpenDocContenu(noteDoc.id); }
     else if(incomplets.length&&window.openTaskDetail&&!rPrev.okN) window.openTaskDetail(incomplets[0]);
    }
    return {okN:(rPrev.okN||0)+okN, skipTypeN:rPrev.skipTypeN||0, errN:(rPrev.errN||0)+errN, incomplets:(rPrev.incomplets||[]).concat(incomplets)};
