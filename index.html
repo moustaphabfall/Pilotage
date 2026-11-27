@@ -33798,10 +33798,19 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     else if(l.kind==='point') m.barLoads.push({bar:l.bar,kind:'point',s:pfNum(l.s)||0,P:(h?1:-1)*(pfNum(l.P)||0)*f,dir:h?'x':'y'});
     else if(l.kind==='couple') m.barLoads.push({bar:l.bar,kind:'couple',s:pfNum(l.s)||0,M:(pfNum(l.M)||0)*f}); });
    (dp.loadsN||[]).forEach(l=>{ const f=l.var==='Q'?qf:gf; m.nodal.push({node:l.node,Fx:(pfNum(l.Fx)||0)*f,Fy:-(pfNum(l.Fy)||0)*f,M:(pfNum(l.M)||0)*f}); });
+   /* température : charges nodales équivalentes à la dilatation libre (allongement de chaque barre, courbure des poutres horizontales), action variable d'accompagnement : ψ × effet × coefficient de la combinaison */
+   try{ const th=window.thm&&window.thm.params('pf',dp); if(th){ const k=th.psi*qf; const nd=id=>m.nodes.find(x=>x.id===id); m.bars.forEach(b=>{ const a=nd(b.i), c2=nd(b.j); if(!a||!c2) return; const L=Math.hypot(c2.x-a.x,c2.y-a.y), cc=(c2.x-a.x)/L, ss=(c2.y-a.y)/L, add=(id,fx,fy,mm)=>{ m.nodal.push({node:id,Fx:fx*k,Fy:fy*k,M:mm*k}); };
+     if(th.dT){ const F=b.E*b.A*th.alpha*th.dT; add(b.i,-F*cc,-F*ss,0); add(b.j,F*cc,F*ss,0); }
+     if(th.gr&&Math.abs(ss)<0.2){ const nb=dp.bars.find(x=>x.id===b.id), h=(+nb.h_cm)/100, kap=th.alpha*th.gr/h, Mq=b.E*b.I*kap*(cc>0?1:-1); add(b.i,0,0,-Mq); add(b.j,0,0,Mq); } }); } }catch(e){ console.error(e); }
    return m;
   }
   /* calcul : ELU et ELS, diagrammes par barre, réactions, extrêmes, équilibre global */
   function pfCompute(t){
+   const out=pfCompute0(t), dp=t.dimPF;
+   try{ if(window.thm&&window.thm.on(dp)){ const sg=r=>JSON.stringify(['elu','els'].map(c=>r.combos[c].bars.map(b=>[b.Mmax,b.Mmin,b.Vmax,b.Nmax,b.Nmin]))); const g=window.thm.govern(dp,d0=>pfCompute0({dimPF:d0}),sg,null); const gov=!!(g&&g.sig0!==sg(out)); const mx=r=>Math.max(...r.combos.elu.bars.map(b=>Math.max(Math.abs(b.Mmax),Math.abs(b.Mmin)))); const f1=x=>(+x).toFixed(1).replace('.',','); out._th={gov,txt:gov&&g?('Moment maximal des barres à l\'ELU : '+f1(mx(g.r0))+' kN·m sans température, '+f1(mx(out))+' kN·m avec.'):''}; } }catch(e){ console.error(e); }
+   return out;
+  }
+  function pfCompute0(t){
    const dp=pfData(t), out={nodes:dp.nodes.length,bars:dp.bars.length,combos:{}};
    PF_COMBOS.forEach(([ck,lbl])=>{
     const m=pfModel(dp,ck), sol=PF.solve(m), r4=x=>Math.round(x*1e5)/1e5, bars=[];
@@ -47719,7 +47728,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   window.THM_GEOM=window.THM_GEOM||{};
   window.THM_GEOM.pc={prop:'dimPC',geom:dp=>{ const sp=(dp.travees||[]).map(x=>+x.portee_m).filter(v=>v>0), b=(+dp.b_cm)/100, h=(+dp.h_cm)/100; if(!sp.length||!(b>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et la section de la poutre.'}; const ap=dp.appuis||[]; return {ok:true,kind:'beam',integrated:true,fixL:!!(ap[0]&&ap[0].blocage_rotation),fixR:!!(ap[sp.length]&&ap[sp.length].blocage_rotation),spans:sp,h,A:b*h,I:b*h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   window.THM_GEOM.dl={prop:'dimDL',geom:dp=>{ const lx=+dp.lx_m, ly=+dp.ly_m, h=(+dp.h_cm)/100, n=Math.max(1,Math.round(+dp.nTravees)||1); if(!(lx>0)||!(ly>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et l\'épaisseur de la dalle.'}; return {ok:true,kind:'slab',integrated:true,perM:true,spans:new Array(n).fill(lx),B:ly,h,A:h,I:h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
-  window.THM_GEOM.pf={prop:'dimPF',geom:dp=>{ const sp=(dp.portees||[]).map(Number).filter(v=>v>0), pb=dp.secPoutre||{}, pc=dp.secPoteau||{}, bb=(+pb.b)/100, hb=(+pb.h)/100, bc=(+pc.b)/100, hc=(+pc.h)/100, H=(dp.hauteurs||[]).map(Number).filter(v=>v>0)[0]; if(!sp.length||!(bb>0)||!(hb>0)||!(H>0)) return {ok:false,msg:'Renseigner d\'abord les portées, hauteurs et sections du portique.'}; return {ok:true,kind:'frame',spans:sp,h:hb,A:bb*hb,I:bb*hb*hb*hb/12,Hc:H,Ic:(bc>0&&hc>0)?bc*hc*hc*hc/12:0,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
+  window.THM_GEOM.pf={prop:'dimPF',geom:dp=>{ const sp=(dp.portees||[]).map(Number).filter(v=>v>0), pb=dp.secPoutre||{}, pc=dp.secPoteau||{}, bb=(+pb.b)/100, hb=(+pb.h)/100, bc=(+pc.b)/100, hc=(+pc.h)/100, H=(dp.hauteurs||[]).map(Number).filter(v=>v>0)[0]; if(!sp.length||!(bb>0)||!(hb>0)||!(H>0)) return {ok:false,msg:'Renseigner d\'abord les portées, hauteurs et sections du portique.'}; return {ok:true,kind:'frame',integrated:true,spans:sp,h:hb,A:bb*hb,I:bb*hb*hb*hb/12,Hc:H,Ic:(bc>0&&hc>0)?bc*hc*hc*hc/12:0,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   window.THM_GEOM.dg={prop:'dimDG',geom:dp=>{ const L=+dp.L_m, B=+dp.B_m, h=(+dp.h_cm)/100; if(!(L>0)||!(B>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les dimensions du dallage.'}; const J=dgJ(dp), Lj=Math.max(J.px,J.py); return {ok:true,kind:'dallage',perM:true,spans:[Lj],Lj,B,Lfull:L,h,A:h,I:h*h*h/12,E:dgP(dp,'Ecm_MPa'),alpha0:10,mat:'beton',fric:dgP(dp,'muFrot')*dgP(dp,'gammaBeton')*h*Lj/2,lblL:'Allongement libre d\'un panneau (entre joints)'}; }};
   window.THM_GEOM.stl={prop:'dimSTL',geom:dp=>{ const L=+(dp.Lel_m||dp.lcry_m||dp.lcrz_m); let S=null; try{ S=stlSec(dp); }catch(_){ S=null; } if(!(L>0)||!S||!(S.A>0)) return {ok:false,msg:'Renseigner d\'abord la longueur et le profilé.'}; const E=(+dp.E_MPa>0)?+dp.E_MPa:210000; return {ok:true,kind:'beam',spans:[L],h:S.h/1000,A:S.A*1e-6,I:S.Iy*1e-12,E,alpha0:12,mat:'acier'}; }};
   window.THM_GEOM.bp={prop:'dimBP',geom:dp=>{ const need=['L_m','hs_cm','bs_cm','bi_cm','ts_cm','ti_cm','tw_cm']; if(need.some(k=>!(+dp[k]>0))) return {ok:false,msg:'Renseigner d\'abord la portée et la section de la poutre métallique.'}; const G=bpGeomD(dp), hw=G.hs-G.ti-G.ts, el=[[G.bi,G.ti,G.ti/2],[G.tw,hw,G.ti+hw/2],[G.bs,G.ts,G.hs-G.ts/2]], A=el.reduce((a,e)=>a+e[0]*e[1],0), yc=el.reduce((a,e)=>a+e[0]*e[1]*e[2],0)/A, I=el.reduce((a,e)=>a+e[0]*Math.pow(e[1],3)/12+e[0]*e[1]*Math.pow(e[2]-yc,2),0); return {ok:true,kind:'beam',bridge:true,spans:[G.L],h:G.hs+G.h0,A,I,E:210000,alpha0:12,mat:'mixte',mixte:true,alphaS:12,alphaB:10}; }};
@@ -48213,6 +48222,7 @@ document.head.appendChild(st);
   const M=[],V=[],D=[]; sp.forEach((L,e)=>{ const m0=r.M[e]*ps, m1=r.M[e+1]*ps, k=r.kappa*ps, c0=k+(EI>0?m0/EI:0), c1=k+(EI>0?m1/EI:0), A=-L*(2*c0+c1)/6; M.push(xs[e].map(x=>m0+(m1-m0)*x/L)); V.push(xs[e].map(()=>(m1-m0)/L)); D.push(xs[e].map(x=>c0*x*x/2+(c1-c0)*x*x*x/(6*L)+A*x)); });
   const R=[]; for(let i=0;i<=n;i++){ const vr=i<n?(r.M[i+1]-r.M[i])*ps/sp[i]:0, vl=i>0?(r.M[i]-r.M[i-1])*ps/sp[i-1]:0; R.push(vr-vl); }
   return {M,V,Defl:D,R,_th:true}; }
+ function params(pfx,dp){ const g=gOf(pfx,dp); if(!g||!g.ok||!on(dp)) return null; return {alpha:val(dp,g,'thAlpha')*1e-6,dT:num(dp.thDT)||0,gr:num(dp.thGrad)||0,psi:val(dp,g,'thPsi'),gQ:GQ}; }
  function spanTh(pfx,dp,e){ /* moments thermiques de la travée e (déjà × ψ ; positif = fibre inférieure tendue) : appui gauche, appui droit, milieu (moyenne) */
   const g=gOf(pfx,dp); if(!g||!g.ok||!on(dp)) return {on:false,Mw:0,Me:0,Mt:0}; const r=calc(dp,g); if(!r.ok||!r.M) return {on:false,Mw:0,Me:0,Mt:0}; const i=Math.max(0,Math.min(r.spans.length-1,e)), a=r.M[i]*r.psi, b=r.M[i+1]*r.psi; return {on:true,Mw:a,Me:b,Mt:(a+b)/2,gQ:r.gQ}; }
  function strip(dp){ const d=Object.assign({},dp); delete d.thDT; delete d.thGrad; return d; }
@@ -48286,7 +48296,7 @@ document.head.appendChild(st);
    return {hyp,rows,section:'<section class="ncSec">'+sec+'</section>',pts};
   }catch(e){ console.warn('thmNote',e); return null; }
  }
- window.thm={on,calc,svg,note,tableHtml,PARAMS,val,saisi,num,fr,inject,KIND2PFX,PX,wrapHtml,ctxOf,GQ,gOf,beamCase,axial,confirmWindow,spanTh,strip,govern};
+ window.thm={on,calc,svg,note,tableHtml,PARAMS,val,saisi,num,fr,inject,KIND2PFX,PX,wrapHtml,ctxOf,GQ,gOf,beamCase,axial,confirmWindow,spanTh,strip,govern,params};
 })();
 </script>
 <script id="dimValidJs">
