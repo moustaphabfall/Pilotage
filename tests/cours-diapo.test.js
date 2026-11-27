@@ -1,0 +1,43 @@
+/* Tests du diaporama des supports de cours (lit <script id="coursIaJs"> de index.html, sans navigateur) : PowerPoint .pptx lu localement, transitions en liste blanche, pièces jointes.
+   Lancer : node tests/cours-diapo.test.js */
+const fs=require('fs'), vm=require('vm'), path=require('path'), zlib=require('zlib');
+const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
+const m=/<script id="coursIaJs">([\s\S]*?)<\/script>/.exec(html); if(!m){ console.error('script coursIaJs introuvable'); process.exit(1); }
+const sb={module:{exports:{}},console,TextDecoder,TextEncoder,Response,DecompressionStream,Blob,URL,btoa,atob,navigator:{onLine:true}}; sb.globalThis=sb; vm.createContext(sb); vm.runInContext(m[1],sb);
+const C=sb.module.exports; let n=0,ko=0; const eq=(a,b,t)=>{ n++; if(JSON.stringify(a)!==JSON.stringify(b)){ ko++; console.log('ECHEC',t,'attendu',JSON.stringify(b),'recu',JSON.stringify(a)); } };
+function zipN(entries,deflate){ const loc=[], cd=[]; let off=0; entries.forEach(([nom,data],k)=>{ const raw=Buffer.isBuffer(data)?data:Buffer.from(data,'utf8'); const dfl=deflate&&k%2===0; const comp=dfl?zlib.deflateRawSync(raw):raw; const nb=Buffer.from(nom); const lh=Buffer.alloc(30); lh.writeUInt32LE(0x04034b50,0); lh.writeUInt16LE(dfl?8:0,8); lh.writeUInt32LE(comp.length,18); lh.writeUInt32LE(raw.length,22); lh.writeUInt16LE(nb.length,26); const ch=Buffer.alloc(46); ch.writeUInt32LE(0x02014b50,0); ch.writeUInt16LE(dfl?8:0,10); ch.writeUInt32LE(comp.length,20); ch.writeUInt32LE(raw.length,24); ch.writeUInt16LE(nb.length,28); ch.writeUInt32LE(off,42); const b=Buffer.concat([lh,nb,comp]); loc.push(b); cd.push(Buffer.concat([ch,nb])); off+=b.length; }); const c=Buffer.concat(cd); const e=Buffer.alloc(22); e.writeUInt32LE(0x06054b50,0); e.writeUInt16LE(entries.length,8); e.writeUInt16LE(entries.length,10); e.writeUInt32LE(c.length,12); e.writeUInt32LE(off,16); return Buffer.concat(loc.concat([c,e])); }
+const ab=b=>Uint8Array.from(b).buffer;
+const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64');
+const slide=(titre,corps,extra)=>'<p:sld><p:cSld>'+(extra&&extra.bg?'<p:bg><p:bgPr><a:solidFill><a:srgbClr val="'+extra.bg+'"/></a:solidFill></p:bgPr></p:bg>':'')+'<p:spTree>'
+ +'<p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="1143000"/></a:xfrm></p:spPr><p:txBody><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="fr-FR" sz="4000" b="1"/><a:t>'+titre+'</a:t></a:r></a:p></p:txBody></p:sp>'
+ +'<p:sp><p:spPr><a:xfrm><a:off x="457200" y="1600200"/><a:ext cx="8229600" cy="4525963"/></a:xfrm></p:spPr><p:txBody>'+corps.map(t=>'<a:p><a:pPr><a:buChar char="•"/></a:pPr><a:r><a:rPr sz="2400"><a:solidFill><a:srgbClr val="1D4ED8"/></a:solidFill></a:rPr><a:t>'+t+'</a:t></a:r></a:p>').join('')+'</p:txBody></p:sp>'
+ +(extra&&extra.pic?'<p:pic><p:blipFill><a:blip r:embed="rId2"/></p:blipFill><p:spPr><a:xfrm><a:off x="4572000" y="3429000"/><a:ext cx="2286000" cy="1714500"/></a:xfrm></p:spPr></p:pic>':'')
+ +(extra&&extra.chart?'<p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="rId9"/></a:graphicData></a:graphic></p:graphicFrame>':'')
+ +'</p:spTree></p:cSld></p:sld>';
+const pres='<p:presentation><p:sldIdLst><p:sldId id="258" r:id="rId12"/><p:sldId id="256" r:id="rId10"/><p:sldId id="257" r:id="rId11"/></p:sldIdLst><p:sldSz cx="9144000" cy="6858000"/></p:presentation>';
+const prels='<Relationships><Relationship Id="rId10" Type="x" Target="slides/slide1.xml"/><Relationship Id="rId11" Type="x" Target="slides/slide2.xml"/><Relationship Id="rId12" Type="x" Target="slides/slide3.xml"/></Relationships>';
+const srels='<Relationships><Relationship Id="rId2" Type="x" Target="../media/image1.png"/></Relationships>';
+const pptx=zipN([['[Content_Types].xml','<Types/>'],['ppt/presentation.xml',pres],['ppt/_rels/presentation.xml.rels',prels],['ppt/slides/slide1.xml',slide('Premiere',['Un','Deux & trois'],{pic:1,bg:'0F172A'})],['ppt/slides/_rels/slide1.xml.rels',srels],['ppt/slides/slide2.xml',slide('Deuxieme',['Point'],{chart:1})],['ppt/slides/slide3.xml',slide('Troisieme',['Fin'])],['ppt/media/image1.png',PNG]],true);
+(async()=>{
+ const r=await C.pptxSlides(ab(pptx)); eq(r.slides.length,3,'trois diapositives');
+ /* ordre : presentation.xml donne rId12 (slide3), rId10 (slide1), rId11 (slide2) */
+ eq(r.slides.map(s=>s.formes[0].paras[0].t),['Troisieme','Premiere','Deuxieme'],'ordre des diapositives suivi dans presentation.xml');
+ const s1=r.slides[1]; eq([s1.formes[0].titre,s1.formes[0].paras[0].sz,s1.formes[0].paras[0].b,s1.formes[0].paras[0].al],[true,4000,true,'ctr'],'titre : taille, gras, alignement'); eq(s1.formes[1].paras.map(p=>p.t),['• Un','• Deux & trois'],'textes dans l\'ordre, puces, entites decodees'); eq(s1.formes[1].paras[0].c,'#1D4ED8','couleur du texte');
+ eq([s1.bg,s1.images.length,/^data:image\/png;base64,/.test(s1.images[0].src),s1.images[0].x],['#0F172A',1,true,50],'fond, image integree, position en %'); eq(r.slides[2].simplifie,true,'graphique : apercu simplifie'); eq(r.slides[1].simplifie,false,'diapositive simple : pas de drapeau');
+ eq([s1.formes[0].x,s1.formes[0].w],[5,90],'position des textes en % de la page'); eq(r.taille,{W:9144000,H:6858000},'taille de la page');
+ /* fichiers invalides */
+ let e1=false; try{ await C.pptxSlides(ab(Buffer.from('pas un zip'))); }catch(e){ e1=true; } eq(e1,true,'fichier illisible refuse'); let e2=false; try{ await C.pptxSlides(ab(zipN([['a.txt','x']]))); }catch(e){ e2=/illisible/.test(e.message); } eq(e2,true,'zip sans presentation refuse');
+ const sans=zipN([['ppt/presentation.xml','<p:presentation/>'],['ppt/slides/slide2.xml',slide('B',['x'])],['ppt/slides/slide10.xml',slide('C',['x'])],['ppt/slides/slide1.xml',slide('A',['x'])]]); const r2=await C.pptxSlides(ab(sans)); eq(r2.slides.map(s=>s.formes[0].paras[0].t),['A','B','C'],'sans liste : ordre naturel des fichiers');
+ /* image inconnue ou lien : ignoree, jamais de lien */
+ const bad=zipN([['ppt/presentation.xml','<p:presentation/>'],['ppt/slides/slide1.xml',slide('X',['y'],{pic:1})],['ppt/slides/_rels/slide1.xml.rels','<Relationships><Relationship Id="rId2" Type="x" Target="http://evil/a.png"/></Relationships>']]); const r3=await C.pptxSlides(ab(bad)); eq(r3.slides[0].images.length,0,'image externe ignoree');
+ /* transitions : liste blanche, choisies par l'application */
+ eq(C.ANIMS,['fondu','glissement','zoom'],'liste blanche des transitions'); eq([0,1,2,3,4,5,-1].map(C.animChoisie),['fondu','glissement','zoom','fondu','glissement','zoom','zoom'],'choix par l\'application'); eq(['fondu','script','','points',undefined,'zoom'].map(C.animSure),['fondu','aucune','aucune','aucune','aucune','zoom'],'valeur inconnue = sans animation');
+ /* types de pieces et migration */
+ eq([['a.pdf','application/pdf'],['b.pptx',''],['c.ppt',''],['d.png','image/png'],['e.xlsx','']].map(x=>C.genre({name:x[0],type:x[1]})),['pdf','pptx','ppt','image','autre'],'types de fichiers'); eq([{name:'a.pdf',src:'data:application/pdf;base64,AA=='},{name:'b.pptx',src:'data:application/x;base64,AA=='},{name:'c.ppt',src:'data:application/x;base64,AA=='},{name:'d.docx',src:'data:application/x;base64,AA=='},{src:'',name:'e.pdf'}].map(C.presentable),[true,true,false,false,false],'pieces presentables : PDF et PowerPoint seulement');
+ const anc={id:'S1',theme:'T',pj:{name:'vieux.pdf',src:'data:application/pdf;base64,AA=='},iaContenu:{titre:'x'}}; const m1=C.coursIaPjs(anc); eq([m1.length,m1[0].role,m1[0].label,anc.iaContenu.titre],[1,'pdf','PDF généré','x'],'migration : PDF deja genere garde, donnees anciennes intactes'); eq(C.coursIaPjs({id:'S2',pj:{name:'m.pdf',src:'x'}})[0].role,'autre','migration : piece manuelle'); eq(C.coursIaPjs({id:'S3'}),[],'migration : sans piece');
+ const trois={id:'S4',pjs:[{id:'o0',role:'origine',name:'a.pdf',src:'x'},{id:'g1',role:'pdf',name:'c.pdf',src:'x'},{id:'p1',role:'autre',name:'d.pptx',src:'x'}]}; eq(C.coursIaPjs(trois).map(x=>x.role),['origine','pdf','autre'],'plusieurs pieces jointes gardees');
+ /* plus aucun code de generation par IA */
+ eq(['coursIaOpen','coursIaEditer','construireDemande','demander','htmlPresentation','pdfPresentation','validerPresentation','figuresPdf','docxFigures'].filter(k=>k in C||k in sb||typeof sb[k]==='function'),[],'plus de generation de presentation par IA');
+ eq(/fiche-ia|dimIaCall|support_cours/.test(m[1]),false,'le diaporama n\'appelle aucun serveur');
+ console.log(n+' tests, '+ko+' echec(s)'); process.exit(ko?1:0);
+})();
