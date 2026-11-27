@@ -50220,8 +50220,8 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  /* Évaluations d'une session : un titre, un ou plusieurs questionnaires validés, un envoi à tous les élèves, un suivi par statut, une correction avec notes.
     Module pur, sans écran, testé sans navigateur. Séparation des données : les réponses des élèves sont dans l'évaluation (copies) ; les corrections, notes et commentaires du formateur sont dans
     un espace à part (priv.corrections) ; un résultat n'est recopié dans la copie de l'élève qu'à la publication des corrections. */
- var ORDRE=['brouillon','envoyee','en_cours','cloturee','a_corriger','corrigee'];
- var LIB={brouillon:'Brouillon',envoyee:'Envoyée',en_cours:'En cours',cloturee:'Clôturée',a_corriger:'À corriger',corrigee:'Corrigée'};
+ var ORDRE=['brouillon','envoyee','en_cours','cloturee','a_corriger','corrigee','notes_envoyees'];
+ var LIB={brouillon:'Brouillon',envoyee:'Envoyée',en_cours:'En cours',cloturee:'Clôturée',a_corriger:'À corriger',corrigee:'Corrigée',notes_envoyees:'Notes envoyées'};
  var EQ=G.EvalQuest;
  function arr(a){ return Array.isArray(a)?a:[]; }
  function r1(n){ return Math.round(n*10)/10; }
@@ -50231,8 +50231,8 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function questionnairesDe(ev,state){ var L=arr(state&&state.evaluations); return arr(ev.questionnaireIds).map(function(id){ return L.filter(function(e){ return e.id===id; })[0]; }).filter(Boolean); }
  function questionnaireValide(e){ return !!(e&&e.questionnaire&&e.questionnaire.valide&&EQ.questionsDe(e).length); }
  function etatQuestionnaire(ev,eid,qnId){ var x=cq(ev,eid,qnId,false); if(x&&x.soumisLe) return 'rendu'; if(x&&Object.keys(x.reponses||{}).length) return 'en_cours'; return 'a_faire'; }
- function estRendue(ev,eid){ var ids=arr(ev.questionnaireIds); return ids.length>0&&ids.every(function(id){ var x=cq(ev,eid,id,false); return x&&x.soumisLe; }); }
- function aCommence(ev,eid){ var c=copie(ev,eid,false); if(!c) return false; if(c.debutLe||c.rendueLe) return true; return Object.keys(c.q||{}).some(function(k){ var x=c.q[k]; return x&&(x.soumisLe||Object.keys(x.reponses||{}).length); }); }
+ function estRendue(ev,eid){ var c=copie(ev,eid,false); if(c&&c.fichiers&&c.fichiers.length&&c.rendueLe) return true; var ids=arr(ev.questionnaireIds); return ids.length>0&&ids.every(function(id){ var x=cq(ev,eid,id,false); return x&&x.soumisLe; }); }
+ function aCommence(ev,eid){ var c=copie(ev,eid,false); if(!c) return false; if(c.debutLe||c.rendueLe||(c.fichiers&&c.fichiers.length)) return true; return Object.keys(c.q||{}).some(function(k){ var x=c.q[k]; return x&&(x.soumisLe||Object.keys(x.reponses||{}).length); }); }
  function progression(ev){ var d=arr(ev.destinataires); return {total:d.length,commence:d.filter(function(e){ return aCommence(ev,e); }).length,termine:d.filter(function(e){ return estRendue(ev,e); }).length}; }
  /* envoi à tous les élèves de la session */
  function envoyer(ev,eleveIds,state,now){
@@ -50258,7 +50258,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function cloturer(ev,nowIso){ if(ev.statut!=='envoyee'&&ev.statut!=='en_cours') return false; clore(ev,'manuel',nowIso); return true; }
  /* réception des copies par le formateur */
  function recevoir(ev){ if(ev.statut==='cloturee'){ ev.statut='a_corriger'; ev.notifie=true; return true; } return false; }
- function rouvrir(ev){ if(ev.statut==='cloturee'||ev.statut==='a_corriger'||ev.statut==='corrigee'){ ev.statut=progression(ev).commence?'en_cours':'envoyee'; ev.clotureLe=''; ev.cloturePar=''; ev.dateLimite=''; arr(ev.destinataires).forEach(function(e){ var c=copie(ev,e,false); if(c&&c.arret==='cloture'){ c.rendueLe=''; delete c.arret; } }); return true; } return false; }
+ function rouvrir(ev){ if(ev.statut==='cloturee'||ev.statut==='a_corriger'||ev.statut==='corrigee'||ev.statut==='notes_envoyees'){ ev.statut=progression(ev).commence?'en_cours':'envoyee'; ev.clotureLe=''; ev.cloturePar=''; ev.dateLimite=''; arr(ev.destinataires).forEach(function(e){ var c=copie(ev,e,false); if(c&&c.arret==='cloture'){ c.rendueLe=''; delete c.arret; } }); return true; } return false; }
  /* durée limitée : fin personnelle d'un élève */
  function dureeDepassee(ev,eid,nowIso){ if(!(ev.dureeMin>0)) return false; var c=copie(ev,eid,false); if(!c||!c.debutLe) return false; return (new Date(nowIso).getTime()-new Date(c.debutLe).getTime())>ev.dureeMin*60000; }
  function debuter(ev,eid,nowIso){ var c=copie(ev,eid,true); if(!c.debutLe) c.debutLe=nowIso||new Date().toISOString(); }
@@ -50268,17 +50268,27 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function totaux(corr,qnList){ var o=0,m=0; arr(qnList).forEach(function(qn){ EQ.questionsDe(qn).forEach(function(q){ var c=corr&&corr[qn.id]&&corr[qn.id][q.id]; if(c){ o+=Number(c.obtenu)||0; m+=Number(c.max)||0; } }); }); return {obtenu:r1(o),max:r1(m)}; }
  function stats(notes){ var v=arr(notes).filter(function(n){ return typeof n==='number'&&isFinite(n); }); if(!v.length) return {n:0,min:null,max:null,moyenne:null}; var s=v.reduce(function(a,b){ return a+b; },0); return {n:v.length,min:Math.min.apply(null,v),max:Math.max.apply(null,v),moyenne:r1(s/v.length)}; }
  function privEv(priv,evId,creerSi){ priv.corrections=priv.corrections||{}; var x=priv.corrections[evId]; if(!x&&creerSi) x=priv.corrections[evId]={}; return x||{}; }
- function notesDe(ev,priv){ var P=privEv(priv,ev.id,false); return arr(ev.destinataires).map(function(e){ var c=copie(ev,e,false), p=P[e]; if(!c||!c.rendueLe) return ev.absents==='zero'?0:null; return p&&typeof p.note==='number'?p.note:null; }); }
- function toutesNotees(ev,priv){ var P=privEv(priv,ev.id,false), rendus=arr(ev.destinataires).filter(function(e){ var c=copie(ev,e,false); return c&&c.rendueLe; }); return rendus.length>0&&rendus.every(function(e){ return P[e]&&typeof P[e].note==='number'; }); }
+ /* note d'un élève : celle saisie par le formateur (même sans copie rendue : évaluation sur papier ou à l'oral) ; sinon absent = vide ou 0 */
+ function noteDeEleve(ev,priv,eid){ var P=privEv(priv,ev.id,false)[eid]; if(P&&typeof P.note==='number') return P.note; var c=copie(ev,eid,false); if(!c||!c.rendueLe) return ev.absents==='zero'?0:null; return null; }
+ function notesDe(ev,priv){ return arr(ev.destinataires).map(function(e){ return noteDeEleve(ev,priv,e); }); }
+ /* élèves sans note : à signaler avant l'envoi des notes */
+ function sansNote(ev,priv){ return arr(ev.destinataires).filter(function(e){ return noteDeEleve(ev,priv,e)===null; }); }
+ /* corrigée : tous les élèves qui ont rendu ont une note ; si personne n'a rendu (évaluation sur papier ou à l'oral), tous les élèves doivent avoir une note */
+ function toutesNotees(ev,priv){ var P=privEv(priv,ev.id,false), d=arr(ev.destinataires), rendus=d.filter(function(e){ var c=copie(ev,e,false); return c&&c.rendueLe; }), req=rendus.length?rendus:d; return req.length>0&&req.every(function(e){ return P[e]&&typeof P[e].note==='number'; }); }
  function majCorrigee(ev,priv){ if((ev.statut==='a_corriger'||ev.statut==='corrigee')){ ev.statut=toutesNotees(ev,priv)?'corrigee':'a_corriger'; } }
  /* publication : le résultat de l'élève est recopié dans sa copie, rien d'autre */
- function publier(ev,priv,eid,nowIso){ var P=privEv(priv,ev.id,false)[eid], c=copie(ev,eid,false); if(!P||typeof P.note!=='number'||!c) return false; c.resultat={note:P.note,mode:P.mode||'20',maxTotal:P.maxTotal,commentaire:P.commentaire||'',corr:JSON.parse(JSON.stringify(P.corr||{})),publieeLe:nowIso||new Date().toISOString()}; return true; }
- function publierTout(ev,priv,nowIso){ var n=0; arr(ev.destinataires).forEach(function(e){ var c=copie(ev,e,false); if(c&&!c.resultat&&publier(ev,priv,e,nowIso)) n++; }); return n; }
+ function publier(ev,priv,eid,nowIso){ var P=privEv(priv,ev.id,false)[eid], c=copie(ev,eid,true); if(!P||typeof P.note!=='number'){ if(ev.absents==='zero'&&!c.rendueLe) P={note:0,mode:ev.bareme||'20',corr:{},commentaire:''}; else return false; } c.resultat={note:P.note,mode:P.mode||'20',maxTotal:P.maxTotal,commentaire:P.commentaire||'',corr:JSON.parse(JSON.stringify(P.corr||{})),parQ:JSON.parse(JSON.stringify(P.parQ||{})),publieeLe:nowIso||new Date().toISOString()}; return true; }
+ /* envoi des notes à tous : chaque élève reçoit seulement son résultat ; une note modifiée après l'envoi est renvoyée */
+ function aPublier(ev,priv,eid){ var c=copie(ev,eid,false), P=privEv(priv,ev.id,false)[eid]; if(c&&c.resultat){ return !!(P&&typeof P.note==='number'&&(P.note!==c.resultat.note||(P.commentaire||'')!==(c.resultat.commentaire||''))); } return noteDeEleve(ev,priv,eid)!==null; }
+ function publierTout(ev,priv,nowIso){ var n=0; arr(ev.destinataires).forEach(function(e){ if(aPublier(ev,priv,e)&&publier(ev,priv,e,nowIso)) n++; }); return n; }
+ function envoyerNotes(ev,priv,nowIso){ var r={publiees:publierTout(ev,priv,nowIso),manquants:sansNote(ev,priv).length}; if(!r.manquants&&(ev.statut==='a_corriger'||ev.statut==='corrigee'||ev.statut==='notes_envoyees')){ ev.statut='notes_envoyees'; ev.notesEnvoyeesLe=nowIso||new Date().toISOString(); } return r; }
+ /* copie déposée par l'élève (fichier ou photo) : elle compte comme rendue */
+ function deposerCopie(ev,eid,fichier,nowIso){ var c=copie(ev,eid,true); c.fichiers=c.fichiers||[]; c.fichiers.push({name:String(fichier&&fichier.name||'copie').slice(0,120),src:fichier&&fichier.src}); if(!c.debutLe) c.debutLe=nowIso||new Date().toISOString(); c.rendueLe=nowIso||new Date().toISOString(); return c; }
  /* vue de l'élève : jamais de corrigé, de note ou de réglage avant publication ; seulement son propre résultat après */
  function vueEleve(ev,eid,state){
   var c=copie(ev,eid,false)||{}, qns=questionnairesDe(ev,state);
   var o={id:ev.id,titre:ev.titre,statut:(ev.statut==='envoyee'||ev.statut==='en_cours')?'ouverte':'cloturee',dateLimite:ev.dateLimite||'',dureeMin:ev.dureeMin||null,questionnaires:qns.map(function(qn){ return {id:qn.id,nom:qn.nom,etat:etatQuestionnaire(ev,eid,qn.id),questions:EQ.questionsDe(qn).map(EQ.pourEleve)}; }),rendue:!!c.rendueLe};
-  if(c.resultat) o.resultat={note:c.resultat.note,mode:c.resultat.mode,maxTotal:c.resultat.maxTotal,commentaire:c.resultat.commentaire,corr:c.resultat.corr};
+  if(c.resultat) o.resultat={note:c.resultat.note,mode:c.resultat.mode,maxTotal:c.resultat.maxTotal,commentaire:c.resultat.commentaire,corr:c.resultat.corr,parQ:c.resultat.parQ||{}};
   return o;
  }
  function csv(lignes){ function q(v){ v=v==null?'':String(v); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; } return lignes.map(function(l){ return l.map(q).join(';'); }).join('\n'); }
@@ -50298,13 +50308,13 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
     if(x.statutCorrection==='corrigee'){ var note=typeof x.noteGlobale==='number'?x.noteGlobale:x.noteGlobale; var mode=q.bareme==='20'||q.bareme==='10'||q.bareme==='lettres'?'ancien_'+q.bareme:'20'; var corr={}; corr[q.id]=JSON.parse(JSON.stringify(x.correction||{})); P[eid]={note:note,mode:mode,commentaire:'',corr:corr,corrigeeLe:''}; if(x.publiee){ c.resultat={note:note,mode:mode,commentaire:'',corr:JSON.parse(JSON.stringify(corr)),publieeLe:x.publieeLe||''}; } }
     else if(x.soumisLe) tousCorriges=false; });
    dest.forEach(function(eid){ var c=copie(ev,eid,false); if(c&&c.rendueLe&&!(P[eid]&&P[eid].note!=null)) tousCorriges=false; });
-   if(q.statut==='cloturee'){ ev.statut=(tousCorriges&&sb.length)?'corrigee':'a_corriger'; ev.cloturePar='manuel'; ev.clotureLe=q.dateFin||''; dest.forEach(function(eid){ var c=copie(ev,eid,false); if(c&&c.debutLe&&!c.rendueLe){ c.rendueLe=c.debutLe; c.arret='cloture'; } }); }
+   if(q.statut==='cloturee'){ var tousPub=dest.every(function(eid){ var c=copie(ev,eid,false); return !c||!c.rendueLe||c.resultat; }); ev.statut=(tousCorriges&&sb.length)?(tousPub?'notes_envoyees':'corrigee'):'a_corriger'; ev.cloturePar='manuel'; ev.clotureLe=q.dateFin||''; dest.forEach(function(eid){ var c=copie(ev,eid,false); if(c&&c.debutLe&&!c.rendueLe){ c.rendueLe=c.debutLe; c.arret='cloture'; } }); }
    else{ ev.statut=progression(ev).commence?'en_cours':'envoyee'; }
    state.evalSessions.push(ev); q.migreFlux=true; n++;
   });
   return n;
  }
- G.EvalFlux={ORDRE:ORDRE,LIB:LIB,creer:creer,copie:copie,cq:cq,questionnairesDe:questionnairesDe,questionnaireValide:questionnaireValide,etatQuestionnaire:etatQuestionnaire,estRendue:estRendue,aCommence:aCommence,progression:progression,envoyer:envoyer,nouveauxEleves:nouveauxEleves,ajouterDestinataires:ajouterDestinataires,ouverte:ouverte,rafraichir:rafraichir,cloturer:cloturer,recevoir:recevoir,rouvrir:rouvrir,dureeDepassee:dureeDepassee,debuter:debuter,soumettre:soumettre,noteDepuis:noteDepuis,totaux:totaux,stats:stats,privEv:privEv,notesDe:notesDe,toutesNotees:toutesNotees,majCorrigee:majCorrigee,publier:publier,publierTout:publierTout,vueEleve:vueEleve,csv:csv,migrer:migrer};
+ G.EvalFlux={ORDRE:ORDRE,LIB:LIB,creer:creer,copie:copie,cq:cq,questionnairesDe:questionnairesDe,questionnaireValide:questionnaireValide,etatQuestionnaire:etatQuestionnaire,estRendue:estRendue,aCommence:aCommence,progression:progression,envoyer:envoyer,nouveauxEleves:nouveauxEleves,ajouterDestinataires:ajouterDestinataires,ouverte:ouverte,rafraichir:rafraichir,cloturer:cloturer,recevoir:recevoir,rouvrir:rouvrir,dureeDepassee:dureeDepassee,debuter:debuter,soumettre:soumettre,noteDepuis:noteDepuis,totaux:totaux,stats:stats,privEv:privEv,notesDe:notesDe,noteDeEleve:noteDeEleve,sansNote:sansNote,toutesNotees:toutesNotees,majCorrigee:majCorrigee,publier:publier,publierTout:publierTout,envoyerNotes:envoyerNotes,deposerCopie:deposerCopie,vueEleve:vueEleve,csv:csv,migrer:migrer};
  if(typeof module!=='undefined'&&module.exports) module.exports=G.EvalFlux;
 })(typeof window!=='undefined'?window:this);
 </script>
@@ -50357,7 +50367,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
 .evlSt{display:inline-block;padding:2px 10px;border:1.5px solid var(--ds-ink-soft,#5f6a66);border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap}
 .evlSt-brouillon{border-style:dashed}
 .evlSt-a_corriger,.evlSt-cloturee{border-color:var(--ds-accent,#FFC400)}
-.evlSt-corrigee{border-color:var(--ds-ok,#2f7d4f);color:var(--ds-ok,#2f7d4f)}
+.evlSt-corrigee,.evlSt-notes_envoyees{border-color:var(--ds-ok,#2f7d4f);color:var(--ds-ok,#2f7d4f)}
 .evlNoteV{font-weight:700;margin-inline-start:auto}
 .evlCorr{font-size:13px;color:var(--ds-ink-soft,#5f6a66)}
 .evlRoot select.evlIn{appearance:auto}
@@ -50367,7 +50377,8 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  'use strict';
  var EQ=window.EvalQuest; if(!EQ) return;
  var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
- var T=function(s){ try{ return window.dimT?window.dimT(s):s; }catch(_){ return s; } };
+ var EN_={"Déposer un questionnaire": "Upload a questionnaire", "Titre": "Title", "Date de dépôt": "Upload date", "Depuis l’appareil": "From this device", "Prendre une photo": "Take a photo", "Enregistrer": "Save", "Annuler": "Cancel", "Retour": "Back", "Supprimer": "Delete", "Télécharger": "Download", "Ouvrir le PDF": "Open the PDF", "Ouvrir l’image": "Open the image", "Transformer en questionnaire": "Turn into a questionnaire", "Refaire le questionnaire": "Redo the questionnaire", "Relire le questionnaire": "Review the questionnaire", "Voir un exemple": "See an example", "Lancer l’analyse": "Start the analysis", "Valider le questionnaire": "Validate the questionnaire", "J’accepte": "I accept", "Je modifie": "I edit", "Écarter": "Discard", "Reprendre": "Resume", "Question": "Question", "Précédent": "Previous", "Suivant": "Next", "Relire et envoyer": "Review and send", "Envoyer mes réponses": "Send my answers", "Continuer plus tard": "Continue later", "Votre réponse": "Your answer", "Vrai": "True", "Faux": "False", "Évaluations": "Assessments", "Créer une évaluation": "Create an assessment", "Envoyer l’évaluation": "Send the assessment", "Modifier": "Edit", "Suivi": "Follow-up", "Clôturer": "Close", "Rouvrir": "Reopen", "Préparer la correction": "Prepare the marking", "Corriger l’évaluation": "Mark the assessment", "Voir les notes": "See the marks", "Envoyer les notes à tous": "Send the marks to everyone", "Envoyer aux nouveaux élèves": "Send to new students", "Brouillon": "Draft", "Envoyée": "Sent", "En cours": "In progress", "Clôturée": "Closed", "À corriger": "To mark", "Corrigée": "Marked", "Notes envoyées": "Marks sent", "Évaluation à passer": "Assessment to take", "Passer l’évaluation": "Take the assessment", "Voir ma note": "See my mark", "Déposer ma copie (fichier ou photo)": "Upload my paper (file or photo)", "Évaluation clôturée, à corriger": "Assessment closed, to be marked", "Note finale": "Final mark", "Commentaire pour l’élève": "Comment for the student", "Recalculer la note": "Recalculate the mark", "Enregistrer la note": "Save the mark", "Saisir la note": "Enter the mark", "Revoir la note": "Review the mark", "Corriger la copie": "Mark the paper", "Exporter en fichier CSV": "Export as CSV file", "Copier le tableau": "Copy the table", "Récapitulatif de la session": "Session summary", "absent / non rendu": "absent / not handed in", "Bientôt disponible": "Coming soon", "Pas commencée": "Not started", "Rendue": "Handed in", "À faire": "To do", "Questionnaires (validés)": "Questionnaires (validated)", "Date limite (facultatif)": "Deadline (optional)", "Durée en minutes (facultatif)": "Duration in minutes (optional)", "Titre requis": "Title required", "Aucune évaluation.": "No assessment.", "Aucun questionnaire.": "No questionnaire."};
+ var T=function(s){ try{ if(window.dimLang&&window.dimLang()==='en'&&EN_[s]) return EN_[s]; return window.dimT?window.dimT(s):s; }catch(_){ return s; } };
  var IC={
   doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',open:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   down:'<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>',wand:'<path d="M4 20L16 8"/><path d="M15 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/><path d="M19 12l.7 1.3L21 14l-1.3.7L19 16l-.7-1.3L17 14l1.3-.7z"/>',
@@ -50464,6 +50475,31 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
    for(i=1;i<=n;i++){ var pg=await pdf.getPage(i), c=await pg.getTextContent(); texte+=c.items.map(function(x){ return x.str; }).join(' ')+'\n\n'; }
    var images=[]; if(EQ.clean(texte).length<40){ for(i=1;i<=Math.min(pdf.numPages,4);i++){ var p2=await pdf.getPage(i), v0=p2.getViewport({scale:1}), v=p2.getViewport({scale:1024/Math.max(v0.width,v0.height)}), cv=document.createElement('canvas'); cv.width=Math.round(v.width); cv.height=Math.round(v.height); await p2.render({canvasContext:cv.getContext('2d'),viewport:v}).promise; images.push({type:'image/jpeg',data:cv.toDataURL('image/jpeg',0.6).split(',')[1]}); cv.width=0; cv.height=0; } }
    return {texte:texte,images:images}; }};
+ /* lecture d'un document déposé : texte extrait (PDF, Word, texte) ou image réduite ; jamais le fichier d'origine n'est envoyé */
+ function extDe(n){ var m=/\.([A-Za-z0-9]+)$/.exec(n||''); return m?m[1].toLowerCase():''; }
+ function genreFichier(f){ var t=String(f&&f.type||'').toLowerCase(), e=extDe(f&&f.name); if(t==='application/pdf'||e==='pdf') return 'pdf'; if(/^image\//.test(t)||['jpg','jpeg','png','webp','gif','heic'].indexOf(e)>=0) return 'image'; if(e==='docx'||t==='application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx'; if(e==='doc'||t==='application/msword') return 'doc'; if(t==='text/plain'||e==='txt'||e==='md') return 'texte'; return 'autre'; }
+ async function inflate(u8){ var ds=new DecompressionStream('deflate-raw'), w=ds.writable.getWriter(); w.write(u8); w.close(); return new Uint8Array(await new Response(ds.readable).arrayBuffer()); }
+ async function docxTexte(buf){
+  var u=new Uint8Array(buf), dv=new DataView(buf), e=-1, i; for(i=u.length-22;i>=Math.max(0,u.length-70000);i--){ if(dv.getUint32(i,true)===0x06054b50){ e=i; break; } } if(e<0) throw new Error('Fichier Word illisible.');
+  var n=dv.getUint16(e+10,true), p=dv.getUint32(e+16,true), xml=null, k;
+  for(k=0;k<n;k++){ if(dv.getUint32(p,true)!==0x02014b50) break; var meth=dv.getUint16(p+10,true), cs=dv.getUint32(p+20,true), nl=dv.getUint16(p+28,true), el=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), lo=dv.getUint32(p+42,true), nom=new TextDecoder().decode(u.subarray(p+46,p+46+nl)); p+=46+nl+el+cl;
+   if(nom==='word/document.xml'){ var ln=dv.getUint16(lo+26,true), le=dv.getUint16(lo+28,true), d0=lo+30+ln+le, raw=u.subarray(d0,d0+cs), bytes=meth===0?raw:await inflate(raw); xml=new TextDecoder('utf-8').decode(bytes); break; } }
+  if(xml==null) throw new Error('Fichier Word sans texte lisible.');
+  return EQ.clean(xml.replace(/<w:tab\/>/g,'\t').replace(/<\/w:p>/g,'\n').replace(/<w:br\/>/g,'\n').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&'));
+ }
+ async function lireSource(file,deps){
+  var nom=String(file&&file.name||'document'), g=genreFichier(file), r={nom:nom,texte:'',images:[],erreur:null};
+  try{
+   if(g==='texte') r.texte=EQ.clean(await file.text());
+   else if(g==='docx') r.texte=await docxTexte(await file.arrayBuffer());
+   else if(g==='pdf'){ var x=await deps.pdf(file); r.texte=EQ.clean(x.texte); r.images=(x.images||[]).slice(0,4); }
+   else if(g==='image'){ r.images=[await deps.image(file)]; }
+   else if(g==='doc') r.erreur='Ancien format Word (.doc) non lu : enregistrez-le en .docx ou en PDF.';
+   else r.erreur='Format non reconnu : utilisez PDF, image, Word (.docx) ou texte.';
+   if(!r.erreur&&!r.texte&&!r.images.length) r.erreur='Aucun texte lisible dans ce document.';
+  }catch(er){ r.erreur=String((er&&er.message)||er).slice(0,160); }
+  return r;
+ }
  var TR={msg:'',ko:false,occupe:false};
  function transformer(id){
   var e=evById(id); if(!e) return; if(ar()){ modal('<h3>'+esc(T('Transformer en questionnaire'))+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
@@ -50487,7 +50523,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var t={src:null,corps:null}; TEMP.push(t);
   function fin(){ t.src=null; t.corps=null; var i=TEMP.indexOf(t); if(i>=0) TEMP.splice(i,1); TR.occupe=false; }
   function echec(m){ fin(); TR.msg=m; TR.ko=true; rendreTr(); }
-  blobDe(e.pj).then(function(f){ t.src=f; return window.CoursIa.lireSource(f,depsNav); }).then(function(src){
+  blobDe(e.pj).then(function(f){ t.src=f; return lireSource(f,depsNav); }).then(function(src){
    if(src.erreur){ echec(T(src.erreur)); return; }
    t.corps=EQ.construireDemande([src],''); TR.msg=T('L’IA lit le document…'); rendreTr();
    return window.dimIaCall(t.corps).then(function(x){
@@ -50605,14 +50641,15 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  /* liste (formateur) */
  function ligneF(e){
   var hidden=!!FOLD['ef:'+e.id], qns=EF().questionnairesDe(e,S()), nouv=EF().nouveauxEleves(e,sessEleves(e.sessionId)).length, st=e.statut, b1=[], b2=[];
-  if(st==='brouillon'){ b1.push(btn('play','Envoyer à tous les élèves','ef_envoyer',e.id,{primary:1})); b1.push(btn('edit','Modifier','ef_modifier',e.id)); b1.push(btn('trash','Supprimer','ef_suppr',e.id)); }
+  if(st==='brouillon'){ b1.push(btn('play','Envoyer l’évaluation','ef_envoyer',e.id,{primary:1})); b1.push(btn('edit','Modifier','ef_modifier',e.id)); b1.push(btn('trash','Supprimer','ef_suppr',e.id)); }
   else{
    b1.push(btn('list','Suivi','ef_suivi',e.id));
-   if(st==='envoyee'||st==='en_cours') b1.push(btn('close','Clôturer','ef_clore',e.id));
-   if(st==='cloturee'||st==='a_corriger'||st==='corrigee') b1.push(btn('check',st==='corrigee'?'Voir les notes':'Corriger l’évaluation','ef_corriger',e.id,{primary:st!=='corrigee'}));
-   if(st==='corrigee'||st==='a_corriger') b2.push(btn('upload','Publier les corrections','ef_publier',e.id));
-   if(st==='cloturee'||st==='a_corriger'||st==='corrigee') b2.push(btn('undo','Rouvrir','ef_rouvrir',e.id));
-   if(nouv&&st!=='brouillon') b2.push(btn('plus','Envoyer aux nouveaux élèves ('+nouv+')','ef_nouveaux',e.id));
+   if(st==='envoyee'||st==='en_cours'){ b1.push(btn('close','Clôturer','ef_clore',e.id)); b1.push(btn('edit','Préparer la correction','ef_corriger',e.id)); }
+   if(st==='cloturee'||st==='a_corriger') b1.push(btn('check','Corriger l’évaluation','ef_corriger',e.id,{primary:1}));
+   if(st==='corrigee'||st==='notes_envoyees') b1.push(btn('check','Voir les notes','ef_corriger',e.id));
+   if(st==='cloturee'||st==='a_corriger'||st==='corrigee'||st==='notes_envoyees') b2.push(btn('upload','Envoyer les notes à tous','ef_publier',e.id,{primary:st==='corrigee'}));
+   if(st==='cloturee'||st==='a_corriger'||st==='corrigee'||st==='notes_envoyees') b2.push(btn('undo','Rouvrir','ef_rouvrir',e.id));
+   if(nouv) b2.push(btn('plus','Envoyer aux nouveaux élèves ('+nouv+')','ef_nouveaux',e.id));
   }
   var small='<small>'+esc(qns.length)+' '+esc(T('questionnaire(s)'))+(e.dateLimite?' · '+esc(T('date limite'))+' : '+esc(dtl(e.dateLimite)):'')+(e.dureeMin?' · '+esc(T('durée'))+' : '+e.dureeMin+' min':'')+'</small>';
   var prog=st==='brouillon'?'':'<small>'+esc(progTxt(e))+'</small>';
@@ -50623,15 +50660,15 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   if(ar()){ modal('<h3>'+esc(T('Évaluations'))+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
   migrer(); rafraichirTout(sid); var L=efs(sid);
   var ordre=EF().ORDRE; L.sort(function(a,b){ return ordre.indexOf(b.statut)-ordre.indexOf(a.statut)||String(b.envoyeLe||b.id).localeCompare(String(a.envoyeLe||a.id)); });
-  modal('<h3>📋 '+esc(T('Évaluations'))+' — '+esc(sessNom(sid))+'</h3><p class="evlNote">'+esc(T('Une évaluation réunit un ou plusieurs questionnaires validés et s’envoie à tous les élèves de la session.'))+'</p>'
-   +'<div data-evl-sess="'+esc(sid)+'">'+(L.length?'<div class="evlList">'+L.map(ligneF).join('')+'</div>':'<p class="evlNote">'+esc(T('Aucune évaluation.'))+'</p>')+row([btn('plus','Nouvelle évaluation','ef_nouvelle',sid,{primary:1})])+'</div>',function(){ if(api().session) api().session(sid); else closeModal(); });
+  modal('<h3>📋 '+esc(T('Évaluations'))+' — '+esc(sessNom(sid))+'</h3><p class="evlNote">'+esc(T('Une évaluation réunit un ou plusieurs questionnaires validés. Une fois envoyée, tous les élèves inscrits dans la session peuvent la consulter et la passer.'))+'</p>'
+   +'<div data-evl-sess="'+esc(sid)+'">'+(L.length?'<div class="evlList">'+L.map(ligneF).join('')+'</div>':'<p class="evlNote">'+esc(T('Aucune évaluation.'))+'</p>')+row([btn('plus','Créer une évaluation','ef_nouvelle',sid,{primary:1})])+'</div>',function(){ if(api().session) api().session(sid); else closeModal(); });
  }
  /* création / modification */
  var ED=null;
  function evalEdit(sid,id){
   var e=id?evF(id):null; ED={sid:sid,id:id||null,err:''};
   var qs=evs().filter(function(q){ return q.sessionId===sid&&!q.modele&&valide(q); });
-  modal('<h3>'+esc(T(e?'Modifier l’évaluation':'Nouvelle évaluation'))+'</h3>'
+  modal('<h3>'+esc(T(e?'Modifier l’évaluation':'Créer une évaluation'))+'</h3>'
    +'<div class="evlFld"><label for="efT">'+esc(T('Titre'))+'</label><input id="efT" class="evlIn" type="text" maxlength="120" value="'+esc(e?e.titre:'')+'"></div>'
    +'<div class="evlFld"><label>'+esc(T('Questionnaires (validés)'))+'</label>'+(qs.length?qs.map(function(q){ return '<label class="evlOpt"><input type="checkbox" data-efq="'+esc(q.id)+'"'+(e&&e.questionnaireIds.indexOf(q.id)>=0?' checked':'')+'><span>'+esc(q.nom)+' <small>('+EQ.questionsDe(q).length+' '+esc(T('question(s)'))+')</small></span></label>'; }).join(''):'<p class="evlNote">'+esc(T('Aucun questionnaire validé dans cette session. Déposez un questionnaire, transformez-le puis validez-le.'))+'</p>')+'</div>'
    +'<div class="evlFld"><label for="efD">'+esc(T('Date limite (facultatif)'))+'</label><input id="efD" class="evlIn" type="datetime-local" value="'+esc(e?e.dateLimite:'')+'"></div>'
@@ -50663,8 +50700,9 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var rows=e.destinataires.map(function(eid){ var q=qns.map(function(qn){ var s=EF().etatQuestionnaire(e,eid,qn.id); return esc(qn.nom)+' : '+esc(T(s==='rendu'?'rendu':(s==='en_cours'?'en cours':'à faire'))); }).join('<br>'); return '<div class="evlIt"><div class="evlH"><b>'+esc(nomEleve(eid))+'</b>'+chip(etatEleveTxt(e,eid),EF().estRendue(e,eid)?'Ok':'')+'</div><div class="evlB"><small>'+q+'</small></div></div>'; }).join('');
   var st=e.statut, bt=[];
   if(st==='envoyee'||st==='en_cours') bt.push(btn('close','Clôturer','ef_clore',id));
-  if(st==='a_corriger'||st==='corrigee'||st==='cloturee') bt.push(btn('check',st==='corrigee'?'Voir les notes':'Corriger l’évaluation','ef_corriger',id,{primary:st!=='corrigee'}));
-  if(st==='cloturee'||st==='a_corriger'||st==='corrigee') bt.push(btn('undo','Rouvrir','ef_rouvrir',id));
+  if(st==='envoyee'||st==='en_cours') bt.push(btn('edit','Préparer la correction','ef_corriger',id));
+  if(st==='a_corriger'||st==='corrigee'||st==='cloturee'||st==='notes_envoyees') bt.push(btn('check',(st==='corrigee'||st==='notes_envoyees')?'Voir les notes':'Corriger l’évaluation','ef_corriger',id,{primary:st!=='corrigee'&&st!=='notes_envoyees'}));
+  if(st==='cloturee'||st==='a_corriger'||st==='corrigee'||st==='notes_envoyees') bt.push(btn('undo','Rouvrir','ef_rouvrir',id));
   bt.push(btn('back','Retour','ef_retour',e.sessionId));
   modal('<h3>'+esc(e.titre)+' '+pill(e.statut)+'</h3><p class="evlNote">'+esc(progTxt(e))+(e.envoyeLe?' · '+esc(T('envoyée le'))+' '+esc(dtl(api().iso?api().iso(e.envoyeLe):e.envoyeLe)):'')+'</p>'+(e.clotureLe?'<p class="evlNote">'+esc(T('Clôturée'))+' ('+esc(T(e.cloturePar==='auto'?'tous les élèves ont terminé':(e.cloturePar==='date'?'date limite atteinte':'par le formateur')))+')</p>':'')
    +'<div class="evlList">'+(rows||'<p class="evlNote">'+esc(T('Aucun élève.'))+'</p>')+'</div>'+row(bt),function(){ evalsAdmin(e.sessionId); });
@@ -50676,16 +50714,16 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  var CO={};
  function noteAff(e,eid){ var p=EF().privEv(privS(),e.id,false)[eid]; return p&&p.note!=null?fmtNote(p.note,p.mode,p.maxTotal):''; }
  function evalCorriger(id){
-  var e=evF(id); if(!e) return; if(EF().recevoir(e)) save();
-  var qns=EF().questionnairesDe(e,S()), P=EF().privEv(privS(),id,false);
-  var h='<h3>'+esc(T('Corriger l’évaluation'))+' — '+esc(e.titre)+' '+pill(e.statut)+'</h3>';
+  var e=evF(id); if(!e||e.statut==='brouillon') return; if(EF().recevoir(e)) save();
+  var qns=EF().questionnairesDe(e,S()), P=EF().privEv(privS(),id,false), avant=(e.statut==='envoyee'||e.statut==='en_cours');
+  var h='<h3>'+esc(T(avant?'Préparer la correction':'Corriger l’évaluation'))+' — '+esc(e.titre)+' '+pill(e.statut)+'</h3>'+(avant?'<p class="evlInfo">'+esc(T('L’évaluation n’est pas encore clôturée : vous préparez la correction à l’avance. Vous pouvez aussi saisir la note d’un élève qui a composé sur papier ou à l’oral.'))+'</p>':'<p class="evlNote">'+esc(T('Saisissez la note de chaque élève, même s’il n’a rien rendu en ligne (évaluation sur papier ou à l’oral).'))+'</p>');
   h+='<div class="evlFld"><label>'+esc(T('Barème de la note finale'))+'</label><label class="evlOpt"><input type="radio" name="efB" value="20"'+(e.bareme==='20'?' checked':'')+'><span>'+esc(T('Note sur 20'))+'</span></label><label class="evlOpt"><input type="radio" name="efB" value="total"'+(e.bareme==='total'?' checked':'')+'><span>'+esc(T('Total des points du barème'))+'</span></label></div>';
   h+='<div class="evlFld"><label for="efA">'+esc(T('Élèves qui n’ont pas rendu'))+'</label><select id="efA" class="evlIn" data-efabs><option value="vide"'+(e.absents!=='zero'?' selected':'')+'>'+esc(T('Absent : note vide'))+'</option><option value="zero"'+(e.absents==='zero'?' selected':'')+'>'+esc(T('Absent : note 0'))+'</option></select></div>';
   h+='<div class="evlList">'+e.destinataires.map(function(eid){ var c=EF().copie(e,eid,false)||{}, rendu=!!c.rendueLe, n=noteAff(e,eid);
-   return '<div class="evlIt"><div class="evlH"><b>'+esc(nomEleve(eid))+'</b>'+chip(rendu?(n?'noté':'à noter'):'absent / non rendu',rendu?(n?'Ok':'Nv'):'')+(n?'<span class="evlNoteV">'+esc(n)+'</span>':(!rendu&&e.absents==='zero'?'<span class="evlNoteV">0</span>':''))+(c.resultat?chip('publiée','Ok'):'')+'</div>'+(rendu?'<div class="evlB">'+row([btn('edit',n?'Revoir la copie':'Corriger la copie','ef_copie',id+'|'+eid)])+'</div>':'')+'</div>'; }).join('')+'</div>';
+   return '<div class="evlIt"><div class="evlH"><b>'+esc(nomEleve(eid))+'</b>'+chip(n?'noté':(rendu?'à noter':'non rendu — à noter'),n?'Ok':'Nv')+(n?'<span class="evlNoteV">'+esc(n)+'</span>':(!rendu&&e.absents==='zero'?'<span class="evlNoteV">0</span>':''))+(c.resultat?chip('note envoyée','Ok'):'')+'</div><div class="evlB">'+(rendu?'':'<small>'+esc(T('absent / non rendu'))+'</small>')+row([btn('edit',n?'Revoir la note':(rendu?'Corriger la copie':'Saisir la note'),'ef_copie',id+'|'+eid)])+'</div></div>'; }).join('')+'</div>';
   var st=EF().stats(EF().notesDe(e,privS()));
   h+='<h4>'+esc(T('Récapitulatif de la session'))+'</h4><p class="evlNote">'+(st.n?esc(T('Notes'))+' : '+st.n+' · '+esc(T('minimum'))+' '+String(st.min).replace('.',',')+' · '+esc(T('maximum'))+' '+String(st.max).replace('.',',')+' · <b>'+esc(T('moyenne'))+' '+String(st.moyenne).replace('.',',')+'</b>':esc(T('Aucune note pour l’instant.')))+'</p>';
-  h+=row([btn('upload','Exporter en fichier CSV','ef_csv',id),btn('list','Copier le tableau','ef_copier',id),btn('check','Publier les corrections','ef_publier',id,{primary:1})]);
+  h+=row([btn('upload','Exporter en fichier CSV','ef_csv',id),btn('list','Copier le tableau','ef_copier',id),btn('check','Envoyer les notes à tous','ef_publier',id,{primary:1})]);
   h+=row([btn('back','Retour','ef_retour',e.sessionId)]);
   modal(h,function(){ evalsAdmin(e.sessionId); });
   document.querySelectorAll('[name="efB"]').forEach(function(r){ r.onchange=function(){ e.bareme=r.value; save(); }; });
@@ -50693,7 +50731,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  }
  function copieHtml(e,eid){
   var qns=EF().questionnairesDe(e,S()), c=EF().copie(e,eid,false)||{}, P=EF().privEv(privS(),e.id,false)[eid]||{}, tot={obtenu:0,max:0};
-  var h=qns.map(function(qn){ var sb={reponses:(c.q&&c.q[qn.id]&&c.q[qn.id].reponses)||{}}; return '<div data-qn="'+esc(qn.id)+'"><h4>'+esc(qn.nom)+'</h4>'+EQ.questionsDe(qn).map(function(q,i){ return corrQuestionHtml(q,i,sb,((P.corr||{})[qn.id]||{})[q.id]||{}); }).join('')+'</div>'; }).join('');
+  var h=qns.map(function(qn){ var sb={reponses:(c.q&&c.q[qn.id]&&c.q[qn.id].reponses)||{}}; return '<div data-qn="'+esc(qn.id)+'"><h4>'+esc(qn.nom)+'</h4>'+EQ.questionsDe(qn).map(function(q,i){ return corrQuestionHtml(q,i,sb,((P.corr||{})[qn.id]||{})[q.id]||{}); }).join('')+(qns.length>1?'<div class="evlFld"><label>'+esc(T('Note de ce questionnaire (facultatif)'))+'<input class="evlIn" type="text" inputmode="decimal" data-nq="'+esc(qn.id)+'" value="'+esc(P.parQ&&P.parQ[qn.id]!=null?String(P.parQ[qn.id]).replace('.',','):'')+'"></label></div>':'')+'</div>'; }).join('');
   return h;
  }
  function lireCopie(e){
@@ -50701,9 +50739,10 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   return {corr:corr,tot:EF().totaux(corr,qns)};
  }
  function evalCopie(id,eid){
-  var e=evF(id); if(!e) return; if(!e.bareme){ miniAlert('Choisissez d’abord le barème de la note finale (sur 20, ou total des points).'); return; }
+  var e=evF(id); if(!e||e.statut==='brouillon') return; if(!e.bareme){ miniAlert('Choisissez d’abord le barème de la note finale (sur 20, ou total des points).'); return; }
   var P=EF().privEv(privS(),id,false)[eid]||{}; CO={id:id,eid:eid};
-  var h='<h3>'+esc(T('Copie de'))+' '+esc(nomEleve(eid))+'</h3>'+copieHtml(e,eid);
+  var c0=EF().copie(e,eid,false)||{}, fich=(c0.fichiers||[]).map(function(f,i){ return btn('open','Ouvrir la copie : '+f.name,'ef_fichier',id+'|'+eid+'|'+i); });
+  var h='<h3>'+esc(T('Copie de'))+' '+esc(nomEleve(eid))+'</h3>'+(c0.rendueLe?'':'<p class="evlInfo">'+esc(T('Aucune copie rendue en ligne. Saisissez la note directement (papier, oral) ou corrigez question par question.'))+'</p>')+(fich.length?row(fich):'')+copieHtml(e,eid);
   var l0=lireCopieSec(e,eid), prop=EF().noteDepuis(l0.tot.obtenu,l0.tot.max,e.bareme);
   h+='<div class="evlFld"><label>'+esc(T('Total des points'))+'</label><p class="evlNote" id="efTot">'+esc(String(l0.tot.obtenu).replace('.',','))+' / '+esc(String(l0.tot.max).replace('.',','))+'</p></div>';
   h+='<div class="evlFld"><label for="efNote">'+esc(T('Note finale'))+' ('+esc(T(e.bareme==='20'?'sur 20':'total des points'))+')</label><input id="efNote" class="evlIn" type="text" inputmode="decimal" value="'+esc(P.note!=null?String(P.note).replace('.',','):(prop!=null?String(prop).replace('.',','):''))+'"><p class="evlNote">'+esc(T('La note est calculée à partir des points ; vous pouvez la modifier.'))+'</p></div>';
@@ -50718,13 +50757,16 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function noterCopie(){
   var e=evF(CO.id); if(!e) return; var l=lireCopie(e), calc=EF().noteDepuis(l.tot.obtenu,l.tot.max,e.bareme), v=EQ.clean(document.getElementById('efNote').value), note=v?EQ.num(v):calc;
   var er=document.getElementById('efE'); if(note===null||note===undefined){ er.textContent=T('Saisissez la note finale (nombre).'); er.hidden=false; return false; } if(note<0||(e.bareme==='20'&&note>20)){ er.textContent=T('Note hors limite.'); er.hidden=false; return false; }
-  var P=EF().privEv(privS(),e.id,true); P[CO.eid]={note:note,mode:e.bareme,maxTotal:l.tot.max,commentaire:document.getElementById('efCom').value||'',corr:l.corr,corrigeeLe:nowIso(),modifie:calc!=null&&note!==calc};
+  var parQ={}; document.querySelectorAll('.evlRoot [data-nq]').forEach(function(i){ var v2=EQ.clean(i.value)?EQ.num(i.value):null; if(v2!==null) parQ[i.getAttribute('data-nq')]=v2; });
+  var P=EF().privEv(privS(),e.id,true); P[CO.eid]={note:note,mode:e.bareme,maxTotal:l.tot.max,commentaire:document.getElementById('efCom').value||'',corr:l.corr,parQ:parQ,corrigeeLe:nowIso(),modifie:calc!=null&&note!==calc};
   EF().majCorrigee(e,privS()); save(); if(e.statut==='corrigee') toast('Toutes les copies sont notées : évaluation corrigée.'); return true;
  }
  function tableauNotes(e){ var P=EF().privEv(privS(),e.id,false), L=[['Élève','État','Note','Commentaire']]; e.destinataires.forEach(function(eid){ var c=EF().copie(e,eid,false)||{}, p=P[eid]; var rendu=!!c.rendueLe; L.push([nomEleve(eid),rendu?(p&&p.note!=null?'noté':'à noter'):'absent / non rendu',rendu?(p&&p.note!=null?String(p.note).replace('.',','):''):(e.absents==='zero'?'0':''),p&&p.commentaire||'']); }); var st=EF().stats(EF().notesDe(e,privS())); L.push([]); L.push(['Minimum','',st.min==null?'':String(st.min).replace('.',','),'']); L.push(['Maximum','',st.max==null?'':String(st.max).replace('.',','),'']); L.push(['Moyenne','',st.moyenne==null?'':String(st.moyenne).replace('.',','),'']); return L; }
  function csvTelecharger(id){ var e=evF(id); if(!e) return; try{ var bl=new Blob(['﻿'+EF().csv(tableauNotes(e))],{type:'text/csv;charset=utf-8'}), u=URL.createObjectURL(bl), a=document.createElement('a'); a.href=u; a.download='notes-'+(e.titre||'evaluation').replace(/[^\w-]+/g,'_').slice(0,40)+'.csv'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },1500); toast('Fichier préparé.'); }catch(_){ miniAlert('Téléchargement impossible ici.'); } }
  function csvCopier(id){ var e=evF(id); if(!e) return; var tx=tableauNotes(e).map(function(l){ return l.join('\t'); }).join('\n'); try{ navigator.clipboard.writeText(tx).then(function(){ toast('Tableau copié.'); },function(){ miniAlert('Copie impossible ici.'); }); }catch(_){ miniAlert('Copie impossible ici.'); } }
- function evalPublier(id){ var e=evF(id); if(!e) return; var n=EF().privEv(privS(),id,false); var pret=e.destinataires.filter(function(eid){ var c=EF().copie(e,eid,false); return c&&!c.resultat&&n[eid]&&n[eid].note!=null; }).length; if(!pret){ miniAlert('Aucune note à publier pour l’instant.'); return; } miniConfirm('Publier les corrections de '+pret+' élève(s) ? Chaque élève verra sa note et ses commentaires.',function(){ EF().publierTout(e,privS(),nowIso()); save(); toast('Corrections publiées.'); evalCorriger(id); }); }
+ function evalPublier(id){ var e=evF(id); if(!e) return; var P=EF().privEv(privS(),id,false), manq=EF().sansNote(e,privS()), pret=e.destinataires.filter(function(eid){ return EF().noteDeEleve(e,privS(),eid)!==null; }).length; if(!pret){ miniAlert('Aucune note à envoyer pour l’instant.'); return; }
+  var msg='Envoyer à chaque élève sa note, son commentaire et sa correction ('+pret+' note(s) prête(s)) ? Chaque élève ne voit que les siens.'+(manq.length?' ATTENTION : '+manq.length+' élève(s) n’ont pas de note : '+manq.map(nomEleve).join(', ')+'.':' Toutes les notes sont saisies.');
+  miniConfirm(msg,function(){ var r=EF().envoyerNotes(e,privS(),nowIso()); save(); toast(r.manquants?r.publiees+' note(s) envoyée(s) ; '+r.manquants+' élève(s) sans note.':'Notes envoyées à tous les élèves.'); evalCorriger(id); }); }
  /* ---------- côté élève ---------- */
  function dest(e){ return e.destinataires.indexOf(meId())>=0; }
  function statutEleveF(e){
@@ -50737,13 +50779,14 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  }
  function evalsEleveHtml(sid){
   migrer(); rafraichirTout(sid); var L=efs(sid).filter(function(e){ return e.statut!=='brouillon'&&dest(e); });
-  var aFaire=L.filter(function(e){ return statutEleveF(e).act==='recap'; }).length;
-  var h='<div class="evlRoot" data-evl-sess="'+esc(sid)+'">'+(aFaire?'<p class="evlInfo" role="status">'+esc(T('Évaluation à passer'))+' : '+aFaire+'</p>':'');
+  var aFaire=L.filter(function(e){ return statutEleveF(e).act==='recap'; }).length, notes=L.filter(function(e){ return statutEleveF(e).act==='resultat'; }).length;
+  var h='<div class="evlRoot" data-evl-sess="'+esc(sid)+'">'+(aFaire?'<p class="evlInfo" role="status">'+esc(T('Évaluation à passer'))+' : '+aFaire+'</p>':'')+(notes?'<p class="evlInfo" role="status">'+esc(T('Votre note est disponible'))+' : '+notes+'</p>':'');
   h+=L.length?'<div class="evlList">'+L.map(function(e){ var s=statutEleveF(e); return '<div class="evlIt"><div class="evlH"><span class="evlIcF" aria-hidden="true">'+svg('list')+'</span><b>'+esc(e.titre)+'</b></div><div class="evlB"><small>'+esc(T(s.txt))+(e.dureeMin?' · '+esc(T('durée'))+' : '+e.dureeMin+' min':'')+'</small>'+(s.act?row([btn(s.act==='resultat'?'check':'play',s.lab,s.act==='resultat'?'ef_resultat':'ef_recap',e.id,{primary:s.primary})]):'')+'</div></div>'; }).join('')+'</div>':'<p class="evlNote">'+esc(T('Aucune évaluation.'))+'</p>';
   return h+'</div>';
  }
+ var RCID=null;
  function recap(id){
-  var e=evF(id); if(!e||!dest(e)) return; if(ar()){ modal('<h3>'+esc(e.titre)+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
+  var e=evF(id); if(!e||!dest(e)) return; RCID=id; if(ar()){ modal('<h3>'+esc(e.titre)+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
   rafraichir(e,true); var eid=meId(), v=EF().vueEleve(e,eid,S()), ouv=EF().ouverte(e,nowL())&&!v.rendue, first=true;
   if(ouv&&EF().dureeDepassee(e,eid,nowIso())){ forcerRendu(e); v=EF().vueEleve(e,eid,S()); ouv=false; }
   var c=EF().copie(e,eid,false)||{}, reste='';
@@ -50751,6 +50794,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var rows=v.questionnaires.map(function(qn){ var etat=qn.etat, puis=ouv&&etat!=='rendu'&&first; if(etat!=='rendu') first=false;
    return '<div class="evlIt"><div class="evlH"><span class="evlIcF" aria-hidden="true">'+svg('doc')+'</span><b>'+esc(qn.nom)+'</b>'+chip(etat==='rendu'?'rendu':(etat==='en_cours'?'en cours':'à faire'),etat==='rendu'?'Ok':'')+'</div>'+(puis?'<div class="evlB">'+row([btn('play',etat==='en_cours'?'Reprendre':'Commencer','ef_jouer',id+'|'+qn.id,{primary:1})])+'</div>':'')+'</div>'; }).join('');
   modal('<h3>'+esc(e.titre)+'</h3>'+(e.dateLimite?'<p class="evlNote">'+esc(T('À rendre avant le'))+' '+esc(dtl(e.dateLimite))+'</p>':'')+reste+(v.questionnaires.length>1?'<p class="evlNote">'+esc(T('Les questionnaires se passent dans l’ordre.'))+'</p>':'')+'<div class="evlList">'+rows+'</div>'
+   +(ouv?row([btn('upload','Déposer ma copie (fichier ou photo)','ef_copiedepot',id)])+'<input type="file" id="efFile" accept="image/*,.pdf,application/pdf,.doc,.docx" hidden>':'')
    +(v.rendue?'<p class="evlInfo" role="status">'+esc(T('Évaluation rendue. Merci !'))+'</p>':(!ouv?'<p class="evlErr">'+esc(T('Cette évaluation est clôturée : vous ne pouvez plus répondre.'))+'</p>':''))+row([btn('back','Retour','ef_retoureleve',e.sessionId)]),function(){ if(api().eleve) api().eleve(e.sessionId); });
  }
  function forcerRendu(e){ var eid=meId(); EF().questionnairesDe(e,S()).forEach(function(qn){ var x=EF().cq(e,eid,qn.id,true); if(!x.soumisLe) EF().soumettre(e,eid,qn.id,x.reponses||{},nowIso()); }); var c=EF().copie(e,eid,true); c.arret='duree'; if(!c.rendueLe) c.rendueLe=nowIso(); save(); rafraichir(e,true); }
@@ -50825,7 +50869,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var out=[]; efs(sid).forEach(function(e){ if(e.statut==='brouillon') return; var P=EF().privEv(privS(),e.id,false), modes={}; e.destinataires.forEach(function(eid){ if(P[eid]&&P[eid].note!=null) modes[P[eid].mode]=1; });
    var ks=Object.keys(modes), bar=ks.length===1&&/^ancien_/.test(ks[0])?ks[0].slice(7):'20';
    var soum=[], enc={}; e.destinataires.forEach(function(eid){ var c=EF().copie(e,eid,false); if(!c) return; if(c.debutLe) enc[eid]=c.debutLe; if(!c.rendueLe) return; var p=P[eid], note=p&&p.note!=null?p.note:null; if(note!=null&&bar==='20'&&p.mode==='total'&&p.maxTotal>0) note=Math.round(p.note/p.maxTotal*200)/10; soum.push({eleveId:eid,soumisLe:c.rendueLe,statutCorrection:note!=null?'corrigee':'a_corriger',noteGlobale:note,publiee:!!c.resultat}); });
-   out.push({id:e.id,nom:e.titre,sessionId:e.sessionId,statut:(e.statut==='cloturee'||e.statut==='a_corriger'||e.statut==='corrigee')?'cloturee':'envoyee',bareme:bar,enCours:enc,soumissions:soum}); });
+   out.push({id:e.id,nom:e.titre,sessionId:e.sessionId,statut:(e.statut==='cloturee'||e.statut==='a_corriger'||e.statut==='corrigee'||e.statut==='notes_envoyees')?'cloturee':'envoyee',bareme:bar,enCours:enc,soumissions:soum}); });
   return out;
  }
  /* question dans la fenêtre de correction du formateur : réponse typée, réponse attendue, points prérenseignés si correction automatique */
@@ -50840,6 +50884,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
    +'<div class="be-corr-pts"><label>Points obtenus <input type="text" inputmode="decimal" data-cf="obtenu" value="'+esc(ob!==''?String(ob):'')+'"></label><label>Max <input type="text" inputmode="decimal" data-cf="max" value="'+esc(mx!==''?String(mx):'')+'"></label></div>'
    +'<div class="field"><label>Commentaire</label><textarea rows="2" data-cf="commentaire">'+esc(cor.commentaire||'')+'</textarea></div></div>';
  }
+ document.addEventListener('change',function(ev){ var f=ev.target; if(!f||f.id!=='efFile'||!f.closest||!f.closest('.evlRoot')) return; var file=f.files&&f.files[0]; if(!file||!RCID) return; if(file.size>12e6){ miniAlert('Fichier trop gros (12 Mo au plus).'); return; } var evId=RCID; readFileAsDataUrl(file).then(function(src){ var e=evF(evId); if(!e) return; EF().deposerCopie(e,meId(),{name:file.name,src:src},nowIso()); save(); rafraichir(e,true); toast('Copie déposée.'); recap(evId); }); f.value=''; });
  /* ---------- actions ---------- */
  document.addEventListener('click',function(ev){
   var eyeB=ev.target.closest&&ev.target.closest('[data-evl-eye]');
@@ -50872,7 +50917,8 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
    ef_corriger:function(){ evalCorriger(id); }, ef_copie:function(){ var x=id.split('|'); evalCopie(x[0],x[1]); },
    ef_calc:function(){ var e=evF(CO.id); if(!e) return; var l=lireCopie(e), n=EF().noteDepuis(l.tot.obtenu,l.tot.max,e.bareme), f=document.getElementById('efNote'); if(f&&n!=null){ f.value=String(n).replace('.',','); delete f.dataset.manuel; } var t=document.getElementById('efTot'); if(t) t.textContent=String(l.tot.obtenu).replace('.',',')+' / '+String(l.tot.max).replace('.',','); },
    ef_noter:function(){ if(noterCopie()) evalCorriger(CO.id); }, ef_csv:function(){ csvTelecharger(id); }, ef_copier:function(){ csvCopier(id); }, ef_publier:function(){ evalPublier(id); },
-   ef_recap:function(){ recap(id); }, ef_resultat:function(){ voirResultat(id); }, ef_jouer:function(){ var x=id.split('|'); jouer(x[0],x[1]); }, ef_retoureleve:function(){ if(api().eleve) api().eleve(id); },
+   ef_fichier:function(){ var x=id.split('|'), e=evF(x[0]), c=e&&EF().copie(e,x[1],false), f=c&&c.fichiers&&c.fichiers[+x[2]]; if(f&&window.beOpenPjViewer) window.beOpenPjViewer(f); },
+   ef_copiedepot:function(){ var f=document.getElementById('efFile'); if(f) f.click(); }, ef_recap:function(){ recap(id); }, ef_resultat:function(){ voirResultat(id); }, ef_jouer:function(){ var x=id.split('|'); jouer(x[0],x[1]); }, ef_retoureleve:function(){ if(api().eleve) api().eleve(id); },
    p_prec:function(){ garder(); if(P.fin){ P.fin=false; P.i=questionsP().length-1; } else if(P.i>0) P.i--; rendreP(); },
    p_suiv:function(){ garder(); var n=questionsP().length; if(P.i<n-1) P.i++; else P.fin=true; rendreP(); },
    p_fermer:function(){ garder(); retourRecap(); },

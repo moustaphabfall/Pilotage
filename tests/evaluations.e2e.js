@@ -37,11 +37,9 @@ const LEC={message:'six questions lues',questions:[
  await p.fill('#evlT','Contrôle béton'); await p.click('[data-evl="dep_ok"]'); await p.waitForTimeout(300);
  let ev=await p.evaluate(()=>state.evaluations.filter(e=>e.sessionId==='S1').map(e=>({nom:e.nom,pj:e.pj&&e.pj.name,date:e.dateDepot,vis:e.visibleEleves})));
  ok(ev.length===1&&ev[0].nom==='Contrôle béton'&&ev[0].pj==='controle-beton.png'&&/^\d{4}-\d{2}-\d{2}$/.test(ev[0].date)&&ev[0].vis===true,'questionnaire déposé '+JSON.stringify(ev));
- const lst=await p.evaluate(()=>{ const t=document.querySelector('.evlIt'); return {txt:t.innerText,btns:[...t.querySelectorAll('.evlIcB')].map(b=>b.getAttribute('aria-label')),eye:!!t.querySelector('.evlEye'),frame:!!t.querySelector('.evlIcF')}; });
- ok(lst.eye&&lst.frame&&/Contrôle béton/.test(lst.txt)&&/Dépôt/.test(lst.txt)&&/controle-beton\.png/.test(lst.txt),'ligne : œil, icône en cadre, titre, date, pièce jointe');
+ const lst=await p.evaluate(()=>{ const t=document.querySelector('.cpjLg'); return {txt:t.innerText,btns:[...t.querySelectorAll('.cpjIc')].map(b=>b.getAttribute('aria-label'))}; });
+ ok(/Contrôle béton/.test(lst.txt)&&/Dépôt/.test(lst.txt)&&/controle-beton\.png/.test(lst.txt),'ligne compacte : titre, date, pièce jointe');
  ok(lst.btns.includes('Ouvrir l’image')&&lst.btns.includes('Télécharger')&&lst.btns.includes('Transformer en questionnaire'),'boutons Ouvrir, Télécharger, Transformer '+lst.btns.join('|'));
- ok(await p.evaluate(()=>[...document.querySelectorAll('.evlRow')].every(r=>r.querySelectorAll('.evlIcB').length<=3)),'trois boutons au plus par ligne');
- await p.click('.evlEye'); ok(await p.evaluate(()=>document.querySelector('.evlB').hidden),'œil replie'); await p.click('.evlEye');
  /* 2. transformation : appel sans fuite, serveur absent, exemple */
  await p.click('[data-evl="transformer"]'); await p.waitForTimeout(200);
  ok(await p.evaluate(()=>/Seuls le texte extrait et des images réduites sont envoyés/.test(document.body.innerText)&&/effacées/.test(document.body.innerText)),'ligne de confidentialité');
@@ -90,7 +88,7 @@ const LEC={message:'six questions lues',questions:[
  const comme=(p,id,adm)=>p.evaluate(([id,adm])=>{ window.PILOTAGE_USER={id:id,nom:'Élève '+id}; window.paIsAdmin=()=>adm; window.PILOTAGE_PROJET=Object.assign({},window.PILOTAGE_PROJET,{fonction:adm?'Formateur':'Élève stagiaire'}); },[id,adm]);
  const st=(p)=>p.evaluate(()=>state.evalSessions.map(e=>e.statut));
  await p.evaluate(()=>{ state.sessionsFormation[0].eleveIds=[]; }); await evAdmin(p);
- ok(await p.evaluate(()=>/Nouvelle évaluation/.test(document.body.innerText)),'bouton Nouvelle évaluation');
+ ok(await p.evaluate(()=>/Créer une évaluation/.test(document.body.innerText)&&/Envoyer l’évaluation|Créer une évaluation/.test(document.body.innerText)),'bouton Créer une évaluation');
  await p.click('[data-evl="ef_nouvelle"]'); await p.waitForTimeout(150);
  ok(await p.evaluate(()=>document.querySelectorAll('[data-efq]').length===1),'seuls les questionnaires validés sont proposés');
  await p.click('[data-evl="ef_save"]'); ok(await p.evaluate(()=>!document.getElementById('efE').hidden),'titre requis'); await p.fill('#efT','Évaluation finale'); await p.click('[data-evl="ef_save"]'); ok(await p.evaluate(()=>!document.getElementById('efE').hidden),'questionnaire requis');
@@ -157,7 +155,7 @@ const LEC={message:'six questions lues',questions:[
  await p.evaluate(()=>{ window.__cp=null; Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:t=>{ window.__cp=t; return Promise.resolve(); }}}); }); await p.click('[data-evl="ef_copier"]'); await p.waitForTimeout(150);
  ok(await p.evaluate(()=>/Élève\tÉtat\tNote/.test(window.__cp)&&/Moyenne\t\t15,5/.test(window.__cp)&&/absent \/ non rendu/.test(window.__cp)),'tableau copiable');
  /* publication */
- await p.click('[data-evl="ef_publier"]'); await p.waitForTimeout(150); await okAlerte(p); await p.waitForTimeout(250);
+ await p.click('[data-evl="ef_publier"]'); await p.waitForTimeout(150); ok(await p.evaluate(()=>/1 élève\(s\) n’ont pas de note/.test(document.getElementById('miniPromptMsg').textContent)),'élève sans note signalé avant l’envoi des notes'); await okAlerte(p); await p.waitForTimeout(250);
  ok(await p.evaluate(()=>state.evalSessions[0].copies.u1.resultat&&state.evalSessions[0].copies.u1.resultat.note===15.5&&!state.evalSessions[0].copies.u2.resultat),'publication de la seule copie notée');
  await comme(p,'u1',false); await p.evaluate(()=>__beEvalApi.eleve('S1')); await p.waitForTimeout(200);
  ok(await p.evaluate(()=>/Correction disponible — note : 15,5 \/ 20/.test(document.querySelector('.evlRoot').innerText)),'élève : note visible après publication'); await p.click('[data-evl="ef_resultat"]'); await p.waitForTimeout(200);
@@ -176,10 +174,39 @@ const LEC={message:'six questions lues',questions:[
  await p.evaluate(()=>{ const EF=window.EvalFlux, e=EF.creer({sessionId:'S1',titre:'Date',questionnaireIds:['QA'],dateLimite:'2020-01-01T00:00'}); state.evalSessions.push(e); EF.envoyer(e,['u1','u2'],state,new Date().toISOString()); window.paIsAdmin=()=>true; evlUi.evalsAdmin('S1'); }); await p.waitForTimeout(250);
  ok((await st(p))[1]==='cloturee'&&await p.evaluate(()=>state.evalSessions[1].cloturePar==='date'),'clôture à la date limite');
  ok(errs.length===0,'aucune erreur de page (clôtures) '+errs.join('|')); await p.close();
+ /* ---------- correction sans copie (papier, oral), préparée avant la clôture, notes envoyées à tous ---------- */
+ ({p,errs}=await neuf(1100)); await p.evaluate(l=>{ state.evaluations=[{id:'QA',sessionId:'S1',nom:'Q papier',dateDepot:'2026-01-01',questions:[{id:'q0',type:'ouverte_longue',texte:'Dites.',statut:'accepte',corrige:{texte:'SECRET-ATTENDU'}}],questionnaire:{valide:true},soumissions:[]}]; state.sessionsFormation[0].eleveIds=['u1','u2']; const EF=window.EvalFlux, e=EF.creer({sessionId:'S1',titre:'Sur papier',questionnaireIds:['QA']}); state.evalSessions=[e]; EF.envoyer(e,['u1','u2'],state,new Date().toISOString()); },LEC);
+ await comme(p,'t',true); await evAdmin(p); ok(await p.evaluate(()=>/Préparer la correction/.test(document.querySelector('.evlRoot').innerText)),'« Préparer la correction » avant la clôture');
+ await p.click('[data-evl="ef_corriger"]'); await p.waitForTimeout(200); ok(await p.evaluate(()=>/Préparer la correction/.test(document.querySelector('.evlRoot').innerText)&&/pas encore clôturée/.test(document.querySelector('.evlRoot').innerText)),'écran de préparation de la correction');
+ await p.click('[name=efB][value="20"]'); await p.waitForTimeout(100); await p.click('[data-evl="ef_copie"]'); await p.waitForTimeout(250);
+ ok(await p.evaluate(()=>/Aucune copie rendue en ligne/.test(document.querySelector('.evlRoot').innerText)),'élève sans copie : correction possible, message clair');
+ await p.fill('#efNote','14'); await p.fill('#efCom','Oral réussi'); await p.click('[data-evl="ef_noter"]'); await p.waitForTimeout(250);
+ ok((await st(p))[0]==='envoyee','correction préparée avant clôture : l’état ne change pas'); ok(await p.evaluate(()=>state.evalPrive.corrections[state.evalSessions[0].id].u1.note===14),'note préparée enregistrée');
+ await p.evaluate(()=>{ window.EvalFlux.cloturer(state.evalSessions[0],new Date().toISOString()); evlUi.evalsAdmin('S1'); }); await p.waitForTimeout(200); await p.click('[data-evl="ef_corriger"]'); await p.waitForTimeout(250);
+ ok((await st(p))[0]==='a_corriger','clôturée puis À corriger à l’ouverture de la correction');
+ ok(await p.evaluate(()=>[...document.querySelectorAll('.evlRoot [data-evl="ef_copie"]')].length===2),'un bouton de correction pour chaque élève, même sans copie');
+ await p.evaluate(()=>{ document.querySelectorAll('[data-evl="ef_copie"]')[1].click(); }); await p.waitForTimeout(250); await p.fill('#efNote','9,5'); await p.click('[data-evl="ef_noter"]'); await p.waitForTimeout(250);
+ ok((await st(p))[0]==='corrigee','toutes les notes saisies sans aucune copie : Corrigée');
+ await p.click('[data-evl="ef_publier"]'); await p.waitForTimeout(150); ok(await p.evaluate(()=>/Toutes les notes sont saisies/.test(document.getElementById('miniPromptMsg').textContent)),'aucune note manquante annoncée'); await okAlerte(p); await p.waitForTimeout(250);
+ ok((await st(p))[0]==='notes_envoyees','statut final Notes envoyées'); ok(await p.evaluate(()=>/Notes envoyées/.test(document.querySelector('.evlSt')?document.querySelector('.evlSt').innerText:document.querySelector('.evlRoot').innerText)),'statut Notes envoyées visible');
+ await comme(p,'u1',false); await p.evaluate(()=>__beEvalApi.eleve('S1')); await p.waitForTimeout(200);
+ ok(await p.evaluate(()=>/Votre note est disponible/.test(document.querySelector('.evlRoot').innerText)&&/14 \/ 20/.test(document.querySelector('.evlRoot').innerText)),'élève 1 : notification et note'); await p.click('[data-evl="ef_resultat"]'); await p.waitForTimeout(150);
+ ok(await p.evaluate(()=>{ const x=document.querySelector('.evlRoot').innerText; return /Oral réussi/.test(x)&&!/9,5/.test(x)&&!/SECRET-ATTENDU/.test(x); }),'élève 1 : sa note et son commentaire, jamais ceux des autres ni le corrigé');
+ await comme(p,'u2',false); await p.evaluate(()=>__beEvalApi.eleve('S1')); await p.waitForTimeout(200); ok(await p.evaluate(()=>/9,5 \/ 20/.test(document.querySelector('.evlRoot').innerText)&&!/14 \/ 20/.test(document.querySelector('.evlRoot').innerText)),'élève 2 : seulement sa note');
+ /* copie déposée par l'élève et ouverte par le formateur */
+ await p.evaluate(()=>{ const EF=window.EvalFlux, e=EF.creer({sessionId:'S1',titre:'Copie fichier',questionnaireIds:['QA']}); state.evalSessions.push(e); EF.envoyer(e,['u1','u2'],state,new Date().toISOString()); });
+ await comme(p,'u1',false); await p.evaluate(()=>{ evlUi.recap(state.evalSessions[1].id); }); await p.waitForTimeout(200); ok(await p.evaluate(()=>/Déposer ma copie/.test(document.querySelector('.evlRoot').innerText)),'élève : bouton Déposer ma copie');
+ await p.setInputFiles('#efFile',{name:'ma-copie.png',mimeType:'image/png',buffer:PNG}); await p.waitForTimeout(500);
+ ok(await p.evaluate(()=>{ const c=state.evalSessions[1].copies.u1; return c.fichiers&&c.fichiers[0].name==='ma-copie.png'&&c.rendueLe; }),'copie déposée et rendue');
+ await comme(p,'t',true); await p.evaluate(()=>{ state.evalSessions[1].statut='a_corriger'; state.evalSessions[1].bareme='20'; evlUi.evalsAdmin('S1'); }); await p.waitForTimeout(200);
+ await p.evaluate(()=>{ document.querySelectorAll('.evlIt[data-efid]')[0]; }); 
+ const eid2=await p.evaluate(()=>state.evalSessions[1].id); await p.evaluate(id=>{ document.querySelector('[data-efid="'+id+'"] [data-evl="ef_corriger"]').click(); },eid2); await p.waitForTimeout(250); await p.evaluate(()=>{ document.querySelector('[data-evl="ef_copie"]').click(); }); await p.waitForTimeout(250);
+ ok(await p.evaluate(()=>/Ouvrir la copie : ma-copie\.png/.test(document.querySelector('.evlRoot').innerText)),'formateur : copie déposée ouvrable');
+ ok(errs.length===0,'aucune erreur de page (papier) '+errs.join('|')); await p.close();
  /* ---------- migration des anciens envois ---------- */
  ({p,errs}=await neuf(820)); await p.evaluate(()=>{ state.evaluations=[{id:'QL',sessionId:'S1',nom:'Ancien envoi',statut:'cloturee',dateDebut:'2026-01-01T08:00',dateFin:'2026-01-02T08:00',bareme:'20',questions:[{id:'q1',type:'ouverte_longue',texte:'Dites.',statut:'accepte'}],questionnaire:{valide:true},soumissions:[{eleveId:'u1',reponses:{q1:'Réponse ancienne'},soumisLe:'2026-01-01T09:00:00.000Z',correction:{q1:{obtenu:3,max:4,commentaire:'ok'}},noteGlobale:15,statutCorrection:'corrigee',publiee:true}]}]; state.sessionsFormation[0].eleveIds=['u1']; });
  await evAdmin(p); await p.waitForTimeout(250);
- ok(await p.evaluate(()=>/Ancien envoi/.test(document.querySelector('.evlRoot').innerText)&&/Corrigée/.test(document.querySelector('.evlSt').innerText)),'ancien envoi migré : évaluation Corrigée');
+ ok(await p.evaluate(()=>/Ancien envoi/.test(document.querySelector('.evlRoot').innerText)&&/Notes envoyées/.test(document.querySelector('.evlSt').innerText)),'ancien envoi migré : notes déjà envoyées');
  ok(await p.evaluate(()=>state.evaluations[0].soumissions[0].reponses.q1==='Réponse ancienne'&&state.evalSessions[0].copies.u1.q.QL.reponses.q1==='Réponse ancienne'&&state.evalPrive.corrections['EF-QL'].u1.note===15),'réponses et corrections gardées');
  await comme(p,'u1',false); await p.evaluate(()=>__beEvalApi.eleve('S1')); await p.waitForTimeout(200); ok(await p.evaluate(()=>/Correction disponible — note : 15/.test(document.querySelector('.evlRoot').innerText)),'élève : note publiée conservée');
  ok(errs.length===0,'aucune erreur de page (migration) '+errs.join('|')); await p.close();
