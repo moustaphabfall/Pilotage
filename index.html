@@ -40141,7 +40141,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    ov.addEventListener('mousedown',e=>{ ov._down=(e.target===ov); });
    let err=null;
    const draw=()=>{ ov.innerHTML='<div class="pcFeuCard dvCard acCfCard"><h4 id="acCfT">Valeurs prudentes à confirmer</h4><p class="dvWhat">Ces valeurs sont retenues par défaut, du côté de la sécurité. Confirmez-les ou saisissez les vôtres : la note indiquera « confirmé par l\'ingénieur » ou « saisi ».</p>'
-     +'<div class="acCfTab">'+acCfRowsHtml(dp,err)+'</div><div class="dvBtns">'+acCfIb('check','Je confirme','data-cf-x="ok"')+acCfIb('close','Annuler','data-cf-x="no"')+'</div></div>'; };
+     +'<div class="acCfTab">'+acCfRowsHtml(dp,err)+'</div><div class="dvBtns">'+acCfIb('check','Je confirme','data-cf-x="ok"')+(window.dimAcAsk?acCfIb('chat','IA','data-cf-x="ia"'):'')+acCfIb('close','Annuler','data-cf-x="no"')+'</div></div>'; };
    draw();
    ov.addEventListener('change',e=>{ const el=e.target.closest('[data-cf]'); if(!el) return; const k=el.dataset.cf, sp=AC_ADV.find(x=>x.k===k); if(!sp) return; err=null; const d0=acDef(dp,sp);
     if(sp.t==='sel'){ if(el.value===String(d0)) delete dp[k]; else dp[k]=el.value; }
@@ -40151,6 +40151,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    ov.addEventListener('click',e=>{ const r=e.target.closest('[data-cf-ret]'); if(r){ delete dp[r.dataset.cfRet]; err=null; try{ persist(); }catch(_){ } draw(); return; }
     const b=e.target.closest('[data-cf-x]'); if(!b){ if(e.target===ov&&ov._down) ov.remove(); return; }
     if(b.dataset.cfX==='no'){ ov.remove(); return; }
+    if(b.dataset.cfX==='ia'){ const sps=acCautSpecs(dp); window.dimAcAsk({pfx:'ac',task:id,dp,texte:'Valeurs prudentes retenues par défaut : '+sps.map(x=>x.lbl).join(' ; '),cles:sps.map(x=>x.k),apply:vals=>{ Object.keys(vals).forEach(k=>{ const sp=AC_ADV.find(x=>x.k===k); if(!sp) return; const d0=acDef(dp,sp); if(sp.t==='sel'){ if(String(vals[k])===String(d0)) delete dp[k]; else dp[k]=vals[k]; } else if(+vals[k]===+d0) delete dp[k]; else dp[k]=vals[k]; }); try{ persist(); }catch(_){ } err=null; draw(); }}); return; }
     if(err) return;
     dp.acConfirm={date:(typeof todayISO==='function'?todayISO():''),sig:acCautSig(dp),keys:acCautSpecs(dp).map(x=>x.k)}; try{ persist(); }catch(_){ }
     ov.remove(); try{ acRender(id); }catch(_){ } onOk(); });
@@ -48836,7 +48837,7 @@ document.head.appendChild(st);
  const safe=s=>String(s).replace(/[^A-Za-z0-9_]/g,'_');
  const INT=()=>window.dimValidInt||{};
  const KIND2PFX=()=>INT().KIND2PFX||{};
- const SENS_KINDS=['grue','pont','precontrainte','assemblage','acier','rideau'];
+ const SENS_KINDS=['gr','bp','pr','ac','stl','rp'];
  const CONSEIL='Il est conseillé de saisir vous-même cette valeur : la proposition de l\'assistant n\'est pas vérifiée par un moteur.';
  /* ---------- Modèle ---------- */
  const rd=dp=>(dp&&dp.aconf&&typeof dp.aconf==='object')?dp.aconf:{};
@@ -48883,6 +48884,7 @@ document.head.appendChild(st);
     const full=norm(el.textContent), tx=norm(b?full.slice(bt.length):full).replace(/^[:\s]+/,''); if(!tx) return;
     const id=idText(pfx,tx); const cles=[...new Set(rows.filter(r=>r.sp&&lblTok(tx,r.label)).map(r=>r.sp.k))];
     let specId=null; try{ const SPECS=(window.dimValidSpecs||{})[pfx]||[]; const m=/^Méthode simplifiée non validée par l'ingénieur : /.exec(tx); if(m){ const s2=SPECS.find(s=>tx.indexOf(m[0]+s.titre)===0); if(s2) specId=s2.id; } }catch(_){ }
+    if(/(confirmées?|confirmés?|validées?|validés?) par l.ingénieur le \d/i.test(tx)){ el.setAttribute('data-ac-id',id); el.setAttribute('data-ac-k','ext'); el.setAttribute('data-ac-st','c'); el.setAttribute('data-ac-tx',tx); return; }
     const e=S[id]; el.setAttribute('data-ac-id',id); el.setAttribute('data-ac-k',specId?'spec':'t'); el.setAttribute('data-ac-tx',tx); el.setAttribute('data-ac-cles',cles.join(',')); if(specId) el.setAttribute('data-ac-spec',specId);
     items.push({id,el,tx,e});
     if(e&&e.etat==='confirme'&&!specId){ el.setAttribute('data-ac-st','c'); el.classList.add('acDone'); el.innerHTML='<b>Confirmé par l\'ingénieur le '+esc(frDate(e.date))+' : </b><span class="acStrike">'+esc(tx)+'</span>'; }
@@ -48982,7 +48984,7 @@ document.head.appendChild(st);
    if(c.btn&&!c.btn.disabled){ clip('Recalcul en cours avec votre choix.'); setTimeout(()=>{ try{ c.btn.click(); }catch(_){ } },80); } },120);
  }
  /* IA : chat des méthodes (même composant et même fonction serveur), proposition appliquée seulement après acceptation */
- function iaChat(it){
+ function iaChat(it,applyHook){
   const dp=it.dp; const L=linked(it); const sens=SENS_KINDS.indexOf(it.pfx)>=0; const spec0=it.specId?((window.dimValidSpecs||{})[it.pfx]||[]).find(s=>s.id===it.specId):null;
   if(spec0){ window.dimValidInt.chat(spec0,{pfx:it.pfx,id:it.task,dp}); return; }
   const par=L.map(sp=>({cle:sp.k,nom:lbl0(sp),unite:sp.unit||'',min:sp.min,max:sp.max,valeur_actuelle:effVal(dp,sp),type:sp.t||'num'}));
@@ -48998,6 +49000,7 @@ document.head.appendChild(st);
     if(cle){ const sp=specByKey(cle,it.pfx); let v=val; if(sp&&sp.t==='num'){ v=+val; if(!isFinite(v)||(sp.min!=null&&v<sp.min)||(sp.max!=null&&v>sp.max)){ clip('La valeur proposée est hors des bornes du champ ('+fnum(sp.min)+' à '+fnum(sp.max)+(sp.unit?' '+sp.unit:'')+') : elle n\'est pas appliquée. Précisez votre demande.'); return false; } if(sp.scale){ /* valeur de l'assistant dans l'unité affichée */ v=v/sp.scale; } }
      else if(sp&&sp.t==='sel'){ if(!(sp.opts||[]).some(o=>String(o[0])===String(val))){ clip('La valeur proposée ne fait pas partie des choix du champ : elle n\'est pas appliquée.'); return false; } v=String(val); }
      else if(sp&&sp.t==='bool'){ v=(val===true||val===1||String(val)==='1'); }
+     if(applyHook){ const sp2=specByKey(cle,it.pfx); const it2=Object.assign({},it,{id:idParam(it.pfx,cle),texte:(sp2?lbl0(sp2):cle)+' : '+(sp2?fmtSp(sp2,effVal(dp,sp2)):''),cles:[cle]}); save(it2,entryOf(it2,'ia',Object.assign({valeur:{[cle]:v}},entryBase))); try{ applyHook({[cle]:v}); }catch(_){ } clip('Proposition de l\'assistant acceptée : la valeur est renseignée (saisie). Elle sera notée dans la note au prochain calcul.'); return; }
      const e1=entryOf(it,'ia',Object.assign({valeur:{[cle]:v}},entryBase)); setTimeout(()=>applyAndRecalc(it,e1,{[cle]:v}),0); return; }
     const e2=entryOf(it,'ia',Object.assign({texteProp:short((sk.nom||'Méthode proposée')+' : '+outs.map(o=>(o.nom||o.id)+' = '+fnum(o.valeur)+(o.unite?' '+o.unite:'')).join(' ; '),300)},entryBase));
     save(it,e2); clip('Proposition de l\'assistant enregistrée dans la note : elle n\'est pas appliquée au calcul (aucun paramètre lié). Touchez « Mettre à jour la note ».'); acScan(true); }};
@@ -49008,7 +49011,7 @@ document.head.appendChild(st);
  const chipHtml=(open,txt,note)=>'<button type="button" class="acChip dimLockExempt" data-ac-do="toggle" data-dimui="1" aria-expanded="'+(open?'true':'false')+'" aria-label="'+esc(T('Afficher les actions'))+'">'+(window.dimBiSvg?window.dimBiSvg(open?'eye':'eyeoff'):'')+'<span>'+esc(T(txt))+'</span></button>'+(note?'<small class="acNote">'+esc(T(note))+'</small>':'');
  function decorateNote(doc){
   const pfx=doc.getAttribute('data-ac-mod'), task=doc.getAttribute('data-ac-task'); const dp=dpOf(pfx,task);
-  doc.querySelectorAll('[data-ac-id]:not([data-acd])').forEach(el=>{ el.setAttribute('data-acd','1'); const st=el.getAttribute('data-ac-st'); const kind=el.getAttribute('data-ac-k');
+  doc.querySelectorAll('[data-ac-id]:not([data-acd])').forEach(el=>{ el.setAttribute('data-acd','1'); const st=el.getAttribute('data-ac-st'); const kind=el.getAttribute('data-ac-k'); if(kind==='ext') return;
    const ro=(el.getAttribute('data-ac-cles')||'').split(',').filter(Boolean).length&&(el.getAttribute('data-ac-cles')||'').split(',').filter(Boolean).every(k=>{ const sp=specByKey(k,pfx); return sp&&sp.ro; });
    if(kind==='row'){ const cells=[...el.cells]; const org=cells[cells.length-1]; if(!org) return;
     if(st==='c'){ const w=document.createElement('span'); w.className='acUi acRevoke'; w.innerHTML='<button type="button" class="acChip dimLockExempt" data-ac-do="revoke" data-dimui="1">'+(window.dimBiSvg?window.dimBiSvg('close'):'')+'<span>'+esc(T('Retirer'))+'</span></button>'; org.appendChild(w); return; }
@@ -49057,6 +49060,8 @@ document.head.appendChild(st);
   if(w==='confirm') doConfirm(it); else if(w==='revoke') doRevoke(it); else if(w==='propose'){ if(it.specId){ doConfirm(it); return; } proposeWindow(it); } else if(w==='ia') iaChat(it);
  },true);
  try{ new MutationObserver(()=>acScan(false)).observe(document.body,{childList:true,subtree:true}); }catch(_){ }
+ /* IA depuis une fenêtre de valeurs (assemblages…) : o={pfx,task,dp,texte,cles,apply(vals)} */
+ window.dimAcAsk=function(o){ try{ const it={id:idText(o.pfx,o.texte),pfx:o.pfx,task:o.task,dp:o.dp,texte:o.texte,cles:(o.cles||[]).filter(Boolean),k:'win',specId:null,el:null}; iaChat(it,o.apply); }catch(e){ console.warn('dimAcAsk',e); } };
  window.dimAcScan=acScan; window.dimAcModel={rd,wr,idText,idParam,specByLabel,specByKey,effVal,applied,propTxt};
  const css=document.createElement('style'); css.id='dimAcCss';
  css.textContent='.acRow{margin:2px 0 10px}.acRow .dvBtns,.acTray .dvBtns{margin:6px 0 2px;max-width:440px;margin-inline-start:auto}.acBtns .dimIB{border-color:var(--ds-accent,#FFC400)!important}.acBar{border:1.5px solid var(--ds-accent,#FFC400);border-radius:12px;padding:8px 12px;margin:0 0 12px}.acBar .pcNote{margin:0 0 4px}'
