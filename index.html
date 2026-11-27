@@ -920,7 +920,7 @@ body.db-resizing{cursor:col-resize; user-select:none;}
 .obj-tab{border-collapse:collapse;width:100%;min-width:560px;font-size:13px;}
 .obj-tab th{background:transparent!important;text-align:left;font-size:12px;color:var(--ink-soft);padding:4px 6px;border-bottom:1px solid var(--line);}
 .obj-tab td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle;}
-.obj-tab input{padding:5px 6px;font-size:14px;} .obj-tab input[type=number]{max-width:80px;} .obj-tab input[type=date]{max-width:170px;}
+.obj-tab input{padding:5px 6px;font-size:14px;} .obj-tab :is(input[type=number],input[data-dec]){max-width:80px;} .obj-tab input[type=date]{max-width:170px;}
 .obj-tab small{display:block;color:var(--ink-soft);font-size:11px;margin-top:2px;}
 .obj-bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;min-width:90px;} .obj-bar i{display:block;height:100%;background:var(--moss);border-radius:6px;}
 /* Thèmes pastel */
@@ -6651,6 +6651,34 @@ function dimProposerDocs(docNote,docPlan){
 const DIM_COMPACT_MODE='calcul';
 function dimFicheRoot(){ const mb=document.getElementById('modalBody'); return mb?mb.querySelector('.pjBeamRoot,.pjPoteauRoot,.pjDalleRoot,.pjSemelleRoot,.pjPieuRoot,.pjGeoRoot,.pjVoileRoot,.pjMixteRoot,.pjPortiqueRoot,.pjMurRoot,.pjRsRoot,.pjAssembRoot,.pjPrecRoot,.pjAcierRoot,.pjDallageRoot,.pjRideauRoot,.pjMassifRoot,.pjEscRoot,.pjSectionRoot,.pjPontRoot'):null; }
 
+/* Virgule décimale partout dans les fiches : fonction commune dimFr(n,d) pour les textes ; passe unique sur la fiche affichée pour (1) les champs numériques, affichés avec la virgule mais lus avec le point par tout le code existant, (2) les nombres décimaux et exposants (m², m³) restés dans les textes. Aucun module n'a sa copie. */
+window.dimFr=function(n,d){ const v=+n; if(!isFinite(v)) return ''; return (d==null?String(+v.toFixed(6)):v.toFixed(d)).replace('.',','); };
+(function(){
+ const VD=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
+ const SUP={'2':'²','3':'³'};
+ const RX=/(?<![\d.,])(\d+)\.(\d+)(?![\d.])/g, RU=/(?<![\w])(kN\/m|mm|cm|m)([23])(?![\w²³])/g;
+ function fixText(t){ return t.replace(RX,'$1,$2').replace(RU,(m,a,b)=>a+SUP[b]); }
+ const SKIP='script,style,textarea,input,select,option,pre,code,[contenteditable],[data-nofr],.chatMsg,.iaMsg';
+ function fixTree(root){
+  if(!root) return; const base=root.nodeType===3?root.parentElement:root; if(!base||!base.closest||!base.closest('#modalBody')||base.closest(SKIP)) return;
+  const nodes=[]; if(root.nodeType===3) nodes.push(root); else { const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>(n.parentElement&&n.parentElement.closest(SKIP))?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT}); let n; while((n=w.nextNode())) nodes.push(n); }
+  nodes.forEach(n=>{ const a=n.nodeValue; if(!a||!/[\d]\.\d|[23]/.test(a)) return; const b=fixText(a); if(b!==a) n.nodeValue=b; });
+ }
+ function stepKey(e){ const el=e.currentTarget; if(e.key!=='ArrowUp'&&e.key!=='ArrowDown') return; e.preventDefault(); const st=parseFloat(el.getAttribute('step')); const step=st>0?st:1, mn=el.getAttribute('min'), mx=el.getAttribute('max'); let v=parseFloat(el.value); if(!isFinite(v)) v=0; v+=(e.key==='ArrowUp'?1:-1)*step; v=+v.toFixed(10); if(mn!==''&&mn!=null&&v<+mn) v=+mn; if(mx!==''&&mx!=null&&v>+mx) v=+mx; el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }
+ function decInput(el){
+  if(el.__dec||el.getAttribute('type')!=='number') return; el.__dec=true; const raw=VD.get.call(el);
+  el.setAttribute('type','text'); el.setAttribute('inputmode','decimal'); el.setAttribute('data-dec','1'); el.setAttribute('autocomplete','off');
+  Object.defineProperty(el,'value',{configurable:true,get(){ const s=String(VD.get.call(this)).trim().replace(',','.'); return (s===''||!isFinite(Number(s)))?'':s; },set(v){ VD.set.call(this,v==null?'':String(v).replace('.',',')); }});
+  Object.defineProperty(el,'type',{configurable:true,get(){ return 'number'; }});
+  VD.set.call(el,String(raw).replace('.',','));
+  el.addEventListener('beforeinput',e=>{ if(e.data&&!/^[0-9.,+\-eE]+$/.test(e.data)) e.preventDefault(); });
+  el.addEventListener('keydown',stepKey);
+ }
+ function scan(root){ if(!root||!root.querySelectorAll) return; if(root.matches&&root.matches('input[type=number]')) decInput(root); root.querySelectorAll('input[type=number]').forEach(decInput); }
+ let raf=0, q=[];
+ function run(){ raf=0; const L=q; q=[]; L.forEach(n=>{ if(!n.isConnected) return; if(n.nodeType===1){ if(n.closest&&n.closest('#modalBody')&&!n.closest('.dimZOv,.fplFs')){ scan(n); fixTree(n); } } else if(n.nodeType===3) fixTree(n); }); }
+ try{ new MutationObserver(ms=>{ let any=false; ms.forEach(m=>{ if(m.type==='childList') m.addedNodes.forEach(n=>{ if(n.nodeType===1||n.nodeType===3){ q.push(n); any=true; } }); else if(m.type==='characterData'){ q.push(m.target); any=true; } }); if(any&&!raf) raf=requestAnimationFrame(run); }).observe(document.documentElement,{childList:true,subtree:true,characterData:true}); }catch(_){ }
+})();
 /* Bloc collant (titre + schéma) : s'il occupe plus de 60 % de la hauteur visible de la fiche, il cesse d'être collant (sinon le bas du bloc, par exemple « Ajouter une charge » et les réglages de bords, reste hors d'atteinte et la fiche ne défile plus) ; retourne la hauteur à réserver en haut du défilement */
 function dimStkFit(mb,st){ if(!st) return 0; if(st.classList.contains('pcStkOff')) st.classList.remove('pcStkOff'); const h=st.getBoundingClientRect().height, off=h>Math.max(220,(mb.clientHeight||window.innerHeight)*0.6); if(off) st.classList.add('pcStkOff'); return off?0:Math.ceil(h+8); }
 /* Tous les modules : le haut du défilement de la fiche commence sous le schéma collant (un champ amené dans la vue n'est jamais caché sous lui) */
@@ -21007,7 +21035,7 @@ html:not([dir=rtl]) .pcFrm>.pcZoomTools{right:6px;left:auto}
 .pcPanel{margin-bottom:10px}
 .pcPanel h5{margin:0 0 10px;font:700 14px system-ui,sans-serif}
 .pcPanel label{display:block;margin:0 0 10px;font:600 12.5px system-ui,sans-serif}
-.pcPanel input[type=text],.pcPanel input[type=number],.pcPanel select{display:block;margin-top:4px;width:100%;max-width:220px}
+.pcPanel input[type=text],.pcPanel :is(input[type=number],input[data-dec]),.pcPanel select{display:block;margin-top:4px;width:100%;max-width:220px}
 .pcInline{display:inline-flex;align-items:center;gap:6px;font-weight:400}
 .pcInline input{display:inline-block!important;width:auto!important;max-width:none!important;margin-top:0!important}
 .pcInline label{display:inline-flex!important;align-items:center;gap:4px;margin:0!important;font-weight:400!important}
@@ -21018,7 +21046,7 @@ html:not([dir=rtl]) .pcFrm>.pcZoomTools{right:6px;left:auto}
 .pcWarn{margin:0 0 10px;padding-left:18px;font-size:var(--ds-fs-md);color:var(--ds-danger)}
 .pcAp{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line)}
 .pcAp label{display:inline-flex!important;align-items:center;gap:6px;margin:0!important}
-.pcAp input[type=number]{display:inline-block!important;margin-top:0!important}
+.pcAp :is(input[type=number],input[data-dec]){display:inline-block!important;margin-top:0!important}
 .pcChgRow{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;padding:10px 0;border-bottom:1px solid var(--line)}
 .pcFld{display:flex;flex-direction:column;gap:3px;min-width:116px}
 .pcFldLbl{font-size:10.5px;color:var(--ink-soft,#777);white-space:nowrap}
@@ -21190,8 +21218,8 @@ details>summary .dimEye{margin-block:4px}
 .pjBeamRoot .pjBeam-top .back-x{min-width:44px;min-height:44px;font-size:28px;line-height:1}
 .pjBeamRoot .pcPanel h5{margin:0 0 12px;font:700 var(--ds-fs-h2)/1.25 var(--ds-font-title);color:var(--ds-ink)}
 .pjBeamRoot .pcPanel label{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body)}
-.pjBeamRoot .pcPanel label input[type=number]{width:140px;margin-top:0}
-.pjBeamRoot .pcPanel select,.pjBeamRoot .pcPanel input[type=text],.pjBeamRoot .pcPanel input[type=number]{min-height:44px;font-size:var(--ds-fs-input)}
+.pjBeamRoot .pcPanel label :is(input[type=number],input[data-dec]){width:140px;margin-top:0}
+.pjBeamRoot .pcPanel select,.pjBeamRoot .pcPanel input[type=text],.pjBeamRoot .pcPanel :is(input[type=number],input[data-dec]){min-height:44px;font-size:var(--ds-fs-input)}
 .pjBeamRoot .pcPanel select{flex:1 1 100%}
 .pjBeamRoot .pcInline label{min-height:44px;margin:0;padding-right:12px}
 .pjBeamRoot .pcPanel input[type=radio],.pjBeamRoot .pcPanel input[type=checkbox]{width:20px;height:20px;margin:0 6px 0 0}
@@ -21206,8 +21234,8 @@ details>summary .dimEye{margin-block:4px}
 .pjBeamRoot .pcFormHint{font-size:var(--ds-fs-help);margin-top:10px}
 .pjBeamRoot .pcFormPanel{padding-top:18px}
 .pjBeamRoot .pcPanel .pcApChk,.pjBeamRoot .pcPanel .pcApChk b{font-size:var(--ds-fs-label)!important;font-weight:600}
-@media (min-width:601px){.pjBeamRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjBeamRoot .pcPanel>label select{width:100%;max-width:none}.pjBeamRoot .pcPanel>label input[type=number]{width:100%}.pjBeamRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
-@media (max-width:600px){.pjBeamRoot .pcFormNav .primary{width:100%}.pjBeamRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjBeamRoot .pcChgRow .pcFld{min-width:0}.pjBeamRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjBeamRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjBeamRoot .pcPanel label input[type=number]{width:120px}.pjBeamRoot .pcFldLbl{white-space:normal}}
+@media (min-width:601px){.pjBeamRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjBeamRoot .pcPanel>label select{width:100%;max-width:none}.pjBeamRoot .pcPanel>label :is(input[type=number],input[data-dec]){width:100%}.pjBeamRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
+@media (max-width:600px){.pjBeamRoot .pcFormNav .primary{width:100%}.pjBeamRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjBeamRoot .pcChgRow .pcFld{min-width:0}.pjBeamRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjBeamRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjBeamRoot .pcPanel label :is(input[type=number],input[data-dec]){width:120px}.pjBeamRoot .pcFldLbl{white-space:normal}}
 /* Fiche dalle : même échelle typographique et mêmes zones tactiles que la poutre */
 .pjDalleRoot .pcModHead{margin:0 0 6px;gap:10px;justify-content:flex-start;flex-wrap:wrap}
 .pjDalleRoot .pcModIco .illu-svg{width:34px;height:34px}
@@ -21221,8 +21249,8 @@ details>summary .dimEye{margin-block:4px}
 .pjDalleRoot .pjBeam-top .back-x{min-width:44px;min-height:44px;font-size:28px;line-height:1}
 .pjDalleRoot .pcPanel h5{margin:0 0 12px;font:700 var(--ds-fs-h2)/1.25 var(--ds-font-title);color:var(--ds-ink)}
 .pjDalleRoot .pcPanel label{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body)}
-.pjDalleRoot .pcPanel label input[type=number]{width:140px;margin-top:0}
-.pjDalleRoot .pcPanel select,.pjDalleRoot .pcPanel input[type=text],.pjDalleRoot .pcPanel input[type=number]{min-height:44px;font-size:var(--ds-fs-input)}
+.pjDalleRoot .pcPanel label :is(input[type=number],input[data-dec]){width:140px;margin-top:0}
+.pjDalleRoot .pcPanel select,.pjDalleRoot .pcPanel input[type=text],.pjDalleRoot .pcPanel :is(input[type=number],input[data-dec]){min-height:44px;font-size:var(--ds-fs-input)}
 .pjDalleRoot .pcPanel select{flex:1 1 100%}
 .pjDalleRoot .pcInline label{min-height:44px;margin:0;padding-right:12px}
 .pjDalleRoot .pcPanel input[type=radio],.pjDalleRoot .pcPanel input[type=checkbox]{width:20px;height:20px;margin:0 6px 0 0}
@@ -21237,8 +21265,8 @@ details>summary .dimEye{margin-block:4px}
 .pjDalleRoot .pcFormHint{font-size:var(--ds-fs-help);margin-top:10px}
 .pjDalleRoot .pcFormPanel{padding-top:18px}
 .pjDalleRoot .pcPanel .pcApChk,.pjDalleRoot .pcPanel .pcApChk b{font-size:var(--ds-fs-label)!important;font-weight:600}
-@media (min-width:601px){.pjDalleRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjDalleRoot .pcPanel>label select{width:100%;max-width:none}.pjDalleRoot .pcPanel>label input[type=number]{width:100%}.pjDalleRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
-@media (max-width:600px){.pjDalleRoot .pcFormNav .primary{width:100%}.pjDalleRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjDalleRoot .pcChgRow .pcFld{min-width:0}.pjDalleRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjDalleRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjDalleRoot .pcPanel label input[type=number]{width:120px}.pjDalleRoot .pcFldLbl{white-space:normal}}
+@media (min-width:601px){.pjDalleRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjDalleRoot .pcPanel>label select{width:100%;max-width:none}.pjDalleRoot .pcPanel>label :is(input[type=number],input[data-dec]){width:100%}.pjDalleRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
+@media (max-width:600px){.pjDalleRoot .pcFormNav .primary{width:100%}.pjDalleRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjDalleRoot .pcChgRow .pcFld{min-width:0}.pjDalleRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjDalleRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjDalleRoot .pcPanel label :is(input[type=number],input[data-dec]){width:120px}.pjDalleRoot .pcFldLbl{white-space:normal}}
 /* Fiche semelle : même échelle typographique et mêmes zones tactiles que la poutre */
 .pjSemelleRoot .pcModHead,
 /* Fiche semelle : même échelle typographique et mêmes zones tactiles que la poutre */
@@ -21291,14 +21319,14 @@ details>summary .dimEye{margin-block:4px}
 .pjPortiqueRoot .pcPanel label,
 .pjMurRoot .pcPanel label,
 .pjDallageRoot .pcPanel label{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body)}
-.pjSemelleRoot .pcPanel label input[type=number],
-.pjPortiqueRoot .pcPanel label input[type=number],
-.pjMurRoot .pcPanel label input[type=number],
-.pjDallageRoot .pcPanel label input[type=number]{width:140px;margin-top:0}
-.pjSemelleRoot .pcPanel select,.pjSemelleRoot .pcPanel input[type=text],.pjSemelleRoot .pcPanel input[type=number],
-.pjPortiqueRoot .pcPanel select,.pjPortiqueRoot .pcPanel input[type=text],.pjPortiqueRoot .pcPanel input[type=number],
-.pjMurRoot .pcPanel select,.pjMurRoot .pcPanel input[type=text],.pjMurRoot .pcPanel input[type=number],
-.pjDallageRoot .pcPanel select,.pjDallageRoot .pcPanel input[type=text],.pjDallageRoot .pcPanel input[type=number]{min-height:44px;font-size:var(--ds-fs-input)}
+.pjSemelleRoot .pcPanel label :is(input[type=number],input[data-dec]),
+.pjPortiqueRoot .pcPanel label :is(input[type=number],input[data-dec]),
+.pjMurRoot .pcPanel label :is(input[type=number],input[data-dec]),
+.pjDallageRoot .pcPanel label :is(input[type=number],input[data-dec]){width:140px;margin-top:0}
+.pjSemelleRoot .pcPanel select,.pjSemelleRoot .pcPanel input[type=text],.pjSemelleRoot .pcPanel :is(input[type=number],input[data-dec]),
+.pjPortiqueRoot .pcPanel select,.pjPortiqueRoot .pcPanel input[type=text],.pjPortiqueRoot .pcPanel :is(input[type=number],input[data-dec]),
+.pjMurRoot .pcPanel select,.pjMurRoot .pcPanel input[type=text],.pjMurRoot .pcPanel :is(input[type=number],input[data-dec]),
+.pjDallageRoot .pcPanel select,.pjDallageRoot .pcPanel input[type=text],.pjDallageRoot .pcPanel :is(input[type=number],input[data-dec]){min-height:44px;font-size:var(--ds-fs-input)}
 .pjSemelleRoot .pcPanel select,
 .pjPortiqueRoot .pcPanel select,
 .pjMurRoot .pcPanel select,
@@ -21355,8 +21383,8 @@ details>summary .dimEye{margin-block:4px}
 .pjPortiqueRoot .pcPanel .pcApChk,.pjPortiqueRoot .pcPanel .pcApChk b,
 .pjMurRoot .pcPanel .pcApChk,.pjMurRoot .pcPanel .pcApChk b,
 .pjDallageRoot .pcPanel .pcApChk,.pjDallageRoot .pcPanel .pcApChk b{font-size:var(--ds-fs-label)!important;font-weight:600}
-@media (min-width:601px){.pjSemelleRoot .pcPanel>label,.pjPortiqueRoot .pcPanel>label,.pjMurRoot .pcPanel>label,.pjDallageRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjSemelleRoot .pcPanel>label select,.pjPortiqueRoot .pcPanel>label select,.pjMurRoot .pcPanel>label select,.pjDallageRoot .pcPanel>label select{width:100%;max-width:none}.pjSemelleRoot .pcPanel>label input[type=number],.pjPortiqueRoot .pcPanel>label input[type=number],.pjMurRoot .pcPanel>label input[type=number],.pjDallageRoot .pcPanel>label input[type=number]{width:100%}.pjSemelleRoot .pcPanel>label>.pcInline,.pjPortiqueRoot .pcPanel>label>.pcInline,.pjMurRoot .pcPanel>label>.pcInline,.pjDallageRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
-@media (max-width:600px){.pjSemelleRoot .pcFormNav .primary,.pjPortiqueRoot .pcFormNav .primary,.pjMurRoot .pcFormNav .primary,.pjDallageRoot .pcFormNav .primary{width:100%}.pjSemelleRoot .pcChgRow,.pjPortiqueRoot .pcChgRow,.pjMurRoot .pcChgRow,.pjDallageRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjSemelleRoot .pcChgRow .pcFld,.pjPortiqueRoot .pcChgRow .pcFld,.pjMurRoot .pcChgRow .pcFld,.pjDallageRoot .pcChgRow .pcFld{min-width:0}.pjSemelleRoot .pcChgRow .pcFldLbl,.pjPortiqueRoot .pcChgRow .pcFldLbl,.pjMurRoot .pcChgRow .pcFldLbl,.pjDallageRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjSemelleRoot .pcChgRow>button,.pjPortiqueRoot .pcChgRow>button,.pjMurRoot .pcChgRow>button,.pjDallageRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjSemelleRoot .pcPanel label input[type=number],.pjPortiqueRoot .pcPanel label input[type=number],.pjMurRoot .pcPanel label input[type=number],.pjDallageRoot .pcPanel label input[type=number]{width:120px}.pjSemelleRoot .pcFldLbl,.pjPortiqueRoot .pcFldLbl,.pjMurRoot .pcFldLbl,.pjDallageRoot .pcFldLbl{white-space:normal}}
+@media (min-width:601px){.pjSemelleRoot .pcPanel>label,.pjPortiqueRoot .pcPanel>label,.pjMurRoot .pcPanel>label,.pjDallageRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjSemelleRoot .pcPanel>label select,.pjPortiqueRoot .pcPanel>label select,.pjMurRoot .pcPanel>label select,.pjDallageRoot .pcPanel>label select{width:100%;max-width:none}.pjSemelleRoot .pcPanel>label :is(input[type=number],input[data-dec]),.pjPortiqueRoot .pcPanel>label :is(input[type=number],input[data-dec]),.pjMurRoot .pcPanel>label :is(input[type=number],input[data-dec]),.pjDallageRoot .pcPanel>label :is(input[type=number],input[data-dec]){width:100%}.pjSemelleRoot .pcPanel>label>.pcInline,.pjPortiqueRoot .pcPanel>label>.pcInline,.pjMurRoot .pcPanel>label>.pcInline,.pjDallageRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
+@media (max-width:600px){.pjSemelleRoot .pcFormNav .primary,.pjPortiqueRoot .pcFormNav .primary,.pjMurRoot .pcFormNav .primary,.pjDallageRoot .pcFormNav .primary{width:100%}.pjSemelleRoot .pcChgRow,.pjPortiqueRoot .pcChgRow,.pjMurRoot .pcChgRow,.pjDallageRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjSemelleRoot .pcChgRow .pcFld,.pjPortiqueRoot .pcChgRow .pcFld,.pjMurRoot .pcChgRow .pcFld,.pjDallageRoot .pcChgRow .pcFld{min-width:0}.pjSemelleRoot .pcChgRow .pcFldLbl,.pjPortiqueRoot .pcChgRow .pcFldLbl,.pjMurRoot .pcChgRow .pcFldLbl,.pjDallageRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjSemelleRoot .pcChgRow>button,.pjPortiqueRoot .pcChgRow>button,.pjMurRoot .pcChgRow>button,.pjDallageRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjSemelleRoot .pcPanel label :is(input[type=number],input[data-dec]),.pjPortiqueRoot .pcPanel label :is(input[type=number],input[data-dec]),.pjMurRoot .pcPanel label :is(input[type=number],input[data-dec]),.pjDallageRoot .pcPanel label :is(input[type=number],input[data-dec]){width:120px}.pjSemelleRoot .pcFldLbl,.pjPortiqueRoot .pcFldLbl,.pjMurRoot .pcFldLbl,.pjDallageRoot .pcFldLbl{white-space:normal}}
 /* Bloc « Paramètres avancés ELS » (poutre et dalle) : repliable, fermé par défaut */
 .pjBeamRoot .pcEls,.pjDalleRoot .pcEls,.pjSemelleRoot .pcEls,.pjPortiqueRoot .pcEls,.pjMurRoot .pcEls,.pjDallageRoot .pcEls{margin:18px 0 0;border:1px solid var(--ds-line);border-radius:12px;padding:0 14px}
 .pjBeamRoot .pcEls>summary,.pjDalleRoot .pcEls>summary,.pjSemelleRoot .pcEls>summary,.pjPortiqueRoot .pcEls>summary,.pjMurRoot .pcEls>summary,.pjDallageRoot .pcEls>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font:700 var(--ds-fs-label)/1.3 var(--ds-font-body);color:var(--ds-ink);list-style:none}
@@ -21424,8 +21452,8 @@ details>summary .dimEye{margin-block:4px}
 .pjPoteauRoot .pjBeam-top .back-x{min-width:44px;min-height:44px;font-size:28px;line-height:1}
 .pjPoteauRoot .pcPanel h5{margin:0 0 12px;font:700 var(--ds-fs-h2)/1.25 var(--ds-font-title);color:var(--ds-ink)}
 .pjPoteauRoot .pcPanel label{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body)}
-.pjPoteauRoot .pcPanel label input[type=number]{width:140px;margin-top:0}
-.pjPoteauRoot .pcPanel select,.pjPoteauRoot .pcPanel input[type=text],.pjPoteauRoot .pcPanel input[type=number]{min-height:44px;font-size:var(--ds-fs-input)}
+.pjPoteauRoot .pcPanel label :is(input[type=number],input[data-dec]){width:140px;margin-top:0}
+.pjPoteauRoot .pcPanel select,.pjPoteauRoot .pcPanel input[type=text],.pjPoteauRoot .pcPanel :is(input[type=number],input[data-dec]){min-height:44px;font-size:var(--ds-fs-input)}
 .pjPoteauRoot .pcPanel select{flex:1 1 100%}
 .pjPoteauRoot .pcInline label{min-height:44px;margin:0;padding-right:12px}
 .pjPoteauRoot .pcPanel input[type=radio],.pjPoteauRoot .pcPanel input[type=checkbox]{width:20px;height:20px;margin:0 6px 0 0}
@@ -21488,8 +21516,8 @@ details>summary .dimEye{margin-block:4px}
 .pjPoteauRoot .pcKaBtns .ghost{min-height:44px;flex:1 1 180px}
 .pjPoteauRoot .pcKaBtns .ghost[disabled]{opacity:.5;cursor:not-allowed}
 .pjPoteauRoot .pcPanel .pcApChk,.pjPoteauRoot .pcPanel .pcApChk b{font-size:var(--ds-fs-label)!important;font-weight:600}
-@media (min-width:601px){.pjPoteauRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjPoteauRoot .pcPanel>label select{width:100%;max-width:none}.pjPoteauRoot .pcPanel>label input[type=number]{width:100%}.pjPoteauRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
-@media (max-width:600px){.pjPoteauRoot .pcFormNav .primary{width:100%}.pjPoteauRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjPoteauRoot .pcChgRow .pcFld{min-width:0}.pjPoteauRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjPoteauRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjPoteauRoot .pcPanel label input[type=number]{width:120px}.pjPoteauRoot .pcFldLbl{white-space:normal}}
+@media (min-width:601px){.pjPoteauRoot .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjPoteauRoot .pcPanel>label select{width:100%;max-width:none}.pjPoteauRoot .pcPanel>label :is(input[type=number],input[data-dec]){width:100%}.pjPoteauRoot .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
+@media (max-width:600px){.pjPoteauRoot .pcFormNav .primary{width:100%}.pjPoteauRoot .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjPoteauRoot .pcChgRow .pcFld{min-width:0}.pjPoteauRoot .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjPoteauRoot .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjPoteauRoot .pcPanel label :is(input[type=number],input[data-dec]){width:120px}.pjPoteauRoot .pcFldLbl{white-space:normal}}
 .pcDimWrap{display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:var(--ink-soft,#777);gap:8px}
 .pcDimIn{width:auto;min-width:44px;min-height:24px;text-align:center;font-size:var(--ds-fs-md);border:none;border-bottom:1.5px solid var(--ds-line);border-radius:0;background:transparent;color:var(--ink);padding:2px 3px;box-sizing:border-box;-webkit-appearance:none;appearance:none;-moz-appearance:textfield}
 .pcDimIn:focus{outline:none;border-bottom-color:var(--ds-accent)}
@@ -21568,7 +21596,7 @@ details>summary .dimEye{margin-block:4px}
 .pcApBtn.on{color:#FFC400;background:transparent;text-decoration-color:#FFC400}
 .pcApPanel{display:flex;align-items:center;gap:14px;flex-wrap:nowrap;height:100%;font-size:12.5px;background:transparent;border:1.5px solid #FFC400;border-radius:10px;padding:6px 12px;box-sizing:border-box;white-space:nowrap}
 .pcApPanel b{font-size:12.5px;flex:none}
-.pcApPanel input[type=number]{width:90px;min-height:28px;font-size:13px;padding:2px 6px;background:transparent;color:var(--ink);border:1.5px solid var(--line);border-radius:7px;box-sizing:border-box;-webkit-appearance:none;appearance:none;-moz-appearance:textfield}
+.pcApPanel :is(input[type=number],input[data-dec]){width:90px;min-height:28px;font-size:13px;padding:2px 6px;background:transparent;color:var(--ink);border:1.5px solid var(--line);border-radius:7px;box-sizing:border-box;-webkit-appearance:none;appearance:none;-moz-appearance:textfield}
 .pcApLbl{display:inline-flex!important;align-items:center;gap:6px;margin:0!important;font-weight:400!important;font-size:12px!important;flex:none}
 .pcApChk input[type=checkbox]{width:16px;height:16px;flex:none;accent-color:#FFC400;margin:0;background:transparent}
 .pcDraw button,.pcDraw input,.pcDraw select{background:transparent!important;box-shadow:none!important}
@@ -21629,7 +21657,7 @@ details>summary .dimEye{margin-block:4px}
 .elsMD .elsMDNav{display:contents}
 .elsMDBtn{display:flex;align-items:center;gap:10px;min-height:56px;padding:8px 12px;text-align:left;font:600 var(--ds-fs-label,15px)/1.25 var(--ds-font-body,system-ui,sans-serif);color:var(--ds-ink);background:transparent;border:1.5px solid var(--ds-line);border-radius:12px;cursor:pointer}
 .elsMDBtn,.elsMDPane,.elsMDHd{scroll-margin-top:var(--pcStk,0px)}
-.dlApBar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 2px}.dlApBar .dlApBtn{min-height:44px;display:inline-flex;gap:6px;align-items:center;padding:6px 12px;border-radius:12px;text-align:left;border:1.5px solid var(--ds-line,#ccc);background:transparent;color:var(--ink,#222);font-size:14px;cursor:pointer}.dlApBar .dlApBtn.on,.dlApBar .dlApBtn:hover{border-color:var(--ds-accent,#FFC400)}.dlApBar .dlApBtn b{font-weight:700}.dlApBar .dlEchBtn,.dlApBar .dlAddCh{min-height:44px}.dlAddCh[aria-disabled="true"]{opacity:.55;cursor:not-allowed}.dlNotice{margin:8px 0;padding:10px 14px;border:1.5px solid #d9574a;border-radius:12px;background:color-mix(in srgb,#d9574a 8%,transparent)}.dlNoticeBtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.dlNoticeBtns button{min-height:44px}.dlChBlk{margin-top:14px}.dlChRow{border:1.5px solid var(--ds-line,#ccc);border-radius:12px;padding:8px 12px;margin:8px 0}.dlChHead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}.dlChFields{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px}.dlChF{display:flex;align-items:center;gap:6px}.dlChF input[type=number]{width:96px}.dlChF span{font-size:13px}.dlLit{outline:3px solid var(--ds-accent,#FFC400);outline-offset:2px;border-radius:6px}.dlHandle.on circle{filter:drop-shadow(0 0 4px rgba(0,0,0,.35))}
+.dlApBar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 2px}.dlApBar .dlApBtn{min-height:44px;display:inline-flex;gap:6px;align-items:center;padding:6px 12px;border-radius:12px;text-align:left;border:1.5px solid var(--ds-line,#ccc);background:transparent;color:var(--ink,#222);font-size:14px;cursor:pointer}.dlApBar .dlApBtn.on,.dlApBar .dlApBtn:hover{border-color:var(--ds-accent,#FFC400)}.dlApBar .dlApBtn b{font-weight:700}.dlApBar .dlEchBtn,.dlApBar .dlAddCh{min-height:44px}.dlAddCh[aria-disabled="true"]{opacity:.55;cursor:not-allowed}.dlNotice{margin:8px 0;padding:10px 14px;border:1.5px solid #d9574a;border-radius:12px;background:color-mix(in srgb,#d9574a 8%,transparent)}.dlNoticeBtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.dlNoticeBtns button{min-height:44px}.dlChBlk{margin-top:14px}.dlChRow{border:1.5px solid var(--ds-line,#ccc);border-radius:12px;padding:8px 12px;margin:8px 0}.dlChHead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}.dlChFields{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px}.dlChF{display:flex;align-items:center;gap:6px}.dlChF :is(input[type=number],input[data-dec]){width:96px}.dlChF span{font-size:13px}.dlLit{outline:3px solid var(--ds-accent,#FFC400);outline-offset:2px;border-radius:6px}.dlHandle.on circle{filter:drop-shadow(0 0 4px rgba(0,0,0,.35))}
 .elsMDPane .pcElsCtl select{max-width:260px}
 @media (max-width:600px){.pjBeamRoot .elsMDPane .pcElsCtl:has(select),.elsMDPane .pcElsCtl:has(select){flex:1 1 100%}.elsMDPane .pcElsCtl select{max-width:100%}}
 .elsMDBtn:hover{border-color:var(--ds-accent)}
@@ -21749,9 +21777,9 @@ details>summary .dimEye{margin-block:4px}
 .pjPortiqueRoot .pfRow label,
 .pjMurRoot .pfRow label,
 .pjDallageRoot .pfRow label{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:0;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body)}
-.pjPortiqueRoot .pfRow select,.pjPortiqueRoot .pfRow input[type=number],
-.pjMurRoot .pfRow select,.pjMurRoot .pfRow input[type=number],
-.pjDallageRoot .pfRow select,.pjDallageRoot .pfRow input[type=number]{min-height:44px;width:auto;max-width:150px;flex:0 0 auto}
+.pjPortiqueRoot .pfRow select,.pjPortiqueRoot .pfRow :is(input[type=number],input[data-dec]),
+.pjMurRoot .pfRow select,.pjMurRoot .pfRow :is(input[type=number],input[data-dec]),
+.pjDallageRoot .pfRow select,.pjDallageRoot .pfRow :is(input[type=number],input[data-dec]){min-height:44px;width:auto;max-width:150px;flex:0 0 auto}
 .pjPortiqueRoot .pfDel,
 .pjMurRoot .pfDel,
 .pjDallageRoot .pfDel{min-width:44px;min-height:44px;padding:0}
@@ -21764,9 +21792,9 @@ details>summary .dimEye{margin-block:4px}
 .pjPortiqueRoot .pfTbl th,.pjPortiqueRoot .pfTbl td,
 .pjMurRoot .pfTbl th,.pjMurRoot .pfTbl td,
 .pjDallageRoot .pfTbl th,.pjDallageRoot .pfTbl td{padding:4px 8px;text-align:left;border-bottom:1px solid var(--ds-line);white-space:nowrap}
-.pjPortiqueRoot .pfTbl input[type=number],
-.pjMurRoot .pfTbl input[type=number],
-.pjDallageRoot .pfTbl input[type=number]{width:90px;min-height:44px}
+.pjPortiqueRoot .pfTbl :is(input[type=number],input[data-dec]),
+.pjMurRoot .pfTbl :is(input[type=number],input[data-dec]),
+.pjDallageRoot .pfTbl :is(input[type=number],input[data-dec]){width:90px;min-height:44px}
 .pjPortiqueRoot .pfTbl select,
 .pjMurRoot .pfTbl select,
 .pjDallageRoot .pfTbl select{min-height:44px;min-width:92px}
@@ -21802,8 +21830,8 @@ details>summary .dimEye{margin-block:4px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pjBeam-top .back-x{min-width:44px;min-height:44px;font-size:28px;line-height:1}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel h5{margin:0 0 12px;font:700 var(--ds-fs-h2)/1.25 var(--ds-font-title);color:var(--ds-ink)}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel label{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body)}
-:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel label input[type=number]{width:140px;margin-top:0}
-:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel select,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel input[type=text],:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel input[type=number]{min-height:44px;font-size:var(--ds-fs-input)}
+:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel label :is(input[type=number],input[data-dec]){width:140px;margin-top:0}
+:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel select,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel input[type=text],:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel :is(input[type=number],input[data-dec]){min-height:44px;font-size:var(--ds-fs-input)}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel select{flex:1 1 100%}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcInline label{min-height:44px;margin:0;padding-right:12px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel input[type=radio],:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel input[type=checkbox]{width:20px;height:20px;margin:0 6px 0 0}
@@ -21818,8 +21846,8 @@ details>summary .dimEye{margin-block:4px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcFormHint{font-size:var(--ds-fs-help);margin-top:10px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcFormPanel{padding-top:18px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel .pcApChk,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel .pcApChk b{font-size:var(--ds-fs-label)!important;font-weight:600}
-@media (min-width:601px){.pjSemelleRoot .pcPanel>label,.pjPortiqueRoot .pcPanel>label,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjSemelleRoot .pcPanel>label select,.pjPortiqueRoot .pcPanel>label select,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label select{width:100%;max-width:none}.pjSemelleRoot .pcPanel>label input[type=number],.pjPortiqueRoot .pcPanel>label input[type=number],:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label input[type=number]{width:100%}.pjSemelleRoot .pcPanel>label>.pcInline,.pjPortiqueRoot .pcPanel>label>.pcInline,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
-@media (max-width:600px){.pjSemelleRoot .pcFormNav .primary,.pjPortiqueRoot .pcFormNav .primary,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcFormNav .primary{width:100%}.pjSemelleRoot .pcChgRow,.pjPortiqueRoot .pcChgRow,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjSemelleRoot .pcChgRow .pcFld,.pjPortiqueRoot .pcChgRow .pcFld,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow .pcFld{min-width:0}.pjSemelleRoot .pcChgRow .pcFldLbl,.pjPortiqueRoot .pcChgRow .pcFldLbl,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjSemelleRoot .pcChgRow>button,.pjPortiqueRoot .pcChgRow>button,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjSemelleRoot .pcPanel label input[type=number],.pjPortiqueRoot .pcPanel label input[type=number],:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel label input[type=number]{width:120px}.pjSemelleRoot .pcFldLbl,.pjPortiqueRoot .pcFldLbl,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcFldLbl{white-space:normal}}
+@media (min-width:601px){.pjSemelleRoot .pcPanel>label,.pjPortiqueRoot .pcPanel>label,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label{display:grid;grid-template-columns:150px minmax(0,220px) auto;align-items:center;gap:6px 12px}.pjSemelleRoot .pcPanel>label select,.pjPortiqueRoot .pcPanel>label select,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label select{width:100%;max-width:none}.pjSemelleRoot .pcPanel>label :is(input[type=number],input[data-dec]),.pjPortiqueRoot .pcPanel>label :is(input[type=number],input[data-dec]),:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label :is(input[type=number],input[data-dec]){width:100%}.pjSemelleRoot .pcPanel>label>.pcInline,.pjPortiqueRoot .pcPanel>label>.pcInline,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel>label>.pcInline{grid-column:2/-1;display:flex;flex-wrap:wrap}}
+@media (max-width:600px){.pjSemelleRoot .pcFormNav .primary,.pjPortiqueRoot .pcFormNav .primary,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcFormNav .primary{width:100%}.pjSemelleRoot .pcChgRow,.pjPortiqueRoot .pcChgRow,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}.pjSemelleRoot .pcChgRow .pcFld,.pjPortiqueRoot .pcChgRow .pcFld,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow .pcFld{min-width:0}.pjSemelleRoot .pcChgRow .pcFldLbl,.pjPortiqueRoot .pcChgRow .pcFldLbl,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow .pcFldLbl{min-height:2.7em;display:flex;align-items:flex-end}.pjSemelleRoot .pcChgRow>button,.pjPortiqueRoot .pcChgRow>button,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcChgRow>button{grid-column:1/-1;margin-top:8px}.pjSemelleRoot .pcPanel label :is(input[type=number],input[data-dec]),.pjPortiqueRoot .pcPanel label :is(input[type=number],input[data-dec]),:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcPanel label :is(input[type=number],input[data-dec]){width:120px}.pjSemelleRoot .pcFldLbl,.pjPortiqueRoot .pcFldLbl,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcFldLbl{white-space:normal}}
 .pjBeamRoot .pcEls,.pjDalleRoot .pcEls,.pjSemelleRoot .pcEls,.pjPortiqueRoot .pcEls,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcEls{margin:18px 0 0;border:1px solid var(--ds-line);border-radius:12px;padding:0 14px}
 .pjBeamRoot .pcEls>summary,.pjDalleRoot .pcEls>summary,.pjSemelleRoot .pcEls>summary,.pjPortiqueRoot .pcEls>summary,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcEls>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font:700 var(--ds-fs-label)/1.3 var(--ds-font-body);color:var(--ds-ink);list-style:none}
 .pjBeamRoot .pcEls>summary::-webkit-details-marker,.pjDalleRoot .pcEls>summary::-webkit-details-marker,.pjSemelleRoot .pcEls>summary::-webkit-details-marker,.pjPortiqueRoot .pcEls>summary::-webkit-details-marker,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcEls>summary::-webkit-details-marker{display:none}
@@ -21855,12 +21883,12 @@ details>summary .dimEye{margin-block:4px}
 @media (min-width:601px){.pjBeamRoot .pcElsSub label,.pjDalleRoot .pcElsSub label,.pjSemelleRoot .pcElsSub label,.pjPortiqueRoot .pcElsSub label,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcElsSub label{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px) 88px;gap:6px 12px;align-items:center}.pjBeamRoot .pcElsSub .pcElsLbl,.pjDalleRoot .pcElsSub .pcElsLbl,.pjSemelleRoot .pcElsSub .pcElsLbl,.pjPortiqueRoot .pcElsSub .pcElsLbl,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcElsSub .pcElsLbl{flex:none}}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 0;border-top:1px solid var(--ds-line)}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfRow label{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:0;font:600 var(--ds-fs-label)/1.3 var(--ds-font-body)}
-:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfRow select,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfRow input[type=number]{min-height:44px;width:auto;max-width:150px;flex:0 0 auto}
+:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfRow select,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfRow :is(input[type=number],input[data-dec]){min-height:44px;width:auto;max-width:150px;flex:0 0 auto}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfDel{min-width:44px;min-height:44px;padding:0}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfTblW{overflow-x:auto;max-width:100%;margin:8px 0}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfTbl{border-collapse:collapse;font:400 var(--ds-fs-help)/1.4 var(--ds-font-body);min-width:100%}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfTbl th,:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfTbl td{padding:4px 8px;text-align:left;border-bottom:1px solid var(--ds-line);white-space:nowrap}
-:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfTbl input[type=number]{width:90px;min-height:44px}
+:is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfTbl :is(input[type=number],input[data-dec]){width:90px;min-height:44px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfTbl select{min-height:44px;min-width:92px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfChk{display:inline-flex;align-items:center;gap:4px;min-height:44px;margin-right:8px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfDiagBtns{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
@@ -27678,7 +27706,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
      +'<div class="pcChg">'+(dp.charges||[]).map((c,i)=>pcChgRow(c,i,dp.travees.length,dp._uiChg===i)).join('')+'</div>'
      +(()=>{ const nT=dp.travees.length, cs=[]; if(pcApType(dp,0)==='libre') cs.push('travée 1'); if(nT>1&&pcApType(dp,nT)==='libre') cs.push('travée '+nT); return cs.length?'<p class="pcNote">Console (extrémité libre) : '+cs.join(' et ')+'. Une charge répartie, ponctuelle ou un couple se place sur la console en choisissant ce repère de travée ; « Global » charge toute la poutre, consoles comprises.</p>':''; })()
      +'<button type="button" class="ghost" data-pc-act="addChg">＋ Ajouter une charge</button>'
-     +'<div class="pcDimBox"><label class="pcApLbl pcApChk"><input type="checkbox" data-pc-i="poidsPropre" '+(dp.poidsPropre===true?'checked':'')+'> <b>Inclure le poids propre de la poutre</b> — 25 kN/m³ × b × h = '+pcPoidsPropreInfo(dp).g_kNm.toFixed(2)+' kN/m, ajouté en charge permanente G</label></div>'
+     +'<div class="pcDimBox"><label class="pcApLbl pcApChk"><input type="checkbox" data-pc-i="poidsPropre" '+(dp.poidsPropre===true?'checked':'')+'> <b>Inclure le poids propre de la poutre</b> — 25 kN/m³ × b × h = '+pcPoidsPropreInfo(dp).g_kNm.toFixed(2).replace('.',',')+' kN/m, ajouté en charge permanente G</label></div>'
      +pcTorBoxHtml(dp,t.id)
      +pcRiveBoxHtml(dp,t.id)
      +pcRecapHtml(dp)
@@ -31530,7 +31558,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      +'<label>Nombre de travées (sens lx) <input type="number" step="1" min="1" data-dl="nTravees" value="'+(dp.nTravees??3)+'"></label>'
      +((+dp.nTravees||1)>1?('<label>Position de la travée étudiée <select data-dl="position"><option value="intermediaire"'+(dp.position!=='rive'?' selected':'')+'>Intermédiaire</option><option value="rive"'+(dp.position==='rive'?' selected':'')+'>De rive</option></select></label>'
       +(dp.position==='rive'?'<label>Appui de rive solidaire d\'un poteau (encastrement partiel) <select data-dl="riveSolidaire"><option value=""'+(!dp.riveSolidaire?' selected':'')+'>Non</option><option value="1"'+(dp.riveSolidaire?' selected':'')+'>Oui</option></select></label>':'')):'')
-     +'<label class="pcApLbl pcApChk"><input type="checkbox" data-dl="poidsPropre" '+(dp.poidsPropre===true?'checked':'')+'> <b>Inclure le poids propre de la dalle</b> — 25 kN/m³ × h = '+(25*(+dp.h_cm||20)/100).toFixed(2)+' kN/m², ajouté en charge permanente G</label>'
+     +'<label class="pcApLbl pcApChk"><input type="checkbox" data-dl="poidsPropre" '+(dp.poidsPropre===true?'checked':'')+'> <b>Inclure le poids propre de la dalle</b> — 25 kN/m³ × h = '+window.dimFr(25*(+dp.h_cm||20)/100,2)+' kN/m², ajouté en charge permanente G</label>'
      +'<label class="pcApLbl pcApChk"><input type="checkbox" data-dl="redistTransv" '+(dp.redistTransv===true?'checked':'')+'> Dalle bénéficiant d\'une redistribution transversale des charges (v_min 0,34/γc·√fck)</label>'
      +'<p class="pcNote">Charges G et Q : à régler directement sur le schéma ci-dessus.</p>'+dlChRowsHtml(dp)
      +'<p class="pcNote">Méthode forfaitaire BAEL91 : applicable si Q ≤ 2G ou Q ≤ 5 kN/m², rapport des portées adjacentes entre 0,8 et 1,25, fissuration non préjudiciable.</p>'
@@ -31844,7 +31872,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
      texte:'Poinçonnement : poteau INTÉRIEUR (β = 1,15) ; rive et angle non gérés par le module (contour u1 réduit, β différent). β = 1,15 n\'est valable que si la structure est contreventée (stabilité latérale indépendante du portique dalles-poteaux) et si les portées voisines vérifient 0,8 ≤ l_i/l_i+1 ≤ 1,25.'});
    }
    if(!res.fleche.nonCalculee){
-    L.push({nom:'Décision de flèche',valeur:'formule EC2 (l/d = '+res.fleche.ratio.toFixed(1)+')'+(res.fleche.ratioAN!=null?' ; tableau AN affiché : '+res.fleche.ratioAN.toFixed(1):''),origine:'choix du module, à valider',
+    L.push({nom:'Décision de flèche',valeur:'formule EC2 (l/d = '+res.fleche.ratio.toFixed(1).replace('.',',')+')'+(res.fleche.ratioAN!=null?' ; tableau AN affiché : '+res.fleche.ratioAN.toFixed(1).replace('.',','):''),origine:'choix du module, à valider',
      texte:'Flèche : la décision suit la formule de l\'EC2, plus sévère que le tableau simplifié'+(res.fleche.ratioAN!=null?' ('+res.fleche.ratioAN.toFixed(1)+', affiché à côté)':'')+'. L\'ingénieur peut retenir l\'AN si elle est applicable.'});
     L.push({nom:'ρ de la flèche',valeur:'acier posé (ρ = '+(res.fleche.rho*100).toFixed(2)+' %)',origine:'choix du module, à valider',
      texte:'Flèche : ρ est calculé avec l\'acier POSÉ, alors que l\'acier REQUIS donnerait un autre résultat ; l\'écart est généralement favorable (acier posé ≥ requis).'});
@@ -46010,7 +46038,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    segO.addEventListener('click',e=>{ const b=e.target.closest('[data-o]'); if(!b) return; ori=b.dataset.o; refresh(); });
    refresh();
    const onPop=()=>{ if(closed) return; window.__fsSkipAt=Date.now(); close(true); };
-   const close=(fromPop)=>{ if(closed) return; closed=true; fplFsOn=null; window.removeEventListener('popstate',onPop); window.__fsSkipAt=Date.now();
+   const close=(fromPop)=>{ if(closed) return; closed=true; fplFsOn=null; window.removeEventListener('popstate',onPop,true); window.__fsSkipAt=Date.now();
     if(fromPop!==true&&history.state&&history.state.fplFs){ try{ history.back(); }catch(_){ } }
     window.removeEventListener('keydown',onKey,true); document.removeEventListener('fullscreenchange',onFsc); document.removeEventListener('webkitfullscreenchange',onFsc);
     try{ if((document.fullscreenElement||document.webkitFullscreenElement)===layer){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); } }catch(_){ }
@@ -46025,7 +46053,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     else if(a==='print'){ panel.hidden=!panel.hidden; if(!panel.hidden){ const f=segF.querySelector('[aria-pressed=true]'); if(f) f.focus(); } }
     else if(a==='go'){ fplPrintView(clone,fmt,ori,opener); } });
    fplFsOn={close,layer};
-   try{ history.pushState({fplFs:1},''); window.addEventListener('popstate',onPop); }catch(_){ }
+   try{ history.pushState({fplFs:1},''); window.addEventListener('popstate',onPop,true); }catch(_){ }
    const rf=layer.requestFullscreen||layer.webkitRequestFullscreen;
    if(rf){ try{ const p=rf.call(layer); if(p&&p.catch) p.catch(()=>{}); }catch(_){ } }
    try{ layer.querySelector('.fplFsQ').focus({preventScroll:true}); }catch(_){ }
@@ -47418,7 +47446,7 @@ html{overscroll-behavior-y:none}
  new MutationObserver(()=>{ if(!sa()) return; const open=ov.classList.contains('open');
   if(open&&!pushed){ pushed=true; try{ history.pushState({be11ov:1},''); }catch(_){ } }
   else if(!open&&pushed){ pushed=false; if(!popping){ try{ if(history.state&&history.state.be11ov) history.back(); }catch(_){ } } } }).observe(ov,{attributes:true,attributeFilter:['class']});
- window.addEventListener('popstate',()=>{ if(Date.now()-(window.__fsSkipAt||0)<900) return; if(!pushed) return; popping=true; pushed=false; try{ if(ov.classList.contains('open')){ if(window._modalBackTo&&typeof modalBack==='function') modalBack(); else closeModal(); } }catch(_){ } popping=false; });
+ window.addEventListener('popstate',()=>{ if(Date.now()-(window.__fsSkipAt||0)<900||document.getElementById('fplFs')||document.querySelector('.dimZOv')) return; if(!pushed) return; popping=true; pushed=false; try{ if(ov.classList.contains('open')){ if(window._modalBackTo&&typeof modalBack==='function') modalBack(); else closeModal(); } }catch(_){ } popping=false; });
  /* clavier à l'écran : le champ actif reste visible */
  document.addEventListener('focusin',e=>{ const t=e.target; if(t&&/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)&&window.matchMedia('(max-width:1024px)').matches){ setTimeout(()=>{ try{ t.scrollIntoView({block:'center',behavior:'smooth'}); }catch(_){ } },320); } });
 }catch(_){ } })();
