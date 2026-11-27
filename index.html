@@ -41399,6 +41399,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return dimValidateSpecs(dp,GR_SPECS,(d,er)=>{
     const has=k=>er.some(x=>x.key===k);
     if(!pcMatCalc(d)) er.push({key:'materiau',msg:PC_MAT_MSG});
+    if(d.grAsMinM==='saisi'&&!(isFinite(+d.grAsMin_cm2)&&+d.grAsMin_cm2>0)) er.push({key:'grAsMin_cm2',msg:'L\'armature minimale saisie doit être supérieure à zéro (cm²/m).'});
     if(!has('grFut_cm')&&!has('grA_m')&&(+d.grFut_cm)/100>=+d.grA_m) er.push({key:'grFut_cm',msg:'L\'entraxe des pieds du mât doit être inférieur au côté du massif.'});
     const cs=Array.isArray(d.grCas)?d.grCas:[]; if(!cs.length) er.push({key:'grCas',msg:'Ajouter au moins un cas de charge de la grue (en service ou hors service).'});
     cs.forEach((c,i)=>{ const lbl='Cas « '+((c&&c.nom)||('cas '+(i+1)))+' »';
@@ -41478,6 +41479,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    }); });
    const ctxS={reg:'ec2',fck,fyk,muLim:grP(dp,'grMuLim'),sLim:grP(dp,'grSigS'),n:grP(dp,'grN'),eta1:1};
    const sInf=muSection(gU*envP.M,envP.M,gU*envV.V,dcm,ctxS), sSup=muSection(gU*envN.M,envN.M,0,dcm,ctxS);
+   const amM=dp.grAsMinM==='flex'||dp.grAsMinM==='saisi'?dp.grAsMinM:'poutre', amU=grNz(dp.grAsMin_cm2);
+   const fixAs=s=>{ if(!s.ok) return; s.AsBeam=s.As_min; s.AsMinUsed=amM==='flex'?0:(amM==='saisi'&&amU!=null?amU:s.As_min); s.As=Math.max(s.As_flex,s.As_els,s.AsMinUsed);
+    const b=1000, d=dcm*10, n=ctxS.n, As=s.As*100; if(s.Ms>1e-6&&As>0){ const x=(n*As/b)*(-1+Math.sqrt(1+2*b*d/(n*As))), I=b*x*x*x/3+n*As*(d-x)*(d-x); s.sigS=n*s.Ms*1e6*(d-x)/I; s.sigC=s.Ms*1e6*x/I; } else { s.sigS=0; s.sigC=0; }
+    const k=Math.min(2,1+Math.sqrt(200/d)), rho=Math.min(0.02,As/(b*d)); s.VRd=Math.max(0.18/1.5*k*Math.cbrt(100*rho*fck),0.035*Math.pow(k,1.5)*Math.sqrt(fck))*b*d/1000; s.okV=s.VEd<=s.VRd+1e-9; };
+   fixAs(sInf); fixAs(sSup);
    const bInf=sInf.ok?grChooseBars(Math.max(sInf.As,0)*100,sMax):null, bSup=sSup.ok?grChooseBars(Math.max(sSup.As,0)*100,sMax):null;
    const soilOk=cases.length&&cases.every(r=>r.okE);
    if(soilOk){
@@ -41485,11 +41491,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     else { chk('Massif','Flexion, nappe inférieure','M_Ed = '+f2(gU*envP.M,1)+' kN·m/m','A_s = '+f2(sInf.As,2)+' cm²/m',!bInf.insuffisant,'ELU'); chk('Massif','Nappe inférieure : contrainte de l\'acier','σs = '+f2(sInf.sigS,0)+' MPa','≤ '+f2(ctxS.sLim,0)+' MPa',sInf.sigS<=ctxS.sLim+1e-9,'ELS'); chk('Massif','Nappe inférieure : contrainte du béton','σc = '+f2(sInf.sigC,1)+' MPa','≤ '+f2(0.6*fck,1)+' MPa',sInf.sigC<=0.6*fck+1e-9,'ELS'); }
     if(!sSup.ok) chk('Massif','Flexion, nappe supérieure','μ = '+f2(sSup.mu,3)+' > '+f2(sSup.muLim,3),'h plus grande (d ≥ '+f2(sSup.dMin_cm,0)+' cm)',false,'ELU');
     else { chk('Massif','Flexion, nappe supérieure','M_Ed = '+f2(gU*envN.M,1)+' kN·m/m','A_s = '+f2(sSup.As,2)+' cm²/m',!bSup.insuffisant,'ELU'); }
+    if(amM==='saisi'&&sInf.ok&&amU!=null&&amU<sInf.AsBeam-1e-9) chk('Massif','Armature minimale saisie','A_s,min saisie = '+f2(amU,2)+' cm²/m','≥ règle de poutre '+f2(sInf.AsBeam,2)+' cm²/m (avertissement)',false,'ELU');
     if(sInf.ok) chk('Massif','Effort tranchant sans armature d\'effort tranchant','V_Ed = '+f2(gU*envV.V,1)+' kN/m','V_Rd = '+f2(sInf.VRd,1)+' kN/m',sInf.okV,'ELU');
    }
    const nKo=verifs.filter(v=>v.etat==='ko').length;
    const dMax=cases.reduce((q,r)=>r.sig>q?(isFinite(r.sig)?r.sig:q):q,0);
-   return {mode:dp.grMode,geo:{a,h,c:cLeg,cmm,W,d:dm,hcm},cases,env:{P:envP,N:envN,V:envV},sInf,sSup,bInf:soilOk?bInf:null,bSup:soilOk?bSup:null,verifs,nKo,fck,fyk,fctm,soilOk:!!soilOk,sigMax:dMax,phiSol,gU,
+   return {mode:dp.grMode,geo:{a,h,c:cLeg,cmm,W,d:dm,hcm},cases,asMin:{mode:amM,user:amU,beam:sInf.As_min},env:{P:envP,N:envN,V:envV},sInf,sSup,bInf:soilOk?bInf:null,bSup:soilOk?bSup:null,verifs,nKo,fck,fyk,fctm,soilOk:!!soilOk,sigMax:dMax,phiSol,gU,
     fracMin:cases.reduce((q,r)=>Math.min(q,r.frac),1),diag:envP.zs?{zs:envP.zs,Ms:envP.Ms}:null};
   }
   function grCompute(t){ const dp=grData(t); dimThrow(grValidate(dp)); return grCalc(dp); }
@@ -41621,6 +41628,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +'<button type="button" class="ghost pcBtnSm" data-gr-act="printNote">🖶 Voir la note</button>';
   }
   /* ----- note de calcul ----- */
+  function grAsMinTxt(res){ const a=res&&res.asMin||{mode:'poutre'}; return a.mode==='flex'?'aucune armature minimale de poutre, flexion et ELS seuls (moins d\'acier)':(a.mode==='saisi'?'valeur saisie '+gr2(a.user,2)+' cm²/m (règle de poutre : '+gr2(a.beam,2)+' cm²/m)':'règle de poutre (plus d\'acier sur un massif épais)'); }
   function grNoteCalculHtml(t,dp,res){ return ncFormat(grNoteCalculHtml0(t,dp,res),{t,dp,res,kind:'grue'}); }
   function grNoteCalculHtml0(t,dp,res){
    const nomO=esc(dimOuvrageNom(t,dp));
@@ -41635,7 +41643,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     ['Saisie des efforts de la grue',(GR_MODE.find(x=>x[0]===dp.grMode)||[0,''])[1],'Saisi'],
     ['Poids du massif',f(g.W,1)+' kN (poids volumique '+f(P('grGammaBeton'),1)+' kN/m³)',o('grGammaBeton')],['Passage des efforts de service à l\'ELU',f(P('grGammaU'),2),o('grGammaU')],
     ['Part minimale de surface comprimée','service '+f(P('grSurfSer'),0)+' % · hors service '+f(P('grSurfHS'),0)+' %',(grSaisi(dp,'grSurfSer')||grSaisi(dp,'grSurfHS'))?'Saisi':'Par défaut'],['Majoration hors service de la contrainte du sol',dp.grMajHS==='oui'?'oui · coefficient '+f(P('grKHS'),2):'non',(dp.grMajHS==='oui'?(grSaisi(dp,'grKHS')?'Saisi':'Par défaut'):'Choix validé')],
-    ['Coefficient de sécurité au glissement',f(P('grGGl'),2),o('grGGl')],['Méthode de flexion du massif','poutre équivalente par axe (intégration le long de la diagonale : non disponible)','Choix validé'],['Largeur de répartition des moments',f(P('grBRep'),0)+' % du côté',o('grBRep')],
+    ['Coefficient de sécurité au glissement',f(P('grGGl'),2),o('grGGl')],['Armature minimale du massif',grAsMinTxt(res),'Choix validé'],['Méthode de flexion du massif','poutre équivalente par axe (intégration le long de la diagonale : non disponible)','Choix validé'],['Largeur de répartition des moments',f(P('grBRep'),0)+' % du côté',o('grBRep')],
     ['Seuil μ de flexion / coefficient d\'équivalence',f(P('grMuLim'),3)+' / '+f(P('grN'),0),(grSaisi(dp,'grMuLim')||grSaisi(dp,'grN'))?'Saisi':'Par défaut'],['Contrainte limite de l\'acier à l\'ELS',f(P('grSigS'),0)+' MPa',o('grSigS')],
     ['Ø estimé / espacement maximal des barres',f(P('grPhiEst'),0)+' mm / '+f(P('grSMax'),0)+' mm',(grSaisi(dp,'grPhiEst')||grSaisi(dp,'grSMax'))?'Saisi':'Par défaut']];
    if(dp.grMode!=='abcd') rows.splice(4,0,['Orientations de la grue vérifiées',(GR_ORI.find(x=>x[0]===P('grOri'))||[0,''])[1],o('grOri')]);
@@ -41651,6 +41659,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     +pt('Majoration hors service de la contrainte du sol : '+(dp.grMajHS==='oui'?'oui, coefficient '+f(P('grKHS'),2)+(grSaisi(dp,'grKHS')?' saisi':' par défaut')+' (une autre pratique ne majore pas)':'non, contrainte admissible inchangée (une autre pratique la majore)')+' : choix de l\'ingénieur, à confirmer.')
     +pt('Flexion du massif : poutre équivalente sur chaque axe, moments répartis sur '+f(P('grBRep'),0)+' % du côté, passage à l\'ELU '+f(P('grGammaU'),2)+' ; méthode de flexion : poutre équivalente par axe ; l\'intégration le long de la diagonale avec décalage de section n\'est pas disponible ; massif épais (rapport côté / hauteur '+f(g.a/g.h,2)+') : modèle par bielles et tirants non traité : méthode à confirmer.')
     +(res.sInf&&res.sInf.ok&&res.sInf.As_min>=res.sInf.As_flex-1e-9?pt('Nappe inférieure : la section minimale (0,26·fctm/fyk·b·d, au moins 0,0013·b·d) l\'emporte sur la flexion ; pour un massif épais, cette règle de poutre peut être trop sévère : à confirmer.'):'')
+    +pt('Armature minimale du massif : '+grAsMinTxt(res)+(res.asMin&&res.asMin.mode==='flex'?' ; moins d\'acier que la règle de poutre, à justifier pour un massif épais':(res.asMin&&res.asMin.mode==='saisi'?(res.asMin.user<res.asMin.beam-1e-9?' ; inférieure à la règle de poutre : avertissement':' ; supérieure ou égale à la règle de poutre'):' ; peut imposer beaucoup d\'acier sur un massif très épais'))+' : choix de l\'ingénieur, à confirmer.')
     +pt('Effort tranchant vérifié sans armature d\'effort tranchant et sans réduction près des appuis ; cadres et armatures de peau du massif : non calculés, à définir.')
     +pt('Ancrage des pieds du mât, poinçonnement et arrachement autour des pieds, fût et fixations : selon les prescriptions du constructeur de la grue, non vérifiés ici.',false)
     +pt('Non vérifiés : tassement, portance détaillée du sol, nappe, séisme, vent sur la grue (compris dans les efforts saisis), stabilité d\'ensemble du site.',false)
@@ -41671,7 +41680,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const verifs=res.verifs.filter(v=>/Massif/.test(v.zone)).map(v=>({zone:v.zone+' — '+v.nom,calcul:v.calcul,limite:v.limite,etat:v.etat}));
    const avertissements=res.verifs.filter(v=>v.etat==='ko').map(v=>v.zone+' — '+v.nom+' : '+v.calcul+' (limite '+v.limite+')');
    if(bi.L>12000||bs.L>12000) avertissements.push('Longueur de barre supérieure à 12 m : prévoir un recouvrement, non positionné sur ce plan.');
-   const hypotheses=['Ferraillage calculé par la poutre équivalente par axe (méthode de flexion choisie) ; bielles et tirants non traités.','Enrobage c = '+f(c,0)+' mm : à confirmer.','Nappes croisées de mêmes barres dans les deux sens, d\'après la plus forte section calculée ; à confirmer.','Longueurs développées calculées avec les crochets à 90° (mandrin et retour du détail) ; chutes non comptées.','Pieds du mât, armatures de peau, cadres et épingles : non représentés ; à définir.'];
+   const hypotheses=['Armature minimale du massif : '+grAsMinTxt(res)+'.','Ferraillage calculé par la poutre équivalente par axe (méthode de flexion choisie) ; bielles et tirants non traités.','Enrobage c = '+f(c,0)+' mm : à confirmer.','Nappes croisées de mêmes barres dans les deux sens, d\'après la plus forte section calculée ; à confirmer.','Longueurs développées calculées avec les crochets à 90° (mandrin et retour du détail) ; chutes non comptées.','Pieds du mât, armatures de peau, cadres et épingles : non représentés ; à définir.'];
    return {g:{a,h,c:g.c*1000},c,rows,poidsTotal,verifs,avertissements,hypotheses,res,bi,bs};
   }
   function grPlanScenes(P){
@@ -41885,7 +41894,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    };
   })();
   (window.DIM_SPECS_FN=window.DIM_SPECS_FN||[]).push(()=>GR_ADV.filter(s=>s.k));
-  Object.assign(DIM_LBL,{grMajHS:'Majoration de la contrainte du sol hors service',grA_m:'Côté du massif a (m)',grH_cm:'Hauteur du massif h (cm)',grFut_cm:'Entraxe des pieds du mât c (cm)',grPhi_deg:'Angle de frottement du sol (°)',grMode:'Saisie des efforts de la grue',grCas:'Cas de charge de la grue'});
+  Object.assign(DIM_LBL,{grAsMinM:'Règle d\'armature minimale du massif',grAsMin_cm2:'Armature minimale saisie (cm²/m)',grMajHS:'Majoration de la contrainte du sol hors service',grA_m:'Côté du massif a (m)',grH_cm:'Hauteur du massif h (cm)',grFut_cm:'Entraxe des pieds du mât c (cm)',grPhi_deg:'Angle de frottement du sol (°)',grMode:'Saisie des efforts de la grue',grCas:'Cas de charge de la grue'});
   Object.assign(DIM_ARR,{grCas:['Cas de charge',1,'']}); Object.assign(DIM_SUB,{etat:'état',N:'effort normal N (kN)',H:'effort horizontal H (kN)',A:'pied A (kN)',B:'pied B (kN)',C:'pied C (kN)',D:'pied D (kN)'});
   ['grCas'].forEach(k=>DIM_CHG.add(k)); ['grMode'].forEach(k=>DIM_MAT.add(k));
   window.grP=grP;
@@ -48339,6 +48348,13 @@ document.head.appendChild(st);
   alt:dp=>dp.grMajHS==='oui'?{icon:'edit',nom:'Ne pas majorer la contrainte du sol hors service',aide:'La contrainte admissible reste la même en service et hors service (choix prudent).',apply:d=>{ delete d.grMajHS; }}:{icon:'edit',nom:'Majorer la contrainte du sol hors service',aide:'Une autre pratique admet une contrainte plus forte hors service (grue au repos). Le coefficient de majoration est modifiable ; valeur proposée à confirmer.',apply:d=>{ d.grMajHS='oui'; }},
   valeurs:dp=>{ const F=x=>String(x).replace('.',','), g=k=>{ try{ return window.grP(dp,k); }catch(_){ return null; } }; const o=[]; if(dp.qsol_kPa!=null&&dp.qsol_kPa!=='') o.push(['Contrainte admissible du sol',F(dp.qsol_kPa)+' kPa']); o.push(['Surface comprimée minimale en service',F(g('grSurfSer'))+' %'],['Surface comprimée minimale hors service',F(g('grSurfHS'))+' %'],['Majoration de la contrainte du sol hors service',dp.grMajHS==='oui'?'oui, coefficient '+F(g('grKHS')):'non']); return o; },
   champs:[{k:'grSurfSer',nom:'Part minimale de surface comprimée en service',unit:'%',min:10,max:100,always:true,ph:()=>'50'},{k:'grSurfHS',nom:'Part minimale de surface comprimée hors service',unit:'%',min:5,max:100,always:true,ph:()=>'10'},{k:'grKHS',nom:'Coefficient de majoration (utilisé seulement si on majore)',unit:'',min:1,max:1.5,always:true,ph:()=>'1,33'}]});
+ sp('gr','gr_asmin','Fondation de grue : armature minimale du massif',{warn:true,quand:()=>true,cas:dp=>[dp.grA_m,dp.grH_cm,dp.grFut_cm,dp.qsol_kPa,dp.grCas,dp.classeGlobale],
+  selects:[{k:'grAsMinM',nom:'Règle d\'armature minimale',opts:[['poutre','Règle de poutre : plus d\'acier, surtout sur un massif très épais'],['flex','Règle plus légère : aucune armature minimale de poutre, moins d\'acier'],['saisi','Je saisis moi-même l\'armature minimale']],get:dp=>dp.grAsMinM||'poutre',def:dp=>'poutre'}],
+  supposes:'Trois choix. Règle de poutre : section minimale proportionnelle à la hauteur utile, donc beaucoup d\'acier sur un massif très épais. Règle plus légère : seule la flexion et la contrainte de service fixent l\'acier, donc moins d\'acier. Valeur saisie : vous donnez la section minimale par mètre, au-dessus de zéro.',
+  ignore:'Le fonctionnement réel d\'un massif épais (bielles et tirants), la fissuration due au retrait et à la chaleur du béton jeune.',
+  ne:'Règle plus légère ou valeur saisie faible : massifs minces, ou exigences de fissuration. Une valeur saisie plus faible que la règle de poutre déclenche un avertissement dans la note.',
+  valeurs:dp=>{ const m=dp.grAsMinM; return [['Règle d\'armature minimale',m==='flex'?'plus légère (moins d\'acier)':(m==='saisi'?'valeur saisie':'règle de poutre (plus d\'acier)')]].concat(m==='saisi'&&dp.grAsMin_cm2!=null&&dp.grAsMin_cm2!==''?[['Armature minimale saisie',String(dp.grAsMin_cm2).replace('.',',')+' cm²/m']]:[]); },
+  champs:[{k:'grAsMin_cm2',nom:'Armature minimale saisie (utilisée seulement si vous la saisissez)',unit:'cm²/m',min:0.01,max:1000,always:true,ph:()=>'> 0'}]});
  sp('gr','gr_flex','Fondation de grue : flexion du massif (poutre équivalente chargée par les pieds et la pression du sol)',{warn:true,quand:()=>true,
   alt:dp=>({icon:'edit',nom:'Intégration le long de la diagonale avec décalage de section : non disponible',aide:'Autre méthode (moments cumulés le long de la diagonale du massif, section décalée de 0,8 fois la hauteur). Son détail n\'a pas pu être reproduit avec certitude : l\'option reste indisponible. La méthode actuelle est conservée.',apply:d=>{ try{ clipToast('Non disponible : la méthode actuelle est conservée.'); }catch(_){ } }}),
   supposes:'Le massif est étudié comme une poutre sur chaque axe, chargée par les quatre pieds du mât, la pression du sol sur la surface comprimée et son poids ; les moments sont répartis sur une part de la largeur du massif ; les efforts de service sont multipliés par un coefficient pour passer à l\'ELU ; mêmes barres dans les deux sens.',
