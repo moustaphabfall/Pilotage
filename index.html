@@ -24624,7 +24624,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v537';
+  const VER='v538';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -26309,7 +26309,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(b2) b2.onclick=()=>document.getElementById('bePjF2'+k).click();
     ['bePjF1'+k,'bePjF2'+k].forEach(id=>{ const inp=document.getElementById(id); if(!inp) return; inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f) return; readFileAsDataUrl(f).then(src=>{ holder.pj={name:f.name,src}; upd(); }); }; });
     if(d) d.onclick=()=>{ holder.pj=null; upd(); };
-    const ia=document.getElementById('bePjIa'+k); if(ia) ia.onclick=()=>{ if(window.coursIaOpen) window.coursIaOpen({onUse:(pj,titre)=>{ holder.pj=pj; upd(); if(holder.onTitre) holder.onTitre(titre); }}); };
+    const ia=document.getElementById('bePjIa'+k); if(ia) ia.onclick=()=>{ if(window.coursIaOpen) window.coursIaOpen({onUse:(pj,titre,contenu)=>{ holder.pj=pj; upd(); if(holder.onTitre) holder.onTitre(titre); if(holder.onContenu) holder.onContenu(contenu); }}); };
   }
   /* visionneuse flottante (photo/PDF) : fenêtre déplaçable et redimensionnable, pour lire la pièce jointe d’une
      question tout en répondant dans la fenêtre de l’évaluation restée ouverte derrière. */
@@ -46882,11 +46882,12 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function beSessionSupportsManage(sessionId){
     const s=L_sessions().find(x=>x.id===sessionId); if(!s) return;
     const sup=L_supports().filter(x=>x.sessionId===sessionId);
-    const supHtml = sup.length ? '<div class="be-list">'+sup.map(d=>'<div class="be-row"><span class="be-row-m"><b>'+esc(d.theme)+'</b><small>'+(d.dateDepot?'Dépôt : '+esc(fmtDate(d.dateDepot)):'')+(d.pj&&d.pj.name?' · 📎 '+esc(d.pj.name):'')+'</small></span>'+(beAdmin()?'<button type="button" class="be-ind-del" data-supdel="'+esc(d.id)+'" aria-label="Supprimer" title="Supprimer">✕</button>':'')+'</div>').join('')+'</div>' : '<p class="be-empty">Aucun support de cours.</p>';
+    const supHtml = sup.length ? '<div class="be-list">'+sup.map(d=>'<div class="be-row"><span class="be-row-m"><b>'+esc(d.theme)+'</b><small>'+(d.dateDepot?'Dépôt : '+esc(fmtDate(d.dateDepot)):'')+(d.pj&&d.pj.name?' · 📎 '+esc(d.pj.name):'')+'</small></span>'+(d.iaContenu?'<button type="button" class="ghost" data-sespres="'+esc(d.id)+'" aria-label="Lancer en présentation" title="Lancer en présentation">🖥</button>':'')+(beAdmin()?'<button type="button" class="be-ind-del" data-supdel="'+esc(d.id)+'" aria-label="Supprimer" title="Supprimer">✕</button>':'')+'</div>').join('')+'</div>' : '<p class="be-empty">Aucun support de cours.</p>';
     openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>📚 Supports de cours — '+esc(s.nom)+'</h3>'
       +supHtml
       +(beAdmin()?'<button type="button" class="ghost be-addbtn" id="be-ses-addsup">+ Support de cours</button>':'')
       +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beSessionOpenRender(sessionId));
+    document.querySelectorAll('[data-sespres]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const d=L_supports().find(x=>x.id===b.dataset.sespres); if(d&&d.iaContenu&&window.coursIaPresenter) window.coursIaPresenter(d.iaContenu); });
     if(beAdmin()){
       const asup=document.getElementById('be-ses-addsup'); if(asup) asup.onclick=()=>beSupportNew(sessionId);
       document.querySelectorAll('[data-supdel]').forEach(b=>b.onclick=()=>beSupportDel(b.dataset.supdel, sessionId));
@@ -46900,12 +46901,13 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       +bePjHtml(null,null,{ia:true})
       +'<div class="modal-actions"><button class="primary" id="be-sup-save">Enregistrer</button><button class="ghost" onclick="closeModal()">Annuler</button></div>', ()=>beSessionSupportsManage(sessionId));
     holder.onTitre=t=>{ const th=document.getElementById('be-sup-a'); if(th&&!th.value.trim()) th.value=String(t||'').slice(0,120); };
+    holder.onContenu=r=>{ holder.iaContenu=r||null; };
     bePjWire(holder);
     document.getElementById('be-sup-save').onclick=()=>{
       const theme=document.getElementById('be-sup-a').value.trim();
       const dateDepot=document.getElementById('be-sup-b').value||'';
       if(!theme){ miniAlert('Le thème est requis.'); return; }
-      L_supports().push({id:uid('SUP'), sessionId, theme, dateDepot, pj:(window.__beHolder||{}).pj||null});
+      L_supports().push({id:uid('SUP'), sessionId, theme, dateDepot, pj:(window.__beHolder||{}).pj||null, iaContenu:(window.__beHolder||{}).iaContenu||null});
       beSave(); beSessionSupportsManage(sessionId);
     };
   }
@@ -47197,7 +47199,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function beSessionOpenEleve(id){
     const s=L_sessions().find(x=>x.id===id); if(!s || !(s.eleveIds||[]).includes(beMeId())) return;
     const sup=L_supports().filter(x=>x.sessionId===id);
-    const supHtml = sup.length ? '<div class="be-list">'+sup.map(d=>'<div class="be-row"><span class="be-row-m"><b>'+esc(d.theme)+'</b><small>'+(d.dateDepot?'Dépôt : '+esc(fmtDate(d.dateDepot)):'')+'</small></span>'+(d.pj&&d.pj.name?'<button type="button" class="ghost" data-vsup="'+esc(d.id)+'">📎 Voir</button>':'')+(beSupEtat(d,beMeId())==='en_cours'?'<button type="button" class="ghost" data-supok="'+esc(d.id)+'">✓ Terminé</button>':'')+'<span class="be-st '+(beSupEtat(d,beMeId())==='consulte'?'bst-va':(beSupEtat(d,beMeId())==='en_cours'?'bst-av':''))+'">'+BE_SUP_ST[beSupEtat(d,beMeId())]+'</span></div>').join('')+'</div>' : '<p class="be-empty">Aucun support de cours.</p>';
+    const supHtml = sup.length ? '<div class="be-list">'+sup.map(d=>'<div class="be-row"><span class="be-row-m"><b>'+esc(d.theme)+'</b><small>'+(d.dateDepot?'Dépôt : '+esc(fmtDate(d.dateDepot)):'')+'</small></span>'+(d.iaContenu?'<button type="button" class="ghost" data-pleleve="'+esc(d.id)+'">🖥 Présentation</button>':'')+(d.pj&&d.pj.name?'<button type="button" class="ghost" data-vsup="'+esc(d.id)+'">📎 Voir</button>':'')+(beSupEtat(d,beMeId())==='en_cours'?'<button type="button" class="ghost" data-supok="'+esc(d.id)+'">✓ Terminé</button>':'')+'<span class="be-st '+(beSupEtat(d,beMeId())==='consulte'?'bst-va':(beSupEtat(d,beMeId())==='en_cours'?'bst-av':''))+'">'+BE_SUP_ST[beSupEtat(d,beMeId())]+'</span></div>').join('')+'</div>' : '<p class="be-empty">Aucun support de cours.</p>';
     const now=beNowLocal();
     const evs=L_evaluations().filter(x=>x.sessionId===id);
     const evHtml = evs.length ? '<div class="be-list">'+evs.map(e=>{
@@ -47219,6 +47221,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       +'<h4 style="margin-top:16px;">📝 Évaluations</h4>'+evHtml
       +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Retour</button></div>', ()=>beFormationRenderEleve());
     document.querySelectorAll('[data-vsup]').forEach(b=>b.onclick=()=>{ const d=L_supports().find(x=>x.id===b.dataset.vsup); if(d&&d.pj){ beSupMark(d,beMeId(),'en_cours'); beSave(); beOpenPjViewer(d.pj); beSessionOpenEleve(id); } });
+    document.querySelectorAll('[data-pleleve]').forEach(b=>b.onclick=()=>{ const d=L_supports().find(x=>x.id===b.dataset.pleleve); if(d&&d.iaContenu&&window.coursIaPresenter){ beSupMark(d,beMeId(),'en_cours'); beSave(); window.coursIaPresenter(d.iaContenu); } });
     document.querySelectorAll('[data-supok]').forEach(b=>b.onclick=()=>{ const d=L_supports().find(x=>x.id===b.dataset.supok); if(d){ beSupMark(d,beMeId(),'consulte'); beSave(); beSessionOpenEleve(id); } });
     document.querySelectorAll('[data-voir]').forEach(b=>b.onclick=()=>beEvalVoirCorrection(b.dataset.voir));
     document.querySelectorAll('[data-remplir]').forEach(b=>b.onclick=()=>beEvalRemplir(b.dataset.remplir));
@@ -48808,7 +48811,7 @@ document.head.appendChild(st);
      +(S.manquant.length?'<div class="dvSens" role="note"><b>'+esc(T('Ce qui manque dans vos documents'))+' :</b><ul>'+S.manquant.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>':'')
      +(S.edit?'<textarea class="ciaTx" rows="14" data-cia-tx aria-label="'+esc(T('Texte du résultat'))+'"></textarea>':'<div class="ciaRes">'+versHtml(depuisTexte(S.texte,[])).replace(/<p><i>.*?<\/i><\/p>/,'')+'</div>')
      +'<div class="dvBtns">'+(S.edit?ib('check','J\'accepte','data-cia="ok"'):(S.accepte?ib('edit','Je modifie','data-cia="edit"'):ib('check','J\'accepte','data-cia="ok"')+ib('edit','Je modifie','data-cia="edit"')))+'</div>'
-     +'<div class="dvBtns">'+ib('print','Imprimer ou PDF','data-cia="print"')+ib('note','Document modifiable','data-cia="word"')+ib('link','Utiliser comme pièce jointe','data-cia="use"',!S.accepte||S.edit)+'</div>'
+     +'<div class="dvBtns">'+ib('print','Imprimer ou PDF','data-cia="print"')+ib('note','Document modifiable','data-cia="word"')+ib('play','Lancer en présentation','data-cia="present"',!S.accepte||S.edit)+ib('link','Utiliser comme pièce jointe','data-cia="use"',!S.accepte||S.edit)+'</div>'
      +(S.accepte&&!S.edit?'':'<p class="pcNote">'+esc(T('Touchez « J\'accepte » pour pouvoir utiliser le résultat comme pièce jointe.'))+'</p>')):'<p class="pcNote">'+esc(T('Le résultat apparaîtra ici.'))+'</p>';
    ov.innerHTML='<div class="pcFeuCard dvCard ciaCard"><h4 id="ciaT">'+esc(T('Support de cours avec l\'IA'))+'</h4>'
     +'<p class="pcNote ciaPriv" role="note">'+esc(T('Confidentialité : seuls le texte et des images réduites de vos documents sont envoyés à l\'IA, le temps de la réponse. Rien n\'est gardé sur le serveur ni chez un tiers. Les copies temporaires sont effacées après chaque essai et à la fermeture. Vos documents d\'origine ne changent pas.'))+'</p>'
@@ -48849,17 +48852,63 @@ document.head.appendChild(st);
    if(w==='sim'){ S.res=EXEMPLE_OK; S.manquant=EXEMPLE_OK.manquant; S.texte=versTexte(EXEMPLE_OK); S.simule=true; S.accepte=false; S.edit=false; S.err=null; draw(); return; }
    if(w==='edit'){ S.edit=true; S.accepte=false; draw(); return; } if(w==='ok'){ S.edit=false; S.accepte=true; draw(); return; }
    if(w==='print'){ imprimer(cur()); return; } if(w==='word'){ dlBlob(wordBlob(cur()),nomFichier(cur())+'.doc'); return; }
+   if(w==='present'){ if(!S.accepte||S.edit) return; G.coursIaPresenter(cur()); return; }
    if(w==='use'){ if(!S.accepte||S.edit) return; const r=cur(); let pj;
     try{ const bl=await pdfBlob(r); pj={name:nomFichier(r)+'.pdf',src:await blobVersDataUrl(bl)}; }catch(_){ const bl=wordBlob(r); pj={name:nomFichier(r)+'.doc',src:await blobVersDataUrl(bl)}; }
-    try{ opts.onUse&&opts.onUse(pj,r.titre); }catch(_){ } clip('Le résultat est rattaché au support de cours.'); fermer(); return; }
+    try{ opts.onUse&&opts.onUse(pj,r.titre,r); }catch(_){ } clip('Le résultat est rattaché au support de cours.'); fermer(); return; }
   });
+  draw();
+ };
+
+ /* ---------- Outil de présentation : rejoue un résultat (titre/sections) en diapositives plein écran,
+    en reprenant l'intégralité du texte (aucune ligne perdue : paginée si une section est trop longue). ---------- */
+ G.coursIaPresenter=function(r){
+  if(!r) return;
+  const MAXL=8;
+  const pager=(titre,lignes)=>{
+   const L=(lignes||[]).map(x=>String(x||'').trim()).filter(Boolean);
+   if(!L.length) return [{titre:titre||'',bullets:[]}];
+   const out=[]; for(let i=0;i<L.length;i+=MAXL) out.push({titre:(titre||'')+(i>0?' (suite)':''),bullets:L.slice(i,i+MAXL)});
+   return out;
+  };
+  let slides=[{titre:r.titre||'Support de cours',bullets:[TAG]}];
+  (r.sections||[]).forEach(s=>{ const lignes=(s.paragraphes||[]).concat((s.liste||[]).map(x=>'• '+x)); slides=slides.concat(pager(s.titre||'',lignes)); });
+  if(r.manquant&&r.manquant.length) slides=slides.concat(pager('Ce qui manque dans les sources', r.manquant));
+  let i=0;
+  const old=document.getElementById('ciaPresOv'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='ciaPresOv'; ov.className='ciaPres'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label',esc(T('Présentation'))); document.body.appendChild(ov);
+  const close=()=>{ document.removeEventListener('keydown',onKey); ov.remove(); };
+  const nav=d=>{ i=Math.max(0,Math.min(slides.length-1,i+d)); draw(); };
+  const onKey=e=>{ if(e.key==='Escape') close(); else if(e.key==='ArrowRight'||e.key===' ') nav(1); else if(e.key==='ArrowLeft') nav(-1); };
+  const draw=()=>{
+   const s=slides[i];
+   ov.innerHTML='<div class="ciaPresBar"><span class="ciaPresCnt">'+(i+1)+' / '+slides.length+'</span><button type="button" class="ciaPresX" id="ciaPresXb" aria-label="'+esc(T('Fermer'))+'" title="'+esc(T('Fermer (Échap)'))+'">×</button></div>'
+    +'<div class="ciaPresBody"><h2 class="ciaPresH">'+esc(s.titre||'')+'</h2>'+(s.bullets&&s.bullets.length?('<ul class="ciaPresUl">'+s.bullets.map(b=>'<li>'+esc(b)+'</li>').join('')+'</ul>'):'')+'</div>'
+    +'<div class="ciaPresNav"><button type="button" id="ciaPresPrev" '+(i===0?'disabled':'')+' aria-label="'+esc(T('Précédent'))+'">‹</button><button type="button" id="ciaPresNext" '+(i===slides.length-1?'disabled':'')+' aria-label="'+esc(T('Suivant'))+'">›</button></div>';
+   document.getElementById('ciaPresXb').onclick=close;
+   document.getElementById('ciaPresPrev').onclick=()=>nav(-1);
+   document.getElementById('ciaPresNext').onclick=()=>nav(1);
+  };
+  document.addEventListener('keydown',onKey);
   draw();
  };
  const css=document.createElement('style'); css.id='coursIaCss';
  css.textContent='.ciaCard{max-width:620px;max-height:90vh;overflow:auto}.ciaPriv{border:1.5px solid var(--ds-accent,#FFC400);border-radius:12px;padding:8px 12px;font-size:14px}.ciaL{list-style:none;margin:0 0 6px;padding:0}.ciaL li{padding:4px 0;overflow-wrap:anywhere}.ciaX{min-width:44px;min-height:44px;background:transparent;border:0;color:inherit;font-size:20px;cursor:pointer}'
   +'.ciaMods{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:0 0 8px}.ciaMod{min-height:44px;padding:8px 10px;text-align:start;background:transparent;color:inherit;border:1.5px solid var(--ds-line,#DAD8D1);border-radius:12px;font:inherit;cursor:pointer}.ciaMod.on{border-color:var(--ds-accent,#FFC400);background:color-mix(in srgb,var(--ds-accent,#FFC400) 14%,transparent)}'
   +'.ciaTx{width:100%;box-sizing:border-box;background:transparent;color:inherit;border:0;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:16px;padding:8px 2px;resize:vertical}.ciaRes{border-left:4px solid var(--ds-accent,#FFC400);padding:4px 12px;margin:6px 0;overflow-wrap:anywhere}.ciaRes h1{font-size:19px}.ciaRes h2{font-size:16px}'
-  +'.ciaCard .dvBtns .dimIB{border-color:var(--ds-accent,#FFC400)!important}.ciaCard .dvBtns{justify-content:flex-end}.ciaBtnRow{display:inline-flex}';
+  +'.ciaCard .dvBtns .dimIB{border-color:var(--ds-accent,#FFC400)!important}.ciaCard .dvBtns{justify-content:flex-end}.ciaBtnRow{display:inline-flex}'
+  +'.ciaPres{position:fixed;inset:0;z-index:100040;background:var(--ds-bg,#0E0E0E);color:var(--ds-ink,#F2EFE6);display:flex;flex-direction:column;box-sizing:border-box}'
+  +'.ciaPresBar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--ds-line,#3a3a3a)}'
+  +'.ciaPresCnt{font-size:13px;color:var(--ds-ink-soft,#B8B4A6)}'
+  +'.ciaPresX{min-width:44px;min-height:44px;background:transparent;border:0;color:inherit;font-size:24px;cursor:pointer;line-height:1}'
+  +'.ciaPresBody{flex:1;overflow:auto;display:flex;flex-direction:column;justify-content:center;padding:24px max(24px,env(safe-area-inset-right,0px)) 24px max(24px,env(safe-area-inset-left,0px));max-width:900px;margin:0 auto;width:100%;box-sizing:border-box}'
+  +'.ciaPresH{font-size:clamp(22px,4.5vw,40px);margin:0 0 20px;text-wrap:balance}'
+  +'.ciaPresUl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}'
+  +'.ciaPresUl li{font-size:clamp(15px,2.4vw,22px);line-height:1.4;padding-left:20px;position:relative;overflow-wrap:anywhere}'
+  +'.ciaPresUl li::before{content:"";position:absolute;left:0;top:0.6em;width:7px;height:7px;border-radius:50%;background:var(--ds-accent,#FFC400)}'
+  +'.ciaPresNav{display:flex;justify-content:space-between;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}'
+  +'.ciaPresNav button{min-width:56px;min-height:44px;background:transparent;border:1.5px solid var(--ds-accent,#FFC400);border-radius:10px;color:inherit;font-size:20px;cursor:pointer}'
+  +'.ciaPresNav button:disabled{opacity:.3;cursor:default}';
  document.head.appendChild(css);
 })(typeof window!=='undefined'?window:globalThis);
 </script>
