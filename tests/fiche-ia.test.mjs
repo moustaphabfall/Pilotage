@@ -1,6 +1,6 @@
 /* Test de la garde d'usage de supabase/fiche-ia.ts avec des doubles (aucun réseau, aucune base).
    Lancer : node --experimental-strip-types tests/fiche-ia.test.mjs */
-import { handle, ANIMATIONS, MISES_EN_PAGE, THEMES } from '../supabase/fiche-ia.ts';
+import { handle, ANIMATIONS, MISES_EN_PAGE, THEMES, TYPES_QUESTION } from '../supabase/fiche-ia.ts';
 let n = 0, ko = 0;
 const eq = (a, b, m) => { n++; if (JSON.stringify(a) !== JSON.stringify(b)) { ko++; console.log('ECHEC', m, 'attendu', JSON.stringify(b), 'recu', JSON.stringify(a)); } };
 /* base simulée : mêmes règles que ia_consommer / ia_rembourser (migration-ia-limite.sql) */
@@ -103,6 +103,17 @@ const run = async (d, tok, body) => { const r = await handle(req(tok, body), d);
   const it = tool.input_schema.properties.diapositives.items.properties; eq(it.animation.enum, ['aucune', 'fondu', 'glissement', 'zoom', 'points'], 'animations : liste blanche'); eq(it.mise_en_page.enum, MISES_EN_PAGE, 'mises en page : liste blanche');
   eq(tool.input_schema.properties.theme.enum, THEMES, 'themes : liste blanche'); eq(ANIMATIONS.includes('script'), false, 'pas d\'animation libre'); eq(w.dernierBody.tool_choice.name, 'rediger_presentation', 'outil impose');
   eq(/AUCUN fait/.test(w.dernierBody.system), true, 'consigne : aucun fait invente'); eq(/mur de texte/.test(w.dernierBody.system), true, 'consigne : style cartes');
+}
+{ /* mode evaluation_questions : garde, documents, liste blanche des types, aucun stockage, remboursement en cas d'echec */
+  const { d, w, acces } = monde(); const ev = { mode: 'evaluation_questions', projet: 'P1', consigne: '', sources: [{ nom: 'controle.pdf', texte: '1. Quel outil compacte le beton ? a) vibreur b) truelle' }] };
+  const r = await run(d, 'tA', ev); eq([r.s, r.j.code], [403, 'attente'], 'evaluation : attente'); eq(w.appelsIA, 0, 'evaluation : IA non appelee');
+  acces.get('uA|P1').statut = 'accepte'; const r2 = await run(d, 'tA', ev); eq(r2.s, 200, 'evaluation accordee'); eq(acces.get('uA|P1').utilise, 1, 'evaluation consomme un appel');
+  const r3 = await run(d, 'tA', { ...ev, sources: [] }); eq(r3.s, 400, 'evaluation sans document'); eq(acces.get('uA|P1').utilise, 1, 'evaluation sans document : rien consomme');
+  const r4 = await run(d, 'tA', { ...ev, sources: [{ nom: 'x', texte: '', images: [{ type: 'image/gif', data: 'AAAA' }] }] }); eq(r4.s, 400, 'evaluation : image refusee');
+  await run(d, 'tA', ev); const t2 = w.dernierBody.tools[0]; eq(t2.name, 'extraire_questions', 'evaluation : outil'); eq(t2.input_schema.properties.questions.items.properties.type.enum, TYPES_QUESTION, 'evaluation : types en liste blanche');
+  eq(w.dernierBody.tool_choice.name, 'extraire_questions', 'evaluation : outil impose'); eq(/TELS QU'ILS SONT/.test(w.dernierBody.system), true, 'evaluation : recopier sans reformuler'); eq(/QUE si elle est écrite/.test(w.dernierBody.system), true, 'evaluation : corrige seulement si present');
+  eq(TYPES_QUESTION.includes('script'), false, 'evaluation : pas de type libre');
+  w.echec = true; const r5 = await run(d, 'tA', ev); eq(r5.s, 400, 'evaluation echec serveur'); eq(acces.get('uA|P1').utilise, 2, 'evaluation echec : appel rendu');
 }
 { /* simulation de l'environnement Deno : la fonction s'enregistre et répond */
   let h = null; globalThis.Deno = { serve: (f) => { h = f; }, env: { get: () => undefined } };
