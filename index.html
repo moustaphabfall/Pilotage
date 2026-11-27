@@ -20967,7 +20967,7 @@ html[data-theme="sombre"] .fplSvg{--fp-acier:#FFC400;--fp-ink:#F5D86B;--fp-dim:#
 .fplSvg .fp-bub{fill:var(--fp-bg);stroke:var(--fp-acier);stroke-width:1.8}.fplSvg .fp-tri{fill:var(--fp-ink)}
 .fplSvg .fp-t{fill:var(--fp-ink);font-size:12.5px}.fplSvg .fp-ts{fill:var(--fp-ink);font-size:11.5px}.fplSvg .fp-tb{fill:var(--fp-ink);font-size:12.5px;font-weight:700}
 .fplSvg .fp-halo{paint-order:stroke;stroke:var(--fp-bg);stroke-width:4px;stroke-linejoin:round}
-.fplSecs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.fplShapes{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}.fplLeg{max-width:420px}
+.fplSecs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.fplShapes{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}.fplLeg{max-width:560px}
 .fplDoc .fplDraw{margin-bottom:4px}.fplNotes{margin:0;padding-left:20px;font-size:var(--ds-fs-sm,13px)}
 .pcBeamDraw.pcSized{height:var(--pcbh);max-height:62vh;align-items:stretch}
 .pcBeamDraw.pcSized>svg.pcSvg{height:100%;min-height:0}
@@ -27983,7 +27983,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   const fplP=(S,pts,c)=>S.it.push({k:'p',pts,c});
   const fplR=(S,x,y,w,h,c,r)=>S.it.push({k:'r',x,y,w,h,c,r:r||0});
   const fplC=(S,x,y,r,c)=>S.it.push({k:'c',x,y,r,c});
-  const fplT=(S,x,y,s,c,a,rot,halo)=>S.it.push({k:'t',x,y,s:String(s),c:c||'ts',a:a||'start',rot:rot||0,halo:halo!==false});
+  const fplT=(S,x,y,s,c,a,rot,halo)=>{ const o={k:'t',x,y,s:String(s),c:c||'ts',a:a||'start',rot:rot||0,halo:halo!==false}; S.it.push(o); return o; };
   const fplTri=(S,pts)=>S.it.push({k:'tri',pts});
   function fplBub(S,x,y,n,r){ r=r||10; fplC(S,x,y,r,'bub'); fplT(S,x,y+4.3,n,'tb','middle',0,false); }
   const fplTw=s=>String(s).length*6.3;
@@ -27991,8 +27991,9 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    if(fa!=null) fplL(S,xa,fa+(fa>y?-3:3),xa,y+(fa>y?-4:4),'cote');
    if(fb!=null) fplL(S,xb,fb+(fb>y?-3:3),xb,y+(fb>y?-4:4),'cote');
    fplL(S,xa,y,xb,y,'cote'); [xa,xb].forEach(x=>fplL(S,x-4,y+4,x+4,y-4,'cote'));
+   if(txt==='') return;
    const w=fplTw(txt), len=Math.abs(xb-xa);
-   if(len>=w+10) fplT(S,(xa+xb)/2,y-5,txt,'ts','middle'); else if(alt) fplT(S,(xa+xb)/2,y-17,txt,'ts','middle'); else fplT(S,Math.max(xa,xb)+8,y-5,txt,'ts','start');
+   if(len>=w+10){ const o=fplT(S,(xa+xb)/2,y-5,txt,'ts','middle'); o.mv=[Math.min(xa,xb),Math.max(xa,xb)]; } else if(alt){ const o=fplT(S,(xa+xb)/2,y-17,txt,'ts','middle'); o.mv=[(xa+xb)/2-120,(xa+xb)/2+120]; } else { const o=fplT(S,Math.max(xa,xb)+8,y-5,txt,'ts','start'); o.mv=[Math.max(xa,xb)+4,Math.max(xa,xb)+170]; }
   }
   function fplVD(S,x,ya,yb,txt,xa,xb,side){
    if(xa!=null) fplL(S,xa+(xa>x?-3:3),ya,x+(xa>x?-4:4),ya,'cote');
@@ -28000,15 +28001,61 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    fplL(S,x,ya,x,yb,'cote'); [ya,yb].forEach(y=>fplL(S,x-4,y+4,x+4,y-4,'cote'));
    if(txt) fplT(S,x+(side==null?-5:side),(ya+yb)/2,txt,'ts','middle',-90);
   }
+  /* anti-collision commune : un libellé de cote déplaçable (mv = étendue permise) ne reste jamais traversé par une ligne verticale (rappel de cote, axe, coupe) ; il glisse vers l'emplacement libre le plus proche */
+  function fplSpread(S){
+   const V=S.it.filter(i=>i.k==='l'&&Math.abs(i.x1-i.x2)<0.01&&['cote','axe','coupe','lead','tick'].indexOf(i.c)>=0);
+   S.it.forEach(t=>{ if(t.k!=='t'||!t.mv) return; const gp=t.grp||[], hw=Math.max(fplTw(t.s),...gp.map(q=>fplTw(q.s)))/2+3, y0=t.y-12, y1=Math.max(t.y,...gp.map(q=>q.y))+3;
+    const bad=cx=>V.some(l=>l.x1>cx-hw&&l.x1<cx+hw&&Math.min(l.y1,l.y2)<y1&&Math.max(l.y1,l.y2)>y0);
+    const lo=t.mv[0]+hw, hi=t.mv[1]-hw, cx0=t.a==='middle'?t.x:t.x+(t.a==='end'?-hw:hw);
+    if(!bad(cx0)||!(hi>=lo)) return; let best=null; for(let k=0;k<=60;k++){ const c=lo+(hi-lo)*k/60; if(!bad(c)&&(best==null||Math.abs(c-cx0)<Math.abs(best-cx0))) best=c; }
+    if(best!=null){ const dx=best-cx0; t.x+=dx; gp.forEach(q=>{ q.x+=dx; }); } });
+  }
   /* allocation de rangées de cotes sans recouvrement */
   function fplRows(items,sx){ const rows=[]; items.forEach(it=>{ const a=it.a, b=Math.max(it.b,it.a+(it.tw||0)/sx)+0.25; let r=0; for(;r<rows.length;r++){ if(rows[r].every(q=>b<=q.a||a>=q.b)) break; } if(!rows[r]) rows[r]=[]; rows[r].push({a,b}); it.row=r; }); return rows.length; }
   /* découpage en groupes de travées (≤ 14 m) */
   function fplGroups(P){ const T=P.travees,g=[]; let a=0; while(a<T.length){ let b=a+1; while(b<T.length&&(T[b].x1-T[a].x0)<=14) b++; g.push({a,b}); a=b; } return g; }
   /* ---- élévation ---- */
   const fplLapTxt=r=>{ const m={}; (r.liens||[]).forEach(q=>{ const k=q.phi+'|'+q.rep; m[k]=(m[k]||0)+1; }); const g=Object.keys(m).map(k=>{ const a=k.split('|'); return m[k]+' HA'+a[0]+' ('+a[1]+')'; }); return 'l₀ = '+fplF(r.lo/1000)+' m'+(g.length?' · cadres '+g.join(' + '):''); };
+  /* crochet réel d'une extrémité de barre : arc de mandrin puis retour (valeurs du moteur) ; côté side = +1 (extrémité droite) ou -1 (gauche), vdir = -1 vers le haut, +1 vers le bas */
+  function fplHookPts(xb,y,side,vdir,rPx,legPx){ const pts=[]; const cx=xb-side*rPx, cy=y+vdir*rPx; for(let i=0;i<=6;i++){ const t=Math.PI/2*i/6; pts.push([cx+side*rPx*Math.sin(t),cy-vdir*rPx*Math.cos(t)]); } pts.push([xb,y+vdir*(rPx+legPx)]); return pts; }
+  /* recouvrements entre deux barres d'une même nappe (deux groupes différents qui se chevauchent en partie) : longueur = recouvrement géométrique des tronçons du moteur */
+  function fplLaps(P,reps){
+   const out=[]; ['inf','sup'].forEach(z=>{ const L=reps.filter(b=>b.zone===z&&b.role!=='montage');
+    for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++){ const a=L[i], b=L[j]; const x0=Math.max(a.x0,b.x0), x1=Math.min(a.x1,b.x1);
+     const nested=(a.x0<=b.x0+1e-6&&a.x1>=b.x1-1e-6)||(b.x0<=a.x0+1e-6&&b.x1>=a.x1-1e-6);
+     if(x1-x0>0.03&&!nested&&(a.e!==b.e||a.appui!==b.appui)) out.push({zone:z,x0,x1,len:x1-x0,reps:[a.rep,b.rep],ra:a,rb:b}); } });
+   return out;
+  }
+  /* appui : symbole selon le type (poteau / simple / rouleau / ressort / console), largeur réelle, repère d'axe */
+  function fplAppuiSym(S,x,wPx,bot,type){
+   const x0=x-wPx/2, x1=x+wPx/2;
+   if(type==='poteau'){ fplR(S,x0,bot,wPx,34,'betf'); fplL(S,x0,bot,x1,bot+34,'betf'); fplL(S,x1,bot,x0,bot+34,'betf'); return; }
+   if(type==='console'){ return; }
+   fplR(S,x0,bot,wPx,6,'betf');
+   if(type==='ressort'){ fplP(S,[[x,bot+6],[x,bot+9],[x-7,bot+13],[x+7,bot+19],[x-7,bot+25],[x+7,bot+31],[x,bot+35]],'betf'); fplL(S,x-12,bot+36,x+12,bot+36,'bet'); return; }
+   const hw=Math.max(12,Math.min(wPx/2,20)); fplP(S,[[x,bot+6],[x-hw,bot+30],[x+hw,bot+30],[x,bot+6]],'betf');
+   if(type==='rouleau'){ fplC(S,x-hw*0.5,bot+33,3,'betf'); fplC(S,x+hw*0.5,bot+33,3,'betf'); fplL(S,x-hw-4,bot+37,x+hw+4,bot+37,'bet'); }
+   else { fplL(S,x-hw-4,bot+30,x+hw+4,bot+30,'bet'); [-hw,-hw/2,0,hw/2,hw].forEach(o=>fplL(S,x+o,bot+30,x+o-4,bot+36,'betf')); }
+  }
+  const FPL_APPUI_NOM={poteau:'sur poteau ou voile (encastré)',simple:'appui simple',rouleau:'appui simple (rouleau)',ressort:'appui élastique (ressort)',console:'sans appui (console)'};
+  /* texte d'ancrages (crochets ou droits aux extrémités) et de recouvrements, valeurs du moteur uniquement */
+  function fplAncrNote(P,reps){
+   const n=P.travees.length, Lt=P.travees[n-1].x1, ha=[], dr=[];
+   reps.filter(b=>b.zone!=='peau').forEach(b=>{
+    const rive=b.x0<-1e-6||b.x1>Lt+1e-6; if(!rive) return;
+    if(b.hookL||b.hookR){ const k=(b.nomRow&&b.nomRow.crochet)||{}, mn=k.mandrin||(b.diam<=16?4*b.diam:7*b.diam), rt=k.retour||10*b.diam; ha.push('barre '+b.rep+' ('+b.nb+' HA'+b.diam+') : crochet à 90°'+(b.hookL&&b.hookR?' aux deux extrémités':(b.hookL?' à gauche':' à droite'))+', retour '+fplF(rt/10,1).replace(',0','')+' cm, mandrin Ø '+fplF(mn/10,1).replace(',0','')+' cm'); }
+    else dr.push(b.rep); });
+   return (ha.length?'Ancrages avec crochet : '+ha.join(' ; ')+'. ':'')+(dr.length?'Barres '+dr.join(', ')+' : ancrage droit, aucun crochet (longueur d\'ancrage disponible suffisante). ':'')+'Cadres : crochets à 135° aux deux extrémités.';
+  }
+  function fplLapNote(P,reps){
+   const L=[]; fplLaps(P,reps).forEach(q=>L.push('barres '+q.reps.join(' / ')+' ('+(q.zone==='inf'?'nappe inférieure':'nappe supérieure')+') : lr = '+fplF(q.len)+' m'));
+   const seen={}; P.travees.forEach(t=>(t.recouvrements||[]).forEach(r=>{ const k=r.rep+'/'+r.x0; if(seen[k]) return; seen[k]=1; L.push('barre '+r.rep+' (montage) : l₀ = '+fplF(r.lo/1000)+' m'); }));
+   return L.length?'Recouvrements cotés : '+L.join(' ; ')+'.':'Aucun recouvrement entre deux barres de même nappe sur cet ouvrage.';
+  }
   function fplElev(P,reps,lit,g){
    const par=P.parametres,T=P.travees,n=T.length, hm=par.h/100, c=par.enrobage/100, phit=par.phiCadre/1000, app=par.appui/100;
-   const xmin=T[g.a].x0-app/2, xmax=T[g.b-1].x1+app/2, first=g.a===0, last=g.b===n;
+   const AD=P.appuisDessin||[], aw=k=>(AD[k]&&AD[k].w>0)?AD[k].w/100:app, atyp=k=>(AD[k]&&AD[k].type)||'poteau';
+   const xmin=T[g.a].x0-aw(g.a)/2, xmax=T[g.b-1].x1+aw(g.b)/2, first=g.a===0, last=g.b===n;
    const sx=130, sy=sx*fplRatio(Math.max(1,185/(sx*hm))), ox=130, hb=hm*sy, X=x=>ox+(x-xmin)*sx, W=ox+(xmax-xmin)*sx+130;
    const nodes=[]; for(let k=g.a;k<=g.b;k++) nodes.push({k,x:k<n?T[k].x0:T[n-1].x1});
    const vis=reps.filter(b=>b.x1>xmin&&b.x0<xmax);
@@ -28016,17 +28063,23 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const aItems=[];
    vis.filter(b=>b.zone==='sup'&&b.role!=='montage').forEach(b=>{ const nd=nodes.find(q=>q.k===b.appui); aItems.push({kind:'chap',bar:b,a:Math.max(b.x0,xmin),b2:Math.min(b.x1,xmax),nodeX:nd?nd.x:null,tw:fplTw('0,00 m')*2}); });
    const lapSeen={}; T.slice(g.a,g.b).forEach(t=>(t.recouvrements||[]).forEach(r=>{ const key=r.rep+'/'+r.x0; if(lapSeen[key]) return; lapSeen[key]=1; aItems.push({kind:'lap',r,a:r.x0,b2:r.x1,tw:fplTw(fplLapTxt(r))}); }));
+   const lapsG=fplLaps(P,reps).filter(q=>q.x1>xmin&&q.x0<xmax);
+   lapsG.filter(q=>q.zone==='sup').forEach(q=>aItems.push({kind:'lapb',q,a:q.x0,b2:q.x1,tw:fplTw('lr = 0,00 m')}));
    aItems.forEach(it=>{ it.b=it.b2; });
    const nA=fplRows(aItems,sx);
-   const bItems=[]; vis.filter(b=>b.zone==='inf'&&b.role==='renforts').forEach(b=>{ [b.x0,b.x1].forEach((x,i)=>{ if(x<=xmin+0.01||x>=xmax-0.01) return; if(i===0&&b.hookL) return; if(i===1&&b.hookR) return; const nd=nodes.reduce((m,q)=>Math.abs(q.x-x)<Math.abs(m.x-x)?q:m,nodes[0]); bItems.push({bar:b,x,nd,a:Math.min(x,nd.x),b2:Math.max(x,nd.x),tw:fplTw('0 arrêt 0,00 m')}); }); });
+   const bItems=[]; vis.filter(b=>b.zone==='inf'&&b.role==='renforts').forEach(b=>{ [b.x0,b.x1].forEach((x,i)=>{ if(x<=xmin+0.01||x>=xmax-0.01) return; if(i===0&&b.hookL) return; if(i===1&&b.hookR) return; const nd=nodes.reduce((m,q)=>Math.abs(q.x-x)<Math.abs(m.x-x)?q:m,nodes[0]); bItems.push({kind:'arret',bar:b,x,nd,a:Math.min(x,nd.x),b2:Math.max(x,nd.x),tw:fplTw('0 arrêt 0,00 m')}); }); });
+   lapsG.filter(q=>q.zone==='inf').forEach(q=>bItems.push({kind:'lapb',q,a:q.x0,b2:q.x1,tw:fplTw('lr = 0,00 m')}));
    bItems.forEach(it=>{ it.b=it.b2; });
    const nB=fplRows(bItems,sx);
-   const T0=44+30*(nA+1), bot=T0+hb, rowC=T0-34, rowP=bot+88, rowTot=rowP+30*(nB+1), H=rowTot+56;
+   /* cotes d'espacement des cadres : une rangée par cote, jamais deux libellés l'un sur l'autre */
+   const zs=[]; for(let e=g.a;e<g.b;e++){ const pos=fplCadrePos(P,e); (T[e].cadres&&T[e].cadres.zones||[]).forEach((z,i)=>{ const pz=pos.filter(q=>q.z===z); if(pz.length) zs.push({x0:pz[0].x,x1:pz[pz.length-1].x,z}); }); }
+   const eIt=zs.map(q=>{ const txt='e = '+fplF(q.z.espCm,1).replace(',0','')+' cm', tw=fplTw(txt), mid=(q.x0+q.x1)/2; return {q,txt,tw,a:Math.min(q.x0,mid-tw/2/sx),b:Math.max(q.x1,mid+tw/2/sx)}; });
+   const nE=eIt.length?fplRows(eIt.map(it=>{ it.tw=0; return it; }),sx):1;
+   const T0=44+30*(nA+1)+28*Math.max(0,nE-1), bot=T0+hb, rowC=T0-34, rowP=bot+130, rowTot=rowP+30*(nB+1)+30, H=rowTot+56;
+   const yAc=bot+52, yAn=bot+76;
    const S=fplNewScene(W,H); S.mm=sx/1000; S.mmV=sy/1000;
-   /* appuis */
-   nodes.forEach(nd=>{ const x0=X(nd.x-app/2),x1=X(nd.x+app/2);
-    fplR(S,x0,bot,x1-x0,34,'betf'); fplL(S,x0,bot,x1,bot+34,'betf'); fplL(S,x1,bot,x0,bot+34,'betf');
-    fplL(S,X(nd.x),T0-6,X(nd.x),bot+62,'axe'); fplT(S,X(nd.x),bot+54,'Appui '+nd.k+((P.nonCalcules||[]).some(q=>q.appui===nd.k)?' : non calculé':''),'tb','middle'); });
+   /* appuis : symbole selon le type, largeur réelle, axe ; nom et cote de largeur en bas du dessin */
+   nodes.forEach(nd=>{ const w=aw(nd.k)*sx; fplAppuiSym(S,X(nd.x),w,bot,atyp(nd.k)); fplL(S,X(nd.x),T0-6,X(nd.x),bot+(atyp(nd.k)==='poteau'?42:44),'axe'); });
    /* coffrage */
    fplR(S,X(xmin),T0,X(xmax)-X(xmin),hb,'bet');
    if(!first) fplT(S,X(xmin)+6,T0-6,'← suite travée '+g.a,'ts','start',0,true);
@@ -28042,11 +28095,12 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const slotOf={}; ['inf','sup'].forEach(z=>{ for(let L=1;L<=3;L++){ const arr=vis.filter(b=>b.zone===z&&(lit[b.rep]||1)===L).sort((a,b)=>a.x0-b.x0); const placed=[]; arr.forEach(b=>{ let s=0; while(placed.some(p=>p.s===s&&b.x0<p.x1-0.02&&b.x1>p.x0+0.02)) s++; placed.push({s,x0:b.x0,x1:b.x1}); slotOf[b.rep]=s; }); } });
    const yOf=b=>{ const L=lit[b.rep]||1, step=(b.diam+25)/1000*sy, base=(c+phit+b.diam/2000)*sy, o=(slotOf[b.rep]||0)*6;
     return b.zone==='inf'?bot-base-(L-1)*step-o:T0+base+(L-1)*step+o; };
-   const hookLeg=b=>Math.min(hb*0.6,(12*b.diam/1000)*sy);
+   /* crochet : mandrin et retour lus dans la nomenclature du moteur (10 Ø de retour, mandrin 4 Ø ou 7 Ø) ; sinon règle du moteur */
+   const hookGeo=b=>{ const k=(b.nomRow&&b.nomRow.crochet)||{}, phi=b.diam, Dm=k.mandrin||(phi<=16?4*phi:7*phi), ret=k.retour||10*phi; return {r:Math.max(3,(Dm+phi)/2*sx/1000),leg:Math.min(hb*0.6,ret*sy/1000)}; };
    vis.filter(b=>b.zone!=='peau').forEach(b=>{
     const y=yOf(b), xa=Math.max(b.x0,xmin+0.005), xb=Math.min(b.x1,xmax-0.005), dir=b.zone==='inf'?-1:1;
-    const hl=b.hookL&&b.x0>=xmin-0.001, hr=b.hookR&&b.x1<=xmax+0.001, lg=hookLeg(b);
-    const pts=[]; if(hl) pts.push([X(xa),y+dir*lg]); pts.push([X(xa),y],[X(xb),y]); if(hr) pts.push([X(xb),y+dir*lg]);
+    const hl=b.hookL&&b.x0>=xmin-0.001, hr=b.hookR&&b.x1<=xmax+0.001, hg=hookGeo(b);
+    let pts=[]; if(hl) pts=fplHookPts(X(xa),y,-1,dir,hg.r,hg.leg).reverse(); else pts.push([X(xa),y]); if(hr) pts=pts.concat(fplHookPts(X(xb),y,1,dir,hg.r,hg.leg)); else pts.push([X(xb),y]);
     fplP(S,pts,'bar');
     if(!hl&&b.x0>xmin+0.005) fplL(S,X(xa),y-6,X(xa),y+6,'tick'); if(!hr&&b.x1<xmax-0.005) fplL(S,X(xb),y-6,X(xb),y+6,'tick');
    });
@@ -28055,35 +28109,50 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const secs=fplSections(P); secs.forEach(sc=>{ if(sc.x<xmin||sc.x>xmax) return; const x=X(sc.x);
     fplL(S,x,T0-14,x,bot+16,'coupe'); fplTri(S,[[x,T0-14],[x+9,T0-18],[x+9,T0-10]]); fplTri(S,[[x,bot+16],[x+9,bot+12],[x+9,bot+20]]);
     fplT(S,x+13,T0-10,sc.n,'tb','start'); fplT(S,x+13,bot+24,sc.n,'tb','start'); });
-   /* cotes au-dessus : zones de cadres */
-   const zs=[]; for(let e=g.a;e<g.b;e++){ const pos=fplCadrePos(P,e); (T[e].cadres&&T[e].cadres.zones||[]).forEach((z,i)=>{ const pz=pos.filter(q=>q.z===z); if(pz.length) zs.push({x0:pz[0].x,x1:pz[pz.length-1].x,z}); }); }
-   zs.forEach(q=>{ fplHD(S,X(q.x0),X(q.x1),rowC,'e = '+fplF(q.z.espCm,1).replace(',0','')+' cm',T0+inset,T0+inset); });
+   /* cotes au-dessus : zones de cadres, rangées successives ; le libellé évite les lignes de rappel des cotes situées plus haut */
+   const eY=r=>rowC-28*r, topE=eY(Math.max(0,nE-1));
+   eIt.forEach(it=>{ const q=it.q, y=eY(it.row||0); fplHD(S,X(q.x0),X(q.x1),y,'',T0+inset,T0+inset); const o=fplT(S,X((q.x0+q.x1)/2),y-5,it.txt,'ts','middle'); o.mv=[X(q.x0)-fplTw(it.txt)/2,X(q.x1)+fplTw(it.txt)/2]; });
    const cadRep=T[g.a].cadres&&T[g.a].cadres.rep;
    /* chapeaux et recouvrements */
-   aItems.forEach(it=>{ const y=rowC-30*(it.row+1);
+   aItems.forEach(it=>{ const y=topE-30*(it.row+1);
     if(it.kind==='chap'){ const b=it.bar, yb=yOf(b), nx=it.nodeX; const xa=X(it.a), xb=X(it.b2);
      if(nx!=null&&nx>it.a+0.05&&nx<it.b2-0.05){ fplHD(S,xa,X(nx),y,fplF(nx-it.a)+' m',yb,yb,true); fplHD(S,X(nx),xb,y,fplF(it.b2-nx)+' m',yb,yb,true); }
      else fplHD(S,xa,xb,y,fplF(it.b2-it.a)+' m',yb,yb);
      fplBub(S,xa-20,y-1,b.rep,9); }
+    else if(it.kind==='lapb'){ const q=it.q; fplHD(S,X(it.a),X(it.b2),y,'lr = '+fplF(q.len)+' m',yOf(q.rb),yOf(q.ra),true); }
     else { fplHD(S,X(it.a),X(it.b2),y,fplLapTxt(it.r),yOf(reps.find(q=>q.rep===String(it.r.rep))||{zone:'sup',diam:12,rep:'x'}),yOf(reps.find(q=>q.rep===String(it.r.rep))||{zone:'sup',diam:12,rep:'x'}));
      fplT(S,X(it.a)-8,y+4,'recouvrement','tb','end'); } });
    fplBub(S,X(xmin)-16,rowC-1,cadRep||'?',9); fplT(S,X(xmin)-32,rowC+3,'cadres HA'+par.phiCadre,'ts','end');
-   /* cotes au-dessous : portées, arrêts, total */
-   for(let e=g.a;e<g.b;e++) fplHD(S,X(T[e].x0),X(T[e].x1),rowP,'L'+(e+1)+' = '+fplF(T[e].L)+' m',bot+34,bot+34);
-   bItems.forEach(it=>{ const y=rowP+30*(it.row+1), yb=yOf(it.bar); fplHD(S,X(it.a),X(it.b2),y,'l'+it.bar.rep+' = '+fplF(Math.abs(it.x-it.nd.x))+' m',yb,bot+34); });
-   fplHD(S,X(nodes[0].x),X(nodes[nodes.length-1].x),rowTot,'Entre axes = '+fplF(nodes[nodes.length-1].x-nodes[0].x)+' m'+(n>g.b-g.a?' (travées '+(g.a+1)+' à '+g.b+')':''),bot+34,bot+34);
-   /* repères dans le corps de la poutre */
-   const placed=[]; const secX=secs.map(s=>X(s.x));
-   const free=(x,y,w)=>!placed.some(p=>Math.abs(p.y-y)<24&&x-14<p.x+p.w&&x+w>p.x-14)&&!secX.some(sx2=>Math.abs(sx2-x)<14);
+   /* enrobage c : sous et sur la poutre (marge de droite), et en bout de barre aux extrémités de l'ouvrage */
+   const cTxt='c = '+fplF(par.enrobage,1)+' cm', xR=X(xmax)+16;
+   fplVD(S,xR,T0,T0+inset,'',X(xmax),X(xmax)); fplT(S,xR+8,T0+inset/2+4,cTxt,'ts','start');
+   fplVD(S,xR,bot-inset,bot,'',X(xmax),X(xmax)); fplT(S,xR+8,bot-inset/2+4,cTxt,'ts','start');
+   const yEnd=T0-12;
+   if(first){ const xe=X(xmin), xi=xe+c*sx; fplL(S,xe,T0-2,xe,yEnd-4,'cote'); fplL(S,xi,T0+inset,xi,yEnd-4,'cote'); fplL(S,xe,yEnd,xi,yEnd,'cote'); [xe,xi].forEach(x=>fplL(S,x-3,yEnd+3,x+3,yEnd-3,'cote')); fplT(S,xe-6,yEnd+4,cTxt,'ts','end'); }
+   if(last&&!first){ const xe=X(xmax), xi=xe-c*sx; fplL(S,xe,T0-2,xe,yEnd-4,'cote'); fplL(S,xi,T0+inset,xi,yEnd-4,'cote'); fplL(S,xi,yEnd,xe,yEnd,'cote'); [xe,xi].forEach(x=>fplL(S,x-3,yEnd+3,x+3,yEnd-3,'cote')); fplT(S,xe+6,yEnd+4,cTxt,'ts','start'); }
+   /* cotes au-dessous : largeur d'appui, portées, arrêts et recouvrements, total */
+   nodes.forEach(nd=>{ const xa=X(nd.x-aw(nd.k)/2), xb=X(nd.x+aw(nd.k)/2), ty=atyp(nd.k); if(ty==='console') return; const yy=bot+(ty==='poteau'?34:6)+2, tw=fplTw('a = '+fplF(aw(nd.k)*100,0)+' cm'); fplHD(S,xa,xb,yAc,'',yy,yy); const o=fplT(S,xb+6+tw/2,yAc-5,'a = '+fplF(aw(nd.k)*100,0)+' cm','ts','middle'); o.mv=[xb+4,xb+150]; });
+   const yDn=yAn+24;
+   for(let e=g.a;e<g.b;e++) fplHD(S,X(T[e].x0),X(T[e].x1),rowP,'L'+(e+1)+' = '+fplF(T[e].L)+' m',yDn,yDn);
+   bItems.forEach(it=>{ const y=rowP+30*(it.row+1);
+    if(it.kind==='lapb'){ const q=it.q; fplHD(S,X(it.a),X(it.b2),y,'lr = '+fplF(q.len)+' m',yOf(q.ra),yOf(q.rb),true); }
+    else fplHD(S,X(it.a),X(it.b2),y,'l'+it.bar.rep+' = '+fplF(Math.abs(it.x-it.nd.x))+' m',yOf(it.bar),yDn); });
+   fplHD(S,X(nodes[0].x),X(nodes[nodes.length-1].x),rowTot,'Entre axes = '+fplF(nodes[nodes.length-1].x-nodes[0].x)+' m'+(n>g.b-g.a?' (travées '+(g.a+1)+' à '+g.b+')':''),yDn,yDn);
+   /* noms des appuis : toujours dans le dessin, sous la cote de largeur */
+   nodes.forEach(nd=>{ const nc=(P.nonCalcules||[]).some(q=>q.appui===nd.k); const o1=fplT(S,X(nd.x),yAn,'Appui '+nd.k+(nc?' : non calculé':''),'tb','middle'); o1.mv=[X(nd.x)-130,X(nd.x)+130]; o1.grp=[fplT(S,X(nd.x),yAn+13,FPL_APPUI_NOM[atyp(nd.k)]||'','ts','middle')]; });
+   /* repères dans le corps de la poutre : jamais sur une ligne d'axe, de coupe ou d'appui */
+   const placed=[]; const secX=secs.map(s=>X(s.x)).concat(nodes.map(nd=>X(nd.x)));
+   const free=(x,y,w)=>!placed.some(p=>Math.abs(p.y-y)<24&&x-14<p.x+p.w&&x+w>p.x-14)&&!secX.some(sx2=>sx2>x-14&&sx2<x+w+6);
    const bandTop=T0+hb*0.28, bandBot=bot-hb*0.28;
    vis.filter(b=>b.zone!=='peau').sort((a,b)=>(a.zone==='inf'?1:0)-(b.zone==='inf'?1:0)||(+a.rep)-(+b.rep)).forEach(b=>{
     const lab=b.nb+' HA'+b.diam+(b.role==='montage'&&b.mnote?' · '+b.mnote:''), w=24+fplTw(lab), a0=Math.max(b.x0,xmin)+0.1, b0=Math.min(b.x1,xmax)-0.1; if(b0<=a0) return;
     const ys=[]; for(let y=(b.zone==='inf'?bandBot:bandTop);b.zone==='inf'?y>=bandTop:y<=bandBot;y+=(b.zone==='inf'?-24:24)) ys.push(y);
-    let done=false; for(const y of ys){ for(const f of [0.5,0.3,0.7,0.15,0.85,0.4,0.6,0.25,0.75,0.1,0.9]){ const x=X(a0+(b0-a0)*f); if(x-10<X(xmin)||x+w>X(xmax)) continue; if(free(x,y,w)){ placed.push({x,y,w}); const yb=yOf(b); fplL(S,x,yb+(yb>y?-3:3),x,y+(yb>y?10:-10),'lead'); fplBub(S,x,y,b.rep); fplT(S,x+15,y+4,lab,'ts','start'); done=true; break; } } if(done) break; }
+    let done=false; for(const y of ys){ for(const f of [0.5,0.3,0.7,0.15,0.85,0.4,0.6,0.25,0.75,0.1,0.9,0.05,0.95,0.35,0.65,0.2,0.8]){ const x=X(a0+(b0-a0)*f); if(x-10<X(xmin)||x+w>X(xmax)) continue; if(free(x,y,w)){ placed.push({x,y,w}); const yb=yOf(b); fplL(S,x,yb+(yb>y?-3:3),x,y+(yb>y?10:-10),'lead'); fplBub(S,x,y,b.rep); fplT(S,x+15,y+4,lab,'ts','start'); done=true; break; } } if(done) break; }
    });
    /* échelle graphique et mention */
    const ys=H-16; fplL(S,X(xmin),ys,X(xmin)+sx,ys,'cote'); fplL(S,X(xmin),ys-5,X(xmin),ys+5,'cote'); fplL(S,X(xmin)+sx,ys-5,X(xmin)+sx,ys+5,'cote'); fplT(S,X(xmin)+sx+8,ys+4,'1 m (échelle graphique, longueurs)','ts','start',0,false);
    fplT(S,X(xmax),ys+4,'Coffrage '+fplF(par.b,0)+' × '+fplF(par.h,0)+' cm · enrobage nominal '+fplF(par.enrobage,1)+' cm','ts','end',0,false);
+   fplSpread(S);
    S.meta={sy,sx,k:sy/sx};
    return S;
   }
@@ -28104,6 +28173,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const ox=(x)=>OX+x, oy=(y)=>OY+y;
    fplR(S,OX,OY,b,h,'bet');
    fplR(S,OX+c,OY+c,b-2*c,h-2*c,'cads',(pt*2)*s);
+   { const nc=(P.nomenclature||[]).find(r=>r.usage==='cadres'&&!r.sub), ret=((nc&&nc.crochet&&nc.crochet.retour)||Math.max(10*pt,70))*s*0.7071, xr=OX+b-c, yt=OY+c; fplL(S,xr-1,yt+(pt*s)+2,xr-1-ret,yt+(pt*s)+2+ret,'cads'); fplL(S,xr-(pt*s)-3,yt+1,xr-(pt*s)-3-ret,yt+1+ret,'cads'); }
    /* positions (mm depuis la face de l'élément -> px) */
    const place=(layers,zone)=>{ const out=[]; let edgePrev=0;
     layers.forEach((L,i)=>{
@@ -28137,6 +28207,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    fplVD(S,OX+b+132,OY,OY+h,'h = '+fplF(par.h,0)+' cm',OX+b,OX+b,-6);
    fplVD(S,OX+b+16,OY,OY+c,'',OX+b,OX+b);
    fplT(S,OX+b+24,OY+c+3,'c = '+fplF(par.enrobage,1)+' cm','ts','start');
+   fplVD(S,OX+b+16,OY+h-c,OY+h,'',OX+b,OX+b); fplT(S,OX+b+24,OY+h-c+3,'c = '+fplF(par.enrobage,1)+' cm','ts','start');
    const ctr=arr=>{ const A=arr.reduce((a,q)=>a+q.diam*q.diam,0); return A?arr.reduce((a,q)=>a+q.diam*q.diam*q.fromFace,0)/A:null; };
    let dmm=null, from='top';
    if(sc.kind==='mid'&&pInf.length){ dmm=hmm-ctr(pInf); from='top'; }
@@ -28161,11 +28232,19 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    return fplSectionTitle(P,sc)+' : inférieur '+grp(B.inf)+' ; supérieur '+grp(B.sup)+' ; cadres HA'+par.phiCadre+(z?' e = '+fplF(z.espCm,1).replace(',0','')+' cm':'')+(tq?' ; torsion T_Ed = '+fplF(tq.Td,1)+' kN·m : cadres fermés cumulant effort tranchant et torsion'+(pf&&pf.tors?', '+(2*pf.ns)+' HA'+pf.phi+' sur les faces latérales ('+pf.rep+')':''):'');
   }
   /* ---- légende ---- */
-  const FPL_LEG=[['bet','Coffrage (béton) — trait fort'],['bar','Armatures longitudinales — trait plein jaune'],['cad','Cadres (en élévation) — tirets'],['sec','Cadre et barres en coupe'],['axe','Axes d\'appuis — trait mixte'],['coupe','Plan de coupe 1-1, 2-2…'],['cote','Cote (tirets obliques)'],['bub','Repère renvoyant à la nomenclature'],['tick','Arrêt de barre (extrémité libre)'],['lap','Recouvrement l₀ (cote entre extrémités)'],['rec','Cadres de recouvrement et de suspension — trait plein fort']];
-  function fplLegendScene(){
-   const S=fplNewScene(380,FPL_LEG.length*30+6);
-   FPL_LEG.forEach((r,i)=>{ const y=i*30+14;
-    if(r[0]==='sec'){ fplR(S,6,y-8,30,16,'cads',4); fplC(S,56,y,4,'dot'); }
+  const FPL_LEG=[['bet','Coffrage (béton) — trait fort'],['bar','Armatures longitudinales — trait plein jaune'],['cad','Cadres (en élévation) — tirets'],['sec','Cadre et barres en coupe'],['axe','Axes d\'appuis — trait mixte'],['coupe','Plan de coupe 1-1, 2-2…'],['cote','Cote (tirets obliques)'],['bub','Repère renvoyant à la nomenclature'],['tick','Arrêt de barre (extrémité libre)'],['lap','Recouvrement lr ou l₀ (cote entre les extrémités des deux barres)'],['rec','Cadres de recouvrement et de suspension — trait plein fort']];
+  /* symboles ajoutés à la légende des plans qui dessinent crochets, appuis et enrobage (ext = true) */
+  const FPL_LEG_X=[['hook','Crochet à 90° : mandrin 4 Ø (7 Ø si Ø > 16), retour 10 Ø'],['droit','Ancrage droit : barre sans crochet (ancrage suffisant)'],['cad135','Cadre : crochets à 135°, retour ≥ 10 Ø et au moins 70 mm'],['app','Appui : symbole selon le type, largeur a cotée'],['enr','Enrobage c : nu du béton à la face du cadre']];
+  function fplLegendScene(ext){
+   const LG=ext?FPL_LEG.concat(FPL_LEG_X):FPL_LEG;
+   const S=fplNewScene(ext?560:380,LG.length*30+6); S.leg=true;
+   LG.forEach((r,i)=>{ const y=i*30+14;
+    if(r[0]==='hook'){ fplP(S,[[6,y-4]].concat(fplHookPts(76,y-4,1,1,5,9)),'bar'); }
+    else if(r[0]==='droit'){ fplL(S,6,y,76,y,'bar'); fplL(S,76,y-8,76,y+8,'tick'); }
+    else if(r[0]==='cad135'){ fplR(S,18,y-9,44,18,'cads',3); fplL(S,62,y-5,54,y+3,'cads'); fplL(S,59,y-9,51,y-1,'cads'); }
+    else if(r[0]==='app'){ fplR(S,18,y-10,40,5,'betf'); fplP(S,[[38,y-5],[28,y+9],[48,y+9],[38,y-5]],'betf'); fplL(S,22,y+9,54,y+9,'bet'); }
+    else if(r[0]==='enr'){ fplR(S,10,y-10,60,20,'bet'); fplR(S,16,y-4,48,14,'cads',2); fplL(S,10,y-10,10,y-4,'cote'); fplL(S,6,y-4,14,y-4,'cote'); fplL(S,6,y-10,14,y-10,'cote'); }
+    else if(r[0]==='sec'){ fplR(S,6,y-8,30,16,'cads',4); fplC(S,56,y,4,'dot'); }
     else if(r[0]==='bub'){ fplBub(S,40,y,'1',9); }
     else if(r[0]==='tick'){ fplL(S,40,y-8,40,y+8,'tick'); }
     else if(r[0]==='rec'){ [14,40,66].forEach(x=>fplL(S,x,y-9,x,y+9,'rec')); }
@@ -28175,25 +28254,43 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     fplT(S,92,y+4,r[1],'t','start',0,false); });
    return S;
   }
-  /* ---- façonnage (schémas) ---- */
+  /* ---- façonnage (schémas) : crochets et retours réels, valeurs du moteur (mandrin, retour, longueur développée de la nomenclature) ---- */
+  function fplShapeBar(S,y0,dirHook,hookL,hookR,k,diam,txtDev){
+   /* barre horizontale de x = 36 à 214 ; crochet à 90° (arc de mandrin puis retour) du côté dirHook (-1 haut, +1 bas) */
+   const xa=54, xb=198, rr=9, leg=36, pts=[];
+   if(hookL) fplHookPts(xa,y0,-1,dirHook,rr,leg).reverse().forEach(p=>pts.push(p)); else pts.push([xa,y0]);
+   if(hookR) fplHookPts(xb,y0,1,dirHook,rr,leg).forEach(p=>pts.push(p)); else pts.push([xb,y0]);
+   fplP(S,pts,'bar');
+   const ret=k?Math.round(k.retour):10*diam, man=k&&k.mandrin?k.mandrin:null, tip=y0+dirHook*(rr+leg);
+   if(hookL) fplVD(S,xa-12,Math.min(y0+dirHook*rr,tip),Math.max(y0+dirHook*rr,tip),'retour '+fplF(ret/10,1).replace(',0','')+' cm',xa,xa,-5);
+   if(hookR) fplVD(S,xb+12,Math.min(y0+dirHook*rr,tip),Math.max(y0+dirHook*rr,tip),'retour '+fplF(ret/10,1).replace(',0','')+' cm',xb,xb,14);
+   return {man,ret,tip};
+  }
   function fplShapeScenes(P,reps){
    const par=P.parametres, out=[]; const nom=P.nomenclature||[];
    nom.forEach(r=>{
-    const b=reps.find(q=>q.rep===String(r.rep)); const S=fplNewScene(250,100);
-    const hook=(b&&(b.hookL||b.hookR))?(b.hookL&&b.hookR?2:1):0;
+    const b=reps.find(q=>q.rep===String(r.rep)); const S=fplNewScene(250,140);
+    const k=r.crochet||null;
     if(r.usage==='cadres'){
-     const cw=par.b*10-2*par.enrobage*10, ch=par.h*10-2*par.enrobage*10; const sc=Math.min(56/ch,110/cw);
-     const w=cw*sc,h=ch*sc,x0=70,y0=8; fplR(S,x0,y0,w,h,'cads',5);
-     fplHD(S,x0,x0+w,y0+h+18,fplF(cw/10,0)+' cm',y0+h,y0+h); fplVD(S,x0+w+22,y0,y0+h,fplF(ch/10,0)+' cm',x0+w,x0+w,-5);
-     fplT(S,8,16,'Cadre HA'+r.diam,'ts','start',0,false);
+     const cw=par.b*10-2*par.enrobage*10, ch=par.h*10-2*par.enrobage*10; const sc=Math.min(60/ch,100/cw);
+     const w=cw*sc,h=ch*sc,x0=56,y0=34; fplR(S,x0,y0,w,h,'cads',5);
+     const ret=k?k.retour:Math.max(10*r.diam,70), L=Math.min(26,0.45*Math.min(w,h));
+     fplL(S,x0+w,y0+10,x0+w-L,y0+10+L,'cads'); fplL(S,x0+w-5,y0+4,x0+w-5-L,y0+4+L,'cads');
+     fplT(S,8,14,'Cadre HA'+r.diam,'tb','start',0,false);
+     fplHD(S,x0,x0+w,y0+h+20,fplF(cw/10,0)+' cm',y0+h,y0+h); fplVD(S,x0+w+24,y0,y0+h,fplF(ch/10,0)+' cm',x0+w,x0+w,14);
+     fplT(S,8,y0+h+46,'2 crochets à 135° · retour '+fplF(ret,0)+' mm','ts','start',0,false);
     } else {
-     const dir=b&&b.zone==='sup'?1:-1, leg=34, y=hook?(dir<0?58:24):40; const pts=[];
-     if(b&&b.hookL) pts.push([20,y+dir*leg]); pts.push([20,y],[230,y]); if(b&&b.hookR) pts.push([230,y+dir*leg]);
-     fplP(S,pts,'bar');
-     fplHD(S,20,230,hook?(dir<0?y+30:y+leg+26):y+30,'développée '+fplF(r.longueur)+' m',y,y);
-     if(hook) fplT(S,(b.hookL?26:224),y+dir*leg/2+4,'retour 90° (≈ '+fplF((10*r.diam+4*r.diam)/10,0)+' cm)','ts',b.hookL?'start':'end');
+     const dir=b&&b.zone==='sup'?1:-1, hl=!!(b&&b.hookL), hr=!!(b&&b.hookR), hook=hl||hr;
+     const y=hook?(dir<0?84:40):56;
+     const g=fplShapeBar(S,y,dir,hl,hr,k,r.diam);
+     const yc=hook?(dir<0?y+30:y-26):y+28;
+     fplHD(S,54,198,yc,'développée '+fplF(r.longueur)+' m',y,y);
+     if(hook&&g.man) fplT(S,hl?70:182,dir<0?y-14:y+16,'crochet 90° · mandrin Ø '+fplF(g.man/10,1).replace(',0','')+' cm','ts',hl?'start':'end',0,false);
+     if(!hook) fplT(S,126,y-12,'droit, aucun crochet','ts','middle',0,false);
     }
-    out.push({rep:r.rep,scene:S,txt:r.nbDiam.replace('HA',' HA')+' — '+r.faconnage});
+    let cap=r.nbDiam.replace('HA',' HA')+' — '+r.faconnage;
+    if(r.usage!=='cadres'&&k&&k.dev){ const hn=k.n||1; cap+=' · droite '+fplF(r.longueur-hn*k.dev/1000)+' m + '+hn+' crochet'+(hn>1?'s':'')+' de '+fplF(k.dev/1000)+' m = développée '+fplF(r.longueur)+' m'; }
+    out.push({rep:r.rep,scene:S,txt:cap});
    });
    return out;
   }
@@ -28290,6 +28387,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     +'<tr><td><b>Plan lié</b>Note de calcul '+esc(info.nomO)+'</td><td><b>Section</b>'+fplF(par.b,0)+' × '+fplF(par.h,0)+' cm · enrobage '+fplF(par.enrobage,1)+' cm</td><td><b>Géométrie</b>'+n+' travée'+(n>1?'s':'')+' · '+fplF(P.travees[n-1].x1)+' m entre axes</td></tr></table>';
    const kp='<div class="ncKpi">'+fplKpis(P,info).map(k=>'<div class="ncK"><b>'+esc(k[0])+'</b><small>'+esc(k[1])+'</small></div>').join('')+'</div>';
    const elevHtml=elevs.map(q=>'<div class="pcDraw fplDraw">'+fplSceneSvg(q.scene,{label:'Élévation du ferraillage'})+'</div><p class="pcSchemaCap">Élévation'+(elevs.length>1?' — travées '+(q.g.a+1)+' à '+q.g.b:'')+(kEl>1.05?' · longueur et hauteur à deux échelles, écrites sur le dessin (hauteur exagérée × '+fplF(kEl,1)+')':'')+' · cotes en m · lits dessinés légèrement décalés en hauteur pour la lisibilité (position réelle sur les coupes).</p>').join('');
+   const ancHtml='<p class="pcSchemaCap">'+esc(fplAncrNote(P,reps))+' '+esc(fplLapNote(P,reps))+'</p>';
    const secs=fplSections(P);
    const secHtml='<div class="fplSecs">'+secs.map(sc=>'<div><div class="pcDraw fplDraw">'+fplSceneSvg(fplSectionScene(P,reps,lit,sc),{label:fplSectionTitle(P,sc)})+'</div><p class="pcSchemaCap">'+esc(fplSectionCap(P,reps,sc))+'</p></div>').join('')+'</div>';
    const nom=P.nomenclature||[];
@@ -28302,10 +28400,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const ver='<table class="ncG ncGrid"><tr><th>Zone</th><th>Barres</th><th>A<sub>s</sub> réel (cm²)</th><th>A<sub>s</sub> requis (cm²)</th><th>Rapport</th><th>État</th></tr>'
     +fplVerifRows(P).map(r=>{ if(r.nc) return '<tr><td>'+esc(r.zone)+'</td><td>non calculé</td><td>—</td><td>—</td><td>—</td><td style="color:var(--ds-danger)">Non calculé (K = '+fplF(r.K,3)+' > 0,21)</td></tr>'; const ok=r.reel+1e-6>=r.req; return '<tr><td>'+esc(r.zone)+'</td><td>'+esc(r.barres)+'</td><td>'+fplF(r.reel)+'</td><td>'+fplF(r.req)+'</td><td>'+(r.req>0?'×'+fplF(r.reel/r.req):'—')+'</td><td style="color:var(--ds-'+(ok?'ok':'danger')+')">'+(ok?'Conforme':'Non conforme')+'</td></tr>'; }).join('')+'</table>';
    const notes='<ol class="fplNotes">'+FPL_NOTES.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>';
-   const leg='<div class="pcDraw fplDraw fplLeg">'+fplSceneSvg(fplLegendScene(),{label:'Légende des traits'})+'</div>';
+   const leg='<div class="pcDraw fplDraw fplLeg">'+fplSceneSvg(fplLegendScene(true),{label:'Légende des traits'})+'</div>';
    const pts='<section class="ncSec"><h4>Points à confirmer</h4>'+fplPoints(P).map(a=>'<div class="ncAn'+(a.bad?'':' conf')+'"><b>'+(a.bad?'Bloquant : ':'À confirmer : ')+'</b>'+esc(a.t.replace(/^⚠\s*/,''))+'</div>').join('')+'</section>';
    return '<div class="pcNC ncDoc fplDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+'</p>'+cart+kp
-    +'<section class="ncSec"><h4>Élévation</h4>'+elevHtml+'</section>'
+    +'<section class="ncSec"><h4>Élévation</h4>'+elevHtml+ancHtml+'</section>'
     +'<section class="ncSec"><h4>Coupes transversales</h4>'+secHtml+'</section>'
     +'<section class="ncSec"><h4>Nomenclature des aciers</h4>'+nomHtml+'</section>'
     +'<section class="ncSec"><h4>Schémas de façonnage</h4>'+shapes+'</section>'
@@ -28383,7 +28481,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    /* élévations */
    const elevs=fplElevScenes(P,reps,lit); let scaleTxt='';
    elevs.forEach(q=>{ const S=q.scene; const k=Math.min((PW-2*M)/S.w,(PH*0.42)/S.h); const hh=S.h*k; need(hh+4); fplPdfScene(doc,S,M+((PW-2*M)-S.w*k)/2,y,k); y+=hh+3; if(!scaleTxt){ const mmPerM=S.meta.sx*k; scaleTxt='Elevation 1/'+Math.round(1000/(mmPerM*PS)); } });
-   doc.setFontSize(8); doc.setTextColor(110); doc.text(FPL_PDFSYM('Elevation : echelles de longueur et de hauteur ecrites sous chaque vue - cotes en m'),M,y+2); doc.setTextColor(0); y+=6;
+   doc.setFontSize(8); doc.setTextColor(110); doc.text(FPL_PDFSYM('Elevation : echelles de longueur et de hauteur ecrites sous chaque vue - cotes en m'),M,y+2); y+=6; { const AL=doc.splitTextToSize(FPL_PDFSYM(fplAncrNote(P,reps)+' '+fplLapNote(P,reps)),PW-2*M); need(AL.length*3.6+2); doc.text(AL,M,y+2); y+=AL.length*3.6+2; } doc.setTextColor(0);
    /* coupes */
    const secs=fplSections(P).map(sc=>({sc,S:fplSectionScene(P,reps,lit,sc)}));
    const sw=Math.max(...secs.map(q=>q.S.w)), shh=Math.max(...secs.map(q=>q.S.h));
@@ -28403,10 +28501,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     doc.autoTable(Object.assign({startY:yL,head:[['Zone','Barres','As reel (cm2)','As requis (cm2)','Rapport','Etat']],body:fplVerifRows(P).map(r=>r.nc?[FPL_PDFSYM(r.zone),'non calcule','-','-','-','Non calcule (K = '+fplF(r.K,3)+' > 0,21)']:[FPL_PDFSYM(r.zone),FPL_PDFSYM(r.barres),fplF(r.reel),fplF(r.req),r.req>0?'x'+fplF(r.reel/r.req):'-',r.reel+1e-6>=r.req?'Conforme':'Non conforme'])},AT));
     yL=doc.lastAutoTable.finalY+6;
    }
-   { const shapes=fplShapeScenes(P,reps), ncol=3, kk=Math.min(0.26,(HW/ncol-2)/250), sx0=PW/2+4; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0); doc.text('Schemas de faconnage',sx0,y); yR=y+4;
-    shapes.forEach((q,i)=>{ const col=i%ncol, row=Math.floor(i/ncol); const gx=sx0+col*(250*kk+2), gy=yR+row*(100*kk+7); fplPdfScene(doc,q.scene,gx,gy,kk); doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(60); doc.text(FPL_PDFSYM(q.rep+' - '+q.txt),gx,gy+100*kk+3,{maxWidth:250*kk}); doc.setTextColor(0); });
-    yR+=Math.ceil(shapes.length/ncol)*(100*kk+7)+4;
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Legende des traits et symboles',sx0,yR); { const Lg=fplLegendScene(), kl=Math.max(0.16,Math.min(0.3,(PH-M-8-(yR+3))/Lg.h)); fplPdfScene(doc,Lg,sx0,yR+3,kl); } }
+   { const shapes=fplShapeScenes(P,reps), ncol=3, kk=Math.min(0.26,(HW/ncol-2)/250), sx0=PW/2+4, hh0=Math.max(100,...shapes.map(q=>q.scene.h)); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0); doc.text('Schemas de faconnage',sx0,y); yR=y+4;
+    shapes.forEach((q,i)=>{ const col=i%ncol, row=Math.floor(i/ncol); const gx=sx0+col*(250*kk+2), gy=yR+row*(hh0*kk+11); fplPdfScene(doc,q.scene,gx,gy,kk); doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(60); doc.text(doc.splitTextToSize(FPL_PDFSYM(q.rep+' - '+q.txt),250*kk),gx,gy+hh0*kk+3); doc.setTextColor(0); });
+    yR+=Math.ceil(shapes.length/ncol)*(hh0*kk+11)+4;
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Legende des traits et symboles',sx0,yR); { const Lg=fplLegendScene(true), kl=Math.max(0.16,Math.min(0.3,(PH-M-8-(yR+3))/Lg.h)); fplPdfScene(doc,Lg,sx0,yR+3,kl); } }
    /* notes et points à confirmer (colonne de gauche, page suivante si besoin) */
    if(V>0&&(doc.getNumberOfPages()!==NP0||doc.__over)&&opts) opts.bad=true; doc.__lim=null; y=yL; if(y>PH-M-46) page(); doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Notes generales',M,y); y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
    FPL_NOTES.forEach((x,i)=>{ const L=doc.splitTextToSize((i+1)+'. '+FPL_PDFSYM(x),HW-4); if(y+L.length*3.8>PH-M-18){ page(); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); } doc.text(L,M,y); y+=L.length*3.8+1; });
@@ -44433,7 +44531,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    /* ---- construction du plan ---- */
    let repN=0; const nextRep=()=>String(++repN);
    const nomen=[]; const T=[];
-   const addNom=(rep,desig,nb,phi,AsReel,AsReq,Lm,facon,usage)=>nomen.push({rep,designation:desig,nbDiam:nb+'HA'+phi,nb,diam:phi,AsReel:r2(AsReel/100),AsReq:r2(AsReq/100),longueur:r2(Lm),faconnage:facon,poids:r2(nb*wkg(phi,Lm),1),usage});
+   const addNom=(rep,desig,nb,phi,AsReel,AsReq,Lm,facon,usage)=>nomen.push({rep,designation:desig,nbDiam:nb+'HA'+phi,nb,diam:phi,AsReel:r2(AsReel/100),AsReq:r2(AsReq/100),longueur:r2(Lm),faconnage:facon,poids:r2(nb*wkg(phi,Lm),1),usage,crochet:/crochet/.test(facon||'')?{angle:90,n:/aux 2/.test(facon)?2:1,mandrin:r2(phi<=16?4*phi:7*phi,0),retour:10*phi,dev:r2(hookDev(phi),0)}:null});
    const lapsAll=[];
    const arretsAll=[], ancAll=[], chapAll=[];
    const travOut=[];
@@ -44585,7 +44683,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     nbCadresTot+=zones.reduce((s,z)=>s+z.nb,0);
    });
    if(nbCadresTot>0){ const rep=nextRep(); cadresAll.push(rep); travOut.forEach(to=>{ to.cadres.rep=rep; });
-    nomen.push({rep,designation:'Cadres'+(brins===4?' + étriers (4 brins)':''),nbDiam:nbCadresTot+'HA'+phiT,nb:nbCadresTot,diam:phiT,AsReel:r2(Asw/Math.min(...travOut.map(to=>Math.min(...to.cadres.zones.map(z=>z.esp))))*10),AsReq:r2(AswReqMax*10),longueur:r2(stirrupLen),faconnage:'Cadre fermé, crochets 135° (retour ≥ 10Ø)',poids:r2(nbCadresTot*wkg(phiT,stirrupLen),1),usage:'cadres'}); }
+    nomen.push({rep,designation:'Cadres'+(brins===4?' + étriers (4 brins)':''),nbDiam:nbCadresTot+'HA'+phiT,nb:nbCadresTot,diam:phiT,AsReel:r2(Asw/Math.min(...travOut.map(to=>Math.min(...to.cadres.zones.map(z=>z.esp))))*10),AsReq:r2(AswReqMax*10),longueur:r2(stirrupLen),faconnage:'Cadre fermé, crochets 135° (retour ≥ 10Ø)',poids:r2(nbCadresTot*wkg(phiT,stirrupLen),1),usage:'cadres',crochet:{angle:135,n:2,mandrin:null,retour:Math.max(10*phiT,70),dev:null}}); }
    /* ---- recouvrements : armatures transversales (EC2) ----
       Ø ≥ 20 mm : Σ A_st ≥ A_s d'une barre recouverte ; nombre de cadres n = 1 + l₀/(3·s) (s = 150 mm), chaque cadre comptant 2 branches
       (2·n·A_t ≥ A_s redonne les diamètres du tableau) ; > 50 % recouvert avec a ≤ 10Ø : cadres ou U ancrés ; compression : une barre transversale
@@ -44657,6 +44755,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(apps.some(a=>a.ch.insuff)||trav.some(t=>t.ch.insuff)) warn.push('Section d\'acier requise au-delà de 3 lits de HA32 sur certaines zones — section de béton à revoir.');
    const warnU=[...new Set(warn)];
    return {travees:travOut,nomenclature:nomen,poidsTotal,hypotheses:hyp,avertissements:warnU,torsion:torOut,peauTorsion:peauInfo,suspentes:suspOut,rive:{haut:riveHaut,bas:riveBas,beta1,pctInf:r2(pctInf*100,0)},nonCalcules:nonCalc,recouvrements:lapRows,
+    appuisDessin:Array.from({length:n+1},(_,k)=>{ const ap=(P.appuis&&P.appuis[k])||{}, rive=(k===0||k===n), fixe=rive&&!!ap.blocage_rotation, cons=ap.raideur_kN_m===0, ress=!cons&&!fixe&&ap.raideur_kN_m!=null&&+ap.raideur_kN_m>0; return {k,w:r2(apW(k)/10,1),type:cons?'console':fixe?'poteau':ress?'ressort':(ap.typeAppui==='simple'?'rouleau':'simple')}; }),
     parametres:{fck,fyk,b:b/10,h:h/10,enrobage:cEnr,appui:aApp/10,phiCadre:phiT,brins,aL:r2(aL,0),cotTheta:r2(cotUsed,2),dMin:r2(dS/10,2),vEdNonReduit:r2(VfaceMax,1),vEdReduit:r2(VredMax,1),vRdMax:r2(VrdMaxCot,1),vRdMax45:r2(VrdMax45,1)}};
   }
   /* ===== FPP:END ===== */
