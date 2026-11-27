@@ -28981,7 +28981,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   const pcPdfJobs={}; let pcPdfBusy=0;
   function pcPdfPill(on){
    let el=document.getElementById('pcPdfPill');
-   if(on){ if(!el){ el=document.createElement('div'); el.id='pcPdfPill'; el.setAttribute('role','status'); el.setAttribute('aria-live','polite'); el.style.cssText='position:fixed;left:12px;bottom:12px;z-index:100001;padding:6px 12px;border:1px solid var(--line,#DAD8D1);border-radius:999px;background:var(--panel,#fff);color:var(--ink-soft,#5f6a66);font-size:12.5px;box-shadow:0 1px 6px rgba(0,0,0,.15);pointer-events:none'; el.textContent='Génération des PDF…'; document.body.appendChild(el); } }
+   if(on){ if(!el){ el=document.createElement('div'); el.id='pcPdfPill'; el.setAttribute('role','status'); el.setAttribute('aria-live','polite'); el.style.cssText='position:fixed;left:12px;bottom:12px;z-index:100300;padding:6px 12px;border:1px solid var(--line,#DAD8D1);border-radius:999px;background:var(--panel,#fff);color:var(--ink-soft,#5f6a66);font-size:12.5px;box-shadow:0 1px 6px rgba(0,0,0,.15);pointer-events:none'; el.textContent='Génération des PDF…'; document.body.appendChild(el); } }
    else if(el) el.remove();
   }
   async function pcPdfEnArriere(t,dp,res,docNote,docPlan,fns){ // fns : {note,plan} facultatif (autres modules : dalle…), défaut = poutre
@@ -49992,8 +49992,12 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   lavabo:{nom:'Lavabo',forme:'rectangle'}, evier:{nom:'Évier',forme:'rectangle'}, douche:{nom:'Douche',forme:'rectangle'}, wc:{nom:'WC',forme:'rectangle'}, baignoire:{nom:'Baignoire',forme:'rectangle'},
   radiateur:{nom:'Radiateur',forme:'rectangle'}, luminaire:{nom:'Luminaire',forme:'cercle'}, prise:{nom:'Prise',forme:'cercle'}, tableau_electrique:{nom:'Tableau électrique',forme:'rectangle'},
   detecteur:{nom:'Détecteur',forme:'cercle'}, extincteur:{nom:'Extincteur',forme:'cercle'}, gaine:{nom:'Gaine',forme:'rectangle'}, conduit:{nom:'Conduit',forme:'ligne'},
-  canalisation:{nom:'Canalisation',forme:'ligne'}, poteau:{nom:'Poteau',forme:'rectangle'}, autre:{nom:'Autre élément',forme:'rectangle'}
+  canalisation:{nom:'Canalisation',forme:'ligne'}, poteau:{nom:'Poteau',forme:'rectangle'}, autre:{nom:'Autre élément',forme:'rectangle'},
+  mur:{nom:'Mur',forme:'ligne'}, voile:{nom:'Voile',forme:'ligne'}, dalle:{nom:'Dalle',forme:'rectangle'}, poutre:{nom:'Poutre',forme:'ligne'}, semelle:{nom:'Semelle',forme:'rectangle'}, pieu:{nom:'Pieu',forme:'cercle'}, escalier:{nom:'Escalier',forme:'rectangle'}
  };
+ /* classe d'objet de la maquette numérique (équivalent de la classe IFC), déduite du type ; modifiable */
+ var CLASSES={porte:'IfcDoor',fenetre:'IfcWindow',machine:'IfcBuildingElementProxy',ballon:'IfcBoiler',lavabo:'IfcSanitaryTerminal',evier:'IfcSanitaryTerminal',douche:'IfcSanitaryTerminal',wc:'IfcSanitaryTerminal',baignoire:'IfcSanitaryTerminal',radiateur:'IfcSpaceHeater',luminaire:'IfcLightFixture',prise:'IfcOutlet',tableau_electrique:'IfcElectricDistributionBoard',detecteur:'IfcSensor',extincteur:'IfcFireSuppressionTerminal',gaine:'IfcDuctSegment',conduit:'IfcDuctSegment',canalisation:'IfcPipeSegment',poteau:'IfcColumn',autre:'IfcBuildingElementProxy',mur:'IfcWall',voile:'IfcWall',dalle:'IfcSlab',poutre:'IfcBeam',semelle:'IfcFooting',pieu:'IfcPile',escalier:'IfcStair'};
+ var CLASSE_PIECE='IfcSpace', CLASSE_COMPART='IfcZone';
  var CONF=['faible','moyenne','haute'], STATUTS=['non_verifie','accepte','modifie','ecarte','importe'];
  function has(o,k){ return o!==null&&typeof o==='object'&&Object.prototype.hasOwnProperty.call(o,k); }
  function isObj(o){ return o!==null&&typeof o==='object'&&!Array.isArray(o); }
@@ -50091,7 +50095,51 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   else if(forme==='cercle'){ if(!pos('diametre')) return null; }
   else if(forme==='polygone'){ if(!Array.isArray(d.points)||d.points.length<3||d.points.length>200) return null; var pts=[],i; for(i=0;i<d.points.length;i++){ var s=d.points[i], x=Array.isArray(s)?num(s[0]):null, y=Array.isArray(s)?num(s[1]):null; if(x===null||y===null||Math.abs(x)>MAXCM||Math.abs(y)>MAXCM) return null; pts.push([x,y]); } if(aire(pts)<=0) return null; o.points=pts; }
   else return null;
-  return o;
+  var bad=false; ['hauteur','epaisseur'].forEach(function(k){ if(bad||o[k]!==undefined) return; if(has(d,k)&&d[k]!==null&&d[k]!==''){ if(!pos(k)) bad=true; } });
+  return bad?null:o;
+ }
+ /* ---------- paramètres de la maquette numérique : identifiant stable, classe, matériau, fonction, propriétés (jamais inventés) ---------- */
+ function h32(str,seed){ var h=seed>>>0,i; for(i=0;i<str.length;i++){ h=Math.imul(h^str.charCodeAt(i),2654435761); h=(h<<13|h>>>19)>>>0; } h=Math.imul(h^(h>>>16),2246822507); h=Math.imul(h^(h>>>13),3266489909); return (h^(h>>>16))>>>0; }
+ /* identifiant unique stable : le même élément (même clé) donne toujours le même identifiant */
+ function guid(cle){ var s=String(cle||''), a=h32(s,1),b=h32(s,2),c=h32(s,3),d=h32(s,4); function x(n,l){ return ('00000000'+n.toString(16)).slice(-l); } return x(a,8)+'-'+x(b>>>16,4)+'-4'+x(b&4095,3)+'-'+x(8|(c>>>28)&3,1)+x(c&4095,3)+'-'+x(d,8)+x(c>>>12&65535,4); }
+ var RE_GUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+ function classeDe(e,genre){ if(genre==='compartiment') return CLASSE_COMPART; if(genre==='piece') return CLASSE_PIECE; return CLASSES[e.type]||'IfcBuildingElementProxy'; }
+ function lireProprietes(v,rep,c){
+  if(v===undefined||v===null) return undefined; if(!Array.isArray(v)){ rep('avertissement',c,'Propriétés ignorées : une liste {cle, valeur, unite} est attendue.'); return undefined; }
+  var o=[],seen={}; v.slice(0,60).forEach(function(q){ if(!isObj(q)) return; var k=clean(q.cle).slice(0,60), val=q.valeur; if(!k||seen[key(k)]||val===null||val===undefined||val==='') return; var e={cle:k}; if(typeof val==='number'){ if(!isFinite(val)) return; e.valeur=val; } else if(typeof val==='boolean') e.valeur=val; else{ var t=clean(val).slice(0,200); if(!t) return; e.valeur=t; } var u=clean(q.unite).slice(0,20); if(u) e.unite=u; seen[key(k)]=1; o.push(e); });
+  return o.length?o:undefined;
+ }
+ function lireBim(raw,c,rep,dest){
+  if(clean(raw.guid)){ var g=clean(raw.guid).toLowerCase(); if(RE_GUID.test(g)) dest.guid=g; else rep('avertissement',c,'Identifiant unique ignoré : format inattendu (il sera recréé).'); }
+  if(clean(raw.classe)){ var cl=clean(raw.classe); if(/^Ifc[A-Za-z0-9]{2,40}$/.test(cl)) dest.classe=cl; else rep('avertissement',c,'Classe d’objet ignorée : un nom du type « IfcWall » est attendu.'); }
+  if(clean(raw.materiau)) dest.materiau=clean(raw.materiau).slice(0,80);
+  if(clean(raw.classe_resistance)) dest.classe_resistance=clean(raw.classe_resistance).slice(0,40);
+  if(raw.porteur===true||raw.porteur===false) dest.porteur=raw.porteur;
+  if(raw.exterieur===true||raw.exterieur===false) dest.exterieur=raw.exterieur;
+  if(clean(raw.resistance_feu)) dest.resistance_feu=clean(raw.resistance_feu).slice(0,40);
+  var pr=lireProprietes(raw.proprietes,rep,c); if(pr) dest.proprietes=pr;
+ }
+ /* donne à chaque élément son identifiant stable et sa classe (déduits, jamais de valeur technique) */
+ function completerBim(draft){
+  [['pieces',null],['pastilles',null]].forEach(function(t){ (draft[t[0]]||[]).forEach(function(e){ var genre=t[0]==='pieces'?(e.genre==='compartiment'?'compartiment':'piece'):'pastille'; if(!e.guid) e.guid=guid(e.cle||e.id_externe||(genre+'|'+(e.niveau||'')+'|'+e.nom)); if(!e.classe) e.classe=classeDe(e,genre); }); });
+ }
+ var PHASES={non_verifie:'non vérifié',accepte:'accepté',modifie:'modifié par l’utilisateur',importe:'importé',ecarte:'écarté'};
+ function volumeM3(piece){ var a=surfaceM2(piece); return a!==null&&piece.hauteur_cm>0?a*piece.hauteur_cm/100:null; }
+ /* tableau des paramètres d'un élément pour l'écran : les champs absents sont signalés absents */
+ function tableBim(e,genre,draft){
+  var L=[], d=draft||{}, g=genre==='pastille'?'pastille':(e.genre==='compartiment'?'compartiment':'piece'), dm=e.dimensions_cm||{}, ps=e.position_cm||{};
+  function add(k,l,v,u){ L.push({cle:k,label:l,valeur:(v===undefined||v===null||v==='')?null:v,unite:u||''}); }
+  add('guid','Identifiant unique',e.guid||guid(e.cle||e.id_externe||(g+'|'+(e.niveau||'')+'|'+e.nom))); add('nom','Nom',e.nom); add('classe','Classe d’objet',e.classe||classeDe(e,g));
+  if(g==='pastille'){ add('type','Type',(TYPES[e.type]||{nom:e.type}).nom); add('lot','Lot',e.lot); }
+  add('batiment','Bâtiment',d.batiment||undefined); add('niveau','Niveau',e.niveau||undefined); var z=coteZ(d.niveaux,e.niveau); add('cote_z','Cote du niveau',z,'cm'); add('piece','Pièce ou zone',g==='pastille'?e.piece:undefined);
+  if(g==='pastille'){ add('x','Position X',ps.x,'cm'); add('y','Position Y',ps.y,'cm'); add('z','Position Z',ps.z,'cm'); add('rotation','Rotation',e.rotation_deg,'°'); add('forme','Forme',e.forme);
+   add('longueur','Longueur',dm.longueur,'cm'); add('largeur','Largeur',dm.largeur,'cm'); add('profondeur','Profondeur',dm.profondeur,'cm'); add('diametre','Diamètre',dm.diametre,'cm'); add('hauteur','Hauteur',dm.hauteur,'cm'); add('epaisseur','Épaisseur',dm.epaisseur,'cm'); }
+  else{ var s=surfaceM2(e), v=volumeM3(e); add('surface','Surface (calculée)',s===null?undefined:Math.round(s*100)/100,'m²'); add('hauteur','Hauteur',e.hauteur_cm,'cm'); add('volume','Volume (calculé)',v===null?undefined:Math.round(v*100)/100,'m³'); }
+  add('materiau','Matériau',e.materiau); add('classe_resistance','Résistance ou classe',e.classe_resistance);
+  add('porteur','Porteur',e.porteur===undefined?undefined:(e.porteur?'oui':'non')); add('exterieur','Position',e.exterieur===undefined?undefined:(e.exterieur?'extérieur':'intérieur')); add('resistance_feu','Résistance au feu',e.resistance_feu);
+  add('phase','Phase',PHASES[e.statut]||e.statut); add('origine','Origine',e.source&&e.source.plan?e.source.plan+(e.source.page?' — page '+e.source.page:'')+(e.ia?' (IA)':''):undefined); add('confiance','Confiance',e.confiance);
+  (e.proprietes||[]).forEach(function(q){ add('prop:'+q.cle,q.cle,q.valeur,q.unite); });
+  return L;
  }
  function lireParams(v,P,chemin,rep){
   if(v===undefined||v===null) return undefined; if(!isObj(v)){ rep('avertissement',chemin,'Paramètres ignorés : un objet est attendu.'); return undefined; }
@@ -50114,6 +50162,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   if(has(raw,'rotation_deg')&&raw.rotation_deg!==null&&raw.rotation_deg!==''){ var ro=num(raw.rotation_deg); if(ro===null||Math.abs(ro)>720) rep('avertissement',c,'Rotation ignorée.'); else p.rotation_deg=ro; }
   if(clean(raw.piece)) p.piece=clean(raw.piece).slice(0,MAXN);
   var pa=lireParams(raw.parametres,rep,c+' > parametres',rep); if(pa) p.parametres=pa;
+  lireBim(raw,c,rep,p);
   if(isObj(raw.source)){ var s={}; if(clean(raw.source.plan)) s.plan=clean(raw.source.plan).slice(0,MAXN); var pg=num(raw.source.page); if(pg!==null&&pg>=1&&pg<=9999) s.page=Math.round(pg); if(Object.keys(s).length) p.source=s; }
   var cf=clean(raw.confiance).toLowerCase(); p.confiance=CONF.indexOf(cf)>=0?cf:'faible';
   var st=clean(raw.statut); p.statut=STATUTS.indexOf(st)>=0&&st!=='ecarte'?st:(ctx&&ctx.ia?'non_verifie':'importe'); if(ctx&&ctx.ia&&p.statut==='importe') p.statut='non_verifie';
@@ -50127,7 +50176,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var pl=raw.polygone_cm; if(!Array.isArray(pl)||pl.length<3||pl.length>200){ rep('erreur',c,'Le contour (polygone_cm) demande au moins trois points [x, y] en cm.'); return null; }
   var pts=[],i; for(i=0;i<pl.length;i++){ var s=pl[i], x=Array.isArray(s)?num(s[0]):null, y=Array.isArray(s)?num(s[1]):null; if(x===null||y===null||Math.abs(x)>MAXCM||Math.abs(y)>MAXCM){ rep('erreur',c,'Point de contour invalide (deux nombres en cm attendus).'); return null; } pts.push([x,y]); }
   if(aire(pts)<=0){ rep('erreur',c,'Le contour est plat : sa surface est nulle.'); return null; }
-  var o={nom:nom.slice(0,MAXN),polygone_cm:pts};
+  var o={nom:nom.slice(0,MAXN),polygone_cm:pts}; if(raw.genre==='compartiment') o.genre='compartiment'; lireBim(raw,c,rep,o);
   if(has(raw,'hauteur_cm')&&raw.hauteur_cm!==null&&raw.hauteur_cm!==''){ var h=num(raw.hauteur_cm); if(h===null||h<=0||h>MAXCM) rep('avertissement',c,'Hauteur ignorée : un nombre supérieur à 0 (en cm) est attendu.'); else o.hauteur_cm=h; }
   var cf=clean(raw.confiance).toLowerCase(); o.confiance=CONF.indexOf(cf)>=0?cf:'faible';
   var st=clean(raw.statut); o.statut=STATUTS.indexOf(st)>=0&&st!=='ecarte'?st:(ctx&&ctx.ia?'non_verifie':'importe'); if(ctx&&ctx.ia&&o.statut==='importe') o.statut='non_verifie';
@@ -50155,14 +50204,19 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var nd=num(raw.nord_deg); if(nd!==null&&Math.abs(nd)<=360) L.nord_deg=nd;
   var noms={}; (ctx.noms||[]).forEach(function(n){ noms[key(n)]=1; });
   function unique(nom){ var b=nom,i=2,k=key(nom); while(noms[k]){ nom=b+' ('+i+')'; k=key(nom); i++; } noms[k]=1; return nom; }
-  (Array.isArray(raw.pieces)?raw.pieces:[]).slice(0,300).forEach(function(r,i){
-   if(!isObj(r)||!clean(r.nom)){ rep('avertissement','pièce n° '+(i+1),'Pièce sans nom : ignorée.'); return; }
-   var nom=clean(r.nom).slice(0,MAXN), poly=Array.isArray(r.polygone)?r.polygone:[], pts=[], ok=poly.length>=3&&poly.length<=200;
+  function lirePieces(liste,genre){
+   var cpt=0; (Array.isArray(liste)?liste:[]).slice(0,300).forEach(function(r,i){
+   if(!isObj(r)){ return; } var lu=!!clean(r.nom);
+   if(!lu&&!ctx.neutre){ rep('avertissement',(genre==='compartiment'?'compartiment':'pièce')+' n° '+(i+1),'Sans nom : ignoré.'); return; }
+   if(!lu) cpt++; var nom=lu?clean(r.nom).slice(0,MAXN):(genre==='compartiment'?'Compartiment ':'Pièce ')+cpt, poly=Array.isArray(r.polygone)?r.polygone:[], pts=[], ok=poly.length>=3&&poly.length<=200;
    poly.forEach(function(s){ var x=Array.isArray(s)?n01(s[0]):null, y=Array.isArray(s)?n01(s[1]):null; if(x===null||y===null) ok=false; else pts.push([x,y]); });
-   if(!ok||aire(pts)<=0){ rep('avertissement','pièce « '+nom+' »','Contour illisible : pièce ignorée.'); return; }
-   var cf=clean(r.confiance).toLowerCase();
-   L.pieces.push({cle:pk+':piece:'+slug(nom),nom:unique(nom),poly_norm:pts,confiance:CONF.indexOf(cf)>=0?cf:'faible',statut:'non_verifie',source:{plan:ctx.planNom||pk,page:ctx.page||1},niveau:clean(r.niveau)||ctx.niveau||''});
-  });
+   if(!ok||aire(pts)<=0){ rep('avertissement',(genre==='compartiment'?'compartiment':'pièce')+' « '+nom+' »','Contour illisible : ignoré.'); return; }
+   var cf=clean(r.confiance).toLowerCase(), e={cle:pk+':'+genre+':'+slug(nom),nom:unique(nom),poly_norm:pts,confiance:CONF.indexOf(cf)>=0?cf:'faible',statut:'non_verifie',ia:true,source:{plan:ctx.planNom||pk,page:ctx.page||1},niveau:clean(r.niveau)||ctx.niveau||''};
+   if(genre==='compartiment') e.genre='compartiment'; if(!lu) e.nom_lu=false;
+   var hh=num(r.hauteur_cm); if(hh!==null&&hh>0&&hh<=MAXCM) e.hauteur_cm=hh;
+   lireBim(r,genre+' « '+nom+' »',rep,e); L.pieces.push(e);
+  }); }
+  lirePieces(raw.pieces,'piece'); lirePieces(raw.compartiments,'compartiment');
   var nomsPas={}; (ctx.nomsPastilles||[]).forEach(function(n){ nomsPas[key(n)]=1; });
   (Array.isArray(raw.pastilles)?raw.pastilles:[]).slice(0,MAXP).forEach(function(r,i){
    var nom=isObj(r)?clean(r.nom):''; if(!nom){ rep('avertissement','pastille n° '+(i+1),'Pastille sans nom : ignorée.'); return; }
@@ -50174,8 +50228,8 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
    var x=n01(r.x), y=n01(r.y); if(x===null||y===null){ rep('avertissement',c,'Position illisible : ignorée.'); return; }
    var dm=lireDims(forme,r.dimensions_cm); if(!dm) rep('avertissement',c,'Dimensions absentes : à renseigner à la main.');
    var base=nom.slice(0,MAXN), k=key(base), nn=base, j=2; while(nomsPas[key(nn)]){ nn=base+' ('+j+')'; j++; } nomsPas[key(nn)]=1;
-   var cf=clean(r.confiance).toLowerCase(), o={cle:pk+':pastille:'+slug(base),nom:nn,type:ty,lot:lot,forme:forme,pos_norm:{x:x,y:y},confiance:CONF.indexOf(cf)>=0?cf:'faible',statut:'non_verifie',source:{plan:ctx.planNom||pk,page:ctx.page||1},niveau:clean(r.niveau)||ctx.niveau||''};
-   if(dm) o.dimensions_cm=dm; var ro=num(r.rotation_deg); if(ro!==null&&Math.abs(ro)<=720) o.rotation_deg=ro; if(clean(r.piece)) o.piece=clean(r.piece).slice(0,MAXN);
+   var cf=clean(r.confiance).toLowerCase(), o={cle:pk+':pastille:'+slug(base),nom:nn,type:ty,lot:lot,forme:forme,pos_norm:{x:x,y:y},confiance:CONF.indexOf(cf)>=0?cf:'faible',statut:'non_verifie',ia:true,source:{plan:ctx.planNom||pk,page:ctx.page||1},niveau:clean(r.niveau)||ctx.niveau||''};
+   if(dm) o.dimensions_cm=dm; lireBim(r,c,rep,o); var ro=num(r.rotation_deg); if(ro!==null&&Math.abs(ro)<=720) o.rotation_deg=ro; if(clean(r.piece)) o.piece=clean(r.piece).slice(0,MAXN);
    var zr=num(r.z_rel_cm); if(zr!==null&&Math.abs(zr)<=MAXCM) o.z_rel_cm=zr;
    var pa=lireParams(r.parametres,rep,c,rep); if(pa) o.parametres=pa;
    L.pastilles.push(o);
@@ -50197,7 +50251,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
     if(i<0){ draft[t].push(e); add++; }
     else if(draft[t][i].statut==='non_verifie'){ draft[t][i]=e; rem++; } });
   });
-  return {ajoutes:add,remplaces:rem};
+  completerBim(draft); return {ajoutes:add,remplaces:rem};
  }
  /* ---------- création en bibliothèque : idempotente (par identifiant d'origine, puis par nom) ---------- */
  function planCreation(draft,ctx){
@@ -50205,11 +50259,11 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   (ctx.ouvrages||[]).forEach(function(o){ if(o.nom) exT[key(o.nom)]=1; if(o.id_externe) exI[o.id_externe]=1; });
   (ctx.pieces||[]).forEach(function(z){ if(z.nom) exZ[key(z.niveau||'')+'|'+key(z.nom)]=1; if(z.id_externe) exI[z.id_externe]=1; });
   var R={pieces:[],pastilles:[],aCreer:0,existants:0,nonAcceptes:0,sansPosition:0};
-  function creable(e){ return e.statut==='accepte'||e.statut==='modifie'||e.statut==='importe'; }
+  function creable(e){ return e.statut==='accepte'||e.statut==='modifie'||e.statut==='importe'||(e.auto&&e.statut==='non_verifie'); }
   draft.pieces.forEach(function(p){ var it={nom:p.nom,niveau:p.niveau||'',cle:p.cle||p.id_externe||'',creer:false,raison:''};
    if(p.statut==='ecarte'){ it.raison='écartée'; }
    else if(!creable(p)){ it.raison='non acceptée'; R.nonAcceptes++; }
-   else if(!p.polygone_cm){ it.raison='échelle manquante'; R.sansPosition++; }
+   else if(!p.polygone_cm&&!p.poly_norm){ it.raison='échelle manquante'; R.sansPosition++; }
    else if((it.cle&&exI[it.cle])||exZ[key(it.niveau)+'|'+key(p.nom)]){ it.raison='existe déjà'; R.existants++; }
    else{ it.creer=true; R.aCreer++; }
    R.pieces.push(it); });
@@ -50223,30 +50277,31 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   return R;
  }
  /* ---------- échange 1.1 : écriture ---------- */
+ function bimSortie(p,e){ ['guid','classe','materiau','classe_resistance','porteur','exterieur','resistance_feu','proprietes'].forEach(function(k){ if(p[k]!==undefined) e[k]=JSON.parse(JSON.stringify(p[k])); }); }
  function versEchange(draft,opt){
-  opt=opt||{}; var er=[], niv={}; (draft.niveaux||[]).forEach(function(n){ niv[key(n.nom)]=n; });
+  opt=opt||{}; completerBim(draft); var er=[], niv={}; (draft.niveaux||[]).forEach(function(n){ niv[key(n.nom)]=n; });
   var noms=[]; function dans(l){ l.forEach(function(e){ var k=key(e.niveau||''); if(noms.indexOf(k)<0) noms.push(k); }); } dans(draft.pieces.filter(function(p){ return p.statut!=='ecarte'; })); dans(draft.pastilles.filter(function(p){ return p.statut!=='ecarte'; }));
   var niveaux=noms.map(function(k){
    var n=niv[k]; if(!n||n.cote_cm==null){ er.push('La cote du niveau « '+(n?n.nom:k||'sans nom')+' » est à renseigner avant l’export.'); return null; }
    var o={nom:n.nom,cote_m:n.cote_cm/100,ouvrages:[],pieces:[],pastilles:[]}; if(n.hauteur_cm>0) o.hauteur_m=n.hauteur_cm/100;
-   draft.pieces.forEach(function(p){ if(p.statut==='ecarte'||!p.polygone_cm||key(p.niveau||'')!==k) return; var e={nom:p.nom,polygone_cm:p.polygone_cm,confiance:p.confiance}; if(p.hauteur_cm) e.hauteur_cm=p.hauteur_cm; if(p.source) e.source=p.source; e.id_externe=p.cle||p.id_externe||undefined; if(!e.id_externe) delete e.id_externe; o.pieces.push(e); });
-   draft.pastilles.forEach(function(p){ if(p.statut==='ecarte'||!p.position_cm||!dimsOk(p)||key(p.niveau||'')!==k) return; var e={nom:p.nom,lot:p.lot,type:p.type,forme:p.forme,dimensions_cm:p.dimensions_cm,position_cm:p.position_cm,confiance:p.confiance}; if(p.rotation_deg) e.rotation_deg=p.rotation_deg; if(p.piece) e.piece=p.piece; if(p.parametres) e.parametres=p.parametres; if(p.source) e.source=p.source; var id=p.cle||p.id_externe; if(id) e.id_externe=id; o.pastilles.push(e); });
+   draft.pieces.forEach(function(p){ if(p.statut==='ecarte'||!p.polygone_cm||key(p.niveau||'')!==k) return; var e={nom:p.nom,polygone_cm:p.polygone_cm,confiance:p.confiance}; if(p.genre==='compartiment') e.genre='compartiment'; bimSortie(p,e); if(p.hauteur_cm) e.hauteur_cm=p.hauteur_cm; if(p.source) e.source=p.source; e.id_externe=p.cle||p.id_externe||undefined; if(!e.id_externe) delete e.id_externe; o.pieces.push(e); });
+   draft.pastilles.forEach(function(p){ if(p.statut==='ecarte'||!p.position_cm||!dimsOk(p)||key(p.niveau||'')!==k) return; var e={nom:p.nom,lot:p.lot,type:p.type,forme:p.forme,dimensions_cm:p.dimensions_cm,position_cm:p.position_cm,confiance:p.confiance}; if(p.rotation_deg!==undefined) e.rotation_deg=p.rotation_deg; bimSortie(p,e); if(p.piece) e.piece=p.piece; if(p.parametres) e.parametres=p.parametres; if(p.source) e.source=p.source; var id=p.cle||p.id_externe; if(id) e.id_externe=id; o.pastilles.push(e); });
    return o; }).filter(Boolean);
   if(er.length||!niveaux.length) return {ok:false,erreurs:er.length?er:['Rien à exporter : aucune pièce ni pastille avec position.']};
   return {ok:true,doc:{format:'bina-descente-charge',version:'1.1',source:{outil:opt.outil||'Agent IA'},projet:{nom:clean(draft.projet&&draft.projet.nom)||'Projet'},repere:cleRepere(draft.repere),batiments:[{nom:clean(draft.batiment)||'Bâtiment',niveaux:niveaux}]}};
  }
  /* échange 1.1 : lecture (document déjà contrôlé par DcExchange.read) vers un brouillon */
  function depuisEchange(doc){
-  var d={projet:{nom:doc.projet.nom},repere:cleRepere(doc.repere),niveaux:[],plans:{},pieces:[],pastilles:[]};
+  var d={projet:{nom:doc.projet.nom},repere:cleRepere(doc.repere),niveaux:[],plans:{},pieces:[],pastilles:[]}, ia=!!(doc.source&&doc.source.outil==='Agent IA');
   doc.batiments.forEach(function(b){ b.niveaux.forEach(function(n){ var o={nom:n.nom,cote_cm:Math.round(n.cote_m*10000)/100,source:'echange'}; if(n.hauteur_m) o.hauteur_cm=Math.round(n.hauteur_m*10000)/100; d.niveaux.push(o);
-   (n.pieces||[]).forEach(function(p){ var e=JSON.parse(JSON.stringify(p)); e.niveau=n.nom; e.cle=e.id_externe||('ech:piece:'+slug(n.nom+'-'+p.nom)); d.pieces.push(e); });
-   (n.pastilles||[]).forEach(function(p){ var e=JSON.parse(JSON.stringify(p)); e.niveau=n.nom; e.cle=e.id_externe||('ech:pastille:'+slug(p.nom)); d.pastilles.push(e); }); }); });
+   (n.pieces||[]).forEach(function(p){ var e=JSON.parse(JSON.stringify(p)); e.niveau=n.nom; e.cle=e.id_externe||('ech:piece:'+slug(n.nom+'-'+p.nom)); if(ia) e.ia=true; d.pieces.push(e); });
+   (n.pastilles||[]).forEach(function(p){ var e=JSON.parse(JSON.stringify(p)); e.niveau=n.nom; e.cle=e.id_externe||('ech:pastille:'+slug(p.nom)); if(ia) e.ia=true; d.pastilles.push(e); }); }); });
   return d;
  }
  /* liste de contrôle des lots : un lot attendu a un plan déposé ou « pas de plan » */
  function listeLots(draft){ return LOTS.map(function(l){ var s=(draft.lots&&draft.lots[l.id])||{etat:'attendu'}; return {id:l.id,nom:l.nom,couleur:l.couleur,base:!!l.base,etat:s.etat,planKey:s.planKey||''}; }); }
  function lotsRestants(draft){ return listeLots(draft).filter(function(l){ return l.etat==='attendu'; }); }
- root.PlanLecture={LOTS:LOTS,FORMES:FORMES,TYPES:TYPES,CONF:CONF,MAXCM:MAXCM,key:key,slug:slug,num:num,clean:clean,fmt:fmt,lotDe:lotDe,typeDe:typeDe,calibrer:calibrer,echelleDeCotes:echelleDeCotes,planOk:planOk,dimsCm:dimsCm,normVersCm:normVersCm,cmVersNorm:cmVersNorm,repereVide:repereVide,cleRepere:cleRepere,coteZ:coteZ,dimsOk:dimsOk,geomPastille:geomPastille,bbox:bbox,deplacer:deplacer,redimensionner:redimensionner,poignee:poignee,aire:aire,centre:centre,surfaceM2:surfaceM2,pieceDe:pieceDe,dansPoly:dansPoly,lirePastille:lirePastille,lirePiece:lirePiece,lireRepere:lireRepere,lireNiveau:lireNiveau,normaliserLecture:normaliserLecture,recalculer:recalculer,fusionner:fusionner,planCreation:planCreation,versEchange:versEchange,depuisEchange:depuisEchange,listeLots:listeLots,lotsRestants:lotsRestants};
+ root.PlanLecture={LOTS:LOTS,FORMES:FORMES,TYPES:TYPES,CONF:CONF,MAXCM:MAXCM,key:key,slug:slug,num:num,clean:clean,fmt:fmt,lotDe:lotDe,typeDe:typeDe,guid:guid,classeDe:classeDe,CLASSES:CLASSES,completerBim:completerBim,tableBim:tableBim,volumeM3:volumeM3,lireProprietes:lireProprietes,calibrer:calibrer,echelleDeCotes:echelleDeCotes,planOk:planOk,dimsCm:dimsCm,normVersCm:normVersCm,cmVersNorm:cmVersNorm,repereVide:repereVide,cleRepere:cleRepere,coteZ:coteZ,dimsOk:dimsOk,geomPastille:geomPastille,bbox:bbox,deplacer:deplacer,redimensionner:redimensionner,poignee:poignee,aire:aire,centre:centre,surfaceM2:surfaceM2,pieceDe:pieceDe,dansPoly:dansPoly,lirePastille:lirePastille,lirePiece:lirePiece,lireRepere:lireRepere,lireNiveau:lireNiveau,normaliserLecture:normaliserLecture,recalculer:recalculer,fusionner:fusionner,planCreation:planCreation,versEchange:versEchange,depuisEchange:depuisEchange,listeLots:listeLots,lotsRestants:lotsRestants};
 })(typeof window!=='undefined'?window:this);
 </script>
 <style id="plLecCss">
@@ -50364,6 +50419,17 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
 .plpLg{display:inline-flex;align-items:center;gap:6px;font-size:13px}
 .plpLg i{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid var(--ds-ink,#16232B)}
 .plpLg i.plpDash{border-style:dashed;background:transparent}
+.plpBim dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:2px 12px;margin:4px 0;font-size:14px}
+.plpBim dt{color:var(--ds-ink-soft,#5f6a66)}
+.plpBim dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.plpBim dd.plpAbs{font-weight:400;color:var(--ds-ink-soft,#5f6a66);font-style:italic}
+.plpBadge{position:fixed;left:12px;bottom:12px;z-index:100300;max-width:min(360px,calc(100vw - 24px));padding:10px 12px;border:2px solid var(--ds-accent,#FFC400);border-radius:14px;background:var(--ds-bg,#fff);color:var(--ds-ink,#16232B);font:14px/1.35 var(--ds-font,system-ui,sans-serif);box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.plpBadge[hidden]{display:none}
+.plpBadge b{display:block}
+.plpBadge small{display:block;color:var(--ds-ink-soft,#5f6a66)}
+.plpBadge .plpBgRow{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.plpBadge button{min-height:44px;min-width:44px;padding:0 12px;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:12px;background:transparent;color:inherit;font-weight:600;cursor:pointer}
+.plpBadge button:hover{border-color:var(--ds-accent,#FFC400)}
 .plpEntry{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 6px 0 0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;text-align:start}
 .plpEntryIc{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;border:2px solid var(--ds-accent,#FFC400);border-radius:14px;color:var(--ds-ink,#16232B)}
 .pjd-lnk .plpEntryIc{width:30px;height:30px;border-radius:10px;margin-inline-end:6px;vertical-align:middle}
@@ -50389,7 +50455,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  };
  var svg=function(k,s){ return '<svg viewBox="0 0 24 24" width="'+(s||26)+'" height="'+(s||26)+'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(IC[k]||IC.plan)+'</svg>'; };
  function btn(ic,label,act,o){
-  o=o||{}; var nm=T(label), a=' data-pl="'+esc(act)+'"'+(o.id!=null?' data-id="'+esc(o.id)+'"':'')+(o.disabled?' disabled':'');
+  o=o||{}; var nm=T(label), a=' data-pl="'+esc(act)+'"'+(o.id!=null?' data-id="'+esc(o.id)+'"':'')+(o.attr?' '+o.attr:'')+(o.disabled?' disabled':'');
   return '<span class="plpBw'+(o.primary?' plpPri':'')+'"><button type="button" class="plpIcB" aria-label="'+esc(nm)+'" title="'+esc(nm)+'"'+a+'>'+svg(ic)+'</button><span class="plpBl">'+esc(nm)+(o.sub?'<small>'+esc(T(o.sub))+'</small>':'')+'</span></span>';
  }
  function row(items,one){ return '<div class="plpRow'+(one?' plpOne':'')+'">'+items.join('')+'</div>'; }
@@ -50401,13 +50467,14 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   return '<section class="plpSec" data-plp-sec="'+esc(key)+'"><div class="plpSecH">'+eyeBtn(hidden,err,title)+'<h5>'+esc(T(title))+(o.n!=null?' <span class="plpCnt">'+o.n+'</span>':'')+'</h5></div><div class="plpSecB"'+(hidden?' hidden':'')+'>'+body+'</div></section>';
  }
  /* ---------- état ---------- */
- function nouveau(){ return {projet:{nom:''},batiment:'',repere:PL.repereVide(),niveaux:[],plans:{},pieces:[],pastilles:[],lots:{}}; }
+ function nouveau(){ return {projet:{nom:''},batiment:'',repere:PL.repereVide(),niveaux:[],plans:{},pieces:[],pastilles:[],lots:{},auto:{}}; }
  var DS=window.__plpState=window.__plpState||{draft:nouveau(),planCour:'',occupe:false,msg:'',msgKo:false,mode:'voir',calib:null,sel:null,edit:null,editErr:'',consigne:'',exemple:false,lotCible:'architecture',appPlan:'',niveauCible:'',cree:null,erreurs:[],lotPlan:{},lotNiv:{}};
  var SRC={};
  function appState(){ try{ return (typeof state!=='undefined')?state:window.state; }catch(_){ return window.state; } }
  function racine(){ var mb=document.getElementById('modalBody'); return mb&&mb.querySelector('.plpRoot'); }
  function D(){ return DS.draft; }
- function sauver(){ try{ var S=appState(); if(S){ S.plansLecture=JSON.parse(JSON.stringify(DS.draft)); if(typeof persist==='function') persist(); } }catch(_){ } }
+
+ function sauver(){ try{ var S=appState(); if(S){ majBibli(DS.draft,S); S.plansLecture=JSON.parse(JSON.stringify(DS.draft)); if(typeof persist==='function') persist(); } }catch(_){ } }
  function charger(){ try{ var S=appState(); if(S&&S.plansLecture&&S.plansLecture.plans&&!Object.keys(DS.draft.plans).length&&!DS.draft.pieces.length&&!DS.draft.pastilles.length){ var d=JSON.parse(JSON.stringify(S.plansLecture)), b=nouveau(); Object.keys(b).forEach(function(k){ if(d[k]===undefined) d[k]=b[k]; }); DS.draft=d; var ks=Object.keys(d.plans); if(ks.length) DS.planCour=ks[0]; } }catch(_){ } }
  function planCour(){ return D().plans[DS.planCour]||null; }
  function srcPlan(pl){ if(!pl) return ''; if(SRC[pl.key]) return SRC[pl.key]; if(pl.appId&&typeof planById==='function'){ var a=planById(pl.appId); if(a&&typeof planSrc==='function') return planSrc(a)||''; } return ''; }
@@ -50417,7 +50484,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function niveauxNoms(){ var a=D().niveaux.map(function(n){ return n.nom; }); niveauxApp().forEach(function(n){ if(a.indexOf(n)<0) a.push(n); }); return a; }
  function ensureNiveau(nom,patch){ nom=PL.clean(nom); if(!nom) return null; var d=D(), n=d.niveaux.filter(function(x){ return PL.key(x.nom)===PL.key(nom); })[0]; if(!n){ n={nom:nom,cote_cm:null,hauteur_cm:null,source:'saisi'}; d.niveaux.push(n); } if(patch){ if(patch.cote_cm!=null&&n.cote_cm==null){ n.cote_cm=patch.cote_cm; n.source='lu'; } if(patch.hauteur_cm!=null&&n.hauteur_cm==null) n.hauteur_cm=patch.hauteur_cm; } return n; }
  /* ---------- fichiers : image réduite en JPEG (les PDF : première page) ---------- */
- function versJpeg(src,max,cb){ var im=new Image(); im.onload=function(){ var k=Math.min(1,max/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k)); var g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(im,0,0,c.width,c.height); cb({src:c.toDataURL('image/jpeg',0.85),w:c.width,h:c.height}); }; im.onerror=function(){ cb(null); }; im.src=src; }
+ function versJpeg(src,max,cb){ var im=new Image(); im.onload=function(){ var k=Math.min(1,max/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k)); var g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(im,0,0,c.width,c.height); var w0=c.width,h0=c.height,u=c.toDataURL('image/jpeg',0.85); c.width=0; c.height=0; im.onload=null; im.onerror=null; im.src=''; cb({src:u,w:w0,h:h0}); }; im.onerror=function(){ cb(null); }; im.src=src; }
  function fichierVersPlan(f,cb){
   if(f.size>25e6){ cb(null,T('Fichier trop gros (plus de 25 Mo).')); return; }
   if(/^image\//.test(f.type)){ var r=new FileReader(); r.onload=function(){ versJpeg(String(r.result),2000,function(o){ cb(o,o?'':T('Image illisible.')); }); }; r.onerror=function(){ cb(null,T('Lecture du fichier impossible.')); }; r.readAsDataURL(f); return; }
@@ -50485,7 +50552,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function appliquer(planKey,raw,origine){
   var d=D(), pl=d.plans[planKey]; if(!pl) return;
   function remplacable(e){ return !(e.cle&&e.cle.indexOf(planKey+':')===0&&e.statut==='non_verifie'); }
-  var ctx={plan:planKey,planNom:pl.nom,niveau:pl.niveau,lot:pl.lot,page:1,noms:d.pieces.filter(remplacable).map(function(p){ return p.nom; }),nomsPastilles:d.pastilles.filter(remplacable).map(function(p){ return p.nom; })};
+  var ctx={plan:planKey,planNom:pl.nom,niveau:pl.niveau,lot:pl.lot,page:1,neutre:origine==='auto',noms:d.pieces.filter(remplacable).map(function(p){ return p.nom; }),nomsPastilles:d.pastilles.filter(remplacable).map(function(p){ return p.nom; })};
   var res=PL.normaliserLecture(raw,ctx); if(!res.ok){ DS.msg=res.erreurs.join(' '); DS.msgKo=true; return; }
   var L=res.lecture;
   L.niveaux.forEach(function(n){ ensureNiveau(n.nom,n); });
@@ -50498,7 +50565,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   if(e.ok&&e.concordant&&!PL.planOk(pl)){ var ref=Object.keys(d.plans).map(function(k){ return d.plans[k]; }).filter(function(q){ return q.key!==pl.key&&PL.planOk(q); })[0]; if(ref&&Math.abs(e.cm_par_px-ref.cm_par_px)/ref.cm_par_px<=0.05){ pl.cm_par_px=e.cm_par_px; pl.echelle={methode:'cote_lue',n:e.n}; } }
   L.pieces.forEach(function(p){ if(!p.niveau) p.niveau=pl.niveau; if(p.niveau) ensureNiveau(p.niveau); });
   L.pastilles.forEach(function(p){ if(!p.niveau) p.niveau=pl.niveau; if(p.niveau) ensureNiveau(p.niveau); });
-  var f=PL.fusionner(d,L); PL.recalculer(d,planKey);
+  var f=PL.fusionner(d,L); if(origine==='auto') d.pieces.concat(d.pastilles).forEach(function(e){ if(e.cle&&e.cle.indexOf(planKey+':')===0&&e.statut==='non_verifie') e.auto=true; }); PL.recalculer(d,planKey);
   d.lots[pl.lot]={etat:'depose',planKey:planKey};
   DS.exemple=DS.exemple||origine==='exemple';
   var rest=[]; if(!PL.planOk(pl)) rest.push(T(pl.echelleProp?'Confirmez l’échelle proposée.':'L’échelle du plan est à calibrer : indiquez une dimension connue.'));
@@ -50518,28 +50585,36 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   }
  }
  /* ---------- appel de l'agent (fonction fiche-ia, mode plan_lecture) ---------- */
+ /* images temporaires : en mémoire seulement, jamais conservées ; effacées à la fin de l'analyse (succès, échec ou annulation) */
+ var TEMP=window.__plpTemp=window.__plpTemp||[];
+ function effacerTemp(t){ if(!t) return; t.o=null; t.corps=null; var i=TEMP.indexOf(t); if(i>=0) TEMP.splice(i,1); }
+ function analyserPlan(pl,cb,job){
+  var src=srcPlan(pl); if(!src){ cb({ok:false,msg:T('Le plan n’est plus en mémoire : déposez-le de nouveau.')}); return; }
+  if(typeof SUPABASE_URL==='undefined'||typeof SUPABASE_KEY==='undefined'){ cb({ok:false,msg:T('Agent non connecté : le canal de l’agent n’est pas configuré dans cette application. Vous pouvez essayer l’exemple.')}); return; }
+  if(navigator.onLine===false){ cb({ok:false,msg:T('Hors ligne : l’agent a besoin d’Internet. Vous pouvez essayer l’exemple.')}); return; }
+  var t={o:null,corps:null}; TEMP.push(t);
+  var ctl=(typeof AbortController!=='undefined')?new AbortController():null; if(job) job.ctl=ctl; var to=setTimeout(function(){ try{ ctl&&ctl.abort(); }catch(_){ } },150000), fini=false;
+  function fin(r){ if(fini) return; fini=true; clearTimeout(to); effacerTemp(t); if(job) job.ctl=null; cb(r); }
+  try{
+  versJpeg(src,2000,function(o){
+   if(!o){ fin({ok:false,msg:T('Image illisible.')}); return; }
+   t.o=o; var d=D();
+   /* seule une image réduite part : ni le fichier d'origine, ni son nom, ni ses métadonnées */
+   t.corps={mode:'plan_lecture',lot:pl.lot,lot_nom:lotNom(pl.lot),niveau:pl.niveau,consigne:DS.consigne.slice(0,3000),pieces_connues:d.pieces.filter(function(p){ return p.statut!=='ecarte'; }).map(function(p){ return p.nom; }).slice(0,200),fichiers:[{type:'image/jpeg',data:o.src.split(',')[1]}]};
+   var appel=(typeof window.dimIaCall==='function')?window.dimIaCall(t.corps).then(function(x){ return {ok:!!(x.resp&&x.resp.ok),j:x.j||{}}; }):fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify(t.corps),signal:ctl?ctl.signal:undefined}).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return {ok:r.ok,j:j}; }); });
+   if(ctl&&ctl.signal) ctl.signal.addEventListener('abort',function(){ fin({ok:false,annule:true,msg:T('Analyse annulée. Rien n’a été modifié.')}); });
+   appel.then(function(x){
+    var lec=x.j&&x.j.data&&x.j.data.lecture;
+    if(!x.ok||!lec){ fin({ok:false,msg:x.j&&x.j.polite?x.j.polite:T('Agent non connecté ou pas à jour : aucune proposition reçue. Rien n’a été modifié. Vous pouvez essayer l’exemple.')}); return; }
+    lec=JSON.parse(JSON.stringify(lec)); lec.message=(x.j.data&&x.j.data.message)||lec.message; fin({ok:true,lec:lec});
+   }).catch(function(e){ fin({ok:false,msg:T((e&&e.name==='AbortError')?'L’agent n’a pas répondu à temps. Rien n’a été modifié.':'Agent non connecté : la demande n’a pas abouti. Rien n’a été modifié.')}); });
+  });
+  }catch(e){ fin({ok:false,msg:T('Agent non connecté : la demande n’a pas abouti. Rien n’a été modifié.')}); }
+ }
  function agentLire(planKey){
   var pl=D().plans[planKey]; if(DS.occupe||!pl) return;
-  var src=srcPlan(pl); if(!src){ DS.msg=T('Le plan n’est plus en mémoire : déposez-le de nouveau.'); DS.msgKo=true; rendre(); return; }
-  if(typeof SUPABASE_URL==='undefined'||typeof SUPABASE_KEY==='undefined'){ DS.msg=T('Agent non connecté : le canal de l’agent n’est pas configuré dans cette application. Vous pouvez essayer l’exemple.'); DS.msgKo=true; rendre(); return; }
-  if(navigator.onLine===false){ DS.msg=T('Hors ligne : l’agent a besoin d’Internet. Vous pouvez essayer l’exemple.'); DS.msgKo=true; rendre(); return; }
-  DS.occupe=true; DS.msg=T('Préparation du plan…'); DS.msgKo=false; rendre();
-  versJpeg(src,2000,function(o){
-   if(!o){ DS.occupe=false; DS.msg=T('Image illisible.'); DS.msgKo=true; rendre(); return; }
-   DS.msg=T('L’agent lit le plan…'); rendre();
-   var d=D(), ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ try{ ctl&&ctl.abort(); }catch(_){ } },150000);
-   var corps={mode:'plan_lecture',lot:pl.lot,lot_nom:lotNom(pl.lot),plan_nom:pl.nom,niveau:pl.niveau,consigne:DS.consigne.slice(0,3000),pieces_connues:d.pieces.filter(function(p){ return p.statut!=='ecarte'; }).map(function(p){ return p.nom; }).slice(0,200),fichiers:[{nom:pl.nom,type:'image/jpeg',data:o.src.split(',')[1]}]};
-   /* appel par la fonction commune de l'application (jeton, projet, limite d'usage, demande d'autorisation) */
-   var appel=(typeof window.dimIaCall==='function')?window.dimIaCall(corps).then(function(x){ return {ok:!!(x.resp&&x.resp.ok),j:x.j||{}}; }):fetch(SUPABASE_URL+'/functions/v1/fiche-ia',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify(corps),signal:ctl?ctl.signal:undefined}).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return {ok:r.ok,j:j}; }); });
-   appel
-   .then(function(x){
-    clearTimeout(to); DS.occupe=false; var lec=x.j&&x.j.data&&x.j.data.lecture;
-    if(!x.ok||!lec){ DS.msg=x.j&&x.j.polite?x.j.polite:T('Agent non connecté ou pas à jour : aucune proposition reçue. Rien n’a été modifié. Vous pouvez essayer l’exemple.'); DS.msgKo=true; rendre(); return; }
-    lec=JSON.parse(JSON.stringify(lec)); lec.message=(x.j.data&&x.j.data.message)||lec.message;
-    appliquer(planKey,lec,'agent'); rendre();
-   })
-   .catch(function(e){ clearTimeout(to); DS.occupe=false; DS.msg=T((e&&e.name==='AbortError')?'L’agent n’a pas répondu à temps. Rien n’a été modifié.':'Agent non connecté : la demande n’a pas abouti. Rien n’a été modifié.'); DS.msgKo=true; rendre(); });
-  });
+  DS.occupe=true; DS.msg=T('L’agent lit le plan…'); DS.msgKo=false; rendre();
+  analyserPlan(pl,function(r){ DS.occupe=false; if(!r.ok){ DS.msg=r.msg; DS.msgKo=true; rendre(); return; } appliquer(planKey,r.lec,'agent'); rendre(); });
  }
  /* ---------- dessin du plan à l'échelle ---------- */
  function vbox(pl){ var c=PL.planOk(pl); return c?{W:pl.w*pl.cm_par_px,H:pl.h*pl.cm_par_px,cal:true}:{W:pl.w,H:pl.h,cal:false}; }
@@ -50585,7 +50660,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  function optsLots(sel){ return PL.LOTS.map(function(l){ return '<option value="'+l.id+'"'+(l.id===sel?' selected':'')+'>'+esc(T(l.nom))+'</option>'; }).join(''); }
  function sectionPlan(){
   var S=appState()||{}, pa=(S.plans||[]).filter(function(p){ return p&&p.src; }), d=D(), pls=Object.keys(d.plans).map(function(k){ return d.plans[k]; });
-  var h='<p class="plpNote">'+T('L’agent lit le plan, trouve les noms des pièces, découpe les pièces et propose de petites pastilles pour les éléments (porte = un trait, machine = un rectangle, ballon = un cercle). Tout reste « non vérifié » jusqu’à votre accord.')+'</p>';
+  var on=autoOn(), h='<p class="plpNote plpPriv">'+T('Seule une image du plan est analysée, puis effacée.')+'</p>'+row([btn(on?'eye':'eyeoff',on?'Analyse automatique des plans : activée':'Analyse automatique des plans : désactivée','auto_toggle',{attr:'role="switch" aria-checked="'+(on?'true':'false')+'"'})])+'<p class="plpNote">'+T('Quand un plan est déposé, l’agent crée seul les pièces, les compartiments et les pastilles, tous « non vérifiés ». Vous gardez la main : désactivez ce réglage à tout moment.')+'</p><p class="plpNote">'+T('L’agent lit le plan, trouve les noms des pièces, découpe les pièces et propose de petites pastilles pour les éléments (porte = un trait, machine = un rectangle, ballon = un cercle). Tout reste « non vérifié » jusqu’à votre accord.')+'</p>';
   h+='<div class="plpFld"><label for="plpApp">'+T('Plan de l’étude')+'</label><select id="plpApp" class="plpIn" data-plp-app><option value="">'+T('Choisir un plan…')+'</option>'+pa.map(function(p){ return '<option value="'+esc(p.id)+'"'+(DS.appPlan===p.id?' selected':'')+'>'+esc((p.nom||p.id)+(p.niveau?' — '+p.niveau:''))+'</option>'; }).join('')+'</select></div>';
   h+='<div class="plpGrid2"><div class="plpFld"><label for="plpLotC">'+T('Corps d’état de ce plan')+'</label><select id="plpLotC" class="plpIn" data-plp-lotc>'+optsLots(DS.lotCible)+'</select></div><div class="plpFld"><label for="plpNivC">'+T('Niveau du plan')+'</label><input id="plpNivC" class="plpIn" type="text" list="plpNivs" maxlength="120" data-plp-nivc value="'+esc(DS.niveauCible)+'" placeholder="'+esc(T('Par exemple : RDC'))+'"><datalist id="plpNivs">'+niveauxNoms().map(function(n){ return '<option value="'+esc(n)+'">'; }).join('')+'</datalist></div></div>';
   h+='<div class="plpFld"><label for="plpCons">'+T('Consigne pour l’agent (facultatif)')+'</label><textarea id="plpCons" class="plpIn" rows="2" data-plp-cons placeholder="'+esc(T('Par exemple : les pièces d’eau sont en bas à droite'))+'">'+esc(DS.consigne)+'</textarea></div>';
@@ -50652,10 +50727,14 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   if(e.statut==='ecarte') return row([btn('undo','Reprendre','reprend',{id:k+'|'+id})]);
   return row([btn('check','J’accepte','ok',{id:k+'|'+id,disabled:manque||e.statut==='accepte'||e.statut==='modifie'}),btn('edit','Je modifie','mod',{id:k+'|'+id}),btn('close','Écarter','ecarte',{id:k+'|'+id})]);
  }
+ function bimHtml(k,e){
+  var L=PL.tableBim(e,k,D()); return '<div class="plpBim"><h6 class="plpH6">'+T('Paramètres de la maquette numérique')+'</h6><dl>'+L.map(function(r){ return '<dt>'+esc(T(r.label))+'</dt><dd'+(r.valeur===null?' class="plpAbs"':'')+'>'+(r.valeur===null?esc(T('absent')):esc(typeof r.valeur==='number'?fm(r.valeur,2):String(r.valeur))+(r.unite?' '+esc(r.unite):''))+'</dd>'; }).join('')+'</dl></div>';
+ }
  function noeud(k,e){
   var id=e.cle||e.nom, on=DS.sel&&DS.sel.k===k&&DS.sel.id===id, ec=e.statut==='ecarte', ok=!!DS.open[k+'|'+id];
   var det='<p class="plpNote">'+resume(k,e)+'</p>';
   if(k==='pastille'&&e.parametres) det+='<ul class="plpPar">'+Object.keys(e.parametres).map(function(p){ return '<li><b>'+esc(p)+'</b> : '+esc(String(e.parametres[p]).replace('.',','))+'</li>'; }).join('')+'</ul>';
+  det+=bimHtml(k,e);
   if(k==='pastille'&&!e.parametres) det+='<p class="plpNote">'+T('Aucun paramètre lu. Rien n’est inventé : ajoutez-les avec « Je modifie ».')+'</p>';
   if(e.source) det+='<p class="plpNote">'+T('Source')+' : '+esc(e.source.plan||'')+(e.source.page?' — '+T('page')+' '+e.source.page:'')+'</p>';
   return '<div class="plpN'+(ec?' plpOff':'')+'"><div class="plpNHW">'+eyeBtn(!ok,false,e.nom,' data-nodekey="'+esc(k+'|'+id)+'"')+'<div class="plpNH"><div class="plpNT"><button type="button" class="plpNm" data-pl="sel" data-id="'+esc(k+'|'+id)+'"'+(on?' aria-pressed="true"':'')+'>'+esc(e.nom)+'</button>'+puces(k,e)+'</div></div></div><div class="plpNB"'+(ok?'':' hidden')+'>'+det+'</div>'+(DS.edit&&DS.edit.k===k&&DS.edit.id===id?editPanel(k,e):actions(k,e))+'</div>';
@@ -50727,23 +50806,34 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var h='<div class="plpEdit"><h6 class="plpH6">'+T('Je modifie')+' : '+esc(e.nom)+'</h6>';
   if(k==='piece'){
    h+=inp('nom','Nom de la pièce',e.nom)+inp('hauteur','Hauteur sous plafond (cm, facultatif)',e.hauteur_cm,{num:1,ph:'facultatif'});
-   h+='<div class="plpFld"><label for="plpf-pts">'+T('Contour : un point par ligne, « x ; y » en cm')+'</label><textarea id="plpf-pts" class="plpIn" rows="5" data-f="pts">'+esc((e.polygone_cm||[]).map(function(q){ return fm(q[0],1)+' ; '+fm(q[1],1); }).join('\n'))+'</textarea></div>';
+   h+='<div class="plpFld"><label for="plpf-pts">'+T('Contour : un point par ligne, « x ; y » en cm')+'</label><textarea id="plpf-pts" class="plpIn" rows="5" data-f="pts">'+esc((e.polygone_cm||[]).map(function(q){ return fm(q[0],1)+' ; '+fm(q[1],1); }).join('\n'))+'</textarea></div>'+bimChamps(e);
   } else{
    var dm=e.dimensions_cm||{}, d=D(), pc=e.position_cm||{};
    h+=inp('nom','Nom (unique)',e.nom);
    h+='<div class="plpGrid2">'+sel('type','Type',Object.keys(PL.TYPES).map(function(t){ return [t,PL.TYPES[t].nom]; }),PL.TYPES[e.type]?e.type:'autre')+sel('lot','Corps d’état',PL.LOTS.map(function(l){ return [l.id,l.nom]; }),e.lot)+'</div>';
    h+=sel('forme','Forme',PL.FORMES.map(function(f){ return [f,f]; }),e.forme);
    if(e.forme==='ligne') h+=inp('d_longueur','Longueur (cm)',dm.longueur,{num:1});
-   else if(e.forme==='rectangle') h+='<div class="plpGrid2">'+inp('d_largeur','Largeur (cm)',dm.largeur,{num:1})+inp('d_profondeur','Profondeur (cm)',dm.profondeur,{num:1})+'</div>'+inp('d_hauteur','Hauteur (cm, facultatif)',dm.hauteur,{num:1,ph:'facultatif'});
+   else if(e.forme==='rectangle') h+='<div class="plpGrid2">'+inp('d_largeur','Largeur (cm)',dm.largeur,{num:1})+inp('d_profondeur','Profondeur (cm)',dm.profondeur,{num:1})+'</div>';
    else if(e.forme==='cercle') h+=inp('d_diametre','Diamètre (cm)',dm.diametre,{num:1});
    else h+='<div class="plpFld"><label for="plpf-d_points">'+T('Points autour du centre : « x ; y » en cm, un par ligne')+'</label><textarea id="plpf-d_points" class="plpIn" rows="4" data-f="d_points">'+esc((dm.points||[]).map(function(q){ return fm(q[0],1)+' ; '+fm(q[1],1); }).join('\n'))+'</textarea></div>';
    h+='<div class="plpGrid3">'+inp('x','Position X (cm)',pc.x,{num:1})+inp('y','Position Y (cm)',pc.y,{num:1})+inp('z','Position Z (cm)',pc.z,{num:1,ph:'inconnu'})+'</div>';
+   h+='<div class="plpGrid2">'+inp('dh','Hauteur (cm, facultatif)',dm.hauteur,{num:1,ph:'facultatif'})+inp('de','Épaisseur (cm, facultatif)',dm.epaisseur,{num:1,ph:'facultatif'})+'</div>';
    h+=inp('rot','Rotation (degrés, sens inverse des aiguilles)',e.rotation_deg,{num:1,ph:'0'});
    h+='<div class="plpGrid2">'+sel('niveau','Niveau',[['','—']].concat(niveauxNoms().map(function(n){ return [n,n]; })),e.niveau||'')+sel('piece','Pièce',[['','—']].concat(d.pieces.filter(function(p){ return p.statut!=='ecarte'; }).map(function(p){ return [p.nom,p.nom]; })),e.piece||'')+'</div>';
-   h+='<div class="plpFld"><label for="plpf-params">'+T('Paramètres : « nom = valeur », un par ligne')+'</label><textarea id="plpf-params" class="plpIn" rows="4" data-f="params">'+esc(paramsTexte(e.parametres))+'</textarea></div>';
+   h+='<div class="plpFld"><label for="plpf-params">'+T('Paramètres : « nom = valeur », un par ligne')+'</label><textarea id="plpf-params" class="plpIn" rows="4" data-f="params">'+esc(paramsTexte(e.parametres))+'</textarea></div>'+bimChamps(e);
   }
   h+=(DS.editErr?'<p class="plpErr" role="alert">'+esc(DS.editErr)+'</p>':'')+row([btn('check','Enregistrer','edsave'),btn('close','Annuler','edno')]);
   return h+'</div>';
+ }
+ function bimChamps(e){
+  var o=[['','—'],['oui','oui'],['non','non']], pr=(e.proprietes||[]).map(function(q){ return q.cle+' = '+String(q.valeur).replace('.',',')+(q.unite?' | '+q.unite:''); }).join('\n');
+  return '<h6 class="plpH6">'+T('Maquette numérique')+'</h6><div class="plpGrid2">'+inp('classe','Classe d’objet',e.classe,{ph:'IfcWall'})+inp('materiau','Matériau (si lu)',e.materiau,{ph:'à renseigner'})+inp('classe_resistance','Résistance ou classe (si lue)',e.classe_resistance,{ph:'à renseigner'})+inp('resistance_feu','Résistance au feu (si lue)',e.resistance_feu,{ph:'à renseigner'})+sel('porteur','Porteur',o,e.porteur===undefined?'':(e.porteur?'oui':'non'))+sel('exterieur','Intérieur ou extérieur',[['','—'],['int','intérieur'],['ext','extérieur']],e.exterieur===undefined?'':(e.exterieur?'ext':'int'))+'</div><div class="plpFld"><label for="plpf-props">'+T('Propriétés : « nom = valeur | unité », un par ligne')+'</label><textarea id="plpf-props" class="plpIn" rows="3" data-f="props">'+esc(pr)+'</textarea></div>';
+ }
+ function bimLire(e){
+  ['classe','materiau','classe_resistance','resistance_feu'].forEach(function(k){ var v=PL.clean(champ(k)); if(v) e[k]=v.slice(0,k==='classe'?40:80); else delete e[k]; });
+  var po=champ('porteur'); if(po) e.porteur=po==='oui'; else delete e.porteur; var ex=champ('exterieur'); if(ex) e.exterieur=ex==='ext'; else delete e.exterieur;
+  var L=[]; String(champ('props')||'').split(/\n/).forEach(function(l){ var i=l.indexOf('='); if(i<1||L.length>=60) return; var k=PL.clean(l.slice(0,i)).slice(0,60), r=l.slice(i+1).split('|'), v=PL.clean(r[0]), u=PL.clean(r[1]||'').slice(0,20); if(!k||!v) return; var x=PL.num(v), q={cle:k,valeur:x!==null?x:v.slice(0,200)}; if(u) q.unite=u; L.push(q); });
+  if(L.length) e.proprietes=L; else delete e.proprietes;
  }
  function champ(f){ var r=racine(), el=r&&r.querySelector('[data-f="'+f+'"]'); return el?el.value:''; }
  function nombreChamp(f,obl,lab){ var v=champ(f); if(!PL.clean(v)){ if(obl) throw new Error(T(lab)+' : '+T('un nombre est attendu.')); return null; } var n=PL.num(v); if(n===null||Math.abs(n)>PL.MAXCM) throw new Error(T(lab)+' : '+T('un nombre en cm est attendu.')); return n; }
@@ -50755,18 +50845,19 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
    if((ed.k==='piece'?d.pieces:d.pastilles).some(function(x){ return x!==e&&PL.key(x.nom)===PL.key(nom); })) throw new Error(T('Ce nom est déjà pris.'));
    if(ed.k==='piece'){
     var pts=pointsChamp('pts','Contour',3), h=nombreChamp('hauteur',false,'Hauteur'); if(h!==null&&h<=0) throw new Error(T('Hauteur : supérieure à 0.'));
-    var chg=JSON.stringify(pts)!==JSON.stringify(e.polygone_cm||null); e.nom=nom; if(pts) e.polygone_cm=pts; if(h!==null) e.hauteur_cm=h; else delete e.hauteur_cm; if(chg) e.corrige=true;
+    var chg=JSON.stringify(pts)!==JSON.stringify(e.polygone_cm||null); bimLire(e); e.nom=nom; if(pts) e.polygone_cm=pts; if(h!==null) e.hauteur_cm=h; else delete e.hauteur_cm; if(chg) e.corrige=true;
    } else{
     var forme=champ('forme'), dm={}, ok=true, ty=champ('type');
     function pos(f,lab,obl){ var v=nombreChamp(f,obl,lab); if(v!==null&&v<=0) throw new Error(T(lab)+' : '+T('supérieure à 0.')); return v; }
     if(forme==='ligne'){ var L=pos('d_longueur','Longueur',false); if(L!==null) dm.longueur=L; else ok=false; }
-    else if(forme==='rectangle'){ var a=pos('d_largeur','Largeur',false), b=pos('d_profondeur','Profondeur',false), c=pos('d_hauteur','Hauteur',false); if(a!==null&&b!==null){ dm.largeur=a; dm.profondeur=b; if(c!==null) dm.hauteur=c; } else ok=false; }
+    else if(forme==='rectangle'){ var a=pos('d_largeur','Largeur',false), b=pos('d_profondeur','Profondeur',false); if(a!==null&&b!==null){ dm.largeur=a; dm.profondeur=b; } else ok=false; }
     else if(forme==='cercle'){ var dd=pos('d_diametre','Diamètre',false); if(dd!==null) dm.diametre=dd; else ok=false; }
     else{ var pp=pointsChamp('d_points','Points',3); if(pp) dm.points=pp; else ok=false; }
+    var dh=pos('dh','Hauteur',false), de=pos('de','Épaisseur',false); if(dh!==null) dm.hauteur=dh; if(de!==null) dm.epaisseur=de;
     var x=nombreChamp('x',false,'Position X'), y=nombreChamp('y',false,'Position Y'), z=nombreChamp('z',false,'Position Z'), ro=nombreChamp('rot',false,'Rotation');
     if((x===null)!==(y===null)) throw new Error(T('Position : renseignez X et Y ensemble.'));
     var avant=JSON.stringify([e.position_cm,e.dimensions_cm,e.rotation_deg,e.forme]);
-    e.nom=nom; e.type=ty; e.lot=champ('lot'); e.forme=forme; if(ok) e.dimensions_cm=dm; else delete e.dimensions_cm;
+    bimLire(e); e.nom=nom; e.type=ty; e.lot=champ('lot'); e.forme=forme; if(ok) e.dimensions_cm=dm; else delete e.dimensions_cm;
     if(x!==null){ e.position_cm={x:x,y:y}; if(z!==null) e.position_cm.z=z; } else delete e.position_cm;
     if(ro!==null) e.rotation_deg=ro; else delete e.rotation_deg;
     e.niveau=champ('niveau')||''; if(e.niveau) ensureNiveau(e.niveau); var pc=champ('piece'); if(pc) e.piece=pc; else delete e.piece;
@@ -50779,26 +50870,29 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  /* ---------- création en bibliothèque ---------- */
  function metierPour(S,lot){ S.metiers=S.metiers||[]; var nom=lotNom(lot), m=S.metiers.filter(function(x){ return PL.key(x.nom)===PL.key(nom); })[0]; if(!m){ m={id:uid('met'),nom:nom,couleur:lotCoul(lot)}; S.metiers.push(m); } return m; }
  function planDe(cle){ var d=D(); return Object.keys(d.plans).map(function(k){ return d.plans[k]; }).filter(function(p){ return cle&&cle.indexOf(p.key+':')===0; })[0]||null; }
- function creerEnBibliotheque(){
-  var S=appState(); if(!S||typeof taskBase!=='function'||typeof nextTaskId!=='function'){ DS.msg=T('Création impossible ici : l’application n’est pas prête.'); DS.msgKo=true; rendre(); return; }
-  var d=D(), p=PL.planCreation(d,ctxApp());
-  if(!p.aCreer){ DS.msg=T('Rien de nouveau à créer.'); DS.msgKo=false; rendre(); return; }
+ var BIMK=['guid','classe','materiau','classe_resistance','porteur','exterieur','resistance_feu','proprietes'];
+ function creerEnBibliotheque(silencieux){
+  var S=appState(); if(!S||typeof taskBase!=='function'||typeof nextTaskId!=='function'){ if(!silencieux){ DS.msg=T('Création impossible ici : l’application n’est pas prête.'); DS.msgKo=true; rendre(); } return null; }
+  var d=D(); PL.completerBim(d); var p=PL.planCreation(d,ctxApp());
+  majBibli(d,S);
+  if(!p.aCreer){ if(!silencieux){ DS.msg=T('Rien de nouveau à créer.'); DS.msgKo=false; rendre(); } return {nT:0,nZ:0}; }
   S.zonesChantier=Array.isArray(S.zonesChantier)?S.zonesChantier:[]; S.niveaux=Array.isArray(S.niveaux)?S.niveaux:[]; S.tasks=S.tasks||[]; S.nivBat=S.nivBat||{}; S.projetsMission=S.projetsMission||[];
   var nom=PL.clean(d.projet.nom); if(nom&&!S.projetsMission.some(function(q){ return PL.key(q.nom)===PL.key(nom); })) S.projetsMission.push({id:uid('PJM'),nom:nom});
   var nZ=0,nT=0;
-  function niv(n){ n=PL.clean(n)||'RDC'; var ex=S.niveaux.filter(function(q){ return PL.key(q)===PL.key(n); })[0]; if(ex) return ex; S.niveaux.push(n); return n; }
+  function niv(n){ n=PL.clean(n)||'Niveau non précisé'; var ex=S.niveaux.filter(function(q){ return PL.key(q)===PL.key(n); })[0]; if(ex) return ex; S.niveaux.push(n); return n; }
   function racineZone(n){ var z=S.zonesChantier.filter(function(q){ return q.niveau===n&&!q.parentId; })[0]; if(!z){ z={id:uid('Z'),nom:'Zone '+n,niveau:n,parentId:null}; S.zonesChantier.push(z); } return z; }
   d.pieces.forEach(function(e,i){
    var it=p.pieces[i]; if(!it.creer) return; var n=niv(e.niveau), par=racineZone(n);
-   var z={id:uid('Z'),nom:e.nom,niveau:n,parentId:par.id,plp:{cle:e.cle||e.id_externe||'',polygone_cm:e.polygone_cm,hauteur_cm:e.hauteur_cm||null,source:e.source||null}};
-   var pl=planDe(e.cle); if(pl&&pl.appId&&PL.planOk(pl)) z.poly={planId:pl.appId,pts:e.polygone_cm.map(function(q){ var u=PL.cmVersNorm(pl,q[0],q[1]); return [Math.round(u.x*10000)/10000,Math.round(u.y*10000)/10000]; })};
+   var z={id:uid('Z'),nom:e.nom,niveau:n,parentId:par.id,plp:{cle:e.cle||e.id_externe||'',polygone_cm:e.polygone_cm||null,hauteur_cm:e.hauteur_cm||null,source:e.source||null,statut:e.statut,genre:e.genre||'piece',batiment:d.batiment||'',cote_z_cm:PL.coteZ(d.niveaux,n),ia:!!e.ia}}; BIMK.forEach(function(k){ if(e[k]!==undefined) z.plp[k]=JSON.parse(JSON.stringify(e[k])); }); if(e.genre==='compartiment') z.compartiment=true;
+   var pl=planDe(e.cle); if(pl&&pl.appId&&PL.planOk(pl)&&e.polygone_cm) z.poly={planId:pl.appId,pts:e.polygone_cm.map(function(q){ var u=PL.cmVersNorm(pl,q[0],q[1]); return [Math.round(u.x*10000)/10000,Math.round(u.y*10000)/10000]; })}; else if(pl&&pl.appId&&e.poly_norm) z.poly={planId:pl.appId,pts:e.poly_norm.map(function(q){ return [Math.round(q[0]*10000)/10000,Math.round(q[1]*10000)/10000]; })};
    if(e.hauteur_cm>0) z.hauteur=e.hauteur_cm/100;
    S.zonesChantier.push(z); nZ++;
   });
   d.pastilles.forEach(function(e,i){
    var it=p.pastilles[i]; if(!it.creer) return; var n=niv(e.niveau), met=metierPour(S,e.lot);
    var t=taskBase(nextTaskId(),e.nom,n,{etat:'afaire',pct:0,quand:(typeof todayISO==='function'?todayISO():''),dureeEstimee:1,metierId:met.id,batId:S.nivBat[n]||null,mbf:{projet:nom}});
-   t.pastille={version:'1.1',cle:e.cle||e.id_externe||'',type:e.type,lot:e.lot,forme:e.forme,dimensions_cm:e.dimensions_cm,position_cm:e.position_cm,rotation_deg:e.rotation_deg||0,piece:e.piece||'',parametres:e.parametres||null,confiance:e.confiance||'faible',source:e.source||null,niveau_cote_cm:PL.coteZ(d.niveaux,n)};
+   t.pastille={version:'1.1',cle:e.cle||e.id_externe||'',type:e.type,lot:e.lot,forme:e.forme,dimensions_cm:e.dimensions_cm,position_cm:e.position_cm,rotation_deg:e.rotation_deg||0,piece:e.piece||'',parametres:e.parametres||null,confiance:e.confiance||'faible',source:e.source||null,niveau_cote_cm:PL.coteZ(d.niveaux,n),statut:e.statut,batiment:d.batiment||'',ia:!!e.ia};
+   BIMK.forEach(function(k){ if(e[k]!==undefined) t.pastille[k]=JSON.parse(JSON.stringify(e[k])); });
    var z=e.piece&&S.zonesChantier.filter(function(q){ return q.niveau===n&&PL.key(q.nom)===PL.key(e.piece)&&q.parentId; })[0]; if(z){ t.zoneChantierId=z.id; t.zoneChantierIds=[z.id]; }
    var pl=planDe(e.cle); if(pl&&pl.appId&&PL.planOk(pl)&&e.position_cm){ var u=PL.cmVersNorm(pl,e.position_cm.x,e.position_cm.y); if(u&&u.x>=0&&u.x<=1&&u.y>=0&&u.y<=1) t.pos={planId:pl.appId,x:Math.round(u.x*10000)/10000,y:Math.round(u.y*10000)/10000}; }
    S.tasks.unshift(t); nT++;
@@ -50806,8 +50900,14 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   try{ if(typeof nbApplyOrder==='function') nbApplyOrder(); }catch(_){ }
   sauver(); try{ if(typeof persist==='function') persist(); }catch(_){ }
   DS.cree=nT+' '+T('ouvrage(s) et')+' '+nZ+' '+T('pièce(s) créés en bibliothèque.'); DS.msg=''; try{ if(typeof renderAll==='function') renderAll(); }catch(_){ }
-  try{ if(typeof clipToast==='function') clipToast(DS.cree); }catch(_){ }
-  rendre();
+  if(!silencieux){ try{ if(typeof clipToast==='function') clipToast(DS.cree); }catch(_){ } rendre(); }
+  return {nT:nT,nZ:nZ};
+ }
+ /* met à jour ce qui existe déjà en bibliothèque : cotes des pièces arrivées après le calibrage, état (non vérifié, accepté, écarté) */
+ function majBibli(d,S){
+  var par={}; d.pieces.concat(d.pastilles).forEach(function(e){ par[e.cle||e.id_externe||'']=e; });
+  (S.zonesChantier||[]).forEach(function(z){ var e=z.plp&&par[z.plp.cle]; if(!e) return; z.plp.statut=e.statut; if(!z.plp.polygone_cm&&e.polygone_cm) z.plp.polygone_cm=e.polygone_cm; if(z.plp.polygone_cm&&e.hauteur_cm&&!z.plp.hauteur_cm) z.plp.hauteur_cm=e.hauteur_cm; if(z.nom!==e.nom&&e.statut==='modifie') z.nom=e.nom; });
+  (S.tasks||[]).forEach(function(t){ var e=t.pastille&&par[t.pastille.cle]; if(!e) return; t.pastille.statut=e.statut; BIMK.forEach(function(k){ if(e[k]!==undefined) t.pastille[k]=JSON.parse(JSON.stringify(e[k])); }); if(e.statut==='modifie'){ t.pastille.position_cm=e.position_cm; t.pastille.dimensions_cm=e.dimensions_cm; t.pastille.rotation_deg=e.rotation_deg||0; } });
  }
  function exporter(){
   var r=PL.versEchange(D(),{outil:'Agent IA'}); if(!r.ok){ DS.msg=r.erreurs.join(' '); DS.msgKo=true; return; }
@@ -50902,9 +51002,10 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
    },
    lot_non:function(){ d.lots[id]={etat:'sans_plan'}; sauver(); },
    lot_att:function(){ d.lots[id]={etat:'attendu'}; sauver(); },
+   auto_toggle:function(){ setAuto(!autoOn()); },
    nord_ok:function(){ d.repere.nord_confirme=true; sauver(); },
    niv_add:function(){ var i=r.querySelector('[data-plp-nivnew]'), v=PL.clean(i?i.value:''); if(!v){ DS.msg=T('Donnez un nom au niveau.'); DS.msgKo=true; return; } ensureNiveau(v); DS.msg=''; sauver(); },
-   echelle_prop:function(){ var p=d.plans[id]; if(p&&p.echelleProp){ p.cm_par_px=p.echelleProp.cm_par_px; p.echelle={methode:'cote_lue',n:p.echelleProp.n}; recalcTout(); sauver(); DS.msg=''; } },
+   echelle_prop:function(){ var p=d.plans[id]; if(p&&p.echelleProp){ p.cm_par_px=p.echelleProp.cm_par_px; p.echelle={methode:'cote_lue',n:p.echelleProp.n}; recalcTout(); sauver(); DS.msg=''; autoCreer(); } },
    echelle_off:function(){ var p=d.plans[id]; if(p){ p.cm_par_px=null; p.echelle=null; d.pieces.concat(d.pastilles).forEach(function(x){ if(x.cle&&x.cle.indexOf(id+':')===0&&!x.corrige){ delete x.polygone_cm; delete x.position_cm; } }); sauver(); } },
    calib_start:function(){ if(d.plans[id]) DS.planCour=id; DS.mode='calib'; DS.calib={pts:[],long:'',err:''}; FOLD['plp.vue']=2; foldSave(); },
    calib_stop:function(){ DS.mode='voir'; DS.calib=null; },
@@ -50912,7 +51013,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
     var pl=planCour(), c=DS.calib; if(!pl||!c||c.pts.length<2) return; var i=r.querySelector('[data-plp-call]'); c.long=i?i.value:c.long;
     var res=PL.calibrer(c.pts[0],c.pts[1],c.long,pl.w,pl.h); if(!res.ok){ c.err=res.erreur; return; }
     pl.cm_par_px=res.cm_par_px; pl.echelle={methode:'saisi',n:1}; DS.mode='voir'; DS.calib=null; recalcTout();
-    var ex=PL.echelleDeCotes(pl.cotes,pl.w,pl.h); DS.msg=ex.ok&&Math.abs(ex.cm_par_px-res.cm_par_px)/res.cm_par_px>0.05?T('Attention : les dimensions lues par l’agent ne donnent pas la même échelle que la vôtre. La vôtre est gardée.'):''; DS.msgKo=!!DS.msg; sauver();
+    var ex=PL.echelleDeCotes(pl.cotes,pl.w,pl.h); DS.msg=ex.ok&&Math.abs(ex.cm_par_px-res.cm_par_px)/res.cm_par_px>0.05?T('Attention : les dimensions lues par l’agent ne donnent pas la même échelle que la vôtre. La vôtre est gardée.'):''; DS.msgKo=!!DS.msg; sauver(); autoCreer();
    },
    sel:function(){ var q=parseId(id); DS.sel=(DS.sel&&DS.sel.k===q.k&&DS.sel.id===q.id)?null:q; },
    ok:function(){ var q=parseId(id), x=trouver(q.k,q.id); if(x){ x.statut='accepte'; DS.edit=null; sauver(); } },
@@ -50988,6 +51089,52 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  document.addEventListener('click',clic); document.addEventListener('change',change); document.addEventListener('input',saisie); document.addEventListener('keydown',touche,true);
  document.addEventListener('pointerdown',pdown); document.addEventListener('pointermove',pmove); document.addEventListener('pointerup',pup); document.addEventListener('pointercancel',pup);
  DS.open=DS.open||{};
+ /* ---------- analyse automatique des plans déposés dans l'espace EG ---------- */
+ function autoOn(){ var S=appState(); return !(S&&S.plpAuto===false); }
+ function setAuto(v){ var S=appState(); if(S){ S.plpAuto=!!v; try{ persist(); }catch(_){ } } }
+ function espaceEG(){ try{ return !(document.body&&document.body.dataset&&document.body.dataset.espace==='BE'); }catch(_){ return true; } }
+ function langAr(){ try{ return !!(window.dimLang&&window.dimLang()==='ar'); }catch(_){ return false; } }
+ var JOBS=window.__plpJobs=window.__plpJobs||{}, badgeT=null;
+ function empreinte(a){ var src=(typeof planSrc==='function'?planSrc(a):a.src)||'', n=src.length, h=2166136261, st=Math.max(1,Math.floor(n/4096)), i; for(i=0;i<n;i+=st){ h=Math.imul(h^src.charCodeAt(i),16777619)>>>0; } return a.w+'x'+a.h+':'+n+':'+h.toString(16); }
+ function badgeEl(){ var b=document.getElementById('plpAutoBadge'); if(!b){ b=document.createElement('div'); b.id='plpAutoBadge'; b.className='plpBadge'; b.setAttribute('role','status'); b.setAttribute('aria-live','polite'); b.hidden=true; document.body.appendChild(b); b.addEventListener('click',function(e){ var x=e.target.closest('[data-plpb]'); if(!x) return; var a=x.getAttribute('data-plpb'), id=x.getAttribute('data-id'); if(a==='retry') autoPlan(id,true); else if(a==='cancel'){ var j=JOBS[id]; try{ j&&j.ctl&&j.ctl.abort(); }catch(_){ } } else if(a==='open'){ if(window.plpOpen) window.plpOpen({planId:id}); b.hidden=true; } else if(a==='close'){ b.hidden=true; } }); } return b; }
+ function badge(){
+  var ids=Object.keys(JOBS); if(!ids.length) return; var id=ids[ids.length-1], j=JOBS[id], b=badgeEl(), h='';
+  var priv='<small>'+esc(T('Seule une image du plan est analysée, puis effacée.'))+'</small>', bt=function(a,l){ return '<button type="button" data-plpb="'+a+'" data-id="'+esc(id)+'">'+esc(T(l))+'</button>'; };
+  if(j.etat==='cours') h='<b>'+esc(T('Analyse du plan en cours…'))+'</b>'+priv+'<div class="plpBgRow">'+bt('cancel','Annuler')+'</div>';
+  else if(j.etat==='ok') h='<b>'+esc(T('Plan analysé : pièces et ouvrages créés, tous non vérifiés.'))+'</b><small>'+esc(j.resume||'')+'</small><div class="plpBgRow">'+bt('open','Voir et vérifier')+bt('close','Fermer')+'</div>';
+  else if(j.etat==='calib') h='<b>'+esc(T('Pièces créées sans cotes : calibrez l’échelle du plan.'))+'</b><small>'+esc(T('L’échelle n’est jamais devinée.'))+'</small><div class="plpBgRow">'+bt('open','Calibrer')+bt('close','Fermer')+'</div>';
+  else h='<b>'+esc(T('L’analyse du plan n’a pas abouti.'))+'</b><small>'+esc(j.msg||'')+'</small><div class="plpBgRow">'+bt('retry','Relancer')+bt('close','Fermer')+'</div>';
+  b.innerHTML=h; b.hidden=false; clearTimeout(badgeT); if(j.etat==='ok') badgeT=setTimeout(function(){ if(JOBS[id]&&JOBS[id].etat==='ok') b.hidden=true; },12000);
+ }
+ /* crée en bibliothèque ce qui est prêt parmi les éléments automatiques (relancé après un calibrage) */
+ function autoCreer(){ try{ var d=D(); if(!d.pieces.concat(d.pastilles).some(function(e){ return e.auto&&e.statut==='non_verifie'; })) return null; var r=creerEnBibliotheque(true); if(r){ sauver(); var rr=racine(); if(rr) rendre(); } return r; }catch(_){ return null; } }
+ function autoPlan(planId,force,cbFin){
+  if(!force&&!autoOn()) return; if(langAr()) return;
+  charger(); var d=D(), a=typeof planById==='function'?planById(planId):null; if(!a||!a.src){ return; }
+  var emp=empreinte(a); if(!force&&d.auto&&d.auto[emp]&&d.auto[emp].etat==='ok'){ return; }
+  if(JOBS[planId]&&JOBS[planId].etat==='cours') return;
+  var job=JOBS[planId]={etat:'cours',ctl:null}; badge();
+  var lot=PL.lotDe(a.lot)||'architecture';
+  var fin=function(){ if(cbFin) cbFin(JOBS[planId]); };
+  planAppVersPlan(planId,lot,a.niveau||'',function(pl,er){
+   if(!pl){ job.etat='echec'; job.msg=er||''; badge(); fin(); return; }
+   var dd=D(); dd.auto=dd.auto||{};
+   analyserPlan(pl,function(r){
+    if(!r.ok){ job.etat='echec'; job.msg=r.msg; badge(); fin(); return; }
+    try{
+     appliquer(pl.key,r.lec,'auto'); var p2=D().plans[pl.key]; if(!PL.planOk(p2)&&p2.echelleProp&&p2.echelleProp.concordant){ p2.cm_par_px=p2.echelleProp.cm_par_px; p2.echelle={methode:'cote_lue',n:p2.echelleProp.n}; PL.recalculer(D(),pl.key); }
+     var cr=creerEnBibliotheque(true)||{nT:0,nZ:0}; dd.auto[emp]={planId:planId,etat:'ok'}; sauver();
+     job.resume=cr.nZ+' '+T('pièce(s)')+', '+cr.nT+' '+T('ouvrage(s)');
+     job.etat=PL.planOk(D().plans[pl.key])?'ok':'calib';
+     if(job.etat==='calib'){ DS.planCour=pl.key; }
+    }catch(e){ job.etat='echec'; job.msg=T('Le résultat de l’analyse n’a pas pu être utilisé.'); }
+    badge(); if(racine()) rendre(); fin();
+   },job);
+  });
+ }
+ window.plpAuto={lancer:autoPlan,actif:autoOn,regler:setAuto,jobs:JOBS};
+ /* tous les points de dépôt de plans passent par savePlan : l'analyse démarre sans clic */
+ (function(){ var sp=window.savePlan; if(typeof sp!=='function'||sp.__plpAuto) return; var g=function(){ var S=appState(), n0=S&&S.plans?S.plans.length:0, r=sp.apply(this,arguments); try{ var L=(appState()||{}).plans||[]; if(L.length>n0&&autoOn()&&espaceEG()){ var pl=L[L.length-1]; setTimeout(function(){ autoPlan(pl.id,false); },700); } }catch(_){ } return r; }; g.__plpAuto=1; window.savePlan=g; })();
  window.plpOpen=function(o){
   o=o||{}; var mb0=document.getElementById('modalBody'); if(!mb0||typeof openModal!=='function') return;
   charger();
