@@ -7656,6 +7656,7 @@ function dimDiffEntrees(dp){
  const add=(sec,txt)=>{ if(!seen.has(txt)){ seen.add(txt); L.push({sec,txt}); } };
  const has=(M,pre)=>Object.keys(M).some(q=>q.startsWith(pre));
  keys.forEach(path=>{ const a=A[path], b=B[path]; if(a===b) return; const parts=path.split('.'), top=parts[0], sp=dimSpecOf(top);
+  if(top==='aconf'){ try{ const m=window.dimAcDiffTxt?window.dimAcDiffTxt(dp,parts[1],a,b):null; if(m) add('Points à confirmer',m); }catch(_){ } return; }
   if(top==='valid'||top==='skills'||top==='validSeuils'){ let ti=''; try{ const id=parts[1]; Object.keys(window.dimValidSpecs||{}).forEach(k=>window.dimValidSpecs[k].forEach(x=>{ if(x.id===id) ti=x.titre; })); }catch(_){ } add('Validations et méthodes',top==='valid'?('Choix de validation modifié'+(ti?' : '+ti:'')):(top==='skills'?'Méthode décrite par l\'utilisateur modifiée':'Seuil de cas sensible modifié')); return; }
   const sec=DIM_CHG.has(top)?'Chargement':(DIM_MAT.has(top)?'Matériau':(sp?'Paramètres avancés':'Géométrie et options'));
   /* crochets propres à un module (libellés réels, paramètres de la forme active seulement) : window.DIM_DIFF_HOOKS = [(dp,top,parts,a,b) => null | {skip:true} | {sec?,txt}] */
@@ -7673,7 +7674,7 @@ function dimDiffEntrees(dp){
 }
 function dimResumeModifs(L,onOk,onCancel,nextInd){ nextInd=nextInd||'';
  const ov=document.createElement('div'); ov.className='dimDiffOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','Modifications depuis le dernier calcul');
- const ORD=['Géométrie et options','Chargement','Matériau','Paramètres avancés','Validations et méthodes'], MAX=12; let all=false;
+ const ORD=['Géométrie et options','Chargement','Matériau','Paramètres avancés','Validations et méthodes','Points à confirmer'], MAX=12; let all=false;
  const body=()=>{ const sh=all?L:L.slice(0,MAX); let h=''; ORD.forEach(s=>{ const it=sh.filter(x=>x.sec===s); if(!it.length) return; h+='<h4>'+esc(s)+'</h4><ul>'+it.map(x=>'<li>'+esc(x.txt)+'</li>').join('')+'</ul>'; });
   if(!all&&L.length>MAX) h+='<button type="button" class="ghost dimDiffMore" data-dd="more">+ '+(L.length-MAX)+' autre'+(L.length-MAX>1?'s':'')+'</button>'; return h; };
  ov.innerHTML='<div class="dimDiffBox"><h3>Modifications depuis le dernier calcul</h3><div class="dimDiffList">'+body()+'</div><p class="dimDiffInd">'+esc(nextInd)+'</p><div class="dimDiffBtns"><button type="button" class="primary" data-dd="ok">Valider et recalculer</button><button type="button" class="ghost" data-dd="no">Annuler</button></div></div>';
@@ -26700,8 +26701,10 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const an0=AN.length?'<section class="ncSec"><h4>Points à confirmer</h4>'+AN.map(a=>'<div class="ncAn'+(a.bad?'':' conf')+'"><b>'+(a.bad?'Bloquant : ':'À confirmer : ')+'</b>'+esc(a.tx.replace(/^⚠\s*/,''))+'</div>').join('')+'</section>':'';
     const an=an0+jsH; // bloc repliable « Données transmises au plan » : après les points à confirmer, avant l'avertissement
     const subL=[projet,bat,niv,'Note de calcul indice '+indice,date].filter(Boolean).join(' · ');
-    return '<div class="pcNC ncDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+(sub?' · '+esc(sub):'')+'</p>'+cart+kp+secHtml+(thN?thN.section:'')+dvSec+an+dvAnx
+    const outHtml='<div class="pcNC ncDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+(sub?' · '+esc(sub):'')+'</p>'+cart+kp+secHtml+(thN?thN.section:'')+dvSec+an+dvAnx
      +'<div class="ncWarn">'+esc(NC_AVERT)+(avExtra?' '+esc(avExtra):'')+'</div></div>';
+    /* éléments à confirmer : état (confirmé, proposé…) et marques pour les boutons, par le composant commun dimAcJs (modèle de note inchangé) */
+    try{ return window.dimAcAnnotate?window.dimAcAnnotate(outHtml,ctx):outHtml; }catch(e2){ console.warn('dimAcAnnotate',e2); return outHtml; }
    }catch(e){ console.warn('ncFormat',e); return html; }
   }
   window.ncFormat=ncFormat;
@@ -48588,9 +48591,9 @@ document.head.appendChild(st);
  let rec=null, recStop=false, voiceOn=false;
  function stopVoice(){ voiceOn=false; try{ if(rec){ recStop=true; rec.stop(); } }catch(_){ } rec=null; try{ window.speechSynthesis&&window.speechSynthesis.cancel(); }catch(_){ } }
  function speak(txt,done){ try{ const S=window.speechSynthesis; if(!S||!window.SpeechSynthesisUtterance){ done&&done(); return; } S.cancel(); const u=new SpeechSynthesisUtterance(String(txt).slice(0,600)); u.lang='fr-FR'; u.onend=()=>{ done&&done(); }; u.onerror=()=>{ done&&done(); }; S.speak(u); }catch(_){ done&&done(); } }
- function resultHtml(sk,res){
+ function resultHtml(sk,res,tagTxt){
   if(!sk) return '';
-  let h='<div class="dvSk"><p class="dvTag" role="note">Calcul par méthode décrite par l\'utilisateur, non vérifié par un moteur.</p><p class="dvSkN"><b>'+esc(sk.nom)+'</b></p>'+(sk.description?'<p class="pcNote">'+esc(sk.description)+'</p>':'');
+  let h='<div class="dvSk"><p class="dvTag" role="note">'+esc(tagTxt||'Calcul par méthode décrite par l\'utilisateur, non vérifié par un moteur.')+'</p><p class="dvSkN"><b>'+esc(sk.nom)+'</b></p>'+(sk.description?'<p class="pcNote">'+esc(sk.description)+'</p>':'');
   if(!res.ok) return h+'<div class="dimErrBox" role="alert"><b>La méthode ne peut pas être calculée</b><ul>'+res.erreurs.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div></div>';
   h+='<h5 class="dvH5">Entrées</h5><table class="dvVals"><tbody>'+res.entrees.map(e=>'<tr><th>'+esc(e.nom)+' ('+esc(e.id)+')</th><td>'+esc(window.DimSkill.fmt(e.valeur))+(e.unite?' '+esc(e.unite):'')+'</td></tr>').join('')+'</tbody></table>';
   h+='<h5 class="dvH5">Étapes</h5><ol class="dvSteps">'+res.lignes.map(l=>'<li><b>'+esc(l.nom)+'</b><span class="dvF">'+esc(l.id)+' = '+esc(l.formule)+'</span><span class="dvF">= '+esc(l.subst)+'</span><span class="dvR">= '+esc(window.DimSkill.fmt(l.valeur))+(l.unite?' '+esc(l.unite):'')+'</span></li>').join('')+'</ol>';
@@ -48601,13 +48604,14 @@ document.head.appendChild(st);
   const dp=ctx.dp, st=chatSt(ctx,spec); const online=navigator.onLine!==false;
   const draw=()=>{
    const res=st.draft?window.DimSkill.run(st.draft):null; const ex=skillsOf(dp);
-   const logH=st.log.length?st.log.map(m=>'<div class="dvMsg dvMsg-'+m.role+'">'+esc(m.text)+'</div>').join(''):'<p class="pcNote">Décrivez votre méthode avec vos mots, au clavier ou au micro. Exemple : « le moment est q fois L au carré sur 8, avec q = 20 kN/m et L = 5 m ».</p>';
-   ov.innerHTML='<div class="pcFeuCard dvCard dvChat"><h4 id="dvT">Je décris ma méthode</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
+   const logH=st.log.length?st.log.map(m=>'<div class="dvMsg dvMsg-'+m.role+'">'+esc(m.text)+'</div>').join(''):'<p class="pcNote">'+esc(spec.chatIntro||'Décrivez votre méthode avec vos mots, au clavier ou au micro. Exemple : « le moment est q fois L au carré sur 8, avec q = 20 kN/m et L = 5 m ».')+'</p>';
+   ov.innerHTML='<div class="pcFeuCard dvCard dvChat"><h4 id="dvT">'+esc(spec.chatTitre||'Je décris ma méthode')+'</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
+    +(spec.chatWarn?'<p class="dvSens" role="alert">'+esc(spec.chatWarn)+'</p>':'')
     +(online?'':'<p class="dvSens" role="alert">Hors ligne : l\'assistant a besoin d\'Internet. Vous pouvez quand même écrire la méthode vous-même avec « Modifier ».</p>')
     +(ex.length&&!st.draft?'<div class="dvReuse"><p class="pcNote">Méthodes déjà décrites pour cet ouvrage :</p>'+ex.map(s=>window.dimChRow({icon:'chat',nom:s.nom,aide:'Reprendre cette méthode.',attr:'data-dv-reuse="'+esc(s.id)+'"'})).join('')+'</div>':'')
     +'<div class="dvLog" aria-live="polite">'+logH+'</div>'
-    +(st.draft?resultHtml(st.draft,res):'')
-    +(st.draft?'<div class="dvBtns">'+ib('check','Valider ce calcul','data-dv-x="valider"'+(res&&res.ok?'':' disabled'))+ib('edit','Modifier','data-dv-x="edit"')+ib('close','Annuler','data-dv-x="annuler"')+'</div>'
+    +(st.draft?resultHtml(st.draft,res,spec.tagTxt):'')
+    +(st.draft?'<div class="dvBtns">'+ib('check',spec.validLbl||'Valider ce calcul','data-dv-x="valider"'+(res&&res.ok?'':' disabled'))+ib('edit','Modifier','data-dv-x="edit"')+ib('close','Annuler','data-dv-x="annuler"')+'</div>'
      :'<div class="dvBtns">'+ib('edit','Écrire moi-même','data-dv-x="edit"')+'</div>')
     +'<textarea class="dvIn" rows="3" data-dv-in aria-label="Votre message à l\'assistant" placeholder="Votre message…"'+(st.busy?' disabled':'')+'></textarea>'
     +'<div class="dvBtns dvTools">'+ib('mic','Micro','data-dv-x="mic"')+ib(voiceOn?'stop':'speaker',voiceOn?'Arrêter la voix':'Discussion vocale','data-dv-x="voix"'+(voiceOn?' aria-pressed="true"':' aria-pressed="false"'))+ib('send',st.busy?'Envoi…':'Envoyer','data-dv-x="send"'+(st.busy?' disabled':''))+'</div>'
@@ -48621,6 +48625,7 @@ document.head.appendChild(st);
     if(navigator.onLine===false) throw new Error('Hors ligne : l\'assistant a besoin d\'une connexion Internet. Rien n\'a été modifié.');
     if(typeof SUPABASE_URL==='undefined'||typeof SUPABASE_KEY==='undefined') throw new Error('Le canal de l\'assistant IA n\'est pas configuré dans cette application (adresse et clé du serveur IA absentes). Vous pouvez écrire la méthode vous-même avec « Écrire moi-même ».');
     const body={mode:'methode',message:msg,historique:st.log.slice(-7,-1),contexte:{module:spec.pfx,methode:spec.titre,suppose:X(spec.supposes,dp),ignore:X(spec.ignore,dp),ne_convient_pas:X(spec.ne,dp),valeurs:valsNow(dp,spec)},skill_courant:st.draft};
+    if(spec.iaCtx){ try{ Object.assign(body.contexte,spec.iaCtx(dp)); }catch(_){ } }
     const {resp,j}=await window.dimIaCall(body);
     if(resp.status===404) throw new Error('L\'assistant des méthodes utilise la même fonction serveur et la même clé que l\'assistant IA des fiches (« fiche-ia ») : cette fonction doit être déployée dans sa dernière version. Vous pouvez écrire la méthode vous-même avec « Écrire moi-même ».');
     { const pol=window.dimIaPolite(j); if(pol){ st.log.push({role:'bot',text:pol}); st.busy=false; draw(); return; } }
@@ -48645,13 +48650,14 @@ document.head.appendChild(st);
    const ru=e.target.closest('[data-dv-reuse]'); if(ru){ const s=skillById(dp,ru.dataset.dvReuse); if(s){ st.draft=JSON.parse(JSON.stringify(s.def)); st.log.push({role:'bot',text:'Méthode « '+s.nom+' » reprise. Vérifiez-la, modifiez-la ou validez-la.'}); draw(); } return; }
    const b=e.target.closest('[data-dv-x]'); if(!b){ if(e.target===ov&&ov._down){ closeOv(ov); } return; }
    const x=b.dataset.dvX;
-   if(x==='retour'){ stopVoice(); ov.onclick=null; dimValidateWindow(spec,ctx); return; }
+   if(x==='retour'){ stopVoice(); ov.onclick=null; if(spec.onBack){ closeOv(ov); spec.onBack(); return; } dimValidateWindow(spec,ctx); return; }
    if(x==='send'){ send(); return; }
    if(x==='mic'){ listen(); return; }
    if(x==='voix'){ if(voiceOn){ stopVoice(); draw(); } else { voiceOn=true; draw(); listen(); } return; }
    if(x==='annuler'){ st.draft=null; st.log.push({role:'bot',text:'Calcul annulé. Rien n\'a été enregistré.'}); draw(); return; }
    if(x==='edit'){ skillEditor(ov,spec,ctx,st,redraw); return; }
    if(x==='valider'){ const v=window.DimSkill.validate(st.draft); const r=window.DimSkill.run(st.draft); if(!v.ok||!r.ok){ clip('Le calcul contient des erreurs : corrigez-le avant de le valider.'); return; }
+    if(spec.onSkill){ const sk1=v.skill, r1=r, dem=st.demande||''; stopVoice(); closeOv(ov); st.draft=null; st.editId=null; spec.onSkill(sk1,r1,dem,ctx); return; }
     const sks=skillsOf(dp); const ex=st.editId&&sks.find(s=>s.id===st.editId); const rec0=ex||{id:'s'+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)}; Object.assign(rec0,{nom:v.skill.nom,def:v.skill,demande:st.demande||rec0.demande||'',spec:spec.id,date:todayIso()}); if(!ex) sks.push(rec0);
     commit(ctx,spec,{choix:'methode',skillId:rec0.id}); stopVoice(); closeOv(ov); st.draft=null; st.editId=null; clip('Méthode enregistrée avec l\'ouvrage. Elle est notée « non vérifiée par un moteur ». Touchez Calculer pour lancer le calcul.'); }
   };
@@ -48761,6 +48767,7 @@ document.head.appendChild(st);
   }catch(e){ console.warn('dimValidNote',e); return null; }
  };
  window.dimValidateWindow=dimValidateWindow; window.dimValidSpecs=SPECS; window.dimValidPending=pending;
+ window.dimValidInt={PFX,KIND2PFX,ctxNow,getDp,store,commit,valsNow,chat:function(spec,ctx){ const ov=overlay(); chatView(ov,spec,ctx); return ov; }};
  /* ---------- Bouton « Modifier » de la note de calcul affichée : rouvre la fenêtre de validation (même composant), puis recalcule ---------- */
  function modTargets(t,doc){ const mod=doc&&doc.module; let ps=Object.keys(PFX).filter(p=>t&&t[PFX[p].prop]); if(mod&&PFX[mod]&&ps.indexOf(mod)>=0) ps=[mod]; const o=[];
   ps.forEach(p=>{ const dp=t[PFX[p].prop]; ALLOF(p).filter(s=>appliesTo(dp,s)||store(dp)[s.id]).forEach(s=>o.push({pfx:p,spec:s})); }); return o; }
@@ -48804,6 +48811,259 @@ document.head.appendChild(st);
   +'.dvBtns .dimIBw,.dvBtns .dimIBw[data-npos]{flex-direction:column!important;align-items:center;gap:4px}.dvBtns .dimIBl{text-align:center}'
   +'.dvVals,.dvVals tr,.dvVals th,.dvVals td{border-left:0!important;border-right:0!important;background:transparent!important}.dvVals th,.dvVals td{border-top:0!important;border-bottom:1px solid var(--ds-line,#DAD8D1)!important}.dvVals tr{border:0!important}'
   +'.dvOv{z-index:100030}';
+ document.head.appendChild(css);
+})();
+</script>
+<script id="dimAcJs">
+/* ===================== Éléments à confirmer : composant commun (tous modules) =====================
+   Un seul modèle et un seul rendu. Tout élément à confirmer (point de la note, ligne « par défaut » des hypothèses, champ « par défaut » des
+   Paramètres avancés) reçoit trois actions : Confirmer, Proposer, IA. Mémorisé avec l'ouvrage : dp.aconf[id] =
+   {id, mod, texte, cles[], etat (a_confirmer | confirme | propose | ia), valeur{cle:valeur}, texteProp, just, auteur, date, vtxt, eff, sens, ia}.
+   - dimAcAnnotate(html,ctx) : appelé par ncFormat ; ajoute l'état dans la note (mention « confirmé le … », « proposition … ») et des marques data-ac-*.
+     Les boutons ne sont JAMAIS dans le HTML enregistré : ils sont posés à l'écran par acScan (donc absents du PDF et de la note imprimée).
+   - Proposer : paramètre lié = le champ du calcul est renseigné (« saisi ») puis recalcul par le flux existant ; sans paramètre lié = texte noté
+     « non appliqué au calcul ». IA : chat des méthodes (même composant, même fonction serveur), proposition appliquée seulement après acceptation.
+   Coefficients normatifs (lecture seule) : Confirmer possible, Proposer impossible. Un nouveau module n'a rien à faire : il passe par ncFormat. */
+(function(){
+ 'use strict';
+ const T=s=>(window.dimT?window.dimT(s):s);
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const todayIso=()=>{ try{ return new Date().toISOString().slice(0,10); }catch(_){ return ''; } };
+ const frDate=iso=>{ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(iso||''); return m?m[3]+'/'+m[2]+'/'+m[1]:(iso||''); };
+ const fnum=v=>{ const n=+v; if(v===null||v===undefined||v===''||typeof v==='boolean'||!isFinite(n)) return String(v==null?'':v); return String(Math.round(n*10000)/10000).replace('.',','); };
+ const norm=s=>String(s==null?'':s).replace(/\s+/g,' ').trim();
+ const hash=s=>{ let h=5381; s=String(s); for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0; return (h>>>0).toString(36); };
+ const safe=s=>String(s).replace(/[^A-Za-z0-9_]/g,'_');
+ const INT=()=>window.dimValidInt||{};
+ const KIND2PFX=()=>INT().KIND2PFX||{};
+ const SENS_KINDS=['grue','pont','precontrainte','assemblage','acier','rideau'];
+ const CONSEIL='Il est conseillé de saisir vous-même cette valeur : la proposition de l\'assistant n\'est pas vérifiée par un moteur.';
+ /* ---------- Modèle ---------- */
+ const rd=dp=>(dp&&dp.aconf&&typeof dp.aconf==='object')?dp.aconf:{};
+ const wr=dp=>{ if(!dp.aconf||typeof dp.aconf!=='object') dp.aconf={}; return dp.aconf; };
+ const idText=(pfx,tx)=>'t'+pfx+'_'+hash(norm(tx));
+ const idParam=(pfx,k)=>'p'+pfx+'_'+safe(k);
+ const idRow=(pfx,lb)=>'h'+pfx+'_'+hash(norm(lb));
+ const short=(s,n)=>{ s=norm(s); return s.length>(n||90)?s.slice(0,(n||90)-1)+'…':s; };
+ /* ---------- Paramètres liés : registre commun des champs du calcul (window.DIM_SPECS_FN, un par module) ---------- */
+ let SPC=null, SPCn=-1;
+ const allSpecs=()=>{ const fs=window.DIM_SPECS_FN||[]; if(SPC&&SPCn===fs.length) return SPC; const L=[]; fs.forEach(f=>{ try{ (f()||[]).forEach(s=>{ if(s&&s.k&&s.lbl!==undefined) L.push(s); }); }catch(_){ } }); SPC=L; SPCn=fs.length; return L; };
+ const lbl0=s=>norm(String(s.lbl||'').replace(/ — .*/,''));
+ const okSpec=(s,pfx)=>!s.only||s.only===pfx;
+ const specByKey=(k,pfx)=>{ const L=allSpecs().filter(s=>s.k===k); return L.find(s=>okSpec(s,pfx))||L[0]||null; };
+ const specByLabel=(label,pfx,dp)=>{ const L=allSpecs().filter(s=>lbl0(s)===norm(label)&&okSpec(s,pfx)); if(!L.length) return null; const ks=[...new Set(L.map(s=>s.k))];
+  if(ks.length===1) return L[0]; const inDp=L.filter(s=>dp&&Object.prototype.hasOwnProperty.call(dp,s.k)); const kd=[...new Set(inDp.map(s=>s.k))]; return kd.length===1?inDp[0]:null; };
+ const specOk=(sp,dp)=>{ if(!sp||sp.t==='btn') return false; try{ if(sp.na&&sp.na(dp)) return false; if(sp.cond&&!sp.cond(dp)) return false; }catch(_){ } return true; };
+ const effVal=(dp,sp)=>{ const v=dp[sp.k]; if(v!==undefined&&v!==null&&v!=='') return v; try{ return sp.defFn?sp.defFn(dp):sp.def; }catch(_){ return null; } };
+ const saisi=(dp,k)=>dp[k]!==undefined&&dp[k]!==null&&dp[k]!=='';
+ const fmtSp=(sp,v)=>{ if(v===null||v===undefined||v==='') return 'calculé'; if(sp.t==='bool') return (v===true||v==='1'||v===1)?'oui':'non'; if(sp.t==='sel'){ const o=(sp.opts||[]).find(x=>String(x[0])===String(v)); return o?String(o[1]):String(v); } const x=sp.scale?(+v)*sp.scale:v; return fnum(x)+(sp.unit?' '+sp.unit:''); };
+ const taskOf=id=>{ try{ return taskById(id); }catch(_){ return null; } };
+ const dpOf=(pfx,id)=>{ try{ return INT().getDp(pfx,id); }catch(_){ return null; } };
+ const lblTok=(text,label)=>{ if(!label) return false; const e=label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); try{ return new RegExp('(^|[^\\p{L}\\p{N}_])'+e+'($|[^\\p{L}\\p{N}_])','u').test(text); }catch(_){ return text.indexOf(label)>=0; } };
+ /* ---------- Note : annotation du HTML (état dans la note ; marques pour l'écran) ---------- */
+ window.dimAcAnnotate=function(html,ctx){
+  const t=ctx&&ctx.t, dp=ctx&&ctx.dp, kind=ctx&&ctx.kind, pfx=KIND2PFX()[kind]; if(!t||!dp||!pfx||!html) return html;
+  const box=document.createElement('div'); box.innerHTML=html; const root=box.firstElementChild; if(!root||!root.classList.contains('ncDoc')) return html;
+  const S=rd(dp); root.setAttribute('data-ac-mod',pfx); root.setAttribute('data-ac-task',String(t.id));
+  const secs=[...root.querySelectorAll(':scope>.ncSec')], titre=s=>norm((s.querySelector(':scope>h4')||{}).textContent||'');
+  const hyp=secs.find(s=>/^hypoth/i.test(titre(s))&&!/points/i.test(titre(s))), pts=secs.find(s=>/^points à confirmer$/i.test(titre(s)));
+  const rows=[]; const used=new Set();
+  /* lignes « par défaut » du tableau des hypothèses */
+  if(hyp){ const tb=hyp.querySelector('table'); if(tb){ [...tb.querySelectorAll('tr')].forEach(tr=>{ const c=[...tr.cells]; if(c.length<2||tr.querySelector('th')) return; const org=c[c.length-1], oTx=norm(org.textContent); const two=c.length===2; const vTx=norm(c[1].textContent);
+    if(!(two?/\(par défaut\)/i.test(vTx):/par défaut/i.test(oTx))) return; const label=norm(c[0].textContent); if(!label) return;
+    const sp=specByLabel(label,pfx,dp); const id=sp?idParam(pfx,sp.k):idRow(pfx,label); if(used.has(id)) return; used.add(id);
+    const it={id,pfx,k:'row',texte:label+' : '+vTx.replace(/\s*\(par défaut\)\s*$/i,'')+' (par défaut)',cles:sp?[sp.k]:[],vtxt:vTx,eff:sp?effVal(dp,sp):null}; rows.push({it,sp,label,tr,org,two});
+    tr.setAttribute('data-ac-id',id); tr.setAttribute('data-ac-k','row'); tr.setAttribute('data-ac-tx',it.texte); tr.setAttribute('data-ac-cles',it.cles.join(','));
+    const e=S[id]; const ok=e&&e.etat==='confirme'&&(e.vtxt===undefined||e.vtxt===vTx)&&(e.eff===undefined||e.eff===null||it.eff===null||String(e.eff)===String(it.eff));
+    if(ok){ tr.setAttribute('data-ac-st','c'); const sp2=document.createElement('span'); sp2.className='acOk'; sp2.textContent=' — confirmé le '+frDate(e.date); org.appendChild(sp2); }
+    else { tr.setAttribute('data-ac-st','a'); if(e&&e.etat==='confirme') tr.setAttribute('data-ac-note','valeur modifiée depuis la confirmation'); } }); } }
+  /* points à confirmer */
+  const items=[];
+  if(pts){ [...pts.querySelectorAll('.ncAn')].forEach(el=>{ const b=el.querySelector('b'); const bt=norm(b?b.textContent:''); if(/^bloquant/i.test(bt)||(!el.classList.contains('conf')&&!/^à confirmer/i.test(bt))) return;
+    const full=norm(el.textContent), tx=norm(b?full.slice(bt.length):full).replace(/^[:\s]+/,''); if(!tx) return;
+    const id=idText(pfx,tx); const cles=[...new Set(rows.filter(r=>r.sp&&lblTok(tx,r.label)).map(r=>r.sp.k))];
+    let specId=null; try{ const SPECS=(window.dimValidSpecs||{})[pfx]||[]; const m=/^Méthode simplifiée non validée par l'ingénieur : /.exec(tx); if(m){ const s2=SPECS.find(s=>tx.indexOf(m[0]+s.titre)===0); if(s2) specId=s2.id; } }catch(_){ }
+    const e=S[id]; el.setAttribute('data-ac-id',id); el.setAttribute('data-ac-k',specId?'spec':'t'); el.setAttribute('data-ac-tx',tx); el.setAttribute('data-ac-cles',cles.join(',')); if(specId) el.setAttribute('data-ac-spec',specId);
+    items.push({id,el,tx,e});
+    if(e&&e.etat==='confirme'&&!specId){ el.setAttribute('data-ac-st','c'); el.classList.add('acDone'); el.innerHTML='<b>Confirmé par l\'ingénieur le '+esc(frDate(e.date))+' : </b><span class="acStrike">'+esc(tx)+'</span>'; }
+    else if(e&&(e.etat==='propose'||e.etat==='ia')&&!specId){ el.setAttribute('data-ac-st','p'); const ap=applied(dp,e); el.appendChild(document.createElement('br')); const sp3=document.createElement('span'); sp3.className='acMeta'; sp3.textContent=(e.etat==='ia'?'Proposition de l\'assistant acceptée par l\'ingénieur le ':'Proposition de l\'ingénieur le ')+frDate(e.date)+' : '+propTxt(dp,pfx,e)+(ap?' — appliquée au calcul.':' — non appliquée au calcul.'); el.appendChild(sp3); if(ap){ el.classList.add('acDone'); } }
+    else el.setAttribute('data-ac-st','a'); }); }
+  /* ligne « confirmé » dans les hypothèses pour les points confirmés */
+  if(hyp){ const tb=hyp.querySelector('table'); const conf=items.filter(x=>x.e&&x.e.etat==='confirme'&&x.el.getAttribute('data-ac-k')==='t'); if(tb&&conf.length){ const nh=(tb.querySelector('tr')?[...tb.querySelector('tr').cells].length:3); let body=tb.querySelector('tbody')||tb; conf.forEach(x=>{ const tr=document.createElement('tr'); const c=nh>=3?['Point confirmé par l\'ingénieur',short(x.tx,110),'confirmé le '+frDate(x.e.date)]:['Point confirmé par l\'ingénieur',short(x.tx,110)+' (confirmé le '+frDate(x.e.date)+')']; tr.innerHTML=c.map(v=>'<td>'+esc(v)+'</td>').join(''); body.appendChild(tr); }); } }
+  /* propositions de l'ingénieur (texte libre ou valeur appliquée) */
+  const P=Object.keys(S).map(k=>S[k]).filter(e=>e&&e.mod===pfx&&(e.etat==='propose'||e.etat==='ia')).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  if(P.length){ const sec=document.createElement('section'); sec.className='ncSec'; sec.setAttribute('data-ac-prop','1');
+   sec.innerHTML='<h4>Propositions de l\'ingénieur</h4>'+P.map(e=>{ const ap=applied(dp,e); return '<div class="ncAn conf"><b>'+(e.etat==='ia'?'Proposition issue de l\'assistant, acceptée le ':'Proposition de l\'ingénieur le ')+esc(frDate(e.date))+' : </b>'+esc(short(e.texte,200))+'<br><span class="acMeta">'+esc('Proposition : '+propTxt(dp,pfx,e))+(ap?' — appliquée au calcul (valeur saisie).':' — non appliquée au calcul.')+(e.etat==='ia'?' Non vérifié par un moteur.':'')+(e.sens?' Il était conseillé de saisir vous-même cette valeur.':'')+'</span></div>'; }).join('');
+   if(pts) pts.after(sec); else { const w=root.querySelector(':scope>.ncWarn'); if(w) root.insertBefore(sec,w); else root.appendChild(sec); } }
+  return root.outerHTML;
+ };
+ /* texte d'une proposition : paramètre = valeur, ou texte libre */
+ function propTxt(dp,pfx,e){
+  const ks=Object.keys(e.valeur||{});
+  if(ks.length){ return ks.map(k=>{ const sp=specByKey(k,pfx); const v=e.valeur[k]; return (sp?lbl0(sp):k)+' = '+(sp?fmtSp(sp,v):fnum(v)); }).join(' ; '); }
+  if(e.texteProp) return '« '+short(e.texteProp,240)+' »';
+  return 'proposition enregistrée';
+ }
+ function applied(dp,e){ const ks=Object.keys(e.valeur||{}); if(!ks.length) return false; return ks.every(k=>saisi(dp,k)&&String(dp[k])===String(e.valeur[k])); }
+ /* ligne du récapitulatif des modifications (dimDiffEntrees) */
+ window.dimAcDiffTxt=function(dp,id,a,b){
+  const cur=rd(dp)[id], old=dp._snap&&dp._snap.aconf?dp._snap.aconf[id]:null; const e=cur||old; if(!e) return null; const tx=short(e.texte,80);
+  if(!cur) return 'Confirmation retirée : '+tx;
+  return cur.etat==='confirme'?'Confirmé par l\'ingénieur : '+tx:(cur.etat==='ia'?'Proposition de l\'assistant acceptée : '+tx:'Proposition de l\'ingénieur : '+tx);
+ };
+ /* ---------- Boutons (composant commun) : icône dans un cadre doré, nom dehors, trois par ligne au plus ---------- */
+ const ib=(icon,label,attrs,dis)=>'<span class="dimIBw"><button type="button" class="dimIB dimLockExempt" data-dimui="1" aria-label="'+esc(T(label))+'" title="'+esc(T(label))+'" '+(attrs||'')+(dis?' disabled aria-disabled="true"':'')+'>'+(window.dimBiSvg?window.dimBiSvg(icon):'')+'</button><span class="dimIBl" data-dimfr="'+esc(label)+'">'+esc(T(label))+'</span></span>';
+ /* trois boutons d'un élément : data-ac-do = confirm | propose | ia */
+ window.dimAcBtnsHtml=function(o){
+  o=o||{}; const ro=!!o.ro;
+  return '<div class="dvBtns acBtns acUi" role="group" aria-label="'+esc(T('Éléments à confirmer'))+'">'+ib('check','Confirmer','data-ac-do="confirm"')+ib('edit','Proposer','data-ac-do="propose"'+(ro?' title="'+esc(T('Coefficient normatif : lecture seule'))+'"':''),ro)+ib('chat','IA','data-ac-do="ia"'+(ro?' title="'+esc(T('Coefficient normatif : lecture seule'))+'"':''),ro)+'</div>';
+ };
+ /* ---------- Fenêtres ---------- */
+ function overlay(){ const old=document.getElementById('acOv'); if(old) old.remove(); const ov=document.createElement('div'); ov.id='acOv'; ov.className='pcFeuOv dvOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','acT'); document.body.appendChild(ov);
+  let down=false; ov.addEventListener('mousedown',e=>{ down=(e.target===ov); }); ov.addEventListener('click',e=>{ if(e.target===ov&&down) ov.remove(); }); try{ window.dimChEsc&&window.dimChEsc(ov); }catch(_){ } return ov; }
+ const clip=m=>{ try{ clipToast(T(m)); }catch(_){ } };
+ /* élément à partir de ses marques */
+ function itemOf(el){
+  let host=null; for(let n=el;n;n=n.parentElement){ if(n._acHost){ host=n._acHost; break; } if(n.hasAttribute&&n.hasAttribute('data-ac-id')){ host=n; break; } }
+  const doc=host&&host.closest?host.closest('.ncDoc[data-ac-mod]'):null; let pfx=null, task=null;
+  if(doc){ pfx=doc.getAttribute('data-ac-mod'); task=doc.getAttribute('data-ac-task'); } else if(host&&host.getAttribute('data-ac-fmod')){ pfx=host.getAttribute('data-ac-fmod'); task=host.getAttribute('data-ac-ftask'); }
+  if(!host||!pfx||!task) return null; const dp=dpOf(pfx,task); if(!dp) return null;
+  const cles=(host.getAttribute('data-ac-cles')||'').split(',').filter(Boolean);
+  return {el:host,id:host.getAttribute('data-ac-id'),k:host.getAttribute('data-ac-k'),pfx,task,dp,texte:host.getAttribute('data-ac-tx')||'',cles,specId:host.getAttribute('data-ac-spec')||null,vtxt:host.getAttribute('data-ac-vtxt'),st:host.getAttribute('data-ac-st')};
+ }
+ const roOf=it=>it.cles.length&&it.cles.every(k=>{ const sp=specByKey(k,it.pfx); return sp&&sp.ro; });
+ const linked=it=>it.cles.map(k=>specByKey(k,it.pfx)).filter(sp=>sp&&specOk(sp,it.dp)&&!sp.ro);
+ function entryOf(it,etat,extra){ return Object.assign({id:it.id,mod:it.pfx,texte:it.texte,cles:it.cles,etat,auteur:'ingénieur',date:todayIso(),vtxt:it.vtxt||undefined,eff:it.cles.length===1?(function(){ const sp=specByKey(it.cles[0],it.pfx); return sp?effVal(it.dp,sp):undefined; })():undefined},extra||{}); }
+ function save(it,e){ wr(it.dp)[it.id]=e; try{ persist(); }catch(_){ } }
+ /* Confirmer */
+ function doConfirm(it){
+  if(it.specId){ const spec=((window.dimValidSpecs||{})[it.pfx]||[]).find(s=>s.id===it.specId); if(spec){ window.dimValidateWindow(spec,{pfx:it.pfx,id:it.task,dp:it.dp}); return; } }
+  let vt; if(it.k==='row'){ const tr=it.el; const c=tr&&tr.cells?[...tr.cells]:[]; vt=c.length>=2?norm(c[1].textContent):undefined; if(vt!==undefined) it.vtxt=vt; }
+  save(it,entryOf(it,'confirme')); clip('Élément confirmé. Touchez « Mettre à jour la note » pour que la note passe à l\'indice suivant.'); acScan(true);
+ }
+ function doRevoke(it){ const S=rd(it.dp); if(!S[it.id]) return; delete S[it.id]; try{ persist(); }catch(_){ } clip('Confirmation retirée.'); acScan(true); }
+ /* Proposer */
+ const num=raw=>{ const t=String(raw).trim().replace(/\s/g,'').replace(',','.'); if(t===''||!/^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(t)) return null; return +t; };
+ function proposeWindow(it,opts){
+  opts=opts||{}; const L=linked(it); const ov=overlay(); const dp=it.dp; const ro=roOf(it); const sens=SENS_KINDS.indexOf(it.pfx)>=0;
+  const cur=Object.assign({},rd(dp)[it.id]||{}); let sel=L.length?L[0]:null;
+  const fieldHtml=sp=>{ const v=effVal(dp,sp), sa=saisi(dp,sp.k); const info='<p class="pcNote">'+esc(T('Valeur actuelle'))+' : <b>'+esc(fmtSp(sp,v))+'</b> ('+esc(T(sa?'saisi':'par défaut'))+')'+((sp.t==='num'&&(sp.min!=null||sp.max!=null))?' · '+esc(T('entre'))+' '+fnum(sp.min)+' '+esc(T('et'))+' '+fnum(sp.max)+(sp.unit?' '+esc(sp.unit):''):'')+'</p>';
+   let inp; if(sp.t==='sel') inp='<select data-ac-val>'+(sp.opts||[]).map(o=>'<option value="'+esc(o[0])+'"'+(String(o[0])===String(v)?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
+   else if(sp.t==='bool') inp='<select data-ac-val><option value="0"'+(!v?' selected':'')+'>'+esc(T('Non'))+'</option><option value="1"'+(v?' selected':'')+'>'+esc(T('Oui'))+'</option></select>';
+   else inp='<input type="text" inputmode="decimal" data-ac-val value="" placeholder="'+esc(v==null?'':fnum(sp.scale?v*sp.scale:v))+'" aria-label="'+esc(T('Votre valeur'))+'">';
+   return info+'<label class="dvFld"><span class="dvFl">'+esc(T('Votre valeur'))+'</span><span class="dvFc">'+inp+(sp.unit&&sp.t==='num'?'<span class="pcUnitEls">'+esc(sp.unit)+'</span>':'')+'</span><span class="dvErr" data-ac-err role="alert"></span></label>'; };
+  const draw=()=>{
+   ov.innerHTML='<div class="pcFeuCard dvCard acCard"><h4 id="acT">'+esc(T('Proposer'))+'</h4><p class="dvWhat"><b>'+esc(it.texte)+'</b></p>'
+    +(ro?'<p class="dvSens" role="note">'+esc(T('Coefficient normatif : lecture seule. Vous pouvez le confirmer, mais pas proposer une autre valeur ici.'))+'</p>'
+     :(L.length?(L.length>1?'<label class="dvFld"><span class="dvFl">'+esc(T('Paramètre concerné'))+'</span><span class="dvFc"><select data-ac-par>'+L.map((sp,i)=>'<option value="'+i+'"'+(sp===sel?' selected':'')+'>'+esc(lbl0(sp))+'</option>').join('')+'</select></span></label>':'<p class="dvSens dvSensT">'+esc(T('Paramètre du calcul'))+' : <b>'+esc(lbl0(sel))+'</b></p>')+'<div data-ac-fld>'+fieldHtml(sel)+'</div>'
+      :'<p class="dvSens" role="note">'+esc(T('Cet élément n\'a pas de valeur à saisir dans le calcul : votre proposition sera écrite dans la note, sous « Propositions de l\'ingénieur », et marquée « non appliquée au calcul »).'))+'</p>'))
+    +(ro?'':'<label class="dvFld"><span class="dvFl">'+esc(L.length?T('Pourquoi ? (facultatif)'):T('Votre proposition'))+'</span><span class="dvFc"><textarea rows="3" maxlength="600" data-ac-just aria-label="'+esc(L.length?T('Pourquoi ? (facultatif)'):T('Votre proposition'))+'"></textarea></span><span class="dvErr" data-ac-err2 role="alert"></span></label>')
+    +'<div class="dvBtns">'+(ro?'':ib('check','Enregistrer','data-ac-x="ok"'))+ib('close','Annuler','data-ac-x="no"')+'</div></div>';
+   const par=ov.querySelector('[data-ac-par]'); if(par) par.onchange=()=>{ sel=L[+par.value]; ov.querySelector('[data-ac-fld]').innerHTML=fieldHtml(sel); };
+  };
+  draw(); const f0=ov.querySelector('[data-ac-val],[data-ac-just]'); if(f0) try{ f0.focus({preventScroll:true}); }catch(_){ }
+  ov.addEventListener('click',e=>{ const b=e.target.closest('[data-ac-x]'); if(!b) return; if(b.dataset.acX==='no'){ ov.remove(); return; }
+   const just=norm((ov.querySelector('[data-ac-just]')||{}).value||''); const er=ov.querySelector('[data-ac-err]'), er2=ov.querySelector('[data-ac-err2]'); if(er) er.textContent=''; if(er2) er2.textContent='';
+   if(L.length){ const el=ov.querySelector('[data-ac-val]'); let v;
+    if(sel.t==='num'){ const n=num(el.value); if(n===null){ er.textContent=T('Entrez un nombre.'); return; } if((sel.min!=null&&n<sel.min)||(sel.max!=null&&n>sel.max)){ er.textContent=T('Valeur entre')+' '+fnum(sel.min)+' '+T('et')+' '+fnum(sel.max)+(sel.unit?' '+sel.unit:'')+'.'; return; } v=sel.scale?n/sel.scale:n; }
+    else if(sel.t==='bool') v=el.value==='1'; else v=el.value;
+    const e1=entryOf(it,'propose',{valeur:{[sel.k]:v},just:just||undefined,sens:sens||undefined}); ov.remove(); applyAndRecalc(it,e1,{[sel.k]:v}); return; }
+   if(!just){ if(er2) er2.textContent=T('Écrivez votre proposition.'); return; }
+   const e2=entryOf(it,'propose',{texteProp:just}); ov.remove(); save(it,e2); clip('Proposition enregistrée dans la note : elle n\'est pas appliquée au calcul. Touchez « Mettre à jour la note » pour l\'écrire dans la note.'); acScan(true); });
+ }
+ /* applique les valeurs au calcul (champ « saisi ») puis recalcule par le flux existant (fenêtre de résumé, indice suivant) */
+ function applyAndRecalc(it,entry,vals){
+  const dp=it.dp; Object.keys(vals).forEach(k=>{ dp[k]=vals[k]; }); wr(dp)[it.id]=entry; dp.statut='a_calculer'; try{ persist(); }catch(_){ }
+  recalc(it.pfx,it.task);
+ }
+ function recalc(pfx,task){
+  const id=task; { const d0=dpOf(pfx,id); if(d0){ d0.statut='a_calculer'; try{ persist(); }catch(_){ } } } window._docBackTask=null; try{ closeModal(); }catch(_){ } try{ openTaskDetail(id,{espace:'BE'}); }catch(_){ return; }
+  let n=0; const wait=setInterval(()=>{ n++; const c=INT().ctxNow&&INT().ctxNow(); if(!c&&n<50) return; clearInterval(wait); if(!c||c.pfx!==pfx||String(c.id)!==String(id)) return;
+   if(c.btn&&!c.btn.disabled){ clip('Recalcul en cours avec votre choix.'); setTimeout(()=>{ try{ c.btn.click(); }catch(_){ } },80); } },120);
+ }
+ /* IA : chat des méthodes (même composant et même fonction serveur), proposition appliquée seulement après acceptation */
+ function iaChat(it){
+  const dp=it.dp; const L=linked(it); const sens=SENS_KINDS.indexOf(it.pfx)>=0; const spec0=it.specId?((window.dimValidSpecs||{})[it.pfx]||[]).find(s=>s.id===it.specId):null;
+  if(spec0){ window.dimValidInt.chat(spec0,{pfx:it.pfx,id:it.task,dp}); return; }
+  const par=L.map(sp=>({cle:sp.k,nom:lbl0(sp),unite:sp.unit||'',min:sp.min,max:sp.max,valeur_actuelle:effVal(dp,sp),type:sp.t||'num'}));
+  const spec={pfx:it.pfx,id:'ac_'+it.id,titre:short(it.texte,200),chatTitre:'Demander à l\'assistant',chatIntro:'L\'assistant lit cet élément à confirmer et vous propose une valeur ou une méthode, avec sa justification. Rien n\'est appliqué avant votre acceptation.',validLbl:'Accepter la proposition',tagTxt:'Proposition de l\'assistant, non vérifiée par un moteur.',
+   chatWarn:sens?CONSEIL:'',supposes:'',ignore:'',ne:'',
+   valeurs:d=>par.map(p=>[p.nom,fmtSp(specByKey(p.cle,it.pfx)||{},p.valeur_actuelle)]),
+   iaCtx:d=>({element_a_confirmer:it.texte,module:it.pfx,parametres_modifiables:par,consigne:'Propose, en mots simples, une valeur ou une méthode pour cet élément à confirmer. Si un paramètre listé est concerné, nomme l\'étape de sortie avec l\'identifiant exact (cle) de ce paramètre et donne sa valeur dans son unité ; explique la justification dans message. N\'invente aucune donnée : si une information manque, pose la question.'}),
+   onBack:()=>{ },
+   onSkill:(sk,res,dem,ctx,ov)=>{
+    let cle=null, val=null; const outs=(res&&res.sorties)||[];
+    const o1=outs.find(o=>par.some(p=>p.cle===o.id)); if(o1){ cle=o1.id; val=o1.valeur; } else if(par.length===1&&outs.length===1){ cle=par[0].cle; val=outs[0].valeur; }
+    const entryBase={ia:{skill:sk,demande:dem,sorties:outs.map(o=>({id:o.id,nom:o.nom,unite:o.unite,valeur:o.valeur}))},just:short(sk.description||sk.nom||'',300),sens:sens||undefined};
+    if(cle){ const sp=specByKey(cle,it.pfx); let v=val; if(sp&&sp.t==='num'){ v=+val; if(!isFinite(v)||(sp.min!=null&&v<sp.min)||(sp.max!=null&&v>sp.max)){ clip('La valeur proposée est hors des bornes du champ ('+fnum(sp.min)+' à '+fnum(sp.max)+(sp.unit?' '+sp.unit:'')+') : elle n\'est pas appliquée. Précisez votre demande.'); return false; } if(sp.scale){ /* valeur de l'assistant dans l'unité affichée */ v=v/sp.scale; } }
+     else if(sp&&sp.t==='sel'){ if(!(sp.opts||[]).some(o=>String(o[0])===String(val))){ clip('La valeur proposée ne fait pas partie des choix du champ : elle n\'est pas appliquée.'); return false; } v=String(val); }
+     else if(sp&&sp.t==='bool'){ v=(val===true||val===1||String(val)==='1'); }
+     const e1=entryOf(it,'ia',Object.assign({valeur:{[cle]:v}},entryBase)); setTimeout(()=>applyAndRecalc(it,e1,{[cle]:v}),0); return; }
+    const e2=entryOf(it,'ia',Object.assign({texteProp:short((sk.nom||'Méthode proposée')+' : '+outs.map(o=>(o.nom||o.id)+' = '+fnum(o.valeur)+(o.unite?' '+o.unite:'')).join(' ; '),300)},entryBase));
+    save(it,e2); clip('Proposition de l\'assistant enregistrée dans la note : elle n\'est pas appliquée au calcul (aucun paramètre lié). Touchez « Mettre à jour la note ».'); acScan(true); }};
+  const ov=window.dimValidInt.chat(spec,{pfx:it.pfx,id:it.task,dp});
+  try{ const ta=ov.querySelector('[data-dv-in]'); if(ta&&!ta.value){ ta.value=T('Que me proposez-vous pour cet élément ?'); ta.dispatchEvent(new Event('input',{bubbles:true})); } }catch(_){ }
+ }
+ /* ---------- Pose des boutons à l'écran (jamais dans le HTML enregistré) ---------- */
+ const chipHtml=(open,txt,note)=>'<button type="button" class="acChip dimLockExempt" data-ac-do="toggle" data-dimui="1" aria-expanded="'+(open?'true':'false')+'" aria-label="'+esc(T('Afficher les actions'))+'">'+(window.dimBiSvg?window.dimBiSvg(open?'eye':'eyeoff'):'')+'<span>'+esc(T(txt))+'</span></button>'+(note?'<small class="acNote">'+esc(T(note))+'</small>':'');
+ function decorateNote(doc){
+  const pfx=doc.getAttribute('data-ac-mod'), task=doc.getAttribute('data-ac-task'); const dp=dpOf(pfx,task);
+  doc.querySelectorAll('[data-ac-id]:not([data-acd])').forEach(el=>{ el.setAttribute('data-acd','1'); const st=el.getAttribute('data-ac-st'); const kind=el.getAttribute('data-ac-k');
+   const ro=(el.getAttribute('data-ac-cles')||'').split(',').filter(Boolean).length&&(el.getAttribute('data-ac-cles')||'').split(',').filter(Boolean).every(k=>{ const sp=specByKey(k,pfx); return sp&&sp.ro; });
+   if(kind==='row'){ const cells=[...el.cells]; const org=cells[cells.length-1]; if(!org) return;
+    if(st==='c'){ const w=document.createElement('span'); w.className='acUi acRevoke'; w.innerHTML='<button type="button" class="acChip dimLockExempt" data-ac-do="revoke" data-dimui="1">'+(window.dimBiSvg?window.dimBiSvg('close'):'')+'<span>'+esc(T('Retirer'))+'</span></button>'; org.appendChild(w); return; }
+    const w=document.createElement('div'); w.className='acUi acRowChip'; w.innerHTML=chipHtml(false,'À confirmer',el.getAttribute('data-ac-note')); org.appendChild(w); return; }
+   if(st==='c'){ const r=document.createElement('div'); r._acHost=el; r.className='acRow acUi'; r.innerHTML='<div class="dvBtns acBtns acUi">'+ib('close','Retirer la confirmation','data-ac-do="revoke"')+'</div>'; el.after(r); return; }
+   const r=document.createElement('div'); r._acHost=el; r.className='acRow acUi'; r.innerHTML=window.dimAcBtnsHtml({ro}); el.after(r); });
+  /* barre « Mettre à jour la note » : seulement si des changements attendent un recalcul */
+  doc.querySelectorAll(':scope>.acBar').forEach(b=>b.remove()); let L=null; try{ L=dp&&typeof dimDiffEntrees==='function'?dimDiffEntrees(dp):null; }catch(_){ L=null; }
+  const hasAc=!!doc.querySelector('[data-ac-id]'); if(hasAc&&L&&L.length){ const b=document.createElement('div'); b.className='acBar acUi'; b.innerHTML='<p class="pcNote" role="status">'+esc(T('Des éléments ont changé depuis cette note. La note sera refaite et passera à l\'indice suivant.'))+'</p><div class="dvBtns">'+ib('refresh','Mettre à jour la note','data-ac-do="update"')+'</div>'; doc.insertBefore(b,doc.firstChild); }
+ }
+ let timer=0; function acScan(force){ if(force){ document.querySelectorAll('[data-acd]').forEach(e=>e.removeAttribute('data-acd')); document.querySelectorAll('.acUi').forEach(e=>e.remove()); document.querySelectorAll('.ncDoc [data-ac-id]').forEach(e=>{ repaint(e); }); } if(timer) return; timer=setTimeout(()=>{ timer=0; try{ document.querySelectorAll('.ncDoc[data-ac-mod]').forEach(d=>{ if(d.closest('.pdfHide,[data-acnoui]')) return; decorateNote(d); }); decorateFiche(); }catch(e){ console.warn('acScan',e); } },force?0:90); }
+ /* met à jour l'aspect d'un élément après un changement (même rendu que la note régénérée) */
+ function repaint(el){
+  const doc=el.closest('.ncDoc[data-ac-mod]'); if(!doc) return; const pfx=doc.getAttribute('data-ac-mod'), task=doc.getAttribute('data-ac-task'); const dp=dpOf(pfx,task); if(!dp) return; const e=rd(dp)[el.getAttribute('data-ac-id')]; const kind=el.getAttribute('data-ac-k');
+  if(kind==='row'){ el.querySelectorAll('.acOk,.acUi').forEach(x=>x.remove()); const org=el.cells[el.cells.length-1]; const ok=e&&e.etat==='confirme'; el.setAttribute('data-ac-st',ok?'c':'a'); if(ok&&org){ const s=document.createElement('span'); s.className='acOk'; s.textContent=' — confirmé le '+frDate(e.date); org.appendChild(s); } return; }
+  if(kind==='t'){ const tx=el.getAttribute('data-ac-tx'); const rest=el.nextElementSibling; if(rest&&rest.classList.contains('acRow')) rest.remove();
+   if(e&&e.etat==='confirme'){ el.setAttribute('data-ac-st','c'); el.classList.add('acDone'); el.innerHTML='<b>Confirmé par l\'ingénieur le '+esc(frDate(e.date))+' : </b><span class="acStrike">'+esc(tx)+'</span>'; }
+   else if(e&&(e.etat==='propose'||e.etat==='ia')){ el.setAttribute('data-ac-st','p'); el.classList.remove('acDone'); const ap=applied(dp,e); el.innerHTML='<b>À confirmer : </b>'+esc(tx)+'<br><span class="acMeta">'+esc((e.etat==='ia'?'Proposition de l\'assistant acceptée par l\'ingénieur le ':'Proposition de l\'ingénieur le ')+frDate(e.date)+' : '+propTxt(dp,pfx,e)+(ap?' — appliquée au calcul.':' — non appliquée au calcul.'))+'</span>'; }
+   else { el.setAttribute('data-ac-st','a'); el.classList.remove('acDone'); el.innerHTML='<b>À confirmer : </b>'+esc(tx); } }
+ }
+ /* ---------- Fiche : champs « par défaut » des Paramètres avancés ---------- */
+ const KEYATTR=/^data-(els|feus|dc-c|k|cf|[a-z]{2,4}-adv)$/;
+ function decorateFiche(){
+  const mb=document.getElementById('modalBody'); if(!mb) return; const c=INT().ctxNow&&INT().ctxNow(); if(!c) return; const dp=c.dp, pfx=c.pfx, id=c.id;
+  mb.querySelectorAll('details.pcEls label,details.pcElsSub label').forEach(lb=>{ if(lb.hasAttribute('data-acd')||lb.closest('.acUi')) return; const tag=lb.querySelector('.pcElsTag'); if(!tag) return; const tx=norm(tag.textContent);
+   const ctl=lb.querySelector('input,select,textarea'); if(!ctl) return; const a=[...ctl.attributes].find(x=>KEYATTR.test(x.name)); if(!a) return; const k=a.value; if(!k) return; const sp=specByKey(k,pfx); if(!sp||sp.t==='btn') return;
+   lb.setAttribute('data-acd','1'); const pid=idParam(pfx,k); const e=rd(dp)[pid]; const isDef=/^par défaut$/i.test(tx);
+   const conf=e&&e.etat==='confirme'&&(e.eff===undefined||e.eff===null||String(e.eff)===String(effVal(dp,sp)));
+   if(!isDef&&!conf) return;
+   const host=document.createElement('div'); host.className='acRow acUi acFiche'; host.setAttribute('data-ac-id',pid); host.setAttribute('data-ac-k','p'); host.setAttribute('data-ac-fmod',pfx); host.setAttribute('data-ac-ftask',String(id)); host.setAttribute('data-ac-cles',k); host.setAttribute('data-ac-tx',lbl0(sp)+' : '+fmtSp(sp,effVal(dp,sp)));
+   if(conf){ host.setAttribute('data-ac-st','c'); host.innerHTML='<span class="acOk">'+esc(T('confirmé le'))+' '+esc(frDate(e.date))+'</span><button type="button" class="acChip dimLockExempt" data-ac-do="revoke" data-dimui="1">'+(window.dimBiSvg?window.dimBiSvg('close'):'')+'<span>'+esc(T('Retirer'))+'</span></button>'; }
+   else { host.setAttribute('data-ac-st','a'); host.innerHTML=chipHtml(false,'À confirmer'); }
+   const nx=lb.nextElementSibling; (nx&&nx.matches('p.pcNote')?nx:lb).after(host); });
+ }
+ /* ---------- Clics ---------- */
+ document.addEventListener('click',e=>{
+  const b=e.target&&e.target.closest&&e.target.closest('[data-ac-do]'); if(!b) return; const w=b.getAttribute('data-ac-do'); e.preventDefault(); e.stopPropagation();
+  if(w==='toggle'){ const tr=b.closest('tr[data-ac-id]'); const holder=tr||b.closest('.acFiche'); if(!holder) return; const nx=holder.nextElementSibling; const open=!!(nx&&nx.classList.contains('acTray'));
+   const ic=on=>{ const sv=b.querySelector('svg'); if(sv&&window.dimBiSvg) sv.outerHTML=window.dimBiSvg(on?'eye':'eyeoff'); };
+   if(open){ nx.remove(); b.setAttribute('aria-expanded','false'); ic(false); return; }
+   const it=itemOf(b); if(!it) return; const ro=roOf(it); const tray=document.createElement(tr?'tr':'div'); tray._acHost=holder; tray.className='acTray acUi';
+   if(tr){ const td=document.createElement('td'); td.colSpan=tr.cells.length; td.innerHTML=window.dimAcBtnsHtml({ro}); tray.appendChild(td); } else tray.innerHTML=window.dimAcBtnsHtml({ro});
+   holder.after(tray); b.setAttribute('aria-expanded','true'); ic(true); return; }
+  if(w==='update'){ const d=b.closest('.ncDoc[data-ac-mod]'); if(d) recalc(d.getAttribute('data-ac-mod'),d.getAttribute('data-ac-task')); return; }
+  const it=itemOf(b); if(!it) return;
+  if(w==='confirm') doConfirm(it); else if(w==='revoke') doRevoke(it); else if(w==='propose'){ if(it.specId){ doConfirm(it); return; } proposeWindow(it); } else if(w==='ia') iaChat(it);
+ },true);
+ try{ new MutationObserver(()=>acScan(false)).observe(document.body,{childList:true,subtree:true}); }catch(_){ }
+ window.dimAcScan=acScan; window.dimAcModel={rd,wr,idText,idParam,specByLabel,specByKey,effVal,applied,propTxt};
+ const css=document.createElement('style'); css.id='dimAcCss';
+ css.textContent='.acRow{margin:2px 0 10px}.acRow .dvBtns,.acTray .dvBtns{margin:6px 0 2px;max-width:440px;margin-inline-start:auto}.acBtns .dimIB{border-color:var(--ds-accent,#FFC400)!important}.acBar{border:1.5px solid var(--ds-accent,#FFC400);border-radius:12px;padding:8px 12px;margin:0 0 12px}.acBar .pcNote{margin:0 0 4px}'
+  +'.ncDoc .ncAn.acDone{opacity:.82}.acStrike{text-decoration:line-through;text-decoration-thickness:1px}.acMeta{font-size:var(--ds-fs-sm,13px);color:var(--ds-ink-soft,#5f6a66)}.acOk{color:var(--ds-ink-soft,#5f6a66);font-weight:600}.acNote{display:block;font-size:12px;color:var(--ds-ink-soft,#5f6a66)}'
+  +'.acChip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 10px;margin:0;background:transparent;color:var(--ds-ink,inherit);border:1.5px solid var(--ds-accent,#FFC400);border-radius:14px;font:600 14px/1.2 var(--ds-font-body,system-ui,sans-serif);cursor:pointer}.acChip svg{width:20px;height:20px;flex:0 0 auto}'
+  +'.acRowChip{margin-top:4px}.acFiche{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acTray>td{padding:0 0 8px!important;border:0!important}.acCard{max-width:520px}.acCard select,.acCard input[type=text]{flex:1;min-width:0;min-height:44px;box-sizing:border-box;background:transparent;color:inherit;border:0;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:16px;padding:8px 2px}.acCard textarea{flex:1;width:100%;box-sizing:border-box;background:transparent;color:inherit;border:0;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:16px;padding:8px 2px;resize:vertical}'
+  +'@media print{.acUi,.acBar,.acBtns{display:none!important}}';
  document.head.appendChild(css);
 })();
 </script>
