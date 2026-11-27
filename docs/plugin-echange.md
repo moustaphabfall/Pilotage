@@ -1,0 +1,118 @@
+# Format d'échange « descente de charge » (version 1.0)
+
+Ce document est le contrat entre l'application et les plugins (Revit en priorité, puis Robot Structural Analysis et AutoCAD). Un plugin écrit **un fichier JSON** ; l'application le lit (écran « Descente de charge » > « Depuis un plugin »), le contrôle, montre le découpage Projet > Bâtiment > Niveau > Ouvrage et crée les ouvrages en bibliothèque. L'agent IA de l'application produit le même format.
+
+Le contrôle est fait par le même code que celui de l'application (module `DcExchange`, tests dans `tests/descente.test.js`).
+
+## Règles générales
+
+- Fichier JSON, encodage UTF-8, extension `.json`. Taille : 20 Mo au plus.
+- Unités fixes : **longueurs en m**, **forces en kN**, charges surfaciques en kN/m², charges linéiques en kN/m. Pas de conversion côté application : le plugin convertit avant d'écrire.
+- Nombres avec point décimal (JSON). Un texte avec virgule (`"0,25"`) est aussi accepté.
+- Coordonnées `x`, `y` dans le plan (m, repère du projet). L'axe vertical est donné par la cote du niveau (`cote_m`).
+- Aucune valeur n'est inventée par l'application : un champ absent reste absent (charges, sol). Un plugin n'écrit un champ que s'il connaît sa valeur.
+- Les champs inconnus sont ignorés (avertissement pour les charges). Les noms sont nettoyés (espaces, caractères de contrôle) et limités à 120 signes.
+
+## Versionnement
+
+- `format` : toujours `"bina-descente-charge"`.
+- `version` : `"majeure.mineure"`. Version actuelle : `"1.0"`.
+- Même version majeure, mineure plus récente : le fichier est lu, avec un avertissement. Version majeure différente : refus avec message clair.
+- Ajouter un champ facultatif = nouvelle mineure. Changer le sens d'un champ ou en rendre un obligatoire = nouvelle majeure.
+
+## Structure
+
+```json
+{
+  "format": "bina-descente-charge",
+  "version": "1.0",
+  "source": { "outil": "Revit", "version_outil": "2025", "version_plugin": "0.1" },
+  "date_export": "2026-11-27T10:00:00Z",
+  "projet": {
+    "nom": "Nom du projet",
+    "sol": { "contrainte_admissible_kN_m2": 200, "profondeur_assise_m": 1.5 }
+  },
+  "batiments": [
+    {
+      "nom": "Bâtiment A",
+      "niveaux": [
+        {
+          "nom": "RDC", "cote_m": 0, "hauteur_m": 3,
+          "ouvrages": [
+            { "nom": "P1 - RDC", "type": "poteau", "id_externe": "guid-ou-element-id",
+              "geometrie": { "x": 0, "y": 0, "b_m": 0.3, "h_m": 0.3 },
+              "charges": { "G_kN": 250, "Q_kN": 60 },
+              "materiau": { "beton": "C25/30", "acier": "B500" } }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Racine
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `format`, `version` | oui | Voir Versionnement. |
+| `source.outil` | conseillé | `Revit`, `Robot Structural Analysis`, `AutoCAD`, `Agent IA` ou `Autre`. `source.version_outil`, `source.version_plugin` : facultatifs. |
+| `date_export` | non | Date ISO du fichier. |
+| `projet.nom` | oui | Nom du projet. |
+| `projet.sol` | non | Seulement si connu : `contrainte_admissible_kN_m2` et/ou `profondeur_assise_m` (nombres > 0). Jamais de valeur par défaut. |
+| `batiments` | oui | Au moins un. |
+
+### Bâtiment, niveau
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `batiments[].nom` | oui | Unique dans le projet. |
+| `niveaux[].nom` | oui | Unique dans le bâtiment (« RDC », « R+1 », « Fondations »…). |
+| `niveaux[].cote_m` | oui | Cote du plancher fini du niveau, en m (négative sous le terrain de référence). |
+| `niveaux[].hauteur_m` | non | Hauteur d'étage. Sert de hauteur par défaut aux poteaux, voiles et escaliers qui n'en donnent pas. |
+
+### Ouvrage
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `nom` | oui | **Unique dans tout le projet** (la casse et les accents ne comptent pas). Conseil : code de l'élément + niveau (« P1 - RDC »). |
+| `type` | oui | `dalle`, `poutre`, `poteau`, `voile`, `semelle`, `pieu`, `mur_soutenement`, `escalier`. |
+| `id_externe` | non | Identifiant dans l'outil d'origine (GUID, ElementId…). Unique s'il est donné. Sert à ne pas recréer un ouvrage à la réimportation. |
+| `geometrie` | oui | Selon le type (tableau ci-dessous). |
+| `charges` | non | `G_kN`, `Q_kN` (efforts en kN), `g_kN_m2`, `q_kN_m2` (surfaciques), `g_kN_m`, `q_kN_m` (linéiques). Nombres >= 0. G = permanentes, Q = exploitation. |
+| `materiau` | non | `beton`, `acier` (textes courts). |
+| `statut` | non | `importe` (défaut pour un plugin), `non_verifie` (défaut pour l'agent IA), `valide`. |
+
+### Géométrie par type
+
+La position verticale vient de la cote du niveau : les éléments horizontaux sont **sous** la cote, les éléments verticaux **au-dessus**.
+
+| Type | Champs | Position verticale |
+|---|---|---|
+| `dalle` | `x`, `y` (coin bas-gauche), `largeur_m` (selon x), `longueur_m` (selon y), `epaisseur_m` | de cote - épaisseur à cote |
+| `poutre` | `x1`, `y1`, `x2`, `y2` (axe), `b_m`, `h_m` | de cote - h à cote |
+| `poteau` | `x`, `y` (centre), `b_m` et `h_m` **ou** `diametre_m`, `hauteur_m` (facultatif si le niveau a `hauteur_m`) | de cote à cote + hauteur |
+| `voile` | `x1`, `y1`, `x2`, `y2` (axe), `epaisseur_m`, `hauteur_m` (idem) | de cote à cote + hauteur |
+| `semelle` | `x`, `y` (centre), `largeur_m`, `longueur_m`, `epaisseur_m` | de cote - épaisseur à cote |
+| `pieu` | `x`, `y` (centre), `diametre_m`, `longueur_m` | de cote - longueur à cote |
+| `mur_soutenement` | `x1`, `y1`, `x2`, `y2` (axe), `epaisseur_m`, `hauteur_m` (obligatoire) | de cote à cote + hauteur |
+| `escalier` | `x1`, `y1`, `x2`, `y2` (axe), `largeur_m`, `hauteur_m` (facultatif si le niveau a `hauteur_m`) | de cote à cote + hauteur (volume enveloppe) |
+
+## Ce que fait l'application du fichier
+
+1. **Lecture et contrôle** : chaque problème est rapporté avec son chemin (« Bâtiment « A » > Niveau « RDC » > Ouvrage « P1 » : … »). Une erreur bloque la création ; un avertissement informe seulement.
+2. **Découpage** : arbre Projet > Bâtiment > Niveau > Ouvrage, consultable et montré en maquette 3D à l'échelle réelle.
+3. **Création en bibliothèque** : le projet, les bâtiments et les niveaux manquants sont créés ; chaque ouvrage devient un ouvrage de l'étude, rattaché à son bâtiment, son niveau et au type d'ouvrage correspondant. Les données du fichier sont conservées avec l'ouvrage.
+4. **Réimportation** : un ouvrage dont le nom (ou l'`id_externe`) existe déjà n'est pas recréé et n'est jamais écrasé. Un niveau de même nom dans deux bâtiments est créé sous la forme « Bâtiment · Niveau ».
+
+## Consignes pour les plugins
+
+- **Revit** : un fichier par export. Niveaux = `Level` triés par cote ; bâtiments = regroupement par phase ou par paramètre de projet. Murs porteurs, poteaux, poutres, planchers, fondations isolées et filantes, pieux. `id_externe` = `UniqueId`.
+- **Robot Structural Analysis** : barres et panneaux du modèle d'analyse ; les efforts issus des cas de charge vont dans `charges` seulement s'ils sont lus du modèle (jamais estimés).
+- **AutoCAD** : éléments dessinés sur calques structurels, cotes lues dans le dessin ; si une dimension manque, ne pas inventer l'ouvrage.
+- Toujours : noms uniques, unités m et kN, aucun champ rempli « par défaut ». Si une valeur est inconnue, ne pas écrire le champ.
+- Valider le fichier avant envoi avec le jeu de tests de ce dépôt (`node tests/descente.test.js` montre des cas valides et invalides) ou en le chargeant dans l'écran de l'application.
+
+## Voie « agent IA » (même format)
+
+L'agent reçoit des plans et des photos, renvoie un document de ce format avec `source.outil = "Agent IA"`. Tous les ouvrages sont alors `non_verifie` : l'utilisateur accepte, renomme ou écarte chaque nœud, puis crée en bibliothèque. Seuls les ouvrages acceptés sont créés.

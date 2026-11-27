@@ -82,6 +82,12 @@ const run = async (d, tok, body) => { const r = await handle(req(tok, body), d);
 { /* clé serveur absente */
   const { d } = monde(); d.apiKey = undefined; const r = await run(d, 'tA', fiche()); eq(r.s, 400, 'sans cle');
 }
+{ /* mode descente : passe aussi par la garde (attente, puis accord compte un appel) */
+  const { d, w, acces } = monde(); const desc = { mode: 'descente', projet: 'P1', fichiers: [{ type: 'image/png', data: 'AAAA' }], lot: { numero: 1, total: 2 }, deja_connu: {} };
+  const r = await run(d, 'tA', desc); eq([r.s, r.j.code], [403, 'attente'], 'descente : attente'); eq(w.appelsIA, 0, 'descente : IA non appelee');
+  acces.get('uA|P1').statut = 'accepte'; const r2 = await run(d, 'tA', desc); eq(r2.s, 200, 'descente accordee'); eq(acces.get('uA|P1').utilise, 1, 'descente consomme un appel');
+  const r3 = await run(d, 'tA', { ...desc, fichiers: [] }); eq(r3.s, 400, 'descente sans fichier');
+}
 { /* simulation de l'environnement Deno : la fonction s'enregistre et répond */
   let h = null; globalThis.Deno = { serve: (f) => { h = f; }, env: { get: () => undefined } };
   await import('../supabase/fiche-ia.ts?deno'); eq(typeof h, 'function', 'Deno.serve appele'); delete globalThis.Deno;
