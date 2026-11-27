@@ -81,6 +81,44 @@ Deno.serve(async (req) => {
         if (error) return J({ error: error.message }, 400);
         return J({ ok: true });
       }
+      /* ---------- Assistant IA : demandes d'autorisation et limites d'usage (voir supabase/migration-ia-limite.sql) ---------- */
+      if (b.action === 'ia_list') {
+        const { data: rows } = await admin.from('ia_acces').select('user_id,projet_id,statut,limite,utilise,nom,email,demande_le,decide_le,dernier_appel').order('demande_le', { ascending: false }).limit(500);
+        const { data: reg } = await admin.from('ia_reglages').select('limite_defaut').eq('id', 1).maybeSingle();
+        const { data: pj } = await admin.from('projets').select('id,nom');
+        const pn = new Map((pj || []).map((p) => [p.id, p.nom]));
+        return J({ defaut: reg?.limite_defaut ?? 10, acces: (rows || []).map((r) => ({ ...r, projet_nom: pn.get(r.projet_id) || r.projet_id })) });
+      }
+      if (b.action === 'ia_decider') {
+        const uid = clean2(b.user_id, 60), pid2 = clean2(b.projet_id, 40);
+        if (!uid || !pid2) return J({ error: 'Utilisateur et projet requis' }, 400);
+        const decision = String(b.decision || '');
+        const patch: Record<string, unknown> = {};
+        if (decision === 'accepte' || decision === 'refuse' || decision === 'attente') { patch.statut = decision; patch.decide_le = new Date().toISOString(); patch.decide_par = user.id; }
+        else if (decision) return J({ error: 'Décision inconnue' }, 400);
+        if (b.limite !== undefined && b.limite !== null && b.limite !== '') {
+          const l = Math.floor(Number(b.limite));
+          if (!isFinite(l) || l < 0 || l > 100000) return J({ error: 'Limite invalide (0 à 100000)' }, 400);
+          patch.limite = l;
+        } else if (decision === 'accepte') {
+          const { data: reg } = await admin.from('ia_reglages').select('limite_defaut').eq('id', 1).maybeSingle();
+          const { data: cur } = await admin.from('ia_acces').select('limite,statut').eq('user_id', uid).eq('projet_id', pid2).maybeSingle();
+          patch.limite = cur && cur.statut === 'accepte' ? cur.limite : (reg?.limite_defaut ?? 10);
+        }
+        if (b.raz === true) patch.utilise = 0;
+        if (!Object.keys(patch).length) return J({ error: 'Rien à modifier' }, 400);
+        const { data: up, error } = await admin.from('ia_acces').update(patch).eq('user_id', uid).eq('projet_id', pid2).select('user_id');
+        if (error) return J({ error: error.message }, 400);
+        if (!up || !up.length) return J({ error: 'Demande introuvable' }, 404);
+        return J({ ok: true });
+      }
+      if (b.action === 'ia_defaut') {
+        const l = Math.floor(Number(b.limite));
+        if (!isFinite(l) || l < 0 || l > 100000) return J({ error: 'Limite invalide (0 à 100000)' }, 400);
+        const { error } = await admin.from('ia_reglages').upsert({ id: 1, limite_defaut: l, updated_at: new Date().toISOString() });
+        if (error) return J({ error: error.message }, 400);
+        return J({ ok: true });
+      }
       if (b.action === 'stats') {
         const { data: us, error } = await admin.auth.admin.listUsers({ perPage: 500 });
         if (error) throw error;
