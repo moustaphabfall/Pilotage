@@ -29234,10 +29234,14 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     [['c_KrMode','K_r calculé'],['c_epsC','ε de la compression centrée']].forEach(([k,lb])=>{ if(!ptCoefSaisi(dp,k)||ptCoef(dp,k)===PT_COEF_BY[k].def) return;
      const d2=Object.assign({},dp); delete d2[k]; const r2=ptCompute({dimPT:d2,id:t.id,quoi:t.quoi,nom:t.nom,niveau:t.niveau},true); _ptKdp=dp;
      res.ecarts.push({k,lbl:lb,As:res.AsTotal_cm2,AsDef:r2.AsTotal_cm2,MEd:res.MEd,MEdDef:r2.MEd,M2:res.M2mom,M2Def:r2.M2mom,Kr:res.Kr,sigC:res.sigmaC,sigCDef:r2.sigmaC,centree:res.centree}); }); }
-   res.cad=ptCadres(res,dp);
+   res.cad=ptCadres(res,dp); if(res.cad.ovr){ res.sCourant_mm=res.cad.sC; res.sExtrem_mm=res.cad.sE; res.espSaisi=true; }
    res.verifs=ptVerifs(dp,res);
    return res;
   }
+  /* espacement des cadres calculé (sans valeurs saisies), pour la fenêtre de validation : mm ; null si les données sont irrecevables */
+  window.ptEspacementCalcule=function(dp,avecSaisie){
+   try{ _ptEspNoOvr=!avecSaisie; const res=ptCompute({dimPT:dp,id:'esp',quoi:'',nom:'',niveau:''},true); const c=res&&res.cad; return c?{sC:c.sC,sE:c.sE,sLap:c.sLap,sFin:c.sFin,bael:res.norme==='BAEL'}:null; }catch(_){ return null; } finally{ _ptEspNoOvr=false; }
+  };
 
   /* ===== Méthode BAEL 91 : compression centrée (charge ultime avec α, β, B_r, k) et flexion composée (équilibre des déformations internes) =====
      λ = l_f·√12/a (rectangle, a = petit côté) ou 4·l_f/D ; β = 1 + 0,2(λ/35)² (λ ≤ 50) ou 0,85·λ²/1500 (50 < λ ≤ 70) ; B_r = (b−2)(h−2) cm ;
@@ -29336,7 +29340,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    res.bael.tr=ptBaelTranchant(dp,res);
    if(res.bael.tr.reduit){ res.sCourant_mm=res.bael.tr.sRet; res.sExtrem_mm=res.bael.tr.sRet; }
    res.bael.els=ptBaelEls(dp,res);
-   res.cad=ptCadres(res,dp);
+   res.cad=ptCadres(res,dp); if(res.cad.ovr){ res.sCourant_mm=res.cad.sC; res.sExtrem_mm=res.cad.sE; res.espSaisi=true; }
    res.verifs=ptVerifsBael(dp,res);
    return res;
   }
@@ -29583,16 +29587,20 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const NrMN=alpha/0.85*(Bq*res.fck/gcF+Av*1e-4*Fi*res.fyk), Nr=NrMN*1000;                 // kN
    return Object.assign(base,{etat:Nfi<=Nr+1e-9?'ok':'ko',a,b,Br,lf,M,thM,Fb,Fi,Bq,lam,alpha,Nr,NrMN});
   }
+  let _ptEspNoOvr=false; /* vrai : calcul de l'espacement sans les valeurs saisies (fenêtre de validation) */
   function ptCadres(res,dp){
    const Lmm=(+dp.L_m||3)*1000, phi=res.barFace.phi, phiT=res.phiCadre;
-   const sC=Math.max(50,Math.round(res.sCourant_mm/5)*5), sE=Math.max(50,Math.round(res.sExtrem_mm/5)*5), l0=Math.round(res.lb_mm/10)*10;
+   /* valeurs saisies par l'ingénieur (choix « Je modifie » de la fenêtre de validation) : jamais plus grandes que l'espacement calculé, jamais sous 50 mm */
+   const ovOn=!_ptEspNoOvr&&!!(dp.valid&&dp.valid.pt_cadres&&dp.valid.pt_cadres.choix==='modifie'), ovv=k=>{ const v=ovOn?dp[k]:null; return (v!=null&&v!==''&&isFinite(+v)&&+v>0)?Math.max(50,Math.round(+v*10/5)*5):null; };
+   const sC0=Math.max(50,Math.round(res.sCourant_mm/5)*5), sE0=Math.max(50,Math.round(res.sExtrem_mm/5)*5), l0=Math.round(res.lb_mm/10)*10;
+   const sC=Math.min(sC0,ovv('espC_cm')||sC0), sE=Math.min(sE0,ovv('espE_cm')||sE0);
    const zPied=Math.min(Lmm/2,Math.max(res.hZoneExtrem_mm,l0)), zTete=Math.min(Lmm/2,res.hZoneExtrem_mm);
-   const sLap=phi>14?Math.max(50,Math.min(sE,Math.floor((l0-50)/2/5)*5)):sE;
+   const sLap0=phi>14?Math.max(50,Math.min(sE,Math.floor((l0-50)/2/5)*5)):sE, sLap=Math.min(sLap0,ovv('espLap_cm')||sLap0);
    const pos=[50]; { let z=50; for(let k=0;k<2000;k++){ const sn=(z<zPied||z>=Lmm-zTete)?sE:sC, sv=z<l0?Math.min(sn,sLap):sn; z+=sv; if(z>=Lmm-50) break; pos.push(z); } if(Lmm-50>pos[pos.length-1]+1){ const zEnd=Lmm-50, sTail=sE; let gap=zEnd-pos[pos.length-1]; /* dernier intervalle trop court (résidu) : on retire le dernier cadre et on répartit le reste en pas égaux, jamais plus grands que le pas de la zone */ if(gap<sTail/2&&pos.length>1){ pos.pop(); gap=zEnd-pos[pos.length-1]; const n=Math.max(1,Math.ceil(gap/sTail-1e-9)), a=pos[pos.length-1]; for(let q=1;q<n;q++) pos.push(a+Math.round(gap*q/n/5)*5); } pos.push(zEnd); } }
    const zones=[]; pos.forEach((z,i)=>{ if(i===0) return; const e=Math.round(z-pos[i-1]); const last=zones[zones.length-1]; if(last&&Math.abs(last.esp-e)<=5){ last.x1=z/1000; last.nb++; } else zones.push({x0:pos[i-1]/1000,x1:z/1000,esp:e,nb:1}); });
    const nIn=pos.filter(z=>z<=l0).length, nOut=pos.some(z=>z>l0)?1:0, Aphi=Math.PI/4*phiT*phiT, Abar=Math.PI/4*phi*phi, Ast=nIn*2*Aphi;
    const lap={l0,phi,nIn,nOut,Ast,Abar,sLap,rule3:phi>14,rule20:phi>=20,ok3:!(phi>14)||nIn>=3,ok20:!(phi>=20)||(Ast>=Abar&&nOut>=1)};
-   lap.ok=lap.ok3&&lap.ok20; return {sC,sE,l0,zPied,zTete,pos,zones,lap};
+   lap.ok=lap.ok3&&lap.ok20; const sFin=pos.length>1?Math.round(pos[pos.length-1]-pos[pos.length-2]):null; return {sC,sE,sLap,sFin,sC0,sE0,sLap0,ovr:ovOn&&!!(ovv('espC_cm')||ovv('espE_cm')||ovv('espLap_cm')),l0,zPied,zTete,pos,zones,lap};
   }
   /* Tableau des vérifications (skill note-de-calcul) : ok / ko / nf (non vérifié) / na. */
   function ptVerifs(dp,res){
@@ -46812,6 +46820,10 @@ document.head.appendChild(st);
  sp('dl','dl_poincon','Poinçonnement simplifié',{warn:true,quand:dp=>dp.poincon===true,supposes:'Une charge de poteau centrée, un contour de contrôle standard autour du poteau.',ignore:'Le moment transmis par le poteau, les trémies proches, les poteaux de rive ou d\'angle.',ne:'Poteaux de rive ou d\'angle, trémie proche, charges très excentrées.',valeurs:vals([['N_poincon_kN','Charge du poteau','kN'],['c1_cm','Côté c1','cm'],['c2_cm','Côté c2','cm']]),champs:[ch('N_poincon_kN','Charge du poteau','kN',0,1e6)]});
 
  sp('pt','pt_second','Second ordre simplifié du poteau',{warn:true,quand:()=>true,seuils:[{k:'elanc',nom:'Élancement (hauteur / plus petit côté) à partir duquel le cas est sensible',def:15,unit:'',min:5,max:60}],sensible:(dp,S)=>{ const c=dp.forme==='circ'?+dp.D_cm:Math.min(+dp.b_cm,+dp.h_cm); const e=(+dp.L_m*100)/c; return (c>0&&e>=S.elanc)?'le poteau est élancé':null; },cas:dp=>[dp.forme,dp.b_cm,dp.h_cm,dp.D_cm,dp.L_m,dp.N_kN,dp.M_tete_kNm,dp.M_pied_kNm,dp.appuiBas,dp.appuiHaut,dp.mode_l0],supposes:'Un poteau isolé, des défauts de rectitude forfaitaires, une section constante sur la hauteur.',ignore:'Les déplacements d\'ensemble de la structure, le fluage détaillé, la flexion dans les deux directions à la fois.',ne:'Poteaux très élancés, structures souples non contreventées.',valeurs:vals([['L_m','Hauteur libre','m'],['N_kN','Effort normal','kN'],['M_tete_kNm','Moment en tête','kN·m'],['M_pied_kNm','Moment en pied','kN·m']]),champs:[ch('N_kN','Effort normal','kN',0,1e7),ch('M_tete_kNm','Moment en tête','kN·m',-1e6,1e6),ch('M_pied_kNm','Moment en pied','kN·m',-1e6,1e6)]});
+ sp('pt','pt_cadres','Espacement des cadres du poteau',{warn:true,quand:()=>true,cas:dp=>{ const o={}; Object.keys(dp).forEach(k=>{ if(k[0]==='_'||/^(valid|validSeuils|skills|resultats|statut|espC_cm|espE_cm|espLap_cm|vueCombo|chgScale)$/.test(k)) return; o[k]=dp[k]; }); return o; },supposes:'Le calcul fixe un espacement courant, un espacement plus serré aux deux extrémités et sur la zone de recouvrement, puis partage le dernier espace restant en pas égaux, jamais plus grands que le pas de la zone : cela peut ajouter un cadre.',ignore:'Les contraintes de chantier (passage du béton, gabarit des cages), les dispositions des nœuds avec les poutres, vos plans types.',ne:'Poteaux très courts, nœuds poutre-poteau très serrés, ou plans qui imposent d\'autres espacements.',trace:{accepte:()=>'espacement des cadres validé par l\'ingénieur',modifie:()=>'espacement des cadres saisi par l\'ingénieur'},ptTxt:{accepte:'Espacement des cadres validé par l\'ingénieur (espacement par zone et dernier espace réparti en pas égaux) : à confirmer par l\'ingénieur.',modifie:'Espacement des cadres saisi par l\'ingénieur (valeurs de la ligne Validations et méthodes) : non vérifié par l\'application, jamais supérieur à l\'espacement calculé.'},
+  valeurs:dp=>{ const c=typeof window.ptEspacementCalcule==='function'?window.ptEspacementCalcule(dp,false):null; if(!c) return []; const cm=v=>(v==null?null:fnum(v/10)+' cm'); const o=[['Zone courante (calculé)',cm(c.sC)],['Zone d\'appui, pied et tête (calculé)',cm(c.sE)],['Zone de recouvrement (calculé)',cm(c.sLap)],['Pas final, dernier espace réparti en pas égaux (calculé)',cm(c.sFin)]].filter(r=>r[1]);
+   const e=(dp.valid||{}).pt_cadres; if(e&&e.choix==='modifie'){ const u=typeof window.ptEspacementCalcule==='function'?window.ptEspacementCalcule(dp,true):null; if(u){ o.push(['Zone courante (saisi)',cm(u.sC)],['Zone d\'appui (saisi)',cm(u.sE)],['Zone de recouvrement (saisi)',cm(u.sLap)],['Pas final (saisi)',cm(u.sFin)]); } } return o; },
+  champs:[{k:'espC_cm',nom:'Zone courante',unit:'cm',min:5,max:dp=>{ const c=window.ptEspacementCalcule&&window.ptEspacementCalcule(dp,false); return c?c.sC/10:100; },always:1,ph:dp=>{ const c=window.ptEspacementCalcule&&window.ptEspacementCalcule(dp,false); return c?fnum(c.sC/10):''; }},{k:'espE_cm',nom:'Zone d\'appui (pied et tête)',unit:'cm',min:5,max:dp=>{ const c=window.ptEspacementCalcule&&window.ptEspacementCalcule(dp,false); return c?c.sE/10:100; },always:1,ph:dp=>{ const c=window.ptEspacementCalcule&&window.ptEspacementCalcule(dp,false); return c?fnum(c.sE/10):''; }},{k:'espLap_cm',nom:'Zone de recouvrement',unit:'cm',min:5,max:dp=>{ const c=window.ptEspacementCalcule&&window.ptEspacementCalcule(dp,false); return c?c.sLap/10:100; },always:1,ph:dp=>{ const c=window.ptEspacementCalcule&&window.ptEspacementCalcule(dp,false); return c?fnum(c.sLap/10):''; }}]});
  sp('pt','pt_feu','Résistance au feu simplifiée du poteau',{warn:true,quand:dp=>dp.feu_on===true&&dp.feu_methode!=='saisie',seuils:[{k:'duree',nom:'Durée au feu à partir de laquelle le cas est sensible',def:90,unit:'min',min:15,max:240}],sensible:(dp,S)=>{ const d=+dp.feu_duree>0?+dp.feu_duree:(+dp.feu_duree_h>0?+dp.feu_duree_h*60:0); return d>=S.duree?'la durée au feu demandée est longue':null; },supposes:'Une méthode simplifiée par abaques : section réduite par la chaleur, poteau chauffé sur tout son pourtour.',ignore:'Les gradients de température précis, l\'éclatement du béton, la dilatation des éléments voisins.',ne:'Petites sections, poteaux très chargés ou très excentrés, longues durées.',valeurs:vals([['feu_duree','Durée au feu','min'],['feu_duree_h','Durée au feu','h']])});
 
  sp('pm','pm_methode','Poteau mixte : méthode simplifiée',{warn:true,quand:()=>true,seuils:[{k:'exc',nom:'Excentricité à partir de laquelle le cas est sensible',def:0.05,unit:'m',min:0,max:1}],sensible:(dp,S)=>(+dp.exc_m>=S.exc)?'la charge est fortement excentrée':null,supposes:'Une courbe de flambement unique et une interaction simplifiée entre effort normal et moment, avec adhérence parfaite acier-béton.',ignore:'Le glissement entre acier et béton, le fluage détaillé, la flexion dans les deux directions à la fois.',ne:'Poteaux élancés, charges très excentrées.',valeurs:vals([['L_m','Hauteur','m'],['G_kN','Charge permanente G','kN'],['Q_kN','Charge d\'exploitation Q','kN'],['exc_m','Excentricité','m']]),champs:[ch('G_kN','Charge permanente G','kN',0,1e7),ch('Q_kN','Charge d\'exploitation Q','kN',0,1e7),ch('exc_m','Excentricité','m',0,1)]});
@@ -46868,6 +46880,7 @@ document.head.appendChild(st);
  function traceTxt(spec,e,dp){
   const sk=e.choix==='methode'?skillById(dp,e.skillId):null;
   const c=e.choix==='accepte'?'vous avez choisi la méthode simplifiée':(e.choix==='modifie'?'vous avez saisi vos propres effets':'vous avez décrit votre propre méthode');
+  if(spec.trace&&spec.trace[e.choix]) return spec.titre+' : '+spec.trace[e.choix](e,dp)+', le '+frDate(e.date)+'.';
   const base=spec.titre+' : '+(e.choix==='accepte'?'validation déjà acceptée pour cette méthode (méthode intégrée), mémorisée pour cet ouvrage tant que les données du cas ne changent pas':(e.choix==='modifie'?'valeurs saisies par l\'ingénieur':'calcul par méthode décrite par l\'utilisateur'+(sk?' (« '+sk.nom+' »)':'')))+', le '+frDate(e.date)+'.';
   return base+(e.sens?' Il vous était conseillé de saisir vous-même les effets ; '+c+'.':'');
  }
@@ -46879,7 +46892,7 @@ document.head.appendChild(st);
   ov.addEventListener('mousedown',e=>{ ov._down=(e.target===ov); }); document.body.appendChild(ov); try{ window.dimChEsc&&window.dimChEsc(ov); }catch(_){ } return ov; }
  function closeOv(ov){ try{ stopVoice(); }catch(_){ } ov.remove(); }
  function valsTable(rows){ return rows.length?'<table class="dvVals"><tbody>'+rows.map(r=>'<tr><th>'+esc(r[0])+'</th><td>'+esc(r[1])+'</td></tr>').join('')+'</tbody></table>':'<p class="pcNote">Aucune valeur saisie pour cette méthode.</p>'; }
- function commit(ctx,spec,entry){ const dp=ctx.dp; entry.date=todayIso(); entry.vals=valsNow(dp,spec); if(spec.cas) entry.cas=casNow(dp,spec); const sm=sensibleMsg(dp,spec); entry.sens=!!sm; store(dp)[spec.id]=entry; try{ persist(); }catch(_){ } try{ refresh(ctx.pfx,ctx.id,true); }catch(_){ } }
+ function commit(ctx,spec,entry){ const dp=ctx.dp; entry.date=todayIso(); store(dp)[spec.id]=entry; entry.vals=valsNow(dp,spec); if(spec.cas) entry.cas=casNow(dp,spec); const sm=sensibleMsg(dp,spec); entry.sens=!!sm; store(dp)[spec.id]=entry; try{ persist(); }catch(_){ } try{ refresh(ctx.pfx,ctx.id,true); }catch(_){ } }
  function dimValidateWindow(spec,ctx){
   ctx=ctx||{}; if(!ctx.dp&&ctx.pfx&&ctx.id) ctx.dp=getDp(ctx.pfx,ctx.id); const dp=ctx.dp; if(!dp) return null;
   const ov=overlay(); const sm=sensibleMsg(dp,spec); const cur=store(dp)[spec.id];
@@ -46904,16 +46917,16 @@ document.head.appendChild(st);
  function findInput(k){ const mb=document.getElementById('modalBody'); if(!mb) return null; return [...mb.querySelectorAll('input,select,textarea')].find(el=>[...el.attributes].some(a=>a.name.indexOf('data-')===0&&a.value===k)); }
  function editView(ov,spec,ctx){
   const dp=ctx.dp; const locked=(typeof dimStatut==='function')&&dimStatut(dp)==='calcule';
-  const cs=spec.champs.filter(c=>dp[c.k]!==undefined&&(!c.when||c.when(dp)));
+  const cs=spec.champs.filter(c=>(dp[c.k]!==undefined||c.always)&&(!c.when||c.when(dp))).map(c=>Object.assign({},c,{max:typeof c.max==='function'?c.max(dp):c.max,phTxt:typeof c.ph==='function'?c.ph(dp):''}));
   ov.innerHTML='<div class="pcFeuCard dvCard"><h4 id="dvT">Je modifie mes valeurs</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
    +(locked?'<p class="dvSens" role="note">La fiche est verrouillée (calcul fait). Touchez « Recalculer l\'ouvrage » pour la rouvrir, puis revenez ici.</p>':'')
-   +'<div class="dvFields">'+cs.map(c=>'<label class="dvFld"><span class="dvFl">'+esc(c.nom)+'</span><span class="dvFc"><input type="text" inputmode="decimal" data-dv-k="'+esc(c.k)+'" value="'+esc(dp[c.k]===null?'':String(dp[c.k]).replace('.',','))+'"'+(locked?' disabled':'')+'><span class="dvU">'+esc(c.unit||'')+'</span></span><span class="dvErr" data-dv-err="'+esc(c.k)+'" role="alert"></span></label>').join('')+'</div>'
+   +'<div class="dvFields">'+cs.map(c=>'<label class="dvFld"><span class="dvFl">'+esc(c.nom)+'</span><span class="dvFc"><input type="text" inputmode="decimal" data-dv-k="'+esc(c.k)+'" value="'+esc(dp[c.k]==null?'':String(dp[c.k]).replace('.',','))+'"'+(c.phTxt?' placeholder="'+esc(c.phTxt)+'"':'')+(locked?' disabled':'')+'><span class="dvU">'+esc(c.unit||'')+'</span></span><span class="dvErr" data-dv-err="'+esc(c.k)+'" role="alert"></span></label>').join('')+'</div>'
    +'<div class="dvBtns">'+ib('back','Retour','data-dv-x="back"')+(locked?'':ib('save','Enregistrer mes valeurs','data-dv-x="save"'))+'</div></div>';
   ov.onclick=e=>{ const b=e.target.closest('[data-dv-x]'); if(!b){ if(e.target===ov&&ov._down) closeOv(ov); return; }
    if(b.dataset.dvX==='back'){ ov.onclick=null; dimValidateWindow(spec,ctx); return; }
    let bad=false; const out={}; ov.querySelectorAll('[data-dv-k]').forEach(inp=>{ const k=inp.dataset.dvK, c=cs.find(x=>x.k===k), er=ov.querySelector('[data-dv-err="'+k+'"]'); const raw=inp.value.trim().replace(',','.'); const n=raw===''?NaN:Number(raw); let m='';
     if(raw===''){ m=''; } else if(!isFinite(n)) m=c.nom+' doit être un nombre.'; else if(c.min!=null&&n<c.min) m=c.nom+' doit être ≥ '+fnum(c.min)+(c.unit?' '+c.unit:'')+'.'; else if(c.max!=null&&n>c.max) m=c.nom+' doit être ≤ '+fnum(c.max)+(c.unit?' '+c.unit:'')+'.';
-    er.textContent=m; inp.setAttribute('aria-invalid',m?'true':'false'); if(m) bad=true; else if(raw!==''&&n!==+dp[k]) out[k]=n; });
+    er.textContent=m; inp.setAttribute('aria-invalid',m?'true':'false'); if(m) bad=true; else if(raw!==''&&n!==+dp[k]) out[k]=n; else if(raw===''&&c.always&&dp[k]!=null&&dp[k]!=='') out[k]=null; });
    if(bad) return;
    Object.keys(out).forEach(k=>{ const el=findInput(k); if(el&&!el.disabled){ el.value=String(out[k]); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); } else { dp[k]=out[k]; } });
    commit(ctx,spec,{choix:'modifie',champs:out}); closeOv(ov); clip('Choix enregistré : vos valeurs sont prises. Touchez Calculer pour lancer le calcul.'); };
@@ -47086,8 +47099,8 @@ document.head.appendChild(st);
   try{ const pfx=KIND2PFX[kind]; if(!dp||!pfx) return null; const hyp=[], pts=[]; let annex='', user=false; const done=new Set();
    ALLOF(pfx).forEach(s=>{ const e=store(dp)[s.id];
     if(e){ done.add(s.id); hyp.push(traceTxt(s,e,dp)+(e.vals&&e.vals.length?' Valeurs : '+e.vals.map(v=>v[0]+' '+v[1]).join(' ; ')+'.':''));
-     if(e.choix==='accepte') pts.push({tx:'Méthode simplifiée acceptée ('+s.titre+') : '+s.supposes+' À confirmer par l\'ingénieur.',bad:false});
-     if(e.choix==='modifie') pts.push({tx:'Valeurs saisies par l\'ingénieur ('+s.titre+') : non vérifiées par l\'application.',bad:false});
+     if(e.choix==='accepte') pts.push({tx:(s.ptTxt&&s.ptTxt.accepte)||('Méthode simplifiée acceptée ('+s.titre+') : '+s.supposes+' À confirmer par l\'ingénieur.'),bad:false});
+     if(e.choix==='modifie') pts.push({tx:(s.ptTxt&&s.ptTxt.modifie)||('Valeurs saisies par l\'ingénieur ('+s.titre+') : non vérifiées par l\'application.'),bad:false});
      if(e.choix==='methode'){ user=true; const k=skillById(dp,e.skillId); pts.push({tx:'Calcul par méthode décrite par l\'utilisateur, non vérifié par un moteur ('+s.titre+(k?', « '+k.nom+' »':'')+') : à vérifier par l\'ingénieur.',bad:false});
       if(k&&window.DimSkill){ const r=window.DimSkill.run(k.def); annex+='<section class="ncSec"><h4>Annexe : méthode décrite par l\'utilisateur</h4><p><b>Calcul par méthode décrite par l\'utilisateur, non vérifié par un moteur.</b></p><p>Méthode : '+esc(k.nom)+' · validée le '+esc(frDate(e.date))+' · concerne : '+esc(s.titre)+'</p>'+(k.demande?'<p>Description donnée par l\'utilisateur : '+esc(k.demande).replace(/\n/g,'<br>')+'</p>':'')+(k.def.description?'<p>'+esc(k.def.description)+'</p>':'')
        +(r.ok?'<table class="ncT"><tr><td><b>Entrées</b></td><td>'+r.entrees.map(x=>esc(x.nom)+' ('+esc(x.id)+') = '+esc(window.DimSkill.fmt(x.valeur))+(x.unite?' '+esc(x.unite):'')).join('<br>')+'</td></tr><tr><td><b>Étapes</b></td><td>'+r.lignes.map(l=>esc(l.nom)+' : '+esc(l.id)+' = '+esc(l.formule)+' = '+esc(l.subst)+' = <b>'+esc(window.DimSkill.fmt(l.valeur))+(l.unite?' '+esc(l.unite):'')+'</b>').join('<br>')+'</td></tr><tr><td><b>Résultat</b></td><td>'+r.sorties.map(o=>esc(o.nom)+' = <b>'+esc(window.DimSkill.fmt(o.valeur))+(o.unite?' '+esc(o.unite):'')+'</b>').join('<br>')+'</td></tr></table>':'<p>Le calcul de cette méthode ne peut plus être exécuté : '+esc(r.erreurs.join(' ; '))+'</p>')+'</section>'; } } }
