@@ -7523,6 +7523,8 @@ function dimDiffEntrees(dp){
  const has=(M,pre)=>Object.keys(M).some(q=>q.startsWith(pre));
  keys.forEach(path=>{ const a=A[path], b=B[path]; if(a===b) return; const parts=path.split('.'), top=parts[0], sp=dimSpecOf(top);
   const sec=DIM_CHG.has(top)?'Chargement':(DIM_MAT.has(top)?'Matériau':(sp?'Paramètres avancés':'Géométrie et options'));
+  /* crochets propres à un module (libellés réels, paramètres de la forme active seulement) : window.DIM_DIFF_HOOKS = [(dp,top,parts,a,b) => null | {skip:true} | {sec?,txt}] */
+  { let hk=null; (window.DIM_DIFF_HOOKS||[]).some(f=>{ try{ hk=f(dp,top,parts,a,b); }catch(_){ hk=null; } return !!hk; }); if(hk){ if(!hk.skip) add(hk.sec||sec,hk.txt); return; } }
   if((top==='portees'||top==='hauteurs')&&parts.length===2){ const nm=(top==='portees'?'Portée L':'Hauteur H')+(+parts[1]+1)+' (m)', fa=dimFmtVal(null,a), fb=dimFmtVal(null,b); add(sec,nm+' : '+(fa==null?'—':fa)+' → '+(fb==null?'—':fb)); return; }
   if(DIM_ARR[top]&&parts.length>=2){ const ar=DIM_ARR[top], i=+parts[1], nm=ar[0]+' '+(i+ar[1]), pre=top+'.'+i+'.', aIn=has(A,pre), bIn=has(B,pre);
    if(!aIn&&bIn){ add(sec,nm+' ajouté'+ar[2]); return; } if(aIn&&!bIn){ add(sec,nm+' supprimé'+ar[2]); return; }
@@ -28736,6 +28738,26 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    {k:'L_m',nom:'La hauteur libre L',pos:1,min:0.5,max:30,unit:'m'},{k:'N_kN',nom:'L\'effort normal N',min:0,max:1e7,unit:'kN',fem:false},
    {k:'M_tete_kNm',nom:'Le moment en tête',min:-1e6,max:1e6,unit:'kN·m',fem:false,req:false},{k:'M_pied_kNm',nom:'Le moment en pied',min:-1e6,max:1e6,unit:'kN·m',fem:false,req:false},
    {k:'enrobage_cm',nom:'L\'enrobage',min:1,max:10,unit:'cm'}];
+  /* Résumé des modifications (poteau) : libellés réels et paramètres de la forme active seulement ; branché sur window.DIM_DIFF_HOOKS */
+  (window.DIM_DIFF_HOOKS=window.DIM_DIFF_HOOKS||[]).push((dp,top,parts,a,b)=>{
+   if(!dp||dp.appuiBas===undefined||dp.mode_l0===undefined||dp.k_bas===undefined) return null;
+   const circ=dp.forme==='circ', V={isole:'élément isolé',portique_contreve:'portique contreventé',portique_non_contreve:'portique non contreventé',encastre:'encastré',articule:'articulé',libre:'libre',rect:'rectangulaire',circ:'circulaire',ajoute:'ajouté à N',inclus:'inclus dans N',ec2:'Eurocode 2',bael:'BAEL 91',c011:'méthode intégrée',saisie:'valeur saisie',h:'parallèle à h',b:'parallèle à b'};
+   const fv=(sp,v)=>{ if(v===undefined||v===null||v==='') return null; if(typeof v==='string'&&V[v]) return V[v]; return dimFmtVal(sp,v); };
+   if(circ&&(top==='b_cm'||top==='h_cm'||top==='planFlexion')) return {skip:true};
+   if(!circ&&top==='D_cm') return {skip:true};
+   if((top==='k_bas'||top==='k_haut')&&!/^portique/.test(String(dp.mode_l0))) return {skip:true};
+   if((top==='feu_s_dur'||top==='feu_s_NRd'||top==='feu_s_Nfi'||top==='feu_s_ref')&&!(dp.feu_on&&dp.feu_methode==='saisie')) return {skip:true};
+   if(top==='dcInfo'||top==='dcDeg') return {skip:true};
+   if(top==='valid') return {sec:'Paramètres avancés',txt:'Validation d\'une méthode du calcul (acceptée, modifiée ou décrite)'};
+   if(top==='skills') return {sec:'Paramètres avancés',txt:'Méthode décrite par l\'ingénieur'};
+   if(top==='validSeuils') return {sec:'Paramètres avancés',txt:'Seuil d\'un cas sensible'};
+   if(top==='ka'){ const k=parts[parts.length-1], e=parts.length>2?parts[1]:null, sp=(k==='fiss')?PT_KA_FISS:(k==='E'&&!e?PT_KA_E:PT_KA_F.find(x=>x.k===k)); if(!sp) return {txt:'Rigidité des poutres au nœud (paramètre modifié)'};
+    const sd=x=>{ const r=fv(sp,x); return r==null?'par défaut':r+(sp.unit?' '+sp.unit:'')+' (saisi)'; };
+    return {sec:'Paramètres avancés',txt:sp.lbl+(e?(e==='haut'?' (tête)':' (pied)'):'')+' : '+sd(a)+' → '+sd(b)}; }
+   const L={L_m:'Hauteur libre L (m)',b_cm:'Largeur b (cm)',h_cm:'Hauteur h (cm)',D_cm:'Diamètre Ø (cm)',norme:'Règlement de calcul',feu_methode:'Méthode du calcul au feu',feu_s_dur:'Durée de stabilité au feu justifiée (h)',feu_s_NRd:'Résistance au feu N_Rd,fi (kN)',feu_s_Nfi:'Effort normal en situation d\'incendie N_fi (kN)',feu_s_ref:'Méthode utilisée pour le feu',V_kN:'Effort tranchant V_Ed (kN)',dcGprim_kN:'Charge permanente reportée de la descente de charges (kN)'};
+   if(L[top]&&parts.length===1){ const x=(top==='norme'&&(a===undefined||a===''))?'Eurocode 2':fv(null,a), y=(top==='norme'&&(b===undefined||b===''))?'Eurocode 2':fv(null,b); return {txt:L[top]+' : '+(x==null?'—':x)+' → '+(y==null?'—':y)}; }
+   if(parts.length===1&&(V[a]!==undefined||V[b]!==undefined)){ const sp=dimSpecOf(top), x=fv(sp,a), y=fv(sp,b); const lab=(sp&&sp.lbl?sp.lbl.replace(/ — .*/,''):(DIM_LBL[top]||null)); if(lab) return {txt:lab+' : '+(x==null?'—':x)+' → '+(y==null?'—':y)}; }
+   return null; });
   function ptValidate(dp){ return dimValidateSpecs(dp,PT_SPECS,(d,er)=>{ if(d.forme!=='circ'&&!d._vlBande){ const b=+d.b_cm, h=+d.h_cm; if(b>0&&h>0&&Math.max(b,h)>=4*Math.min(b,h)&&!er.some(x=>x.key==='b_cm'||x.key==='h_cm')) er.push({key:h>=b?'h_cm':'b_cm',msg:'h/b ≥ 4 : voile, hors domaine du module poteau.'}); } }); }
   function ptData(t){
    if(!t.dimPT) t.dimPT=ptDefaultData(t); const d=t.dimPT;
