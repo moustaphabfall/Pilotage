@@ -24613,7 +24613,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v532';
+  const VER='v533';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -46119,9 +46119,20 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     let mm;
     if(!id){ mm={id:uid('MI'),client,projet,typeMissionId,dateDebut,dateFin,chatbotIA}; L_missions().push(mm); }
     else{ mm=L_missions().find(x=>x.id===id); if(mm){ mm.client=client; mm.projet=projet; mm.typeMissionId=typeMissionId; mm.dateDebut=dateDebut; mm.dateFin=dateFin; mm.chatbotIA=chatbotIA; } }
+    if(mm) beMissionFormationSession(mm);
     beSave(); beMissionsRender();
     if(mm) beMissionEdit(mm); else closeModal();
   };
+  /* une mission de type formation crée automatiquement sa session dans l'onglet Formation (une seule par mission) */
+  function beMissionFormationSession(mm){
+    try{
+      if(!/formation/i.test(beTypeMissionNom(mm.typeMissionId)||'')) return;
+      const L=L_sessions(); let ses=L.find(x=>x.missionId===mm.id);
+      if(!ses){ ses={id:uid('SES'),nom:(mm.client||'Formation'),description:beTypeMissionNom(mm.typeMissionId)||'',dateDebut:mm.dateDebut||'',dateFin:mm.dateFin||'',eleveIds:[],missionId:mm.id}; L.push(ses); }
+      else{ if(!ses.dateDebut&&mm.dateDebut) ses.dateDebut=mm.dateDebut; if(!ses.dateFin&&mm.dateFin) ses.dateFin=mm.dateFin; }
+      if(typeof beFormationRenderAdmin==='function'&&document.getElementById('beFormationWrap')) beFormationRenderAdmin();
+    }catch(e){ console.warn('beMissionFormationSession',e); }
+  }
   window.beMissionDel=function(id){
     miniConfirm('Supprimer cette mission ?', ()=>{ state.missions=L_missions().filter(x=>x.id!==id); beSave(); closeModal(); beMissionsRender(); });
   };
