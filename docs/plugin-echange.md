@@ -116,3 +116,60 @@ La position verticale vient de la cote du niveau : les éléments horizontaux so
 ## Voie « agent IA » (même format)
 
 L'agent reçoit des plans et des photos, renvoie un document de ce format avec `source.outil = "Agent IA"`. Tous les ouvrages sont alors `non_verifie` : l'utilisateur accepte, renomme ou écarte chaque nœud, puis crée en bibliothèque. Seuls les ouvrages acceptés sont créés.
+
+## Extension 1.1 : repère, pièces et pastilles (ajout facultatif)
+
+La version `"1.1"` ajoute **trois blocs facultatifs**. Un fichier 1.0 reste valable tel quel, et un fichier 1.1 sans ces blocs se lit comme un fichier 1.0. Une application qui ne connaît que 1.0 lit un fichier 1.1 avec un avertissement et ignore les blocs. Les blocs ne sont lus que si `version` est `"1.1"` ou plus.
+
+Unités de ces blocs : **centimètres** (le nom des champs le dit : `..._cm`). Repère : origine au coin bas-gauche du plan de référence, X vers la droite, Y vers le haut du plan, Z vers le haut ; Z d'un élément = cote du niveau + hauteur de pose. Une valeur inconnue n'est **pas écrite** : l'application ne la complète jamais.
+
+### Racine : `repere` (facultatif)
+
+| Champ | Description |
+|---|---|
+| `nord_deg` | Angle du nord par rapport au haut du plan, en degrés (entre -360 et 360), sens horaire. |
+| `nord_confirme` | `true` seulement si le nord a été vérifié par une personne. |
+| `origine` | Texte libre : où est l'origine (« Angle sud-ouest du bâtiment »). |
+| `plan_ref` | Nom du plan de référence. |
+
+### Niveau : `pieces` et `pastilles` (facultatifs)
+
+Un niveau peut ne contenir que des pièces et des pastilles (pas d'`ouvrages`) : le fichier est alors accepté s'il contient au moins un ouvrage, une pièce ou une pastille.
+
+**Pièce**
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `nom` | oui | Unique dans le niveau. |
+| `polygone_cm` | oui | Au moins trois points `[x, y]` qui entourent une surface (pas alignés). |
+| `hauteur_cm` | non | Hauteur sous plafond, seulement si elle est connue. |
+| `confiance` | non | `faible`, `moyenne` ou `haute` (défaut : `faible`). |
+| `source` | non | `{ "plan": "nom du plan", "page": 1 }`. |
+| `id_externe` | non | Identifiant d'origine. Sert à ne pas recréer la pièce à la réimportation. |
+
+**Pastille** : petite forme qui représente un élément (porte = un trait, machine = un rectangle, ballon d'eau chaude = un cercle…).
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `nom` | oui | **Unique dans tout le projet** (casse et accents ignorés). |
+| `lot` | oui | `architecture`, `structure`, `cvc`, `plomberie`, `electricite`, `courants_faibles`, `securite_incendie` ou `equipements`. |
+| `type` | oui | `porte`, `fenetre`, `machine`, `ballon`, `lavabo`, `evier`, `douche`, `wc`, `baignoire`, `radiateur`, `luminaire`, `prise`, `tableau_electrique`, `detecteur`, `extincteur`, `gaine`, `conduit`, `canalisation`, `poteau`, `autre`, ou un texte court. |
+| `forme` | non | `ligne`, `rectangle`, `cercle` ou `polygone`. Si absente : la forme usuelle du type (obligatoire pour un type libre). |
+| `dimensions_cm` | non | `ligne` : `{ "longueur" }` ; `rectangle` : `{ "largeur", "profondeur", "hauteur" (facultative) }` ; `cercle` : `{ "diametre" }` ; `polygone` : `{ "points": [[x, y], …] }` autour du centre. Si absentes ou invalides : avertissement, la pastille est gardée et sa taille reste à renseigner. |
+| `position_cm` | oui | `{ "x", "y", "z" }` : centre de la forme dans le repère. `z` facultatif. |
+| `rotation_deg` | non | Sens inverse des aiguilles, 0 = trait horizontal. |
+| `piece` | non | Nom de la pièce qui contient l'élément. |
+| `parametres` | non | Objet « nom du paramètre » vers texte, nombre ou booléen. Un paramètre inconnu n'est pas écrit (jamais de valeur vide ou par défaut). |
+| `source` | non | `{ "plan": "nom du plan", "page": 1 }`. |
+| `confiance` | non | `faible`, `moyenne` ou `haute` (défaut : `faible`). |
+| `statut` | non | `importe` (défaut pour un plugin) ou `non_verifie` (défaut et seule valeur pour l'agent IA). |
+| `id_externe` | non | Unique s'il est donné. Sert à l'idempotence. |
+
+### Ce que fait l'application
+
+1. **Contrôle** par le même code que la version 1.0 (module `DcExchange`, avec les tests de `tests/plans.test.js`).
+2. **Lecture** dans l'écran « Lire le plan avec l'agent IA » (bouton « Fichier d'échange (plugin) ») : pièces et pastilles apparaissent sur le plan, à l'échelle, couleur par lot.
+3. **Création en bibliothèque** : seuls les éléments acceptés, avec position et dimensions, sont créés. Les pièces deviennent des pièces de l'étude ; les pastilles deviennent des ouvrages (rattachés à leur lot, leur niveau et leur pièce) qui gardent leur forme, leurs dimensions, leur position et leurs paramètres.
+4. **Réimportation** : un élément dont l'`id_externe` (ou, à défaut, le nom) existe déjà n'est pas recréé et n'est jamais écrasé.
+
+L'agent IA de l'application produit des pièces et des pastilles à partir de plans : tout y est `non_verifie` jusqu'à ce que l'utilisateur accepte ou modifie. L'application peut aussi écrire un fichier 1.1 à partir de ce qui a été accepté (bouton « Fichier d'échange »).
