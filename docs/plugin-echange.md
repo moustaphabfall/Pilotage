@@ -173,3 +173,28 @@ Un niveau peut ne contenir que des pièces et des pastilles (pas d'`ouvrages`) :
 4. **Réimportation** : un élément dont l'`id_externe` (ou, à défaut, le nom) existe déjà n'est pas recréé et n'est jamais écrasé.
 
 L'agent IA de l'application produit des pièces et des pastilles à partir de plans : tout y est `non_verifie` jusqu'à ce que l'utilisateur accepte ou modifie. L'application peut aussi écrire un fichier 1.1 à partir de ce qui a été accepté (bouton « Fichier d'échange »).
+
+### Paramètres de la maquette numérique (ajout facultatif de 1.1)
+
+Pièces, compartiments et pastilles peuvent porter les champs suivants. Tous sont facultatifs. Un champ inconnu n'est pas écrit : l'application ne le complète jamais.
+
+| Champ | Description |
+|---|---|
+| `guid` | Identifiant unique stable (forme `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`, minuscules). S'il est absent, l'application le crée à partir de l'identifiant d'origine ou du nom ; le même élément donne toujours le même identifiant. |
+| `classe` | Classe d'objet de la maquette numérique, du type `IfcSpace`, `IfcZone`, `IfcWall`, `IfcDoor`, `IfcWindow`, `IfcSlab`, `IfcBeam`, `IfcColumn`, `IfcFooting`… Si elle est absente, l'application la déduit du type (pièce : `IfcSpace`, compartiment : `IfcZone`). |
+| `genre` (pièce seulement) | `compartiment` pour un compartiment ; absent pour une pièce. |
+| `materiau` | Matériau, seulement s'il est connu. |
+| `classe_resistance` | Résistance ou classe du matériau, seulement si elle est connue. |
+| `porteur` | `true` ou `false`, seulement si connu. |
+| `exterieur` | `true` (extérieur) ou `false` (intérieur), seulement si connu. |
+| `resistance_feu` | Texte court (par exemple « EI 60 »), seulement si connu. |
+| `proprietes` | Liste extensible de `{ "cle", "valeur", "unite" }` (`unite` facultative). Clés uniques, valeurs vides refusées. |
+| `dimensions_cm.hauteur`, `dimensions_cm.epaisseur` | Pastille : hauteur et épaisseur facultatives pour toutes les formes. |
+
+Déjà portés par les blocs ci-dessus : nom, bâtiment et niveau (cote Z) par la structure du fichier, pièce d'appartenance (`piece`), lot, position X, Y, Z et rotation, dimensions, `statut` (phase : `non_verifie`, `importe`…), `source` (plan et page), `confiance`. Pour une pièce, la surface et le volume sont **calculés** par l'application (contour en cm, `hauteur_cm`) et ne sont pas à écrire. Types de pastille ajoutés : `mur`, `voile`, `dalle`, `poutre`, `semelle`, `pieu`, `escalier` (classes `IfcWall`, `IfcSlab`, `IfcBeam`, `IfcFooting`, `IfcPile`, `IfcStair`).
+
+L'application relit et réécrit ces champs sans perte (export puis import identiques).
+
+## Analyse automatique des plans déposés
+
+Quand un plan est déposé dans l'espace EG, l'application peut lancer seule la lecture par l'agent IA (réglage « Analyse automatique des plans », activé par défaut, désactivable). Seule une image réduite du plan est envoyée : ni le fichier d'origine, ni son nom, ni ses métadonnées. L'image temporaire n'existe qu'en mémoire locale et est effacée à la fin de l'analyse, qu'elle réussisse, échoue ou soit annulée. Rien n'est conservé côté serveur. Les pièces (noms lus, sinon « Pièce 1 », « Pièce 2 »…), compartiments et pastilles sont créés en bibliothèque, tous « non vérifiés ». Un même plan n'est analysé qu'une fois. Sans dimension lue, l'échelle n'est jamais devinée : les pièces sont créées sans cotes et l'application demande le calibrage.
