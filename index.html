@@ -31400,6 +31400,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const k=Math.min(2,1+Math.sqrt(200/dd)), rho=Math.min(0.02,res.barTravX.As/(1000*dd)), vRdc=Math.max(0.18/1.5*k*Math.pow(100*rho*res.fck,1/3),0.035*Math.pow(k,1.5)*Math.sqrt(res.fck));
     const x=+u.c.x_m||0, near=x<2*dd/1000||(res.lx-x)<2*dd/1000; return {i:i+1,P_Ed:P,a:a/1000,b:b/1000,u1:u1/1000,vEd,vRdc,ok:vEd<=vRdc+1e-9,near,x}; });
   }
+  /* température : moments et traction thermiques (déjà × ψ) de la travée étudiée ; vides sans variation saisie */
+  function dlThTerms(dp){ const o={on:false,Mt:0,Mw:0,Me:0,Nt:0}; try{ if(!(window.thm&&window.thm.on(dp))) return o; const n=Math.max(1,Math.round(+dp.nTravees)||1), e=dp.position==='rive'?0:Math.floor(n/2), t=window.thm.spanTh('dl',dp,e); o.on=true; o.Mw=t.Mw; o.Me=t.Me; o.Mt=t.Mt; o.Nt=Math.max(0,window.thm.axial('dl',dp)); }catch(_){ } return o; }
+  function dlThAdd(f,th,k){ if(!th||!th.on) return f; const o=Object.assign({},f); o.Mt+=Math.max(0,th.Mt*k); if(f.Mw>0) o.Mw+=Math.max(0,-th.Mw*k); if(f.Me>0) o.Me+=Math.max(0,-th.Me*k); o.sum=o.Mt+(o.Mw+o.Me)/2; o.ok=o.sum>=(o.req||0)-1e-9; return o; }
   function dlForfaitaire(dp,Mo,alphaQ){
    const nt=+dp.nTravees||1;
    if(nt<=1) return {Mt:Mo,Mw:0,Me:0,coefMin:1,sum:Mo,req:Mo,ok:true};
@@ -31562,6 +31565,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    return {coefVmax,position:pos,u0_mm,u1_mm,u1star_mm:G.u1star||null,reduit:G.reduit,u1full_mm:G.u1full||G.u1,VEd_N,beta,betaMethode:B.methode,betaDetail:!!B.detail,vEd0,vRdmax,ok_max:vEd0<=vRdmax,vRdc,vEd1,ok_c:vEd1<=vRdc,k,rhoL,rhoLx,rhoLy,bandeX_mm,bandeY_mm,betaConditions,asw,bordA_mm:Pg.aA,bordB_mm:Pg.aB,c1_mm:Pg.c1,c2_mm:Pg.c2};
   }
   function dlCompute(t){
+   const res=dlCompute0(t); const dp=t.dimDL;
+   try{ if(window.thm&&window.thm.on(dp)){ const g=window.thm.govern(dp,d0=>dlCompute0({dimDL:d0}),r=>JSON.stringify([r.AsTravX_cm2,r.AsAppW_cm2,r.AsAppE_cm2,r.AsTravY_cm2,r.AsSupY_cm2]),null); const sg=r=>JSON.stringify([r.AsTravX_cm2,r.AsAppW_cm2,r.AsAppE_cm2,r.AsTravY_cm2,r.AsSupY_cm2]); const gov=!!(g&&g.sig0!==sg(res)); const f2=x=>x==null?'—':(+x).toFixed(2).replace('.',','); res._th={gov,txt:gov?('Aciers de travée lx : '+f2(g.r0.AsTravX_cm2)+' cm²/m sans température, '+f2(res.AsTravX_cm2)+' cm²/m avec ; appui gauche '+f2(g.r0.AsAppW_cm2)+' puis '+f2(res.AsAppW_cm2)+' ; appui droit '+f2(g.r0.AsAppE_cm2)+' puis '+f2(res.AsAppE_cm2)+'.'):''}; } }catch(e){ console.error(e); }
+   return res;
+  }
+  function dlCompute0(t){
    const dp=dlData(t); dimThrow(dlValidate(dp));
    const fck=pcFck(dp.classeGlobale), fcd=fck/1.5, fyk=PC_FYK[dp.classeAcier]||500, fyd=fyk/1.15;
    const fctm=0.30*Math.pow(fck,2/3);
@@ -31576,15 +31584,16 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const Mo_x = sensDeux ? deuxSens.Mx : (pEd*lx*lx/8);
    const fxS=dlChargesSup(dp,lx,h_cm/100,(dp.psi2!=null&&dp.psi2!=='')?+dp.psi2:0.3,sensDeux?ly:null); /* charges supplémentaires (ponctuelles, zones) */
    if(sensDeux&&fxS.on&&fxS.mode!=='saisie'&&Mo_x>0) deuxSens.My*=1+fxS.moELU/Mo_x;
-   const forf=dlAddExtra(dlForfaitaire(dp,Mo_x,alphaQ),fxS,'elu');
+   const thE=dlThTerms(dp), forf=dlThAdd(dlAddExtra(dlForfaitaire(dp,Mo_x,alphaQ),fxS,'elu'),thE,1.5);
    const fTrav=dlFlexion(forf.Mt,d_x_cm,fcd,fyd);
    const fAppW=dlFlexion(forf.Mw,d_x_cm,fcd,fyd);
    const fAppE=dlFlexion(forf.Me,d_x_cm,fcd,fyd);
    const hEff=dp.asMinFctEff===true?h_cm*10:null; // f_ctm par défaut ; f_ct,eff en option
    const AsMinX_mm2=dlAsMin_mm2(fctm,fyk,d_x_cm*10,hEff), AsMaxX_mm2=dlAsMax_mm2(h_cm*10);
-   const AsTravX_mm2=Math.max(fTrav.As_mm2||0,AsMinX_mm2);
-   const AsAppW_mm2=Math.max(fAppW.As_mm2||0,forf.Mw>0?AsMinX_mm2:0);
-   const AsAppE_mm2=Math.max(fAppE.As_mm2||0,forf.Me>0?AsMinX_mm2:0);
+   const AsN_mm2=thE.Nt>0?thE.Nt*1.5*1000/fyd:0; /* acier supplémentaire pour la traction thermique si la déformation est empêchée (mm² par mètre) */
+   const AsTravX_mm2=Math.max(fTrav.As_mm2||0,AsMinX_mm2)+AsN_mm2;
+   const AsAppW_mm2=Math.max(fAppW.As_mm2||0,forf.Mw>0?AsMinX_mm2:0)+(forf.Mw>0?AsN_mm2:0);
+   const AsAppE_mm2=Math.max(fAppE.As_mm2||0,forf.Me>0?AsMinX_mm2:0)+(forf.Me>0?AsN_mm2:0);
    const espMax=dlEspacementsMax(h_cm); if(elsSaisi(dp,'sMaxX_mm')) espMax.zoneMax.x=+dp.sMaxX_mm; if(elsSaisi(dp,'sMaxY_mm')) espMax.zoneMax.y=+dp.sMaxY_mm; // travée et appuis = zones de moment maximal (x : min(2h ; 25 cm)) ; sens y de travée : min(3h ; 40 cm)
    const sMaxCourant_mm=espMax.zoneMax.x, sMaxY_mm=espMax.zoneMax.y;
    const barTravX=dlChooseBars(AsTravX_mm2,sMaxCourant_mm);
@@ -31599,7 +31608,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    if(sensDeux){
     AsMinY_mm2=dlAsMin_mm2(fctm,fyk,d_y_cm*10,hEff); AsMaxY_mm2=dlAsMax_mm2(h_cm*10);
     fTravY=dlFlexion(deuxSens.My,d_y_cm,fcd,fyd);
-    AsTravY_mm2=Math.max(fTravY.As_mm2||0,AsMinY_mm2);
+    AsTravY_mm2=Math.max(fTravY.As_mm2||0,AsMinY_mm2)+AsN_mm2;
     barTravY=dlChooseBars(AsTravY_mm2,sMaxY_mm);
     depasseY=AsTravY_mm2>AsMaxY_mm2;
    }
@@ -31639,7 +31648,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       if(sensDeux&&barTravY) Z.push(fcFissZone('Travée ly',secY,bb(barTravY),deuxSens.muy*MoQP,ctxF));
       fissuration={zones:Z,ctx:ctxF,psi2};
       /* contraintes ELS (EC2) : combinaison caractéristique G + Q, mêmes barres posées, α_e = E_s/E_c,eff (φ de la flèche) ; σ_c limité en XD, XF, XS */
-      { const MoC0=sensDeux?deuxSens.mux*(G+Q)*lx*lx:(G+Q)*lx*lx/8, MoC=MoC0+fxS.moC, fC=dlAddExtra(dlForfaitaire(dp,MoC0,alphaQ),fxS,'c'), mC={fck,phi:mat.phi}, Zc=[];
+      { const MoC0=sensDeux?deuxSens.mux*(G+Q)*lx*lx:(G+Q)*lx*lx/8, MoC=MoC0+fxS.moC, fC=dlThAdd(dlAddExtra(dlForfaitaire(dp,MoC0,alphaQ),fxS,'c'),thE,1), mC={fck,phi:mat.phi}, Zc=[];
         const sec=(b,d_cm)=>({b:1,h:h_cm/100,d:d_cm/100,dp:(h_cm-d_cm)/100,As1:b.As*1e-6,As2:0}), mk=(nom,b,d_cm,M)=>{ const r=fcContraintes(sec(b,d_cm),M,mC,fyk,ctxF.classe); Zc.push({nom,r,M_kNm:M,etat:r.etat}); };
         if(fC.Mt>0) mk('Travée lx',Object.assign({},barTravX),d_x_cm,fC.Mt);
         if(fC.Mw>0&&barAppW) mk('Appui gauche',barAppW,d_x_cm,fC.Mw);
@@ -47709,7 +47718,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ===== Variation de température : adaptateurs des modules (géométrie seulement ; aucun calcul du module n'est modifié, moteur commun window.thm) ===== */
   window.THM_GEOM=window.THM_GEOM||{};
   window.THM_GEOM.pc={prop:'dimPC',geom:dp=>{ const sp=(dp.travees||[]).map(x=>+x.portee_m).filter(v=>v>0), b=(+dp.b_cm)/100, h=(+dp.h_cm)/100; if(!sp.length||!(b>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et la section de la poutre.'}; const ap=dp.appuis||[]; return {ok:true,kind:'beam',integrated:true,fixL:!!(ap[0]&&ap[0].blocage_rotation),fixR:!!(ap[sp.length]&&ap[sp.length].blocage_rotation),spans:sp,h,A:b*h,I:b*h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
-  window.THM_GEOM.dl={prop:'dimDL',geom:dp=>{ const lx=+dp.lx_m, ly=+dp.ly_m, h=(+dp.h_cm)/100, n=Math.max(1,Math.round(+dp.nTravees)||1); if(!(lx>0)||!(ly>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et l\'épaisseur de la dalle.'}; return {ok:true,kind:'slab',perM:true,spans:new Array(n).fill(lx),B:ly,h,A:h,I:h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
+  window.THM_GEOM.dl={prop:'dimDL',geom:dp=>{ const lx=+dp.lx_m, ly=+dp.ly_m, h=(+dp.h_cm)/100, n=Math.max(1,Math.round(+dp.nTravees)||1); if(!(lx>0)||!(ly>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et l\'épaisseur de la dalle.'}; return {ok:true,kind:'slab',integrated:true,perM:true,spans:new Array(n).fill(lx),B:ly,h,A:h,I:h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   window.THM_GEOM.pf={prop:'dimPF',geom:dp=>{ const sp=(dp.portees||[]).map(Number).filter(v=>v>0), pb=dp.secPoutre||{}, pc=dp.secPoteau||{}, bb=(+pb.b)/100, hb=(+pb.h)/100, bc=(+pc.b)/100, hc=(+pc.h)/100, H=(dp.hauteurs||[]).map(Number).filter(v=>v>0)[0]; if(!sp.length||!(bb>0)||!(hb>0)||!(H>0)) return {ok:false,msg:'Renseigner d\'abord les portées, hauteurs et sections du portique.'}; return {ok:true,kind:'frame',spans:sp,h:hb,A:bb*hb,I:bb*hb*hb*hb/12,Hc:H,Ic:(bc>0&&hc>0)?bc*hc*hc*hc/12:0,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   window.THM_GEOM.dg={prop:'dimDG',geom:dp=>{ const L=+dp.L_m, B=+dp.B_m, h=(+dp.h_cm)/100; if(!(L>0)||!(B>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les dimensions du dallage.'}; const J=dgJ(dp), Lj=Math.max(J.px,J.py); return {ok:true,kind:'dallage',perM:true,spans:[Lj],Lj,B,Lfull:L,h,A:h,I:h*h*h/12,E:dgP(dp,'Ecm_MPa'),alpha0:10,mat:'beton',fric:dgP(dp,'muFrot')*dgP(dp,'gammaBeton')*h*Lj/2,lblL:'Allongement libre d\'un panneau (entre joints)'}; }};
   window.THM_GEOM.stl={prop:'dimSTL',geom:dp=>{ const L=+(dp.Lel_m||dp.lcry_m||dp.lcrz_m); let S=null; try{ S=stlSec(dp); }catch(_){ S=null; } if(!(L>0)||!S||!(S.A>0)) return {ok:false,msg:'Renseigner d\'abord la longueur et le profilé.'}; const E=(+dp.E_MPa>0)?+dp.E_MPa:210000; return {ok:true,kind:'beam',spans:[L],h:S.h/1000,A:S.A*1e-6,I:S.Iy*1e-12,E,alpha0:12,mat:'acier'}; }};
@@ -48204,6 +48213,11 @@ document.head.appendChild(st);
   const M=[],V=[],D=[]; sp.forEach((L,e)=>{ const m0=r.M[e]*ps, m1=r.M[e+1]*ps, k=r.kappa*ps, c0=k+(EI>0?m0/EI:0), c1=k+(EI>0?m1/EI:0), A=-L*(2*c0+c1)/6; M.push(xs[e].map(x=>m0+(m1-m0)*x/L)); V.push(xs[e].map(()=>(m1-m0)/L)); D.push(xs[e].map(x=>c0*x*x/2+(c1-c0)*x*x*x/(6*L)+A*x)); });
   const R=[]; for(let i=0;i<=n;i++){ const vr=i<n?(r.M[i+1]-r.M[i])*ps/sp[i]:0, vl=i>0?(r.M[i]-r.M[i-1])*ps/sp[i-1]:0; R.push(vr-vl); }
   return {M,V,Defl:D,R,_th:true}; }
+ function spanTh(pfx,dp,e){ /* moments thermiques de la travée e (déjà × ψ ; positif = fibre inférieure tendue) : appui gauche, appui droit, milieu (moyenne) */
+  const g=gOf(pfx,dp); if(!g||!g.ok||!on(dp)) return {on:false,Mw:0,Me:0,Mt:0}; const r=calc(dp,g); if(!r.ok||!r.M) return {on:false,Mw:0,Me:0,Mt:0}; const i=Math.max(0,Math.min(r.spans.length-1,e)), a=r.M[i]*r.psi, b=r.M[i+1]*r.psi; return {on:true,Mw:a,Me:b,Mt:(a+b)/2,gQ:r.gQ}; }
+ function strip(dp){ const d=Object.assign({},dp); delete d.thDT; delete d.thGrad; return d; }
+ function govern(dp,runBase,sig,fmt){ /* compare le dimensionnement avec et sans température : la température gouverne-t-elle ? */
+  try{ const r0=runBase(strip(dp)); return {r0,sig0:sig(r0),fmt}; }catch(e){ console.error(e); return null; } }
  function axial(pfx,dp){ /* effort normal thermique si la déformation est empêchée : positif = traction, déjà multiplié par ψ (kN, ou kN/m) */
   const g=gOf(pfx,dp); if(!g||!g.ok||!on(dp)) return 0; const r=calc(dp,g); if(!r.ok||r.N==null) return 0; return r.N*r.psi; }
  function ctxOf(pfx,t){ const A=reg()[pfx]; if(!A) return null; const dp=t&&t[A.prop]; if(!dp) return null; let g=null; try{ g=A.geom(dp,t); }catch(_){ g={ok:false,msg:'Géométrie incomplète.'}; } return {A,dp,g}; }
@@ -48272,7 +48286,7 @@ document.head.appendChild(st);
    return {hyp,rows,section:'<section class="ncSec">'+sec+'</section>',pts};
   }catch(e){ console.warn('thmNote',e); return null; }
  }
- window.thm={on,calc,svg,note,tableHtml,PARAMS,val,saisi,num,fr,inject,KIND2PFX,PX,wrapHtml,ctxOf,GQ,gOf,beamCase,axial,confirmWindow};
+ window.thm={on,calc,svg,note,tableHtml,PARAMS,val,saisi,num,fr,inject,KIND2PFX,PX,wrapHtml,ctxOf,GQ,gOf,beamCase,axial,confirmWindow,spanTh,strip,govern};
 })();
 </script>
 <script id="dimValidJs">
