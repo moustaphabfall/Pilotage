@@ -88,6 +88,14 @@ const run = async (d, tok, body) => { const r = await handle(req(tok, body), d);
   acces.get('uA|P1').statut = 'accepte'; const r2 = await run(d, 'tA', desc); eq(r2.s, 200, 'descente accordee'); eq(acces.get('uA|P1').utilise, 1, 'descente consomme un appel');
   const r3 = await run(d, 'tA', { ...desc, fichiers: [] }); eq(r3.s, 400, 'descente sans fichier');
 }
+{ /* mode support_cours : garde, validation des sources, aucun stockage, remboursement en cas d'echec */
+  const { d, w, acces } = monde(); const sc = { mode: 'support_cours', projet: 'P1', modele: { nom: 'Resume', structure: 'Un titre, trois points' }, consigne: '', sources: [{ nom: 'cours.pdf', texte: 'Le beton se coule en couches.' }] };
+  const r = await run(d, 'tA', sc); eq([r.s, r.j.code], [403, 'attente'], 'support : attente'); eq(w.appelsIA, 0, 'support : IA non appelee');
+  acces.get('uA|P1').statut = 'accepte'; const r2 = await run(d, 'tA', sc); eq(r2.s, 200, 'support accorde'); eq(acces.get('uA|P1').utilise, 1, 'support consomme un appel');
+  const r3 = await run(d, 'tA', { ...sc, sources: [] }); eq(r3.s, 400, 'support sans source'); eq(acces.get('uA|P1').utilise, 1, 'support sans source : rien consomme');
+  const r4 = await run(d, 'tA', { ...sc, sources: [{ nom: 'x', texte: '', images: [{ type: 'image/gif', data: 'AAAA' }] }] }); eq(r4.s, 400, 'support image refusee');
+  w.echec = true; const r5 = await run(d, 'tA', sc); eq(r5.s, 400, 'support echec serveur'); eq(acces.get('uA|P1').utilise, 1, 'support echec : appel rendu');
+}
 { /* simulation de l'environnement Deno : la fonction s'enregistre et répond */
   let h = null; globalThis.Deno = { serve: (f) => { h = f; }, env: { get: () => undefined } };
   await import('../supabase/fiche-ia.ts?deno'); eq(typeof h, 'function', 'Deno.serve appele'); delete globalThis.Deno;

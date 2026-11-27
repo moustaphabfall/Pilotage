@@ -26208,6 +26208,7 @@ window.createInterloc=function(returnTaskId){
 .be-pj-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px;}
 .be-pj-btns{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
 .be-pj-btns button{width:auto;}
+.be-pj-btns:has([data-bepj-ia])>button{flex:0 0 calc((100% - 16px)/3);max-width:calc((100% - 16px)/3);min-height:44px;box-sizing:border-box}.be-pj-btns>button[data-bepj-ia]{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-color:var(--ds-accent,#FFC400)!important;border-width:1.5px}.be-pj-btns>button[data-bepj-ia] svg{width:20px;height:20px}.be-pj-btns:has([data-bepj-ia])>button{padding-inline:6px;font-size:14px;line-height:1.2}
 .be-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:12px 0;}
 .be-tile{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;padding:0;cursor:pointer;color:inherit;font-size:12px;font-weight:600;min-height:auto;}
 .be-tile i{width:100%;aspect-ratio:1;display:grid;place-items:center;font-style:normal;font-size:28px;background:var(--panel,#fff);border-radius:16px;border:1px solid var(--line);}
@@ -26292,11 +26293,11 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
 
   /* pièce jointe (device/caméra) : holder = {pj:...} passé par référence, revalidé après ouverture du modal.
      key (facultatif) : suffixe d’id pour avoir plusieurs pièces jointes dans la même fenêtre (une par question). */
-  function bePjHtml(cur,key){
+  function bePjHtml(cur,key,opt){
     const k=key?'_'+key:'';
     return '<div class="field"><label>Pièce jointe</label>'
       +'<div class="be-pj-row"><span id="bePjSt'+k+'">'+(cur&&cur.name?esc(cur.name):'Aucune')+'</span></div>'
-      +'<div class="be-pj-btns"><button type="button" class="ghost" id="bePjBtn1'+k+'">📁 Depuis l’appareil</button><button type="button" class="ghost" id="bePjBtn2'+k+'">📷 Prendre une photo</button>'+(cur&&cur.name?'<button type="button" class="ghost" id="bePjDel'+k+'">✕ Retirer</button>':'')+'</div>'
+      +'<div class="be-pj-btns"><button type="button" class="ghost" id="bePjBtn1'+k+'">📁 Depuis l’appareil</button><button type="button" class="ghost" id="bePjBtn2'+k+'">📷 Prendre une photo</button>'+(opt&&opt.ia?'<button type="button" class="ghost" id="bePjIa'+k+'" data-bepj-ia="1" aria-label="IA : déposer des documents et les retravailler suivant un modèle" title="IA : déposer des documents et les retravailler suivant un modèle">'+(window.dimBiSvg?window.dimBiSvg('chat'):'')+'<span>IA</span></button>':'')+(cur&&cur.name?'<button type="button" class="ghost" id="bePjDel'+k+'">✕ Retirer</button>':'')+'</div>'
       +'<input type="file" id="bePjF1'+k+'" accept="image/*,.pdf,application/pdf" style="display:none;"><input type="file" id="bePjF2'+k+'" accept="image/*" capture="environment" style="display:none;"></div>';
   }
   function bePjWire(holder,key){
@@ -26308,6 +26309,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(b2) b2.onclick=()=>document.getElementById('bePjF2'+k).click();
     ['bePjF1'+k,'bePjF2'+k].forEach(id=>{ const inp=document.getElementById(id); if(!inp) return; inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f) return; readFileAsDataUrl(f).then(src=>{ holder.pj={name:f.name,src}; upd(); }); }; });
     if(d) d.onclick=()=>{ holder.pj=null; upd(); };
+    const ia=document.getElementById('bePjIa'+k); if(ia) ia.onclick=()=>{ if(window.coursIaOpen) window.coursIaOpen({onUse:(pj,titre)=>{ holder.pj=pj; upd(); if(holder.onTitre) holder.onTitre(titre); }}); };
   }
   /* visionneuse flottante (photo/PDF) : fenêtre déplaçable et redimensionnable, pour lire la pièce jointe d’une
      question tout en répondant dans la fenêtre de l’évaluation restée ouverte derrière. */
@@ -46895,8 +46897,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>📚 Nouveau support de cours</h3>'
       +'<div class="field"><label>Thème</label><input type="text" id="be-sup-a"></div>'
       +'<div class="field"><label>Date de dépôt</label><input type="date" id="be-sup-b" value="'+esc(beToday())+'"></div>'
-      +bePjHtml(null)
+      +bePjHtml(null,null,{ia:true})
       +'<div class="modal-actions"><button class="primary" id="be-sup-save">Enregistrer</button><button class="ghost" onclick="closeModal()">Annuler</button></div>', ()=>beSessionSupportsManage(sessionId));
+    holder.onTitre=t=>{ const th=document.getElementById('be-sup-a'); if(th&&!th.value.trim()) th.value=String(t||'').slice(0,120); };
     bePjWire(holder);
     document.getElementById('be-sup-save').onclick=()=>{
       const theme=document.getElementById('be-sup-a').value.trim();
@@ -48681,6 +48684,184 @@ document.head.appendChild(st);
  css.textContent='.iaCard{max-width:560px;max-height:88vh;overflow:auto}.iaRow{padding:10px 0;border-bottom:1px solid var(--ds-line,#DAD8D1)}.iaRow small{color:var(--ds-ink-soft,#5f6a66)}.iaB .dvBtns{justify-content:flex-end}#pvIa.iaNew{font-weight:700}';
  document.head.appendChild(css);
 })();
+</script>
+<script id="coursIaJs">
+/* ===================== Support de cours : bouton IA (onglet Formation) =====================
+   Déposer des documents sources, choisir un modèle (intégré ou le sien), recevoir un support retravaillé, relire, télécharger, l'utiliser comme pièce jointe.
+   Confidentialité : seuls le texte extrait et des images réduites partent vers l'IA (fonction « fiche-ia », mode support_cours, par dimIaCall et la garde d'usage) ;
+   rien n'est conservé côté serveur ni chez un tiers ; les copies temporaires (texte, images, modèle déposé) sont effacées après chaque génération, à la fermeture et en cas d'échec.
+   La logique (lecture des documents, demande, résultat, texte, effacement) est séparée de l'écran pour être testée sans navigateur : window.CoursIa. */
+(function(G){
+ 'use strict';
+ const MODELES=[
+  {id:'fiche',nom:'Fiche pédagogique',structure:'Titre ; public visé ; durée conseillée ; objectifs ; contenu en étapes ; points de vigilance ; à retenir.'},
+  {id:'plan',nom:'Plan de cours avec objectifs',structure:'Titre ; objectifs généraux ; objectifs de chaque partie ; déroulé des parties avec durée ; évaluation prévue.'},
+  {id:'diapo',nom:'Support de présentation par diapositives',structure:'Titre ; une section par diapositive (titre court + 3 à 5 points) ; diapositive finale « À retenir ».'},
+  {id:'resume',nom:'Résumé d\'une page',structure:'Titre ; résumé en un court paragraphe ; cinq points clés ; vocabulaire important.'},
+  {id:'quiz',nom:'Quiz de validation des acquis',structure:'Titre ; dix questions à choix (trois réponses possibles, la bonne réponse indiquée) tirées des sources ; barème simple.'},
+  {id:'procedure',nom:'Procédure pas à pas',structure:'Titre ; matériel nécessaire ; étapes numérotées courtes ; contrôles à faire ; erreurs fréquentes.'}];
+ const EXEMPLE_CONSIGNE='Pour des apprentis de première année, phrases très simples, une idée par phrase.';
+ const EXEMPLE={titre:'Exemple : le coulage du béton par couches',sections:[
+  {titre:'Objectif',paragraphes:['Savoir couler le béton par couches régulières.']},
+  {titre:'Étapes',liste:['Préparer le coffrage propre et humide.','Couler une première couche.','Vibrer la couche avant la suivante.']},
+  {titre:'À retenir',paragraphes:['Cet exemple est simulé : il ne vient d\'aucun de vos documents.']}],manquant:['Durée de la séance (absente des sources)']};
+ const MAXTXT=60000, MAXIMG=6, MAXPX=1024;
+ const nettoyer=s=>String(s==null?'':s).replace(/\u0000/g,'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+ const extDe=n=>{ const m=/\.([A-Za-z0-9]+)$/.exec(n||''); return m?m[1].toLowerCase():''; };
+ const genre=f=>{ const t=String(f&&f.type||'').toLowerCase(), e=extDe(f&&f.name); if(t==='application/pdf'||e==='pdf') return 'pdf'; if(/^image\//.test(t)||['jpg','jpeg','png','webp','gif','heic'].includes(e)) return 'image'; if(e==='docx'||t==='application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx'; if(e==='doc') return 'doc'; if(/^text\//.test(t)||['txt','md','csv','rtf'].includes(e)) return 'texte'; return 'inconnu'; };
+ /* Word (.docx) : lecture du zip et du texte de word/document.xml, sans bibliothèque */
+ async function inflate(u8){ const ds=new DecompressionStream('deflate-raw'); const w=ds.writable.getWriter(); w.write(u8); w.close(); return new Uint8Array(await new Response(ds.readable).arrayBuffer()); }
+ async function docxTexte(buf){
+  const u=new Uint8Array(buf), dv=new DataView(buf); let e=-1; for(let i=u.length-22;i>=Math.max(0,u.length-70000);i--){ if(dv.getUint32(i,true)===0x06054b50){ e=i; break; } } if(e<0) throw new Error('Fichier Word illisible.');
+  const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); let xml=null;
+  for(let k=0;k<n;k++){ if(dv.getUint32(p,true)!==0x02014b50) break; const meth=dv.getUint16(p+10,true), cs=dv.getUint32(p+20,true), nl=dv.getUint16(p+28,true), el=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), lo=dv.getUint32(p+42,true);
+   const nom=new TextDecoder().decode(u.subarray(p+46,p+46+nl)); p+=46+nl+el+cl;
+   if(nom==='word/document.xml'){ const ln=dv.getUint16(lo+26,true), le=dv.getUint16(lo+28,true); const d0=lo+30+ln+le; const raw=u.subarray(d0,d0+cs); const bytes=meth===0?raw:await inflate(raw); xml=new TextDecoder('utf-8').decode(bytes); break; } }
+  if(xml==null) throw new Error('Fichier Word sans texte lisible.');
+  const t=xml.replace(/<w:tab\/>/g,'\t').replace(/<\/w:p>/g,'\n').replace(/<w:br\/>/g,'\n').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&');
+  return nettoyer(t);
+ }
+ /* lecture d'un document : {nom, texte, images:[{type,data}], erreur}. deps (navigateur) : pdf(file)->{texte,images}, image(file)->{type,data} */
+ async function lireSource(file,deps){
+  const nom=String(file&&file.name||'document'), g=genre(file), r={nom,texte:'',images:[],erreur:null};
+  try{
+   if(g==='texte') r.texte=nettoyer(await file.text());
+   else if(g==='docx') r.texte=await docxTexte(await file.arrayBuffer());
+   else if(g==='pdf'){ const x=await deps.pdf(file); r.texte=nettoyer(x.texte); r.images=(x.images||[]).slice(0,4); }
+   else if(g==='image'){ const im=await deps.image(file); r.images=[im]; }
+   else if(g==='doc') r.erreur='Ancien format Word (.doc) non lu : enregistrez-le en .docx ou en PDF.';
+   else r.erreur='Format non reconnu : utilisez PDF, image, Word (.docx) ou texte.';
+   if(!r.erreur&&!r.texte&&!r.images.length) r.erreur='Aucun texte lisible dans ce document.';
+  }catch(e){ r.erreur=String((e&&e.message)||e).slice(0,160); }
+  return r;
+ }
+ /* demande envoyée à l'IA : texte et images réduites seulement, jamais les fichiers d'origine */
+ function construireDemande(sources,modeleId,modeleDoc,consigne){
+  const ok=(sources||[]).filter(s=>s&&!s.erreur); let tot=0, nimg=0;
+  const src=ok.map(s=>{ let t=s.texte||''; if(tot+t.length>MAXTXT) t=t.slice(0,Math.max(0,MAXTXT-tot)); tot+=t.length; const im=(s.images||[]).filter(()=>nimg++<MAXIMG); return {nom:s.nom,texte:t,images:im}; });
+  const m=MODELES.find(x=>x.id===modeleId);
+  const body={mode:'support_cours',sources:src,consigne:nettoyer(consigne).slice(0,1500)};
+  if(modeleDoc&&modeleDoc.texte){ body.modele={nom:'Modèle déposé : '+modeleDoc.nom,structure:'Suivre la structure du document modèle fourni.'}; body.modele_texte=modeleDoc.texte.slice(0,8000); }
+  else body.modele=m?{nom:m.nom,structure:m.structure}:{nom:'Libre',structure:'Titre ; sections claires.'};
+  return body;
+ }
+ /* résultat reçu : forme sûre, textes seulement */
+ function validerResultat(d){
+  if(!d||typeof d!=='object') return null; const S=x=>nettoyer(typeof x==='string'?x:'').slice(0,4000);
+  const secs=(Array.isArray(d.sections)?d.sections:[]).slice(0,40).map(s=>({titre:S(s&&s.titre)||'Section',paragraphes:(Array.isArray(s&&s.paragraphes)?s.paragraphes:[]).map(S).filter(Boolean).slice(0,40),liste:(Array.isArray(s&&s.liste)?s.liste:[]).map(S).filter(Boolean).slice(0,40)}));
+  const r={titre:S(d.titre)||'Support de cours',sections:secs,manquant:(Array.isArray(d.manquant)?d.manquant:[]).map(S).filter(Boolean).slice(0,30)};
+  return (secs.length||r.manquant.length)?r:null;
+ }
+ /* texte modifiable : « # Titre », « ## Section », « - point » ; manquants repris à part */
+ function versTexte(r){ const L=['# '+r.titre]; r.sections.forEach(s=>{ L.push('','## '+s.titre); s.paragraphes.forEach(p=>L.push(p)); s.liste.forEach(p=>L.push('- '+p)); }); return L.join('\n'); }
+ function depuisTexte(t,manquant){ const r={titre:'Support de cours',sections:[],manquant:manquant||[]}; let cur=null; String(t).split('\n').forEach(l=>{ const x=l.replace(/\s+$/,''); if(/^# /.test(x)){ r.titre=x.slice(2).trim()||r.titre; return; } if(/^## /.test(x)){ cur={titre:x.slice(3).trim(),paragraphes:[],liste:[]}; r.sections.push(cur); return; } if(!x.trim()) return; if(!cur){ cur={titre:'Introduction',paragraphes:[],liste:[]}; r.sections.push(cur); } if(/^- /.test(x)) cur.liste.push(x.slice(2).trim()); else cur.paragraphes.push(x.trim()); }); return r; }
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const TAG='Généré par IA, à relire par le formateur. Non vérifié.';
+ function versHtml(r){ return '<h1>'+esc(r.titre)+'</h1><p><i>'+esc(TAG)+'</i></p>'+r.sections.map(s=>'<h2>'+esc(s.titre)+'</h2>'+s.paragraphes.map(p=>'<p>'+esc(p)+'</p>').join('')+(s.liste.length?'<ul>'+s.liste.map(p=>'<li>'+esc(p)+'</li>').join('')+'</ul>':'')).join('')+(r.manquant.length?'<h2>Ce qui manque dans les sources</h2><ul>'+r.manquant.map(p=>'<li>'+esc(p)+'</li>').join('')+'</ul>':''); }
+ const pdfTxt=s=>String(s).replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/œ/g,'oe').replace(/Œ/g,'OE').replace(/[•·]/g,'-').replace(/[^\u0000-ÿ]/g,'?');
+ /* effacement des copies temporaires : toujours, même après un échec */
+ function effacer(tmp){ if(!tmp) return; try{ (tmp.sources||[]).forEach(s=>{ s.texte=''; s.images=[]; }); if(tmp.sources) tmp.sources.length=0; if(tmp.modeleDoc){ tmp.modeleDoc.texte=''; } tmp.modeleDoc=null; (tmp.urls||[]).forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(_){ } }); if(tmp.urls) tmp.urls.length=0; if(tmp.body){ tmp.body.sources=[]; delete tmp.body.modele_texte; } tmp.body=null; }catch(_){ } }
+ /* appel serveur : résultat ou erreur claire ; effacement garanti par l'appelant */
+ async function demander(body,call){
+  if(typeof navigator!=='undefined'&&navigator.onLine===false) return {erreur:'Hors ligne : l\'IA a besoin d\'Internet.',indispo:true};
+  let x; try{ x=await call(body); }catch(e){ return {erreur:'IA indisponible pour l\'instant. Vous pouvez voir un exemple de résultat.',indispo:true}; }
+  const {resp,j}=x||{}; const pol=G.dimIaPolite?G.dimIaPolite(j):null; if(pol) return {erreur:pol};
+  if(!resp||resp.status===404) return {erreur:'IA indisponible pour l\'instant. Vous pouvez voir un exemple de résultat.',indispo:true};
+  if(!resp.ok||!j||j.error||!j.data) return {erreur:(j&&j.error)||('Le serveur IA a répondu une erreur. Rien n\'a été modifié.')};
+  const r=validerResultat(j.data); if(!r) return {erreur:'La réponse de l\'IA est vide ou incomplète. Précisez votre consigne.'};
+  return {resultat:r};
+ }
+ const EXEMPLE_OK=validerResultat(EXEMPLE);
+ const API={MODELES,EXEMPLE:EXEMPLE_OK,EXEMPLE_CONSIGNE,genre,docxTexte,lireSource,construireDemande,validerResultat,versTexte,depuisTexte,versHtml,effacer,demander,pdfTxt,TAG,MAXTXT,MAXIMG};
+ G.CoursIa=API; if(typeof module!=='undefined'&&module.exports) module.exports=API;
+ if(typeof document==='undefined') return;
+ /* ---------- Écran ---------- */
+ const T=s=>(G.dimT?G.dimT(s):s);
+ const ib=(icon,label,attrs,dis)=>'<span class="dimIBw"><button type="button" class="dimIB" data-dimui="1" aria-label="'+esc(T(label))+'" title="'+esc(T(label))+'" '+(attrs||'')+(dis?' disabled aria-disabled="true"':'')+'>'+(G.dimBiSvg?G.dimBiSvg(icon):'')+'</button><span class="dimIBl" data-dimfr="'+esc(label)+'">'+esc(T(label))+'</span></span>';
+ const clip=m=>{ try{ clipToast(T(m)); }catch(_){ } };
+ const reduireImage=(src,cb)=>{ const im=new Image(); im.onload=()=>{ const k=Math.min(1,MAXPX/Math.max(im.width,im.height)); const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k)); c.getContext('2d').drawImage(im,0,0,c.width,c.height); cb(null,c.toDataURL('image/jpeg',0.6).split(',')[1]); }; im.onerror=()=>cb(new Error('Image illisible.')); im.src=src; };
+ const depsNav={
+  image:f=>new Promise((res,rej)=>{ const u=URL.createObjectURL(f); reduireImage(u,(e,d)=>{ try{ URL.revokeObjectURL(u); }catch(_){ } if(e) rej(e); else res({type:'image/jpeg',data:d}); }); }),
+  pdf:async f=>{ const lib=await loadPdfJs(); const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; let texte=''; const n=Math.min(pdf.numPages,60);
+   for(let i=1;i<=n;i++){ const pg=await pdf.getPage(i); const c=await pg.getTextContent(); texte+=c.items.map(x=>x.str).join(' ')+'\n\n'; }
+   const images=[]; if(nettoyer(texte).length<40){ for(let i=1;i<=Math.min(pdf.numPages,4);i++){ const pg=await pdf.getPage(i); const v0=pg.getViewport({scale:1}); const k=MAXPX/Math.max(v0.width,v0.height); const v=pg.getViewport({scale:k}); const cv=document.createElement('canvas'); cv.width=Math.round(v.width); cv.height=Math.round(v.height); await pg.render({canvasContext:cv.getContext('2d'),viewport:v}).promise; images.push({type:'image/jpeg',data:cv.toDataURL('image/jpeg',0.6).split(',')[1]}); } }
+   return {texte,images}; }};
+ function dlBlob(blob,nom){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nom; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(_){ } },4000); }
+ const nomFichier=r=>pdfTxt(String(r.titre).normalize('NFD').replace(/[\u0300-\u036f]/g,'')).replace(/[^A-Za-z0-9 _-]+/g,'').trim().slice(0,60)||'support-de-cours';
+ function imprimer(r){ const f=document.createElement('iframe'); f.setAttribute('aria-hidden','true'); f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f); const d=f.contentWindow.document; d.open(); d.write('<!doctype html><meta charset="utf-8"><title>'+esc(r.titre)+'</title><style>body{font:14px/1.5 Arial,sans-serif;margin:24px;color:#000}h1{font-size:22px}h2{font-size:16px;margin-top:18px}@page{margin:16mm}</style>'+versHtml(r)); d.close(); setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(_){ } setTimeout(()=>{ try{ f.remove(); }catch(_){ } },2000); },300); }
+ function wordBlob(r){ return new Blob(['﻿<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>'+esc(r.titre)+'</title></head><body style="font-family:Arial">'+versHtml(r)+'</body></html>'],{type:'application/msword'}); }
+ async function pdfBlob(r){ const Js=await loadPdfLibs(); const doc=new Js({unit:'mm',format:'a4'}); const M=18, W=174, B=279; let y=M; const ligne=(t,fs,bold,gris)=>{ doc.setFont('helvetica',bold?'bold':'normal'); doc.setFontSize(fs); doc.setTextColor(gris?110:0); doc.splitTextToSize(pdfTxt(t),W).forEach(l=>{ if(y+fs*0.5>B){ doc.addPage(); y=M; } doc.text(l,M,y+fs*0.35); y+=fs*0.5; }); y+=1.5; };
+  ligne(r.titre,17,true); ligne(TAG,9,false,true); r.sections.forEach(s=>{ y+=2; ligne(s.titre,12.5,true); s.paragraphes.forEach(p=>ligne(p,10.5)); s.liste.forEach(p=>ligne('- '+p,10.5)); }); if(r.manquant.length){ y+=2; ligne('Ce qui manque dans les sources',12.5,true); r.manquant.forEach(p=>ligne('- '+p,10.5)); } return doc.output('blob'); }
+ const blobVersDataUrl=b=>new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(b); });
+ G.coursIaOpen=function(opts){
+  opts=opts||{}; const old=document.getElementById('ciaOv'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='ciaOv'; ov.className='pcFeuOv dvOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','ciaT'); document.body.appendChild(ov);
+  try{ G.dimChEsc&&G.dimChEsc(ov); }catch(_){ }
+  const tmp={sources:[],modeleDoc:null,urls:[],body:null}; const S={modele:'fiche',consigne:'',busy:false,err:null,indispo:false,res:null,manquant:[],texte:'',accepte:false,edit:false,simule:false,nomModele:''};
+  let rec=null, alive=true;
+  const fermer=()=>{ alive=false; try{ rec&&rec.stop(); }catch(_){ } effacer(tmp); ov.remove(); };
+  const mo=new MutationObserver(()=>{ if(!document.body.contains(ov)){ mo.disconnect(); alive=false; effacer(tmp); } }); mo.observe(document.body,{childList:true});
+  const draw=()=>{
+   const srcH=tmp.sources.length?'<ul class="ciaL">'+tmp.sources.map((s,i)=>'<li>'+esc(s.nom)+(s.erreur?' <span class="dvErr" role="alert">'+esc(T(s.erreur))+'</span>':' <small>('+esc(T(s.images.length&&!s.texte?'image':'texte lu'))+')</small>')+' <button type="button" class="ciaX dimLockExempt" data-cia="rm" data-i="'+i+'" aria-label="'+esc(T('Retirer'))+'">×</button></li>').join('')+'</ul>':'<p class="pcNote">'+esc(T(S.fait?'Copies effacées : redéposez vos documents pour relancer.':'Aucun document déposé.'))+'</p>';
+   const modH=MODELES.map(m=>'<button type="button" class="ciaMod'+(!tmp.modeleDoc&&S.modele===m.id?' on':'')+'" data-cia="mod" data-m="'+m.id+'" aria-pressed="'+(!tmp.modeleDoc&&S.modele===m.id?'true':'false')+'"><b>'+esc(T(m.nom))+'</b></button>').join('');
+   const resH=S.res?('<p class="dvTag" role="note">'+esc(T(S.simule?'Exemple simulé : il ne vient pas de vos documents. ':'')+TAG)+'</p>'
+     +(S.manquant.length?'<div class="dvSens" role="note"><b>'+esc(T('Ce qui manque dans vos documents'))+' :</b><ul>'+S.manquant.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>':'')
+     +(S.edit?'<textarea class="ciaTx" rows="14" data-cia-tx aria-label="'+esc(T('Texte du résultat'))+'"></textarea>':'<div class="ciaRes">'+versHtml(depuisTexte(S.texte,[])).replace(/<p><i>.*?<\/i><\/p>/,'')+'</div>')
+     +'<div class="dvBtns">'+(S.edit?ib('check','J\'accepte','data-cia="ok"'):(S.accepte?ib('edit','Je modifie','data-cia="edit"'):ib('check','J\'accepte','data-cia="ok"')+ib('edit','Je modifie','data-cia="edit"')))+'</div>'
+     +'<div class="dvBtns">'+ib('print','Imprimer ou PDF','data-cia="print"')+ib('note','Document modifiable','data-cia="word"')+ib('link','Utiliser comme pièce jointe','data-cia="use"',!S.accepte||S.edit)+'</div>'
+     +(S.accepte&&!S.edit?'':'<p class="pcNote">'+esc(T('Touchez « J\'accepte » pour pouvoir utiliser le résultat comme pièce jointe.'))+'</p>')):'<p class="pcNote">'+esc(T('Le résultat apparaîtra ici.'))+'</p>';
+   ov.innerHTML='<div class="pcFeuCard dvCard ciaCard"><h4 id="ciaT">'+esc(T('Support de cours avec l\'IA'))+'</h4>'
+    +'<p class="pcNote ciaPriv" role="note">'+esc(T('Confidentialité : seuls le texte et des images réduites de vos documents sont envoyés à l\'IA, le temps de la réponse. Rien n\'est gardé sur le serveur ni chez un tiers. Les copies temporaires sont effacées après chaque essai et à la fermeture. Vos documents d\'origine ne changent pas.'))+'</p>'
+    +'<h5 class="dvH5 ciaH" data-f="src">1. '+esc(T('Mes documents'))+'</h5><div class="ciaB"><input type="file" data-cia-f="src" multiple hidden accept=".pdf,image/*,.docx,.txt,.md,.csv,text/plain"><input type="file" data-cia-f="cam" hidden accept="image/*" capture="environment">'+srcH+'<div class="dvBtns">'+ib('up','Ajouter des documents','data-cia="add"')+ib('brush','Prendre une photo','data-cia="cam"')+'</div><p class="pcNote">'+esc(T('PDF, image, Word (.docx), texte ou photo. Plusieurs documents possibles.'))+'</p></div>'
+    +'<h5 class="dvH5 ciaH" data-f="mod">2. '+esc(T('Mon modèle'))+'</h5><div class="ciaB"><div class="ciaMods" role="group" aria-label="'+esc(T('Modèles'))+'">'+modH+'</div>'
+    +'<input type="file" data-cia-f="mod" hidden accept=".pdf,.docx,.txt,.md,text/plain">'+(tmp.modeleDoc?'<p class="pcNote">'+esc(T('Modèle déposé'))+' : <b>'+esc(tmp.modeleDoc.nom)+'</b> <button type="button" class="ciaX dimLockExempt" data-cia="rmmod" aria-label="'+esc(T('Retirer'))+'">×</button></p>':'')
+    +'<div class="dvBtns">'+ib('up','Déposer mon modèle','data-cia="addmod"')+'</div></div>'
+    +'<h5 class="dvH5 ciaH" data-f="cons">3. '+esc(T('Consigne (facultatif)'))+'</h5><div class="ciaB"><textarea class="ciaTx" rows="3" maxlength="1500" data-cia-cons aria-label="'+esc(T('Consigne'))+'" placeholder=""></textarea><div class="dvBtns">'+ib('mic','Micro','data-cia="mic"')+ib('play','Exemple','data-cia="ex"')+'</div></div>'
+    +(S.err?'<div class="dimErrBox" role="alert"><b>'+esc(T(S.err))+'</b>'+(S.indispo?'<div class="dvBtns">'+ib('play','Voir un exemple','data-cia="sim"')+'</div>':'')+'</div>':'')
+    +'<div class="dvBtns">'+ib('check',S.busy?'Rédaction…':'Rédiger avec l\'IA','data-cia="go"',S.busy)+ib('close','Fermer','data-cia="close"')+'</div>'
+    +'<h5 class="dvH5 ciaH" data-f="res">4. '+esc(T('Résultat'))+'</h5><div class="ciaB">'+resH+'</div></div>';
+   const ta=ov.querySelector('[data-cia-cons]'); if(ta){ ta.value=S.consigne; ta.oninput=()=>{ S.consigne=ta.value; }; }
+   const tx=ov.querySelector('[data-cia-tx]'); if(tx){ tx.value=S.texte; tx.oninput=()=>{ S.texte=tx.value; }; }
+   ov.querySelectorAll('.ciaH').forEach(h=>{ const b=h.nextElementSibling; if(b&&G.dimFoldBlock) G.dimFoldBlock(h,b,'cia:'+h.dataset.f,h.dataset.f==='res'); });
+   if(S.res&&!ov._resOpen){ ov._resOpen=1; }
+  };
+  const lire=async(files,cible)=>{ for(const f of files){ const s=await lireSource(f,depsNav); if(!alive) return; if(cible==='mod'){ if(s.erreur){ clip(s.erreur); continue; } tmp.modeleDoc={nom:s.nom,texte:s.texte}; } else tmp.sources.push(s); } S.fait=false; draw(); };
+  const go=async()=>{
+   if(S.busy) return; const ok=tmp.sources.filter(s=>!s.erreur); if(!ok.length){ S.err='Déposez d\'abord au moins un document lisible.'; S.indispo=false; draw(); return; }
+   S.busy=true; S.err=null; S.indispo=false; S.simule=false; draw();
+   tmp.body=construireDemande(tmp.sources,S.modele,tmp.modeleDoc,S.consigne); let r;
+   try{ r=await demander(tmp.body,G.dimIaCall); }finally{ effacer(tmp); S.fait=true; }
+   if(!alive) return; S.busy=false;
+   if(r.resultat){ S.res=r.resultat; S.manquant=r.resultat.manquant; S.texte=versTexte(r.resultat); S.accepte=false; S.edit=false; S.err=null; } else { S.err=r.erreur; S.indispo=!!r.indispo; }
+   draw(); if(S.res){ const h=ov.querySelector('.ciaH[data-f="res"]'); if(h) h.scrollIntoView({block:'nearest'}); }
+  };
+  const cur=()=>depuisTexte(S.texte,S.manquant);
+  ov.addEventListener('change',e=>{ const f=e.target.closest('[data-cia-f]'); if(!f) return; const files=[...(f.files||[])]; f.value=''; if(files.length) lire(files,f.dataset.ciaF==='mod'?'mod':'src'); });
+  ov.addEventListener('click',async e=>{
+   if(e.target===ov){ fermer(); return; } const b=e.target.closest('[data-cia]'); if(!b) return; const w=b.dataset.cia;
+   if(w==='close'){ fermer(); return; } if(w==='add'){ ov.querySelector('[data-cia-f="src"]').click(); return; } if(w==='cam'){ ov.querySelector('[data-cia-f="cam"]').click(); return; } if(w==='addmod'){ ov.querySelector('[data-cia-f="mod"]').click(); return; }
+   if(w==='rm'){ tmp.sources.splice(+b.dataset.i,1); draw(); return; } if(w==='rmmod'){ tmp.modeleDoc=null; draw(); return; }
+   if(w==='mod'){ S.modele=b.dataset.m; tmp.modeleDoc=null; draw(); return; }
+   if(w==='ex'){ S.consigne=EXEMPLE_CONSIGNE; draw(); return; }
+   if(w==='mic'){ const SR=G.SpeechRecognition||G.webkitSpeechRecognition; if(!SR){ clip('Dictée non disponible sur ce navigateur. Utilisez la dictée du clavier.'); return; } if(rec){ try{ rec.stop(); }catch(_){ } return; }
+    const ta=ov.querySelector('[data-cia-cons]'); const base=ta.value?ta.value+' ':''; const r=new SR(); r.lang='fr-FR'; r.interimResults=true; rec=r; r.onresult=ev=>{ let t=''; for(let i=0;i<ev.results.length;i++) t+=ev.results[i][0].transcript; ta.value=base+t; S.consigne=ta.value; }; r.onerror=()=>clip('Dictée indisponible.'); r.onend=()=>{ rec=null; b.classList.remove('on'); }; try{ r.start(); b.classList.add('on'); }catch(_){ rec=null; } return; }
+   if(w==='go'){ go(); return; }
+   if(w==='sim'){ S.res=EXEMPLE_OK; S.manquant=EXEMPLE_OK.manquant; S.texte=versTexte(EXEMPLE_OK); S.simule=true; S.accepte=false; S.edit=false; S.err=null; draw(); return; }
+   if(w==='edit'){ S.edit=true; S.accepte=false; draw(); return; } if(w==='ok'){ S.edit=false; S.accepte=true; draw(); return; }
+   if(w==='print'){ imprimer(cur()); return; } if(w==='word'){ dlBlob(wordBlob(cur()),nomFichier(cur())+'.doc'); return; }
+   if(w==='use'){ if(!S.accepte||S.edit) return; const r=cur(); let pj;
+    try{ const bl=await pdfBlob(r); pj={name:nomFichier(r)+'.pdf',src:await blobVersDataUrl(bl)}; }catch(_){ const bl=wordBlob(r); pj={name:nomFichier(r)+'.doc',src:await blobVersDataUrl(bl)}; }
+    try{ opts.onUse&&opts.onUse(pj,r.titre); }catch(_){ } clip('Le résultat est rattaché au support de cours.'); fermer(); return; }
+  });
+  draw();
+ };
+ const css=document.createElement('style'); css.id='coursIaCss';
+ css.textContent='.ciaCard{max-width:620px;max-height:90vh;overflow:auto}.ciaPriv{border:1.5px solid var(--ds-accent,#FFC400);border-radius:12px;padding:8px 12px;font-size:14px}.ciaL{list-style:none;margin:0 0 6px;padding:0}.ciaL li{padding:4px 0;overflow-wrap:anywhere}.ciaX{min-width:44px;min-height:44px;background:transparent;border:0;color:inherit;font-size:20px;cursor:pointer}'
+  +'.ciaMods{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:0 0 8px}.ciaMod{min-height:44px;padding:8px 10px;text-align:start;background:transparent;color:inherit;border:1.5px solid var(--ds-line,#DAD8D1);border-radius:12px;font:inherit;cursor:pointer}.ciaMod.on{border-color:var(--ds-accent,#FFC400);background:color-mix(in srgb,var(--ds-accent,#FFC400) 14%,transparent)}'
+  +'.ciaTx{width:100%;box-sizing:border-box;background:transparent;color:inherit;border:0;border-bottom:1.5px solid var(--ds-line,#DAD8D1);font:inherit;font-size:16px;padding:8px 2px;resize:vertical}.ciaRes{border-left:4px solid var(--ds-accent,#FFC400);padding:4px 12px;margin:6px 0;overflow-wrap:anywhere}.ciaRes h1{font-size:19px}.ciaRes h2{font-size:16px}'
+  +'.ciaCard .dvBtns .dimIB{border-color:var(--ds-accent,#FFC400)!important}.ciaCard .dvBtns{justify-content:flex-end}.ciaBtnRow{display:inline-flex}';
+ document.head.appendChild(css);
+})(typeof window!=='undefined'?window:globalThis);
 </script>
 <script id="dimValidJs">
 /* ===================== Fenêtre de validation commune + méthodes décrites par l'utilisateur (tous modules) =====================
