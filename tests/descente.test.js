@@ -71,4 +71,5 @@ t('tous les types ont une forme',()=>{ const d={format:X.FORMAT,version:X.VERSIO
  const r=X.check(d); assert(r.ok,JSON.stringify(r.erreurs)); const mq=X.massing(r.doc); assert.strictEqual(mq.boites.length,8); mq.boites.forEach(b=>{ assert(b.poly.length>=4); assert(b.z1>b.z0); b.poly.forEach(q=>{ assert(isFinite(q[0])&&isFinite(q[1])); }); }); });
 t('fmt virgule decimale',()=>{ assert.strictEqual(X.fmt(2.5),'2,5'); assert.strictEqual(X.fmt(10.6),'10,6'); });
 t('aucune reference de source dans le module',()=>{ assert(!/classeur|guide p\.|Concrete Centre|Pratique de l/i.test(m[1])); });
+t('exemple du plugin Revit conforme au contrat',()=>{ const f=path.join(__dirname,'..','plugins','revit','exemple','exemple-revit.json'); const r=X.read(fs.readFileSync(f,'utf8')); assert(r.ok,JSON.stringify(r.erreurs)); assert.strictEqual(r.avertissements.length,0); assert.strictEqual(r.stats.ouvrages,8); const p=X.plan(r.doc,{}); assert.strictEqual(p.aCreer,8); });
 console.log(n+' tests, '+bad+' echec(s)'); process.exit(bad?1:0);
