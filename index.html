@@ -26547,6 +26547,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       parts.forEach(pt=>{ const d=document.createElement('div'); d.innerHTML=pt; const tx=d.textContent.trim(); if(!/⚠/.test(tx)) return;
        const bad=/non vérifi|NON vérifi|dépass|insuffisan|à revoir|augmenter/i.test(tx); const k=tx.slice(0,140); if(!AN.some(a=>a.k===k)) AN.push({k,bad,tx}); }); });
     { const sn=window.dimSolNoteTxt&&window.dimSolNoteTxt(dp); if(sn) AN.push({k:'solclass',bad:false,tx:sn}); }
+    let thN=null; try{ thN=window.thm?window.thm.note(dp,kind,t):null; }catch(_){ thN=null; } if(thN) thN.pts.forEach(q=>{ AN.push({k:'th'+q.tx.slice(0,60),bad:!!q.bad,tx:q.tx}); });
     let dvN=null; try{ dvN=window.dimValidNote?window.dimValidNote(dp,kind):null; }catch(_){ dvN=null; } if(dvN) dvN.pts.forEach(q=>{ if(!AN.some(a=>a.tx===q.tx)) AN.push({k:'dv'+q.tx.slice(0,60),bad:!!q.bad,tx:q.tx}); });
     if(/par défaut/i.test(html)&&!AN.some(a=>!a.bad)) AN.push({k:'def',bad:false,tx:'Des coefficients sont retenus « par défaut » (voir les sections ci-dessus) : à confirmer par le validateur.'});
     /* sections : une par titre h4 / h5 */
@@ -26561,6 +26562,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     if(hasPlan) AN.push({k:'ech',bad:false,tx:'Échelle des plans '+echTxt+'. Vues non à l\'échelle : schémas de façonnage des barres (nomenclature) et légendes, dessinés en principe'+(echDet?' ; vues à détail exagéré, signalé sous chaque vue : '+echDet:'')+'. À confirmer.'});
     const secHtml=secs.map(sc=>{ const d=document.createElement('div'); sc.nodes.forEach(n=>d.appendChild(n));
       if(hasPlan&&/hypoth|donn/i.test(sc.titre)){ const tb0=d.querySelector('table'); if(tb0){ const nh=tb0.querySelectorAll('thead th,tr:first-child th').length||2, tr0=document.createElement('tr'); const cells=nh>=3?['Échelle des plans',echTxt,(dp&&+dp.planEchelle>0)?'Saisi':'Par défaut']:['Échelle des plans',echTxt+((dp&&+dp.planEchelle>0)?' (saisi)':' (par défaut)')]; tr0.innerHTML=cells.map(c=>'<td>'+esc(c)+'</td>').join(''); (tb0.querySelector('tbody')||tb0).appendChild(tr0); } }
+      if(thN&&/hypoth|donn/i.test(sc.titre)){ const tb1=d.querySelector('table'); if(tb1){ const nh1=tb1.querySelectorAll('thead th,tr:first-child th').length||2, tr1=document.createElement('tr'); const h0=thN.hyp[0]; const c1=nh1>=3?[h0[0],h0[1],h0[2]]:[h0[0],h0[1]+' (saisi)']; tr1.innerHTML=c1.map(c=>'<td>'+esc(c)+'</td>').join(''); (tb1.querySelector('tbody')||tb1).appendChild(tr1); } }
       const grille=/ferraill|armature|acier|cadre|nomenclature|nappe/i.test(sc.titre);
       d.querySelectorAll('table').forEach(tb=>{ tb.className=grille?'ncG':'ncT'; tb.removeAttribute('style'); });
       d.querySelectorAll('svg').forEach(sv=>{ if(!sv.closest('.pcDraw')){ const w=document.createElement('div'); w.className='pcDraw'; sv.parentNode.insertBefore(w,sv); w.appendChild(sv); } });
@@ -26583,7 +26585,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
     const an0=AN.length?'<section class="ncSec"><h4>Points à confirmer</h4>'+AN.map(a=>'<div class="ncAn'+(a.bad?'':' conf')+'"><b>'+(a.bad?'Bloquant : ':'À confirmer : ')+'</b>'+esc(a.tx.replace(/^⚠\s*/,''))+'</div>').join('')+'</section>':'';
     const an=an0+jsH; // bloc repliable « Données transmises au plan » : après les points à confirmer, avant l'avertissement
     const subL=[projet,bat,niv,'Note de calcul indice '+indice,date].filter(Boolean).join(' · ');
-    return '<div class="pcNC ncDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+(sub?' · '+esc(sub):'')+'</p>'+cart+kp+secHtml+dvSec+an+dvAnx
+    return '<div class="pcNC ncDoc"><h3 class="ncH1">'+esc(constat)+'</h3><p class="ncSub">'+esc(subL)+(sub?' · '+esc(sub):'')+'</p>'+cart+kp+secHtml+(thN?thN.section:'')+dvSec+an+dvAnx
      +'<div class="ncWarn">'+esc(NC_AVERT)+(avExtra?' '+esc(avExtra):'')+'</div></div>';
    }catch(e){ console.warn('ncFormat',e); return html; }
   }
@@ -47014,6 +47016,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    }catch(_){ }
   })();
 
+  /* ===== Variation de température : adaptateurs des modules (géométrie seulement ; aucun calcul du module n'est modifié, moteur commun window.thm) ===== */
+  window.THM_GEOM=window.THM_GEOM||{};
+  window.THM_GEOM.pc={prop:'dimPC',geom:dp=>{ const sp=(dp.travees||[]).map(x=>+x.portee_m).filter(v=>v>0), b=(+dp.b_cm)/100, h=(+dp.h_cm)/100; if(!sp.length||!(b>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et la section de la poutre.'}; return {ok:true,kind:'beam',spans:sp,h,A:b*h,I:b*h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
+  /* fin adaptateurs température */
+
   let beTries=0;
   (function wait(){
     try{ const p=window.PILOTAGE_PROJET; if(p && window.pilotageType && pilotageType()==='bureau_etudes'){ beSetup(); return; } }catch(e){}
@@ -47336,6 +47343,197 @@ document.head.appendChild(st);
  G.DimSkill=API; if(typeof module!=='undefined'&&module.exports) module.exports=API;
 })(typeof window!=='undefined'?window:globalThis);
 </script>
+<script id="thmJs">
+/* ===================== Variation de température : moteur commun (poutre, portique, dalle, dallage, structure métallique, pont, réservoir/silo) =====================
+   Un seul moteur : window.thm. Chaque module déclare un adaptateur window.THM_GEOM[préfixe] = { prop, kind, geom(dp,t) } qui décrit sa géométrie (portées, section, module E, matériau).
+   Données flat sur l'ouvrage : thDT (°C), thGrad (°C, face basse moins face haute), thAlpha (10⁻⁶ /K), thE (MPa), thBloc (0 à 1), thRig (0,1 à 1), thPsi (0 à 1). Tout vide = aucun effet, le calcul du module est inchangé.
+   Convention : ΔT > 0 = échauffement (allongement) ; gradient > 0 = face basse plus chaude que la face haute (courbure vers le bas, flèche vers le bas). Unités : kN, m, MPa, kN·m. */
+(function(){
+ 'use strict';
+ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const num=v=>{ if(v===null||v===undefined||v==='') return null; const n=+String(v).replace(',','.'); return isFinite(n)?n:null; };
+ const fr=(x,d)=>{ if(x==null||!isFinite(+x)) return '—'; const n=+x, k=d==null?2:d; return (Math.abs(n)<0.5*Math.pow(10,-k)?0:n).toFixed(k).replace('.',','); };
+ const PX={pc:'poutre',pf:'portique',dl:'dalle',dg:'dallage',stl:'acier',bp:'pont',rs:'reservoir'};
+ const KIND2PFX={}; Object.keys(PX).forEach(p=>{ KIND2PFX[PX[p]]=p; });
+ const GQ=1.5;
+ const PARAMS=[
+  {k:'thAlpha',lbl:'Coefficient de dilatation thermique α',unit:'10⁻⁶ /K',min:5,max:20,step:0.5,aide:'Par défaut 10 pour le béton, 12 pour l\'acier (10⁻⁶ par °C). À confirmer.'},
+  {k:'thE',lbl:'Module d\'élasticité E',unit:'MPa',min:1000,max:300000,step:500,aide:'Par défaut le module du matériau de la fiche ; un béton fissuré ou jeune peut être moins raide. À confirmer.'},
+  {k:'thBloc',lbl:'Taux de blocage de la déformation',unit:'',min:0,max:1,step:0.05,aide:'1 = déformation entièrement empêchée (sens de la sécurité) ; 0 = libre. Dépend de la raideur des appuis ; à confirmer.'},
+  {k:'thRig',lbl:'Facteur de rigidité en flexion',unit:'',min:0.1,max:1,step:0.05,aide:'1 = section non fissurée (sens de la sécurité pour les efforts) ; une section fissurée est moins raide. À confirmer.'},
+  {k:'thPsi',lbl:'Coefficient de combinaison ψ',unit:'',min:0,max:1,step:0.05,aide:'Part de l\'effet thermique retenue avec les autres actions ; 0,6 par défaut. À confirmer.'}
+ ];
+ const reg=()=>window.THM_GEOM||{};
+ const saisi=(dp,k)=>dp&&dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''&&isFinite(+dp[k]);
+ const dflt=(g,k)=>({thAlpha:(g&&g.alpha0)||10,thE:(g&&g.E)||31000,thBloc:1,thRig:1,thPsi:0.6})[k];
+ const val=(dp,g,k)=>saisi(dp,k)?+dp[k]:dflt(g,k);
+ const on=dp=>{ if(!dp) return false; const a=num(dp.thDT), b=num(dp.thGrad); return (a!=null&&a!==0)||(b!=null&&b!==0); };
+ /* ---------- calcul ---------- */
+ function solveSupports(L,kEI){ /* moments sur appuis (convention : positif = fibre inférieure tendue), extrémités articulées, courbure libre kappa : L_i M_{i-1} + 2(L_i+L_{i+1}) M_i + L_{i+1} M_{i+1} = -3 EIκ (L_i+L_{i+1}) */
+  const n=L.length, M=new Array(n+1).fill(0); if(n<2) return M; const m=n-1, a=[],b=[],c=[],d=[];
+  for(let i=1;i<=m;i++){ a.push(i>1?L[i-1]:0); b.push(2*(L[i-1]+L[i])); c.push(i<m?L[i]:0); d.push(-3*kEI*(L[i-1]+L[i])); }
+  for(let i=1;i<m;i++){ const w=a[i]/b[i-1]; b[i]-=w*c[i-1]; d[i]-=w*d[i-1]; }
+  const x=new Array(m); x[m-1]=d[m-1]/b[m-1]; for(let i=m-2;i>=0;i--) x[i]=(d[i]-c[i]*x[i+1])/b[i];
+  for(let i=0;i<m;i++) M[i+1]=x[i]; return M;
+ }
+ function profile(g,kappa,EIeff,M,npt){ /* flèche w(x) de chaque travée : courbure = κ + M/EI, appuis à flèche nulle ; positif = vers le bas */
+  const out=[]; let x0=0;
+  g.spans.forEach((L,i)=>{ const n=npt||40, h=L/n, c=j=>{ const t=j*h/L, Mx=M[i]*(1-t)+M[i+1]*t; return kappa+(EIeff>0?Mx/EIeff:0); };
+   const th=[0]; let s=0, w=[0]; for(let j=1;j<=n;j++){ s+=0.5*(c(j-1)+c(j))*h; th.push(s); }
+   let acc=0; for(let j=1;j<=n;j++){ acc+=0.5*(th[j-1]+th[j])*h; w.push(acc); }
+   const wl=w[n]; const pts=w.map((v,j)=>({x:x0+j*h,w:v-wl*(j/n)})); out.push(pts); x0+=L; });
+  return out;
+ }
+ function calc(dp,g){
+  if(!g||!g.ok) return {ok:false,msg:(g&&g.msg)||'Géométrie incomplète : renseigner les dimensions de la fiche.'};
+  const dT=num(dp.thDT)||0, gr=num(dp.thGrad)||0, al=val(dp,g,'thAlpha')*1e-6, E=val(dp,g,'thE'), bl=val(dp,g,'thBloc'), rg=val(dp,g,'thRig'), ps=val(dp,g,'thPsi');
+  const r={ok:true,dT,gr,alpha:al,E,bloc:bl,rig:rg,psi:ps,gQ:GQ,kind:g.kind,spans:(g.spans||[]).slice(),Ltot:(g.spans||[]).reduce((a,b)=>a+b,0)};
+  r.dL=(g.spans||[]).map(L=>al*dT*L); r.dLtot=al*dT*r.Ltot; r.eps=al*dT;
+  const h=g.h>0?g.h:null; r.kappa=(h&&gr)?al*gr/h:0;
+  if(g.kind==='shell'){
+   r.dD=al*dT*g.D; r.dH=al*dT*g.H; r.Nring=-E*g.e*al*dT*bl*1000; r.dir=dT>0?'compression':'traction';
+   r.Mwall=rg*bl*E*Math.pow(g.e,3)/12*r.kappa*1000; r.kapW=r.kappa; r.fWall=r.kappa*g.H*g.H/2;
+   return r; }
+  r.N=-E*g.A*al*dT*bl*1000; r.dirN=dT>0?'compression':(dT<0?'traction':'');
+  const EI=E*g.I*1000*rg; r.EI=EI;
+  const sp=g.spans; r.M=solveSupports(sp,EI*r.kappa);
+  r.Msup=Math.max(0,...r.M.map(x=>Math.abs(x)));
+  r.Mfix=EI*r.kappa*bl; /* courbure empêchée aux deux extrémités (encastrement parfait) */
+  r.prof=profile(g,r.kappa,EI,r.M); let fm=0; r.prof.forEach(p=>p.forEach(q=>{ if(Math.abs(q.w)>Math.abs(fm)) fm=q.w; })); r.fmax=fm; r.ffree=Math.max(...sp.map(L=>Math.abs(r.kappa)*L*L/8));
+  if(g.kind==='dallage'){ r.dJoint=al*dT*g.Lj; r.relev=r.kappa*g.Lj*g.Lj/8; r.Nfrot=g.fric; r.Nres=g.fric!=null?Math.min(Math.abs(r.N),g.fric)*(r.N<0?-1:1):r.N; }
+  if(g.kind==='frame'){ r.delta=al*dT*r.Ltot/2; r.Mcol=g.Ic>0?6*E*g.Ic*1000*r.delta/(g.Hc*g.Hc)*bl:null; }
+  if(g.kind==='slab'&&g.B>0) r.dB=al*dT*g.B;
+  if(g.mixte){ r.dEpsMixte=(g.alphaS-g.alphaB)*1e-6*dT; }
+  return r;
+ }
+ /* ---------- schéma : déformée (amplifiée, écrit sur le dessin), cotes sans cadre ---------- */
+ function svg(dp,g,r){
+  const IK='var(--ds-ink,#222)', SB='var(--ds-draw,#2e6ea6)', AC='var(--ds-accent,#FFC400)', SF='var(--ds-ink-soft,#777)', W=340, T=(x,y,s,a,fs)=>'<text x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" font-size="'+(fs||12)+'" fill="'+IK+'" text-anchor="'+(a||'middle')+'">'+esc(s)+'</text>';
+  const mm=v=>fr(Math.abs(v)*1000,Math.abs(v)*1000<10?2:1)+' mm';
+  let parts='', boxes=[], k=1, ppm=1;
+  if(g.kind==='shell'){
+   const Dm=g.D, Hm=g.H; ppm=Math.min(W/Dm,230/Hm); const w=Dm*ppm, hh=Hm*ppm, mx=Math.max(Math.abs(r.dD),Math.abs(r.dH),1e-9); k=Math.max(1,Math.min(1e5,0.05*Dm/mx)); const dw=r.dD*ppm*k, dh=r.dH*ppm*k, ex=Math.max(8,g.e*ppm);
+   parts+='<rect x="0" y="0" width="'+w+'" height="'+hh+'" fill="none" stroke="'+SF+'" stroke-width="1.4" stroke-dasharray="6 4"/>';
+   parts+='<rect x="'+(-dw/2)+'" y="'+(-dh)+'" width="'+(w+dw)+'" height="'+(hh+dh)+'" fill="none" stroke="'+AC+'" stroke-width="2.4"/>';
+   parts+='<rect x="'+(-dw/2)+'" y="'+(-dh)+'" width="'+ex+'" height="'+(hh+dh)+'" fill="'+SB+'" fill-opacity=".25" stroke="'+SB+'"/><rect x="'+(w+dw/2-ex)+'" y="'+(-dh)+'" width="'+ex+'" height="'+(hh+dh)+'" fill="'+SB+'" fill-opacity=".25" stroke="'+SB+'"/>';
+   parts+='<line x1="0" y1="'+(hh+26)+'" x2="'+w+'" y2="'+(hh+26)+'" stroke="'+IK+'"/><line x1="0" y1="'+(hh+20)+'" x2="0" y2="'+(hh+32)+'" stroke="'+IK+'"/><line x1="'+w+'" y1="'+(hh+20)+'" x2="'+w+'" y2="'+(hh+32)+'" stroke="'+IK+'"/>'+T(w/2,hh+44,'D = '+fr(Dm,2)+' m')+T(w/2,hh+60,'Variation de diamètre = '+mm(r.dD)+' (réelle)');
+   parts+='<line x1="'+(w+dw/2+30)+'" y1="0" x2="'+(w+dw/2+30)+'" y2="'+hh+'" stroke="'+IK+'"/><line x1="'+(w+dw/2+24)+'" y1="0" x2="'+(w+dw/2+36)+'" y2="0" stroke="'+IK+'"/><line x1="'+(w+dw/2+24)+'" y1="'+hh+'" x2="'+(w+dw/2+36)+'" y2="'+hh+'" stroke="'+IK+'"/>'+T(w+dw/2+40,hh/2,'H = '+fr(Hm,2)+' m','start');
+   boxes.push({x:-dw/2-10,y:-dh-10,w:w+dw+130,h:hh+dh+120});
+  } else {
+   const Lt=r.Ltot, hp=Math.max(5,Math.min(60,(g.h||0.3)*(W/Lt))); ppm=W/Lt; const sc=W/Lt;
+   const mx=Math.max(Math.abs(r.dLtot),Math.abs(r.fmax||0),Math.abs(r.ffree||0),1e-12); k=Math.max(1,Math.min(1e6,0.05*Lt/mx)); const ex=1+r.eps*k;
+   parts+='<rect x="0" y="0" width="'+W+'" height="'+hp+'" fill="none" stroke="'+SF+'" stroke-width="1.4" stroke-dasharray="6 4"/>';
+   const tp=[], bt=[]; r.prof.forEach(p=>{ p.forEach(q=>{ const X=(q.x*ex)*sc, Y=q.w*k*sc; tp.push(X.toFixed(1)+' '+Y.toFixed(1)); bt.push(X.toFixed(1)+' '+(Y+hp).toFixed(1)); }); });
+   parts+='<path d="M'+tp.join(' L')+' L'+bt.slice().reverse().join(' L')+' Z" fill="'+AC+'" fill-opacity=".28" stroke="'+AC+'" stroke-width="2.2" stroke-linejoin="round"/>';
+   let xs=0; const sup=[0]; r.spans.forEach(L=>{ xs+=L; sup.push(xs); });
+   sup.forEach((s,i)=>{ const X=s*sc, Y=hp+2; parts+='<path d="M'+X+' '+Y+' l-8 14 h16 z" fill="none" stroke="'+SB+'" stroke-width="2"/>'+(i>0?'<circle cx="'+X+'" cy="'+(Y+19)+'" r="3.5" fill="none" stroke="'+SB+'" stroke-width="1.6"/>':'<line x1="'+(X-10)+'" y1="'+(Y+16)+'" x2="'+(X+10)+'" y2="'+(Y+16)+'" stroke="'+SB+'" stroke-width="2"/>'); });
+   const yc=hp+54; parts+='<line x1="0" y1="'+yc+'" x2="'+W+'" y2="'+yc+'" stroke="'+IK+'"/><line x1="0" y1="'+(yc-6)+'" x2="0" y2="'+(yc+6)+'" stroke="'+IK+'"/><line x1="'+W+'" y1="'+(yc-6)+'" x2="'+W+'" y2="'+(yc+6)+'" stroke="'+IK+'"/>'+T(W/2,yc+18,'L = '+fr(Lt,2)+' m');
+   let ya=yc+36; if(r.dLtot) { parts+=T(W/2,ya,'Allongement libre ΔL = '+(r.dLtot<0?'−':'')+mm(r.dLtot)+' (réel)'); ya+=16; }
+   if(r.fmax) { parts+=T(W/2,ya,'Flèche thermique = '+mm(r.fmax)+' (réelle)'); ya+=16; }
+   boxes.push({x:-14,y:-Math.max(0,-(r.fmax||0)*k*sc)-10,w:W+60,h:ya+44+Math.max(0,(r.fmax||0)*k*sc)});
+   parts+='<text x="0" y="'+(ya+4)+'" font-size="11" fill="'+SF+'">'+esc(k>1.05?'Déformée amplifiée ×'+fr(k,k<10?1:0)+' ; le reste du dessin est à l\'échelle.':'Déformée à l\'échelle réelle.')+'</text>';
+  }
+  const fr2=window.dimFrame?window.dimFrame(boxes.concat([{x:0,y:0,w:W,h:10}])):{vb:'-10 -10 '+(W+60)+' 260',h:260};
+  let s='<svg viewBox="'+fr2.vb+'" width="100%" height="'+Math.round(Math.min(340,fr2.h))+'" class="pcSvg" data-pcg-noload="1" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Déformée due à la variation de température">'+parts+'</svg>';
+  try{ if(window.dimScaleBarAdd) s=window.dimScaleBarAdd(s,{ppm:ppm}); }catch(_){ }
+  return s;
+ }
+ /* ---------- bloc de la fiche ---------- */
+ function fld(dp,g,p){
+  const sa=saisi(dp,p.k), v=sa?+dp[p.k]:dflt(g,p.k);
+  return '<label class="thmF"><span class="pcElsLbl">'+esc(p.lbl)+'</span><span class="pcElsCtl"><input type="number" inputmode="decimal" step="'+p.step+'" min="'+p.min+'" max="'+p.max+'" data-thm="'+p.k+'" value="'+(v==null?'':+(+v).toFixed(4))+'">'+(p.unit?'<span class="pcUnitEls">'+esc(p.unit)+'</span>':'')+'</span><span class="pcElsTag'+(sa?' on':'')+'">'+(sa?'saisi':'par défaut')+'</span></label><p class="pcNote">'+esc(p.aide)+'</p>';
+ }
+ function tableHtml(dp,g,r){
+  if(!r.ok) return '<p class="pcNote">'+esc(r.msg)+'</p>';
+  const row=(a,b,c,d)=>'<tr><td>'+a+'</td><td>'+b+'</td><td>'+(c||'')+'</td><td>'+(d||'')+'</td></tr>';
+  const mm=v=>fr(v*1000,Math.abs(v*1000)<10?2:1)+' mm', rows=[];
+  const comb=(v,u)=>row('→ retenu avec les autres actions (ELS)',fr(Math.abs(v)*r.psi,1)+' '+u,'ψ = '+fr(r.psi,2),fr(Math.abs(v)*r.psi*r.gQ,1)+' '+u);
+  if(r.kind==='shell'){
+   rows.push(row('Variation de diamètre libre',mm(r.dD),'D = '+fr(g.D,2)+' m'),row('Variation de hauteur libre',mm(r.dH),'H = '+fr(g.H,2)+' m'));
+   rows.push(row('Effort annulaire si la déformation est empêchée',fr(Math.abs(r.Nring),1)+' kN/m',r.dir+' ; taux de blocage '+fr(r.bloc,2)),comb(r.Nring,'kN/m'));
+   if(r.kapW) { rows.push(row('Courbure de la paroi due au gradient',fr(r.kapW*1000,3)+' ×10⁻³ /m','épaisseur '+fr(g.e*100,1)+' cm'),row('Moment si la courbure est empêchée',fr(Math.abs(r.Mwall),2)+' kN·m/m','taux de blocage × rigidité'),comb(r.Mwall,'kN·m/m')); }
+  } else {
+   rows.push(row('Allongement libre total ΔL',(r.dLtot<0?'−':'')+mm(Math.abs(r.dLtot)),(r.dT>0?'allongement':(r.dT<0?'raccourcissement':'—'))+' ; L = '+fr(r.Ltot,2)+' m'));
+   if(r.spans.length>1) rows.push(row('Allongement libre par travée',r.dL.map(v=>mm(Math.abs(v))).join(' ; '),'',''));
+   if(r.dT) { rows.push(row('Effort normal si la déformation est empêchée',fr(Math.abs(r.N),1)+' kN'+(g.perM?'/m':''),r.dirN+' ; taux de blocage '+fr(r.bloc,2),'')); rows.push(comb(r.N,'kN'+(g.perM?'/m':''))); }
+   if(r.gr) { rows.push(row('Courbure libre due au gradient',fr(r.kappa*1000,3)+' ×10⁻³ /m','h = '+fr(g.h*100,1)+' cm'),row('Flèche thermique libre (travée simple)',mm(r.ffree),'κ L² / 8'));
+    if(r.spans.length>1) { rows.push(row('Moment sur appui dû au gradient (poutre continue)',fr(r.Msup,1)+' kN'+'·m'+(g.perM?'/m':''),'hyperstatique, rigidité × '+fr(r.rig,2)),comb(r.Msup,'kN·m'+(g.perM?'/m':''))); rows.push(row('Flèche thermique avec les appuis',mm(r.fmax),'')); }
+    else { rows.push(row('Moment si la courbure est empêchée (encastrements)',fr(Math.abs(r.Mfix),1)+' kN·m'+(g.perM?'/m':''),'taux de blocage '+fr(r.bloc,2)),comb(r.Mfix,'kN·m'+(g.perM?'/m':''))); } }
+   if(r.kind==='dallage'&&r.dT) rows.push(row('Ouverture libre d\'un joint',mm(r.dJoint),'panneau de '+fr(g.Lj,2)+' m'),row('Effort limité par le frottement du sol',g.fric!=null?fr(Math.abs(r.Nres),1)+' kN/m':'—','frottement : '+(g.fric!=null?fr(g.fric,1)+' kN/m':'non renseigné')));
+   if(r.kind==='dallage'&&r.gr) rows.push(row('Relevé des bords d\'un panneau libre',mm(r.relev),'sans poids propre : à confirmer'));
+   if(r.kind==='frame'&&r.dT) rows.push(row('Déplacement en tête des poteaux de rive',mm(r.delta),''),row('Moment en pied de poteau (tête guidée)',r.Mcol!=null?fr(r.Mcol,1)+' kN·m':'—','borne haute, taux de blocage '+fr(r.bloc,2)));
+   if(r.kind==='slab'&&r.dB!=null) rows.push(row('Allongement libre dans l\'autre sens',mm(r.dB),'B = '+fr(g.B,2)+' m'));
+   if(r.dEpsMixte!=null&&r.dEpsMixte!==0) rows.push(row('Écart de dilatation acier / béton',fr(r.dEpsMixte*1e6,1)+' ×10⁻⁶','effet sur la connexion non calculé : à confirmer'));
+  }
+  return '<div class="pfTblW"><table class="pfTbl thmTbl"><thead><tr><th>Grandeur</th><th>Valeur</th><th>Remarque</th><th>ELU (× 1,50)</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div><p class="pcNote">Effets calculés à part : ils ne modifient pas les résultats du dimensionnement ; à combiner avec les autres actions par l\'ingénieur (ψ × effet, puis coefficient de sécurité de l\'action variable).</p>';
+ }
+ function ctxOf(pfx,t){ const A=reg()[pfx]; if(!A) return null; const dp=t&&t[A.prop]; if(!dp) return null; let g=null; try{ g=A.geom(dp,t); }catch(_){ g={ok:false,msg:'Géométrie incomplète.'}; } return {A,dp,g}; }
+ function wrapHtml(pfx,dp,g){
+  const r=on(dp)?calc(dp,g):null, shell=g&&g.kind==='shell', head=n=>'<h5 class="thmH" data-thm-h="'+n+'">';
+  let h='<div class="thmWrap" data-thm-pfx="'+pfx+'">'+head('in')+'Variation de température</h5><div class="thmBox">'
+   +'<p class="pcNote">Laisser vide : aucun effet thermique, le calcul du module reste inchangé. ΔT positif = échauffement. Saisie en °C.</p>'
+   +'<label class="thmF"><span class="pcElsLbl">Variation uniforme ΔT</span><span class="pcElsCtl"><input type="number" inputmode="decimal" step="1" min="-100" max="100" data-thm="thDT" value="'+(num(dp.thDT)==null?'':num(dp.thDT))+'" placeholder="vide"><span class="pcUnitEls">°C</span></span></label>'
+   +'<label class="thmF"><span class="pcElsLbl">Gradient dans l\'épaisseur (face basse moins face haute)</span><span class="pcElsCtl"><input type="number" inputmode="decimal" step="1" min="-60" max="60" data-thm="thGrad" value="'+(num(dp.thGrad)==null?'':num(dp.thGrad))+'" placeholder="vide"><span class="pcUnitEls">°C</span></span></label>'
+   +'<div class="thmBtns"><button type="button" class="ghost pcBtnSm" data-thm-act="exemple">Exemple</button><button type="button" class="ghost pcBtnSm" data-thm-act="clear">Effacer</button></div>'
+   +'<details class="pcElsSub thmAdv"'+(dp._thmAdv?' open':'')+'><summary>Paramètres avancés de la température</summary><div class="pcElsBody">'
+   +PARAMS.map(p=>fld(dp,g,p)).join('')
+   +'<label class="thmF pcElsRo"><span class="pcElsLbl">Coefficient de sécurité d\'une action variable</span><span class="pcElsRoVal">'+fr(GQ,2)+'</span><span class="pcElsTag">normatif, non modifiable</span></label>'
+   +'<div class="thmBtns"><button type="button" class="ghost" data-thm-act="reset">Rétablir les valeurs par défaut</button></div></div></details>'
+   +'</div>';
+  if(r){ h+=head('res')+'Résultats de la variation de température</h5><div class="thmRes">'+(r.ok?'<div class="pcDraw thmDraw">'+svg(dp,g,r)+'</div><p class="pcSchemaCap">Déformée due à la variation de température (amplification écrite sur le dessin)</p>':'')+tableHtml(dp,g,r)+'</div>'; }
+  return h+'</div>';
+ }
+ /* ---------- injection dans la fiche ouverte ---------- */
+ function ctxNow(){ const mb=document.getElementById('modalBody'); if(!mb||!window._ficheIaId) return null; const panel=mb.querySelector('.pcFormPanel'); if(!panel) return null;
+  for(const p of Object.keys(PX)){ if(!reg()[p]) continue; if(mb.querySelector('[data-'+p+'-act="validerForm"]')){ let t=null; try{ t=taskById(window._ficheIaId); }catch(_){ } const c=t&&ctxOf(p,t); if(c) return Object.assign({pfx:p,t,panel,mb},c); } } return null; }
+ function sigOf(c){ return JSON.stringify([PARAMS.map(p=>c.dp[p.k]),c.dp.thDT,c.dp.thGrad,!!c.dp._thmAdv,c.g]); }
+ function fold(w){ if(!window.dimFoldBlock) return; w.querySelectorAll('.thmH').forEach(h=>{ const b=h.nextElementSibling; if(!b) return; window.dimFoldBlock(h,b,'thm:'+h.dataset.thmH,h.dataset.thmH==='res'); }); }
+ function inject(force){
+  const c=ctxNow(); if(!c) return; const had=c.panel.querySelector(':scope>.thmWrap'); const sig=sigOf(c);
+  if(had&&!force&&had.dataset.sig===sig) return; if(had&&had.contains(document.activeElement)&&!force) return;
+  const tmp=document.createElement('div'); tmp.innerHTML=wrapHtml(c.pfx,c.dp,c.g); const w=tmp.firstChild; w.dataset.sig=sig;
+  if(had) had.replaceWith(w); else { const adv=[...c.panel.children].find(x=>x.matches&&x.matches('details.pcEls')); if(adv) c.panel.insertBefore(w,adv); else c.panel.appendChild(w); }
+  fold(w);
+ }
+ let tmr=null; const sched=()=>{ if(tmr) return; tmr=setTimeout(()=>{ tmr=null; try{ const ov=document.getElementById('overlay'); if(!ov||!ov.classList.contains('open')) return; inject(false); }catch(e){ console.warn('thm',e); } },150); };
+ try{ new MutationObserver(sched).observe(document.body,{childList:true,subtree:true}); }catch(_){ }
+ const save=()=>{ try{ persist(); }catch(_){ } };
+ document.addEventListener('change',e=>{ const el=e.target&&e.target.closest&&e.target.closest('[data-thm]'); if(!el) return; const c=ctxNow(); if(!c) return; const k=el.dataset.thm, raw=el.value.trim().replace(',','.');
+  const p=PARAMS.find(x=>x.k===k), mn=p?p.min:(k==='thDT'?-100:-60), mx=p?p.max:(k==='thDT'?100:60);
+  if(raw===''){ delete c.dp[k]; el.removeAttribute('aria-invalid'); }
+  else { const n=Number(raw); if(!isFinite(n)||n<mn||n>mx){ el.setAttribute('aria-invalid','true'); el.title='Valeur entre '+fr(mn,2)+' et '+fr(mx,2); return; } el.removeAttribute('aria-invalid'); c.dp[k]=n; }
+  save(); inject(true); });
+ document.addEventListener('click',e=>{ const b=e.target&&e.target.closest&&e.target.closest('[data-thm-act]'); if(!b) return; const c=ctxNow(); if(!c) return; e.preventDefault(); e.stopPropagation(); const a=b.dataset.thmAct;
+  if(a==='exemple'){ c.dp.thDT=20; c.dp.thGrad=10; try{ clipToast('Valeurs d\'illustration : échauffement de 20 °C et gradient de 10 °C. À remplacer par vos valeurs.'); }catch(_){ } }
+  if(a==='clear'){ delete c.dp.thDT; delete c.dp.thGrad; }
+  if(a==='reset'){ PARAMS.forEach(p=>{ delete c.dp[p.k]; }); }
+  save(); inject(true); },true);
+ document.addEventListener('toggle',e=>{ const d=e.target; if(d&&d.classList&&d.classList.contains('thmAdv')){ const c=ctxNow(); if(c){ c.dp._thmAdv=d.open; save(); } } },true);
+ /* ---------- note de calcul ---------- */
+ function note(dp,kind,t){
+  try{ const pfx=KIND2PFX[kind]; if(!pfx||!on(dp)) return null; const c=ctxOf(pfx,t); if(!c) return null; const r=calc(dp,c.g), g=c.g;
+   const o=k=>saisi(dp,k)?'Saisi':'Par défaut', f=fr;
+   const hyp=[['Variation de température',(num(dp.thDT)!=null?'ΔT = '+f(dp.thDT,1)+' °C':'ΔT non saisi')+' ; gradient '+(num(dp.thGrad)!=null?f(dp.thGrad,1)+' °C':'non saisi'),'Saisi']];
+   const rows=[['Variation uniforme ΔT',num(dp.thDT)!=null?f(dp.thDT,1)+' °C':'—','Saisi'],['Gradient (face basse moins face haute)',num(dp.thGrad)!=null?f(dp.thGrad,1)+' °C':'—','Saisi'],['Coefficient de dilatation α',f(val(dp,g,'thAlpha'),1)+' ×10⁻⁶ /K',o('thAlpha')],['Module d\'élasticité E',f(val(dp,g,'thE'),0)+' MPa',o('thE')],['Taux de blocage',f(val(dp,g,'thBloc'),2),o('thBloc')],['Facteur de rigidité en flexion',f(val(dp,g,'thRig'),2),o('thRig')],['Coefficient de combinaison ψ',f(val(dp,g,'thPsi'),2),o('thPsi')],['Coefficient de sécurité d\'une action variable',f(GQ,2),'Normatif']];
+   const tb=(head,rs)=>'<table class="ncT"><thead><tr>'+head.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rs.map(q=>'<tr>'+q.map(z=>'<td>'+z+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+   let sec='<h4>Variation de température</h4>'+tb(['Paramètre','Valeur','Origine'],rows);
+   if(r.ok){ const d=document.createElement('div'); d.innerHTML=tableHtml(dp,g,r); const tbl=d.querySelector('table'); if(tbl){ tbl.className='ncT'; sec+=tbl.outerHTML; } sec+='<div class="pcDraw">'+svg(dp,g,r)+'</div>'; }
+   else sec+='<p class="pcNote">'+esc(r.msg)+'</p>';
+   const pts=[
+    {tx:'Variation de température : ΔT et gradient saisis ; valeurs à confirmer par l\'ingénieur selon le site, l\'exposition et la couleur de surface.',bad:false},
+    {tx:'Coefficient de dilatation, module d\'élasticité, taux de blocage, rigidité en flexion et ψ retenus '+((['thAlpha','thE','thBloc','thRig','thPsi'].every(k=>saisi(dp,k)))?'saisis':'« par défaut » pour ceux non saisis')+' : à confirmer.',bad:false},
+    {tx:'Les effets thermiques sont calculés à part : ils ne sont pas ajoutés aux armatures ni aux vérifications du module ; l\'ingénieur les combine avec les autres actions.',bad:false}];
+   if(kind==='pont') pts.push({tx:'Actions thermiques du pont (variation uniforme et différence de température selon le type de tablier) : règle non intégrée, valeurs saisies par l\'ingénieur ; à trancher.',bad:false},{tx:'Écart de dilatation entre l\'acier et le béton : indiqué, sans calcul de l\'effet sur la connexion ni sur les appareils d\'appui ; à confirmer.',bad:false});
+   if(kind==='dallage') pts.push({tx:'Relevé des bords : calculé sans le poids propre du dallage ni la réaction du sol, donc majorant ; à confirmer.',bad:false});
+   if(kind==='acier') pts.push({tx:'Appuis glissants ou butées : la raideur des appuis n\'est pas modélisée, utiliser le taux de blocage ; à confirmer.',bad:false});
+   if(kind==='reservoir') pts.push({tx:'Gradient dans la paroi : paroi supposée libre de se déformer sauf au taux de blocage indiqué ; liquide ou produit stocké non pris en compte ; à confirmer.',bad:false});
+   if(kind==='portique') pts.push({tx:'Portique : moment en pied de poteau estimé avec une tête guidée par un plancher rigide (borne haute) ; à confirmer.',bad:false});
+   return {hyp,rows,section:'<section class="ncSec">'+sec+'</section>',pts};
+  }catch(e){ console.warn('thmNote',e); return null; }
+ }
+ window.thm={on,calc,svg,note,tableHtml,PARAMS,val,saisi,num,fr,inject,KIND2PFX,PX,wrapHtml,ctxOf,GQ};
+})();
+</script>
 <script id="dimValidJs">
 /* ===================== Fenêtre de validation commune + méthodes décrites par l'utilisateur (tous modules) =====================
    Un seul composant : dimValidateWindow(spec, ctx). Il sert à la fiche (ligne « Choix » + bouton Calculer), aux Paramètres avancés
@@ -47366,6 +47564,13 @@ document.head.appendChild(st);
  const vals=list=>dp=>{ const o=[]; list.forEach(([k,l,u,m])=>{ const v=dp[k]; if(v===undefined||v===null||v==='') return; let sv; if(typeof v==='boolean') sv=v?'oui':'non'; else if(m){ let r=null; try{ r=typeof m==='function'?m(v):m[v]; }catch(_){ r=null; } sv=(r!=null&&r!=='')?String(r):fnum(v); } else sv=(typeof v==='string'&&/^[a-z0-9]+(_[a-z0-9]+)+$/.test(v))?v.replace(/_/g,' '):fnum(v); o.push([l,sv+(u&&typeof v!=='boolean'?' '+u:'')]); }); return o; };
  const sp=(pfx,id,titre,o)=>{ (SPECS[pfx]=SPECS[pfx]||[]).push(Object.assign({pfx,id,titre,warn:false},o)); };
  const ch=(k,nom,unit,min,max)=>({k,nom,unit,min,max});
+ /* variation de température : même méthode pour tous les modules concernés (moteur commun window.thm) */
+ ['pc','pf','dl','dg','stl','bp','rs'].forEach(pf=>sp(pf,'th_methode','Variation de température : déformation libre et effets si elle est empêchée',{warn:true,quand:dp=>!!(window.thm&&window.thm.on(dp)),cas:dp=>[dp.thDT,dp.thGrad,dp.thAlpha,dp.thE,dp.thBloc,dp.thRig,dp.thPsi],
+  supposes:'Une variation de température uniforme sur tout l\'élément et un gradient linéaire dans l\'épaisseur ; un allongement proportionnel à la variation ; si la déformation est empêchée, un effort égal au module, à la section, à la dilatation et à la variation, multiplié par le taux de blocage ; une poutre continue sur appuis simples aux extrémités pour le moment dû au gradient.',
+  ignore:'Les variations de température non linéaires dans l\'épaisseur, la raideur réelle des appuis (remplacée par le taux de blocage), le fluage et la fissuration (remplacés par un facteur de rigidité), le poids propre qui retient la déformation.',
+  ne:'Éléments très massifs, gradients non linéaires, appuis dont la raideur est connue précisément, ouvrages où la température varie beaucoup d\'un point à l\'autre.',
+  valeurs:dp=>vals([['thDT','Variation uniforme ΔT','°C'],['thGrad','Gradient dans l\'épaisseur','°C'],['thAlpha','Coefficient de dilatation α','×10⁻⁶ /K'],['thE','Module d\'élasticité E','MPa'],['thBloc','Taux de blocage'],['thRig','Facteur de rigidité en flexion'],['thPsi','Coefficient ψ']])(dp).concat([['Autres paramètres','par défaut, voir les paramètres avancés de la température']]),
+  champs:[ch('thDT','Variation uniforme ΔT','°C',-100,100),ch('thGrad','Gradient dans l\'épaisseur','°C',-60,60),ch('thAlpha','Coefficient de dilatation α','×10⁻⁶ /K',5,20),ch('thE','Module d\'élasticité E','MPa',1000,300000),ch('thBloc','Taux de blocage','',0,1),ch('thRig','Facteur de rigidité en flexion','',0.1,1),ch('thPsi','Coefficient ψ','',0,1)]}));
 
  sp('pc','pc_efforts','Efforts de la poutre continue',{supposes:'Matériau élastique, section constante dans chaque travée, charges statiques posées sur la poutre.',ignore:'La fissuration du béton dans le calcul des efforts, la redistribution des moments, les effets dynamiques.',ne:'Poutres très courtes (poutres-voiles), charges mobiles lourdes, appuis qui se déforment et que vous n\'avez pas saisis.',valeurs:vals([['b_cm','Largeur','cm'],['h_cm','Hauteur','cm'],['classeGlobale','Béton'],['classeAcier','Acier'],['enrobage_cm','Enrobage','cm']]),champs:[ch('b_cm','Largeur b','cm',10,200),ch('h_cm','Hauteur h','cm',15,300),ch('enrobage_cm','Enrobage','cm',1,10)]});
  sp('pc','pc_sectionT','Section en T simplifiée',{warn:true,quand:dp=>dp.sectionT===true,supposes:'Une largeur de table effective constante sur toute la travée.',ignore:'La variation de cette largeur le long de la poutre et le glissement fin entre la table et la nervure.',ne:'Tables très larges, poutres courtes, table tendue sur appui.',sensible:dp=>dp.flangeTens===true?'la table est tendue':null,valeurs:vals([['beff_cm','Largeur de table','cm'],['hf_cm','Épaisseur de table','cm']]),champs:[ch('beff_cm','Largeur de table','cm',10,600),ch('hf_cm','Épaisseur de table','cm',5,100)]});
