@@ -40,3 +40,28 @@ const capteur=(L)=>{const c={n:0,opts:[]};c.getCurrentPosition=(s,e,o)=>{c.opts.
   ok(!/openstreetmap|livre|page \d/i.test(h.slice(i,j)),'aucune source citée dans le moteur');
   console.log(bad?bad+' échec(s)':'tous verts');
 })();
+/* rayon autour du site (200 m) */
+(function(){const G=window.geoPt;let b=0;const t=(c,n)=>{console.log((c?'OK  ':'FAIL')+' '+n);if(!c){b++;process.exitCode=1;}};
+ const f=(ecart,acc)=>({etat:'ok',lat:1,lng:1,acc,ecart});
+ t(G.RAYON===200,'rayon 200 m');
+ t(G.portee(f(50,10))==='dans','dedans');
+ t(G.portee(f(500,20))==='hors','hors site : écart moins précision au-dessus du rayon');
+ t(G.portee(f(250,100))==='verifier','dans la marge de précision : à vérifier, pas hors site');
+ t(G.portee(f(300,100))==='verifier'&&G.portee(f(301,100))==='hors','limite exacte');
+ t(G.portee({etat:'ok',lat:1,lng:1,acc:5})===null,'site sans position : aucun jugement');
+ t(G.portee({etat:'refus'})===null&&G.portee(null)===null,'sans position : aucun jugement');
+ t(/a pointé à 480 m du site/.test(G.messageHors('Awa','in','d','h','S',480)),'message hors site');
+})();
+/* durée de conservation (10 ans) */
+(function(){const G=window.geoPt;let b=0;const t=(c,n)=>{console.log((c?'OK  ':'FAIL')+' '+n);if(!c){b++;process.exitCode=1;}};
+ const now='2026-11-27T12:00:00Z', mk=(id,at,g)=>({id,date:at.slice(0,10),hhmm:'08:00',geo:g===undefined?{etat:'ok',lat:1,lng:2,acc:9,at}:g});
+ const P=[mk('vieux','2016-11-26T08:00:00Z'),mk('limite','2016-11-27T12:00:00Z'),mk('recent','2026-01-01T08:00:00Z'),mk('refus','2010-01-01T08:00:00Z',{etat:'refus',at:'2010-01-01T08:00:00Z'}),mk('sans','2010-01-01T08:00:00Z',null)];delete P[4].geo;
+ t(G.CONSERVATION_ANS===10,'durée 10 ans');
+ t(G.purge(P,now)===1,'un seul pointage modifié');
+ t(P[0].geo.etat==='efface'&&P[0].geo.lat===undefined&&P[0].geo.acc===undefined&&P[0].hhmm==='08:00'&&P[0].id==='vieux','plus de 10 ans : coordonnées et précision effacées, pointage gardé');
+ t(P[1].geo.lat===1,'limite exacte (10 ans pile) : gardé');
+ t(P[2].geo.lat===1,'récent : intact');
+ t(P[3].geo.etat==='refus'&&P[4].geo===undefined,'sans position : rien à effacer, rien modifié');
+ t(G.purge(P,now)===0,'idempotent');
+ t(/effacée \(durée de conservation dépassée\)/.test(G.libelle(P[0].geo)),'libellé de l’effacement');
+})();
