@@ -21905,6 +21905,7 @@ details>summary .dimEye{margin-block:4px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pfSep{flex:0 0 12px}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcDraw{overflow-x:auto;max-width:100%}
 :is(.pjEscRoot,.pjPontRoot,.pjPrecRoot) .pcDimBox{margin:16px 0}
+.pjPrecRoot .prTblT td:first-child,.pjPrecRoot .prTblT th:first-child{white-space:normal;min-width:150px;max-width:220px}.pjPrecRoot .prTblT td{vertical-align:middle}.pjPrecRoot .prTblT input[type=number]{width:110px}.pjPrecRoot .prTblT select{min-width:130px}
 .pjPontRoot .bpBtns{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;justify-content:flex-end}
 [dir=rtl] .pjPontRoot .bpBtns{justify-content:flex-start}
 .pjPontRoot .bpBtns .pcBtnSm{margin:0;flex:0 1 auto}
@@ -41266,6 +41267,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function prDefaultData(t){
    return { nom:dimNomNorm((t&&(t.nom||t.quoi))||'')||'Poutre précontrainte P1', materiau:'beton_precontraint', prType:'poutre', prForme:'rect',
     Lp_m:null, prb_cm:null, hp_cm:null, bfp_cm:null, hfp_cm:null, classeGlobale:'C40/50', classeAcier:'B500', enrobage_cm:4, expo:'XC1',
+    gammaC:1.5, gammaSp:1.15, mcrExc:1, muFrot:null, kFrot:null, rentree_mm:null,
     systeme:'post', adh:'adh', toron:'T15S', acier:'1860', nT:null, sT_cm:null, sp0_MPa:null, u_cm:null, uApp_cm:null, tens:'une',
     g_kNm:null, q_kNm:null, resultats:null };
   }
@@ -41273,7 +41275,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* paramètres : défaut visible, tag « par défaut » / « saisi », bornes, Rétablir ; les lignes ro:1 sont normatives et en lecture seule */
   function prPhiDef(dp,which){ try{ const r=prCreepShrink(dp); return which==='phi'?+r.phi.toFixed(2):+(r.eps*1e3).toFixed(3); }catch(_){ return which==='phi'?2:0.3; } }
   const PR_SPEC=[
-   {grp:'Règlement et sécurité',ro:1,lbl:'Coefficients partiels',valFn:()=>'γc 1,50 · γs 1,15 · γG 1,35 · γQ 1,50 · γP 1,00',aide:'Valeurs normatives, non modifiables.'},
+   {grp:'Règlement et sécurité',ro:1,lbl:'Coefficients partiels',valFn:dp=>'γc '+String(dp.gammaC==null?1.5:dp.gammaC).replace('.',',')+' · γs précontrainte '+String(dp.gammaSp==null?1.15:dp.gammaSp).replace('.',',')+' · γs armatures 1,15 · γG 1,35 · γQ 1,50 · γP 1,00',aide:'Les coefficients de sécurité du béton et de l\'acier de précontrainte se valident ou se modifient seulement dans la fenêtre de validation (au premier calcul ou depuis « Validations et méthodes »). Les autres sont normatifs, non modifiables.'},
    {grp:'Règlement et sécurité',ro:1,lbl:'Limites de contrainte de l\'acier de précontrainte',valFn:()=>'tension : min(0,80·fpk ; 0,90·fp0,1k) · après transfert : min(0,77·fpk ; 0,87·fp0,1k) · service : 0,75·fpk',aide:'Valeurs normatives, non modifiables.'},
    {grp:'Règlement et sécurité',ro:1,lbl:'Limites de contrainte du béton',valFn:()=>'0,60·fck (caractéristique et à la mise en précontrainte) · 0,45·fck (quasi-permanente)',aide:'Valeurs normatives, non modifiables.'},
    {grp:'Règlement et sécurité',ro:1,lbl:'Variation de l\'effort de précontrainte',valFn:dp=>(dp.systeme==='post'&&dp.adh==='adh')?'r sup 1,10 · r inf 0,90':'r sup 1,05 · r inf 0,95',aide:'Valeurs normatives, non modifiables : effort caractéristique supérieur et inférieur pour les vérifications de service.'},
@@ -41295,6 +41297,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Pertes de précontrainte',k:'tRelax_h',lbl:'Durée de relaxation retenue',t:'num',def:500000,min:1000,max:1000000,step:1000,unit:'h',aide:'500 000 h pour la valeur finale. À confirmer.'},
    {grp:'Béton et acier',k:'fckt',lbl:'Résistance caractéristique du béton à la mise en précontrainte',t:'num',defFn:dp=>prFcktDef(dp),min:10,max:90,step:0.5,unit:'MPa',aide:'Par défaut calculée d\'après l\'âge à la mise en précontrainte et le ciment ; saisir la valeur mesurée sur éprouvettes. À confirmer.'},
    {grp:'Béton et acier',k:'fp01',lbl:'Limite conventionnelle d\'élasticité du toron f_p0,1k',t:'num',defFn:dp=>(PR_ACIER.find(x=>x[0]===dp.acier)||PR_ACIER[0])[3],min:1000,max:2000,step:1,unit:'MPa',aide:'Valeur de la classe de toron choisie ; saisir la valeur du fournisseur. À confirmer.'},
+   {grp:'Béton et acier',k:'aireT',lbl:'Aire d\'un toron',t:'num',defFn:dp=>(PR_TORON.find(x=>x[0]===dp.toron)||PR_TORON[3])[2],min:30,max:300,step:1,unit:'mm²',aide:'Aire du type de toron choisi ; saisir l\'aire donnée par le fournisseur si elle diffère. À confirmer.'},
    {grp:'Béton et acier',k:'Ep_GPa',lbl:'Module d\'Young du toron',t:'num',def:195,min:150,max:210,step:1,unit:'GPa',aide:'195 GPa par défaut. À confirmer.'},
    {grp:'Béton et acier',k:'gammaBeton',lbl:'Poids volumique du béton',t:'num',def:25,min:20,max:28,step:0.5,unit:'kN/m³',aide:'25 kN/m³ par défaut. À confirmer.'},
    {grp:'Béton et acier',k:'psi1',lbl:'ψ1 — coefficient fréquent',t:'num',def:0.5,min:0,max:1,step:0.05,unit:'',aide:'0,5 pour logements et bureaux, 0,7 pour commerces et réunion, 0,9 pour stockage. À confirmer.'},
@@ -41311,6 +41314,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    {grp:'Flexion et dispositions',k:'surlong_m',lbl:'Surlongueur de câble à chaque extrémité',t:'num',def:0.8,min:0,max:3,step:0.1,unit:'m',aide:'Longueur de câble hors béton pour la mise en tension : sert au métré. À confirmer.'}
   ];
   const prSpecs=dp=>PR_SPEC.filter(sp=>!sp.cond||sp.cond(dp));
+  window.dimPrP=(dp,k)=>prP(dp,k);
   function prP(dp,k){ const sp=PR_SPEC.find(x=>x.k===k); if(prSaisi(dp,k)) return sp.t==='sel'?dp[k]:+dp[k]; if(sp.defFn) return sp.defFn(dp); return sp.def; }
   /* ---------- section ---------- */
   function prSec(dp){
@@ -41373,11 +41377,11 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ---------- calcul principal ---------- */
   function prCalc(dp){
    const P=k=>prP(dp,k), S=prSec(dp), L=+dp.Lp_m, dal=S.dal, pre=dp.systeme==='pre', nadh=!pre&&dp.adh==='nadh';
-   const fck=pcFck(dp.classeGlobale), fcm=fck+8, Ecm=PR_ECM[dp.classeGlobale]||35000, fctm=smFctm(fck), fctk=0.7*fctm, fcd=fck/1.5, fctd=fctk/1.5;
+   const fck=pcFck(dp.classeGlobale), fcm=fck+8, Ecm=PR_ECM[dp.classeGlobale]||35000, fctm=smFctm(fck), fctk=0.7*fctm, gC=(+dp.gammaC>0?+dp.gammaC:1.5), gSp=(+dp.gammaSp>0?+dp.gammaSp:1.15), fcd=fck/gC, fctd=fctk/gC;
    const fckt=prFckt(dp), fcmt=fckt+8, Ecmt=Ecm*Math.pow(fcmt/fcm,0.3), fctmt=smFctm(fckt);
    const toR=PR_TORON.find(x=>x[0]===dp.toron)||PR_TORON[3], ac=PR_ACIER.find(x=>x[0]===dp.acier)||PR_ACIER[0], fpk=ac[2], fp01=P('fp01'), Ep=P('Ep_GPa')*1000, Es=200000;
-   const fyk=PC_FYK[dp.classeAcier]||500, fyd=fyk/1.15, fpd=fp01/1.15, fpkd=fpk/1.15, eud=0.02, incl=P('diagAcier')==='inclinee';
-   const nT=dal?100/(+dp.sT_cm):+dp.nT, Ap=nT*toR[2], Ap_m2=Ap/1e6, sp0=+dp.sp0_MPa;
+   const fyk=PC_FYK[dp.classeAcier]||500, fyd=fyk/1.15, fpd=fp01/gSp, fpkd=fpk/gSp, eud=0.02, incl=P('diagAcier')==='inclinee';
+   const nT=dal?100/(+dp.sT_cm):+dp.nT, Ap=nT*P('aireT'), Ap_m2=Ap/1e6, sp0=+dp.sp0_MPa;
    const yb=S.yb, uMid=(+dp.u_cm)/100, uApp=prSaisi(dp,'uApp_cm')?(+dp.uApp_cm)/100:yb, eMid=yb-uMid, eApp=yb-uApp, dE=eMid-eApp;
    const eAt=x=>eApp+dE*4*x*(L-x)/(L*L), gam=P('gammaBeton'), G0=S.A*gam, gadd=+dp.g_kNm||0, qv=+dp.q_kNm||0, psi1=P('psi1'), psi2=P('psi2');
    const wG=G0+gadd, Mx=(w,x)=>w*x*(L-x)/2;
@@ -41426,7 +41430,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const limT=crit.lim==='zero'?0:-fctm;
    mk('Fissuration',crit.nom,f2(Math.min(0,tMin),2)+' MPa (traction maximale)',crit.lim==='zero'?'≥ 0 (décompression)':'≥ −'+f2(fctm,2)+' MPa (section non fissurée ; sinon ouverture à justifier)',tMin>=limT-1e-9);
    if(Math.min(fi.top,fi.bot,fiA.top,fiA.bot)<limT-1e-9) passTr(fi,'tr_serv');
-   const Pmcr=rinf*sMid.Pi, Mcr=S.Winf*(fctm+Pmcr/S.A/1000)*1000+Pmcr*sMid.e;
+   const Pmcr=rinf*sMid.Pi, mcrE=(dp.mcrExc==null||+dp.mcrExc>=0.5), Mcr=S.Winf*(fctm+Pmcr/S.A/1000)*1000+(mcrE?Pmcr*sMid.e:0);
    /* ELU */
    const g_u=1.35*wG, q_u=1.5*qv, wU=g_u+q_u, MEd=wU*L*L/8, VEdApp=wU*L/2;
    const phiE=P('phiEst_mm'), cE=+dp.enrobage_cm, phiC=P('phiCadre_mm'), dsC=(S.h*100-(cE+phiC/10+phiE/20))/100, uPmid=uMid, dpm=S.h-uPmid;
@@ -41478,7 +41482,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const flecheQP=(fQP-fP)*1000, flecheC=(fT-fP)*1000, lim250=L*1000/250;
    mk('Flèche','Flèche instantanée en service (section non fissurée)',f2(flecheC,1)+' mm (quasi permanente '+f2(flecheQP,1)+' mm)','≤ L/250 = '+f2(lim250,1)+' mm',flecheC<=lim250+1e-9);
    const tot=(1-sMid.Pi/(Ap*sp0/1000));
-   const out={dal,pre,nadh,S,L,nT,Ap,sp0,fck,fckt,Ecm,Ecmt,fctm,fctmt,fpk,fp01,Ep,toR,ac,eMid,eApp,uMid,uApp,rsup,rinf,sMid,sApp,sApp0,sApp1,G0,gadd,qv,psi1,psi2,wG,M_G,M_C,M_F,M_Q,MEd,VEdApp,Mcr,
+   const out={gC,gSp,mcrE,dal,pre,nadh,S,L,nT,Ap,sp0,fck,fckt,Ecm,Ecmt,fctm,fctmt,fpk,fp01,Ep,toR,ac,eMid,eApp,uMid,uApp,rsup,rinf,sMid,sApp,sApp0,sApp1,G0,gadd,qv,psi1,psi2,wG,M_G,M_C,M_F,M_Q,MEd,VEdApp,Mcr,
     trM,trMi,trA,trAi,svM,svA,qpM,qpA,fi,fiA,crit,AsTrBot,AsTrTop,AsFlex,AsMcr,AsMin,AsEls,AsReq,AsProv,barsInf,barsSup,AsTopReq,MRd:RP.M,MRd0:R0.M,xNeutre:RP.x,epsP:RP.eps,
     VEd:VEdr,VEd0:VEd,Vp,VRdc,VRd_c,VRd_unc,useUnc,VRdmax,cot,acw,AswSreq,AswSmin,stir,dUse,dsC,dpm,xS,sigCpx,
     flecheC,flecheQP,camber:camber*1000,lset,D0,rate,theta:theta(Lh),perteTot:tot,perteDiff:sMid.sDiff,
@@ -41511,9 +41515,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     if(!PR_CLS.includes(d.classeGlobale)) er.push({key:'classeGlobale',msg:'La classe de béton doit être choisie.'}); });
   }
   function prValidate(dp){ return prValidateV(dp).errors.map(x=>x.msg); }
-  function prData(t){ if(!t.dimPR) t.dimPR=prDefaultData(t); const d=t.dimPR; d.materiau='beton_precontraint'; if(!d.prType) d.prType='poutre'; if(!d.prForme) d.prForme='rect'; if(!d.systeme) d.systeme='post'; if(!d.adh) d.adh='adh'; if(d.systeme==='pre') d.adh='adh'; if(!d.toron) d.toron='T15S'; if(!d.acier) d.acier='1860'; if(!d.tens) d.tens='une'; if(!d.expo) d.expo='XC1'; if(!PR_CLS.includes(d.classeGlobale)) d.classeGlobale='C40/50'; return d; }
+  function prData(t){ if(!t.dimPR) t.dimPR=prDefaultData(t); const d=t.dimPR; d.materiau='beton_precontraint'; if(!d.prType) d.prType='poutre'; if(!d.prForme) d.prForme='rect'; if(!d.systeme) d.systeme='post'; if(!d.adh) d.adh='adh'; if(d.systeme==='pre') d.adh='adh'; if(!d.toron) d.toron='T15S'; if(!d.acier) d.acier='1860'; if(!d.tens) d.tens='une'; if(!d.expo) d.expo='XC1'; if(!PR_CLS.includes(d.classeGlobale)) d.classeGlobale='C40/50'; if(d.gammaC==null) d.gammaC=1.5; if(d.gammaSp==null) d.gammaSp=1.15; if(d.mcrExc==null) d.mcrExc=1; ['muFrot','kFrot','rentree_mm'].forEach(k=>{ if(d[k]===undefined) d[k]=null; }); return d; }
   function prCompute(t){ const dp=prData(t); dimThrow(prValidateV(dp)); return prCalc(dp); }
-  const bp2=(x,d)=>(x==null||!isFinite(+x))?'∞':((v,n)=>(Math.abs(v)<0.5*Math.pow(10,-n)?0:v).toFixed(n).replace('.',','))(+x,d==null?2:d);
+  const pr2=(x,d)=>(x==null||!isFinite(+x))?'∞':((v,n)=>(Math.abs(v)<0.5*Math.pow(10,-n)?0:v).toFixed(n).replace('.',','))(+x,d==null?2:d);
   /* disposition indicative des torons dans la section : rangées à partir de la hauteur u (cm), 5 cm entre axes */
   function prToronsPos(dp,S,n,u_cm,sp){
    const b=S.bw*100, c=(+dp.enrobage_cm||4)+1.5; if(sp>0){ const out=[]; for(let i=0;i<n;i++) out.push([b/2+(i-(n-1)/2)*sp,u_cm]); return out; }
@@ -41576,11 +41580,20 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    else inp='<input type="number" inputmode="decimal" step="'+sp.step+'" min="'+sp.min+'" max="'+sp.max+'" data-pr-adv="'+sp.k+'" value="'+(v==null?'':+(+v).toFixed(4))+'">';
    return '<label><span class="pcElsLbl">'+sp.lbl+'</span><span class="pcElsCtl">'+inp+(sp.unit&&sp.t!=='sel'?'<span class="pcUnitEls">'+sp.unit+'</span>':'')+'</span>'+tag+'</label>'+(err&&err.key===sp.k?'<p class="pcNote pcElsErr" role="alert">'+esc(err.msg)+'</p>':'')+'<p class="pcNote">'+sp.aide+'</p>';
   }
+  const PR_TBL=['aireT','fp01','diagAcier','asMinRed','phiFl','epsCs','rho1000','psi1','psi2','muFrot','kFrot','rentree_mm'];
+  function prTblHtml(dp){
+   const rows=PR_TBL.map(k=>PR_SPEC.find(x=>x.k===k)).filter(sp=>sp&&(!sp.cond||sp.cond(dp))).map(sp=>{
+    const sa=prSaisi(dp,sp.k), dv=sp.defFn?sp.defFn(dp):sp.def, sel=sp.t==='sel', fv=v=>sel?((sp.opts.find(o=>String(o[0])===String(v))||[0,v])[1]):(String(+(+v).toFixed(4)).replace('.',',')+(sp.unit?' '+sp.unit:''));
+    const inp=sel?'<select data-pr-adv="'+sp.k+'" aria-label="'+esc(sp.lbl)+'"><option value=""'+(sa?'':' selected')+'>— par défaut —</option>'+sp.opts.map(o=>'<option value="'+o[0]+'"'+(sa&&String(o[0])===String(dp[sp.k])?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>'
+     :'<input type="number" inputmode="decimal" step="'+sp.step+'" min="'+sp.min+'" max="'+sp.max+'" data-pr-adv="'+sp.k+'" aria-label="'+esc(sp.lbl)+'" placeholder="'+esc(String(+(+dv).toFixed(4)).replace('.',','))+'" value="'+(sa?+(+dp[sp.k]).toFixed(4):'')+'">'+(sp.unit?' <span class="pcUnitEls">'+sp.unit+'</span>':'');
+    return '<tr><td>'+esc(sp.lbl)+'</td><td>'+esc(fv(dv))+' <span class="pcElsTag">à confirmer</span></td><td>'+inp+'</td><td><span class="pcElsTag'+(sa?' on':'')+'">'+(sa?'saisi':'par défaut')+'</span></td><td><button type="button" class="ghost pcBtnSm" data-pr-act="rowReset" data-k="'+sp.k+'" aria-label="Rétablir : '+esc(sp.lbl)+'"'+(sa?'':' disabled')+'>Rétablir</button></td></tr>'; }).join('');
+   return '<details class="pcEls prTbl" data-pr-det="tbl"'+(dp._tblOpen?' open':'')+'><summary>Valeurs retenues par défaut, à confirmer</summary><div class="pcElsBody"><p class="pcNote">Toutes les valeurs prises sans donnée de votre étude, avec la valeur par défaut, un champ pour la vôtre et son origine. Une valeur saisie remplace la valeur par défaut et est reprise dans la note de calcul.</p><div class="pfTblW"><table class="pfTbl prTblT"><thead><tr><th>Paramètre</th><th>Valeur par défaut (à confirmer)</th><th>Valeur saisie</th><th>Origine</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div></details>';
+  }
   function prAdvHtml(dp,id){
    const err=(window._prErr||{})[id];
    return '<details class="pcEls muAdv" data-pr-det="adv"'+(dp._advOpen?' open':'')+'><summary>Paramètres avancés</summary><div class="pcElsBody">'
     +'<p class="pcNote">Valeurs par défaut affichées dans les champs ; elles servent au calcul et sont reprises dans la note de calcul (Hypothèses et Points à confirmer). Les coefficients partiels et les limites normatives ne sont pas modifiables.</p>'
-    +elsMenuHtml(dp,'pr',id,prSpecs(dp),err,PR_MD,prAdvField)
+    +prTblHtml(dp)+elsMenuHtml(dp,'pr',id,prSpecs(dp),err,PR_MD,prAdvField)
     +'<button type="button" class="ghost" data-pr-act="advReset">Rétablir les valeurs par défaut</button></div></details>';
   }
   const prSel=(path,opts,cur)=>'<select data-pr="'+path+'">'+opts.map(o=>'<option value="'+o[0]+'"'+(String(o[0])===String(cur)?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
@@ -41615,21 +41628,21 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ----- résultats ----- */
   function prVerifsHtml(res){ return '<div class="pfTblW"><table class="pfTbl"><thead><tr><th>Vérification</th><th>Calcul</th><th>Limite</th><th>État</th></tr></thead><tbody>'+res.verifs.map(v=>'<tr><td>'+esc(v.zone+' — '+v.nom)+'</td><td>'+esc(v.calcul)+'</td><td>'+esc(v.limite)+'</td><td><span class="pcDimBadge '+(v.etat==='ok'?'ok':'ko')+'">'+(v.etat==='ok'?'Conforme':'À revoir')+'</span></td></tr>').join('')+'</tbody></table></div>'; }
   function prPertesHtml(res){
-   const m=res.sMid, f=bp2, rows=[['Contrainte à la mise en tension',res.sp0,0]];
+   const m=res.sMid, f=pr2, rows=[['Contrainte à la mise en tension',res.sp0,0]];
    if(!res.pre){ rows.push(['Perte par frottement',-m.sFrot,1],['Perte par rentrée d\'ancrage',-m.sSlip,1]); } else if(m.sBanc>0) rows.push(['Perte propre au banc',-m.sBanc,1]);
    rows.push(['Raccourcissement élastique du béton',-m.sEl,1],['Contrainte après pertes instantanées',m.sm0,0],['Pertes différées : retrait, fluage, relaxation',-m.sDiff,1],['Contrainte finale',m.smI,0]);
    return '<div class="pfTblW"><table class="pfTbl"><thead><tr><th>Mi-portée</th><th>MPa</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r[0])+'</td><td>'+(r[2]?f(r[1],1):'<b>'+f(r[1],1)+'</b>')+'</td></tr>').join('')+'</tbody></table></div>'
     +'<p class="pcNote">Effort de précontrainte à mi-portée : '+f(m.P0,0)+' kN après pertes instantanées, '+f(m.Pi,0)+' kN après pertes différées (pertes totales '+f(res.perteTot*100,1)+' %).'+(res.pre?'':' Rentrée d\'ancrage : zone concernée '+(isFinite(res.lset)?f(res.lset,1)+' m':'toute la longueur')+'.')+'</p>';
   }
   function prContrHtml(res){
-   const f=bp2, r=(nm,a,b,c)=>'<tr><td>'+nm+'</td><td>'+f(a,2)+'</td><td>'+f(b,2)+'</td><td>'+(c||'')+'</td></tr>';
+   const f=pr2, r=(nm,a,b,c)=>'<tr><td>'+nm+'</td><td>'+f(a,2)+'</td><td>'+f(b,2)+'</td><td>'+(c||'')+'</td></tr>';
    return '<div class="pfTblW"><table class="pfTbl"><thead><tr><th>Section et état</th><th>Fibre sup. (MPa)</th><th>Fibre inf. (MPa)</th><th>Effort P (kN)</th></tr></thead><tbody>'
     +r('Mi-portée, mise en précontrainte (poids propre)',res.trM.top,res.trM.bot,f(res.rsup*res.sMid.P0,0))+r('Appuis, mise en précontrainte',res.trA.top,res.trA.bot,f(res.rsup*res.sApp.pmax0,0))
     +r('Mi-portée, caractéristique',res.svM.top,res.svM.bot,f(res.rsup*res.sMid.Pi,0))+r('Mi-portée, quasi permanente',res.qpM.top,res.qpM.bot,f(res.rsup*res.sMid.Pi,0))
     +r('Mi-portée, '+(res.crit.comb==='freq'?'fréquente':'quasi permanente')+' (effort minimal)',res.fi.top,res.fi.bot,f(res.rinf*res.sMid.Pi,0))+'</tbody></table></div><p class="pcNote">Compression positive. Fibre supérieure et inférieure de la section.</p>';
   }
   function prArmHtml(res){
-   const f=bp2, dal=res.dal, u=dal?' cm²/m':' cm²', b=res.barsInf, bs=res.barsSup;
+   const f=pr2, dal=res.dal, u=dal?' cm²/m':' cm²', b=res.barsInf, bs=res.barsSup;
    let h='<div class="pfTblW"><table class="pfTbl"><thead><tr><th>Armature</th><th>Requise</th><th>Posée</th><th>Détail</th></tr></thead><tbody>'
     +'<tr><td>Inférieure (flexion, fissuration, section minimale)</td><td>'+f(res.AsReq,2)+u+'</td><td>'+f(res.AsProv,2)+u+'</td><td>'+(dal?'Ø'+b.phi+' e = '+b.s+' mm':b.n+' HA'+b.phi)+'</td></tr>'
     +'<tr><td>Supérieure (traction à la mise en précontrainte / montage)</td><td>'+f(res.AsTopReq,2)+u+'</td><td>'+f(bs.As,2)+u+'</td><td>'+(dal?'Ø'+bs.phi+' e = '+bs.s+' mm':bs.n+' HA'+bs.phi)+'</td></tr>'
@@ -41653,7 +41666,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const nomO=esc(dimOuvrageNom(t,dp));
    if(!res||!res.verifs||!res.S) return '<div class="pcNC"><h3>Note de calcul — '+nomO+'</h3><p class="pcNote">Résultat d\'une ancienne version : toucher « Recalculer l\'ouvrage » pour régénérer la note.</p></div>';
    const tb=(head,rows)=>'<table class="ncT"><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
-   const o=k=>prSaisi(dp,k)?'Saisi':'Par défaut', P=k=>prP(dp,k), f=bp2, dal=res.dal, SYS=Object.fromEntries(PR_SYS), ADH=Object.fromEntries(PR_ADH), EX=Object.fromEntries(PR_EXPO), u=dal?' kN/m²':' kN/m';
+   const vE=id=>(dp.valid&&dp.valid[id])||null, secChg=(res.gC<1.5-1e-9)||(res.gSp<1.15-1e-9)||!res.mcrE||(+res.gC!==1.5)||(+res.gSp!==1.15), eS=vE('pr_securite'), eF=vE('pr_frottement'), frSaisi=prSaisi(dp,'muFrot')||prSaisi(dp,'kFrot')||prSaisi(dp,'rentree_mm');
+   const orgSec=!eS?'Par défaut (non validé)':(eS.choix==='methode'?'Méthode de l\'utilisateur':(secChg?'Saisi':'Validé par l\'ingénieur')), orgFr=!eF?(frSaisi?'Saisi':'Par défaut (non validé)'):(eF.choix==='methode'?'Méthode de l\'utilisateur':(eF.choix==='modifie'||frSaisi?'Saisi (valeurs de l\'agrément du système)':'Valeurs prudentes par défaut, à confirmer'));
+   const orgMcr=!eS?'Par défaut (non validé)':(eS.choix==='methode'?'Méthode de l\'utilisateur':(!res.mcrE?'Saisi':'Validé par l\'ingénieur'));
+   const o=k=>prSaisi(dp,k)?'Saisi':'Par défaut', P=k=>prP(dp,k), f=pr2, dal=res.dal, SYS=Object.fromEntries(PR_SYS), ADH=Object.fromEntries(PR_ADH), EX=Object.fromEntries(PR_EXPO), u=dal?' kN/m²':' kN/m';
    let h='<div class="pcNC" data-norme="Eurocode 2 (NF EN 1992-1-1)"><h3>Note de calcul — '+nomO+'</h3><p class="pcNote">'+(dal?'Dalle précontrainte, bande de 1 m':'Poutre précontrainte')+' · Eurocode 2 · '+(res.pre?'pré-tension':(res.nadh?'post-tension non adhérente':'post-tension adhérente'))+'</p>';
    const nKo=res.nKo; h+='<p class="ncConstat">'+(nKo?nomO+' : '+nKo+' point'+(nKo>1?'s':'')+' à reprendre — voir les vérifications':nomO+' : pertes, contraintes, flexion, tranchant et flèche vérifiés — ancrages et fissuration en détail non traités')+'</p>';
    h+='<h4>1 · Données et hypothèses</h4>'+tb(['Paramètre','Valeur','Origine'],[
@@ -41661,14 +41677,14 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     ['Béton / acier passif',esc(dp.classeGlobale)+' / '+esc(dp.classeAcier)+' · enrobage '+f(dp.enrobage_cm,1)+' cm','Saisi'],['Classe d\'exposition',esc(EX[dp.expo]||dp.expo),'Saisi'],
     ['Mode de précontrainte',esc(SYS[dp.systeme]||dp.systeme)+(res.pre?'':' · '+esc(ADH[dp.adh]||dp.adh)+' · tension '+(dp.tens==='deux'?'aux deux extrémités':'à une extrémité')),'Saisi'],
     ['Torons',esc(res.toR[1])+' · classe '+f(res.fpk,0)+' MPa · '+(dal?'un toron tous les '+f(dp.sT_cm,0)+' cm':f(dp.nT,0)+' toron'+(dp.nT>1?'s':''))+' · section d\'acier '+f(res.Ap,0)+' mm²'+(dal?'/m':''),'Saisi'],
-    ['Contrainte à la mise en tension',f(res.sp0,0)+' MPa','Saisi'],['Hauteur des câbles',f(res.uMid*100,1)+' cm à mi-portée, '+f(res.uApp*100,1)+' cm aux appuis',prSaisi(dp,'uApp_cm')?'Saisi':'Saisi (appuis : centre de gravité)'],
+    ['Contrainte à la mise en tension',f(res.sp0,0)+' MPa','Saisi'],['Aire d\'un toron',f(P('aireT'),0)+' mm² ('+esc(res.toR[0])+')',o('aireT')],['Coefficients de sécurité : béton γc · acier de précontrainte γs',f(res.gC,2)+' · '+f(res.gSp,2),orgSec],['Moment de fissuration : effet d\'excentricité du câble',res.mcrE?'Pris en compte':'Ignoré',orgMcr],['Hauteur des câbles',f(res.uMid*100,1)+' cm à mi-portée, '+f(res.uApp*100,1)+' cm aux appuis',prSaisi(dp,'uApp_cm')?'Saisi':'Saisi (appuis : centre de gravité)'],
     ['Charges',f(res.gadd,2)+u+' permanentes ajoutées, '+f(res.qv,2)+u+' d\'exploitation, poids propre '+f(res.G0,2)+u,'Saisi / calculé'],
     ['Résistance du béton à la mise en précontrainte',f(res.fckt,1)+' MPa',o('fckt')],['Limite conventionnelle d\'élasticité du toron',f(res.fp01,0)+' MPa',o('fp01')],['Module du toron',f(res.Ep/1000,0)+' GPa',o('Ep_GPa')],
     ['Poids volumique du béton',f(P('gammaBeton'),1)+' kN/m³',o('gammaBeton')],['ψ1 / ψ2',f(res.psi1,2)+' / '+f(res.psi2,2),(prSaisi(dp,'psi1')||prSaisi(dp,'psi2'))?'Saisi':'Par défaut'],
     ['Âge à la mise en précontrainte · ciment · humidité',f(P('t0'),0)+' j · '+P('ciment')+' · '+f(P('HR'),0)+' %',(prSaisi(dp,'t0')||prSaisi(dp,'ciment')||prSaisi(dp,'HR'))?'Saisi':'Par défaut'],
     ['Coefficient de fluage final · retrait total',f(res.creep.phi,2)+(prSaisi(dp,'phiFl')?'':' (calculé)')+' · '+f(P('epsCs'),3)+' ‰'+(prSaisi(dp,'epsCs')?'':' (calculé)'),(prSaisi(dp,'phiFl')||prSaisi(dp,'epsCs'))?'Saisi':'Par défaut (calculé)'],
     ['Relaxation',f(P('rho1000'),1)+' % à 1000 h · classe '+res.relaxCl+' · '+f(P('tRelax_h'),0)+' h',(prSaisi(dp,'rho1000')||prSaisi(dp,'relaxCl')||prSaisi(dp,'tRelax_h'))?'Saisi':'Par défaut']
-   ].concat(res.pre?[['Perte propre au banc',f(P('perteBanc_MPa'),0)+' MPa',o('perteBanc_MPa')]]:[['Frottement μ · déviation parasite k · rentrée d\'ancrage',f(P('muFrot'),3)+' · '+f(P('kFrot'),4)+' rad/m · '+f(P('rentree_mm'),1)+' mm',(prSaisi(dp,'muFrot')||prSaisi(dp,'kFrot')||prSaisi(dp,'rentree_mm'))?'Saisi':'Par défaut'],['Câbles tendus successivement',f(P('nCables'),0),o('nCables')]])
+   ].concat(res.pre?[['Perte propre au banc',f(P('perteBanc_MPa'),0)+' MPa',o('perteBanc_MPa')]]:[['Frottement μ · déviation parasite k · rentrée d\'ancrage',f(P('muFrot'),3)+' · '+f(P('kFrot'),4)+' rad/m · '+f(P('rentree_mm'),1)+' mm',orgFr],['Câbles tendus successivement',f(P('nCables'),0),o('nCables')]])
     .concat([['Rapport minimal M_Rd / M_cr',f(P('seuilMcr'),2),o('seuilMcr')],['Diagramme de calcul des aciers',P('diagAcier')==='inclinee'?'Branche inclinée':'Branche horizontale',o('diagAcier')]])
     .concat(res.nadh?[['Surtension des câbles non adhérents à l\'ELU',f(P('dSigUlsNadh'),0)+' MPa',o('dSigUlsNadh')]]:[])
     .concat([['Composante verticale de la précontrainte au tranchant',P('compVp')==='oui'?'Prise en compte':'Non prise en compte',o('compVp')],['Section minimale passive réduite par la précontrainte',P('asMinRed')==='oui'?'Oui':'Non',o('asMinRed')]])
@@ -41679,7 +41695,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    h+='<h4>5 · Vérifications</h4>'+tb(['Vérification','Calcul','Limite','État'],res.verifs.map(v=>[esc(v.zone+' — '+v.nom),esc(v.calcul),esc(v.limite),v.etat==='ok'?'Conforme':'Non conforme']));
    h+='<h4>6 · Armatures passives (Eurocode 2)</h4>'+prArmHtml(res);
    const pt=(tx,bad)=>'<p class="ncPt" data-bad="'+(bad?1:0)+'">'+tx+'</p>';
-   h+=pt('Valeurs de pertes (frottement, rentrée d\'ancrage, fluage, retrait, relaxation) '+((prSaisi(dp,'muFrot')||prSaisi(dp,'kFrot')||prSaisi(dp,'rentree_mm'))?'saisies':'retenues par défaut')+' : à confirmer selon l\'agrément du système de précontrainte et les conditions de chantier.')
+   h+=(res.gC<1.5-1e-9?pt('Coefficient de sécurité du béton saisi plus bas que la valeur normale (1,50) : '+f(res.gC,2)+'. À confirmer par l\'ingénieur.'):'')+(res.gSp<1.15-1e-9?pt('Coefficient de sécurité de l\'acier de précontrainte saisi plus bas que la valeur normale (1,15) : '+f(res.gSp,2)+'. À confirmer par l\'ingénieur.'):'')+(!res.mcrE?pt('Moment de fissuration calculé sans l\'effet d\'excentricité du câble (choix moins prudent) : à confirmer par l\'ingénieur.'):'')
+    +(!res.pre&&(!eF||eF.choix==='accepte')&&!frSaisi?pt('Frottement, déviation parasite et rentrée d\'ancrage : valeurs prudentes par défaut, à confirmer avec les valeurs de l\'agrément du système.'):'')
+    +pt('Valeurs de pertes (frottement, rentrée d\'ancrage, fluage, retrait, relaxation) '+((prSaisi(dp,'muFrot')||prSaisi(dp,'kFrot')||prSaisi(dp,'rentree_mm'))?'saisies':'retenues par défaut')+' : à confirmer selon l\'agrément du système de précontrainte et les conditions de chantier.')
     +pt('Pertes évaluées à mi-portée et aux deux extrémités seulement, section brute non fissurée : à confirmer.')
     +pt('Fissuration : le critère retenu est l\'absence de traction au-delà de la limite choisie (section non fissurée) ; l\'ouverture de fissure n\'est pas calculée lorsque cette limite est dépassée : à confirmer.')
     +pt('Zones d\'ancrage des câbles (éclatement, frettage, appuis), efforts de déviation, effet des torons non adhérents sur la fissuration, tranchant en zone de transmission de la pré-tension au-delà de la réduction choisie : non calculés. À confirmer.')
@@ -41697,7 +41715,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ----- plan : élévation, coupes, nomenclature ----- */
   const PR_NOTES=['Béton et acier : voir le cartouche. Torons et armatures passives : positions indiquées au plan, enrobage nominal sur les coupes.','Les câbles suivent le tracé parabolique coté ; les hauteurs sont mesurées de l\'axe des torons au bord inférieur.','Mise en tension progressive après durcissement du béton (résistance exigée dans la note), mesure simultanée de la force et de l\'allongement ; injection des gaines des câbles adhérents.','Aucun détail d\'ancrage, de frettage ni de gaine n\'est dessiné : à compléter selon l\'agrément du système de précontrainte.','Les coupes sont à leur échelle propre, indiquée sous chaque vue ; l\'élévation est à l\'échelle en longueur, la hauteur peut être exagérée (signalé).'];
   function prPlan(res,dp){
-   if(!res||!res.verifs||!res.S) return null; const f=bp2, S=res.S, L=res.L, dal=res.dal, cE=+dp.enrobage_cm, rho=7850, rows=[];
+   if(!res||!res.verifs||!res.S) return null; const f=pr2, S=res.S, L=res.L, dal=res.dal, cE=+dp.enrobage_cm, rho=7850, rows=[];
    const dE=res.eMid-res.eApp, sur=prP(dp,'surlong_m'), Lc=L+8/3*dE*dE/L+(res.pre?0:2*sur);
    rows.push({rep:'1',designation:'Torons '+res.toR[0]+(res.nadh?' non adhérents':(res.pre?' (pré-tension)':' adhérents'))+', classe '+res.fpk,nbDiam:(dal?f(res.nT,2)+' / m':f(res.nT,0))+' × '+res.toR[0],AsReel:res.Ap/100,AsReq:null,longueur:Lc,faconnage:'Tracé parabolique, hauteur '+f(res.uMid*100,1)+' cm à mi-portée',poids:res.Ap*1e-6*Lc*rho});
    const bI=res.barsInf, bS=res.barsSup, LB=Math.max(0.5,L-2*cE/100);
@@ -41721,9 +41739,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    [OX,OX+w].forEach(x=>fplR(S,x===OX?x-6:x,OY+H-g.uApp*kv-8,6,16,'betf'));
    const rE=P.res, bI=rE.barsInf; fplL(S,OX+0.05*s,OY+H-(cE+0.012)*kv,OX+w-0.05*s,OY+H-(cE+0.012)*kv,'bar'); fplL(S,OX+0.05*s,OY+(cE+0.012)*kv,OX+w-0.05*s,OY+(cE+0.012)*kv,'bar');
    if(!g.dal&&rE.stir){ const stp=rE.stir.s/1000, nC=Math.floor(L/stp)+1, st=Math.max(1,Math.ceil(nC/40)); for(let i=0;i<nC;i+=st){ const x=OX+i*stp*s; fplL(S,x,OY+cE*kv,x,OY+H-cE*kv,'cad'); } }
-   const yM=OY+H-g.uMid*kv; fplL(S,OX+w/2,yM,OX+w+34,yM,'cote'); fplVD(S,OX+w+34,yM,OY+H,'u = '+bp2(g.uMid*100,1)+' cm',OX+w,OX+w,-6);
-   const yA=OY+H-g.uApp*kv; fplL(S,OX,yA,OX-34,yA,'cote'); fplVD(S,OX-34,yA,OY+H,'u appui = '+bp2(g.uApp*100,1)+' cm',OX,OX,6);
-   fplHD(S,OX,OX+w,OY+H+44,'L = '+bp2(L,2)+' m',OY+H,OY+H); fplVD(S,OX-80,OY,OY+H,'h = '+bp2(hh*100,0)+' cm',OX,OX,-6);
+   const yM=OY+H-g.uMid*kv; fplL(S,OX+w/2,yM,OX+w+34,yM,'cote'); fplVD(S,OX+w+34,yM,OY+H,'u = '+pr2(g.uMid*100,1)+' cm',OX+w,OX+w,-6);
+   const yA=OY+H-g.uApp*kv; fplL(S,OX,yA,OX-34,yA,'cote'); fplVD(S,OX-34,yA,OY+H,'u appui = '+pr2(g.uApp*100,1)+' cm',OX,OX,6);
+   fplHD(S,OX,OX+w,OY+H+44,'L = '+pr2(L,2)+' m',OY+H,OY+H); fplVD(S,OX-80,OY,OY+H,'h = '+pr2(hh*100,0)+' cm',OX,OX,-6);
    fplBub(S,OX+w*0.25,OY-18,'1',10); fplL(S,OX+w*0.25,OY-8,OX+w*0.25,OY+H-(g.uApp+(g.uMid-g.uApp)*0.75)*kv,'lead');
    fplBub(S,OX+w*0.4,OY+H+80,'2',10); fplL(S,OX+w*0.4,OY+H+70,OX+w*0.4,OY+H-(cE+0.012)*kv,'lead'); fplBub(S,OX+w*0.6,OY+H+104,'3',10); fplL(S,OX+w*0.6,OY+H+94,OX+w*0.6,OY+(cE+0.012)*kv,'lead'); if(!g.dal){ fplBub(S,OX+w*0.8,OY+H+80,'4',10); fplL(S,OX+w*0.8,OY+H+70,OX+w*0.8,OY+H-cE*kv,'lead'); }
    fplT(S,OX,OY+H+128,'Élévation : tracé parabolique du câble · '+(ev>1?'hauteur exagérée ×'+ev:'même échelle en hauteur'),'ts','start',0,false);
@@ -41736,21 +41754,21 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const pos=prToronsPos({enrobage_cm:cc},{bw:g.b},nShow,uU*100,g.dal?g.sT:0); pos.forEach(q=>fplC(T,OX+off0*k+q[0]*k,y0+sh-q[1]*k,Math.max(3.6,0.8*k),'bub'));
     const bI2=rE.barsInf, nb=g.dal?Math.min(5,Math.max(2,Math.floor(100/bI2.s))):Math.min(12,bI2.n), xs=(bw-2*(cc+1))/Math.max(1,nb-1); for(let i=0;i<nb;i++) fplC(T,OX+off0*k+(cc+1+(nb>1?i*xs:(bw-2*cc-2)/2))*k,y0+sh-(cc+1)*k,Math.max(2.6,bI2.phi/20*k),'dot');
     const bS2=rE.barsSup, nt=g.dal?Math.min(5,Math.max(2,Math.floor(100/bS2.s))):Math.min(12,bS2.n), xt=(bw-2*(cc+1))/Math.max(1,nt-1); for(let i=0;i<nt;i++) fplC(T,OX+off0*k+(cc+1+(nt>1?i*xt:(bw-2*cc-2)/2))*k,y0+(cc+1)*k,Math.max(2.4,bS2.phi/20*k),'dot');
-    fplHD(T,OX,OX+sw,y0+sh+40,(g.T?'b = ':'b = ')+bp2(bmax,0)+' cm',y0+sh,y0+sh); fplVD(T,OX-34,y0,y0+sh,'h = '+bp2(hh*100,0)+' cm',OX,OX,-6); fplVD(T,OX+sw+34,y0+sh-uU*100*k,y0+sh,'u = '+bp2(uU*100,1)+' cm',OX+sw,OX+sw,-6);
+    fplHD(T,OX,OX+sw,y0+sh+40,(g.T?'b = ':'b = ')+pr2(bmax,0)+' cm',y0+sh,y0+sh); fplVD(T,OX-34,y0,y0+sh,'h = '+pr2(hh*100,0)+' cm',OX,OX,-6); fplVD(T,OX+sw+34,y0+sh-uU*100*k,y0+sh,'u = '+pr2(uU*100,1)+' cm',OX+sw,OX+sw,-6);
     fplT(T,OX,y0+sh+86,titre,'ts','start',0,false); return {id,titre:id==='cm'?'Coupe à mi-portée':'Coupe sur appui',cap:titre,S:T};
    };
    return [{id:'elev',titre:'Élévation',cap:'Élévation à l\'échelle en longueur, tracé du câble',S},sec('Coupe à mi-portée : torons (cercles), barres, cadre',g.uMid,'cm'),sec('Coupe sur appui : câbles à leur hauteur d\'appui',g.uApp,'ca')];
   }
   function prPlanNomenclature(P){
    return '<table class="ncG"><tr><th>Rep.</th><th>Désignation</th><th>Nb × Ø</th><th>A<sub>s</sub> réel / requis (cm²)</th><th>Long. unit. (m)</th><th>Façonnage</th><th>Poids (kg)</th></tr>'
-    +P.rows.map(r=>'<tr><td>'+esc(r.rep)+'</td><td>'+esc(r.designation)+'</td><td style="white-space:nowrap">'+esc(r.nbDiam)+'</td><td style="white-space:nowrap">'+(r.AsReel!=null?bp2(r.AsReel)+(r.AsReq?' / '+bp2(r.AsReq):''):'—')+'</td><td>'+bp2(r.longueur,2)+'</td><td>'+esc(r.faconnage)+'</td><td>'+(r.poids>0?bp2(r.poids,0):'—')+'</td></tr>').join('')
-    +'<tr><td colspan="6" style="text-align:right"><b>Total acier'+(P.g.dal?' (par mètre de largeur)':'')+'</b></td><td><b>'+bp2(P.poidsTotal,0)+' kg</b></td></tr></table>';
+    +P.rows.map(r=>'<tr><td>'+esc(r.rep)+'</td><td>'+esc(r.designation)+'</td><td style="white-space:nowrap">'+esc(r.nbDiam)+'</td><td style="white-space:nowrap">'+(r.AsReel!=null?pr2(r.AsReel)+(r.AsReq?' / '+pr2(r.AsReq):''):'—')+'</td><td>'+pr2(r.longueur,2)+'</td><td>'+esc(r.faconnage)+'</td><td>'+(r.poids>0?pr2(r.poids,0):'—')+'</td></tr>').join('')
+    +'<tr><td colspan="6" style="text-align:right"><b>Total acier'+(P.g.dal?' (par mètre de largeur)':'')+'</b></td><td><b>'+pr2(P.poidsTotal,0)+' kg</b></td></tr></table>';
   }
   function prPlanFerraillageSvg(dp,res){ const P=prPlan(res,dp); return P?prPlanScenes(P).map(q=>'<div class="pcDraw fplDraw">'+fplSceneSvg(q.S,{label:q.titre})+'</div>').join(''):''; }
   function prPlanHtml(t,dp,res){
    const P=prPlan(res,dp), info=fplCartInfo(t,dp,{parametres:{}}); info.nomO=dimOuvrageNom(t,dp); info.norme='Eurocode 2 (NF EN 1992-1-1)';
    if(!P) return '<div class="pcNC ncDoc fplDoc"><h3 class="ncH1">Plan de ferraillage non disponible</h3><p class="pcNote">Résultat absent ou d\'une ancienne version : relancer le calcul.</p></div>';
-   const nW=P.avertissements.length, date=todayStr(), f=bp2;
+   const nW=P.avertissements.length, date=todayStr(), f=pr2;
    const constat=info.nomO+' : élévation et coupes à l\'échelle, '+f(P.poidsTotal,0)+' kg d\'acier'+(P.g.dal?' par mètre de largeur':'')+(nW?' — '+nW+' point'+(nW>1?'s':'')+' à reprendre':'')+' — ancrages et gaines non dessinés';
    const subL=[info.projet,info.bat,'Plan de ferraillage indice '+info.indice,date].filter(Boolean).join(' · ');
    const cart='<table class="ncCart" aria-label="Cartouche"><tr><td><b>Projet</b>'+esc(info.projet||'—')+'</td><td><b>Ouvrage</b>'+esc(info.nomO)+(info.typ?' · '+esc(info.typ):'')+'</td><td><b>Document</b>Plan de ferraillage '+esc(info.nomO)+'</td></tr>'
@@ -41845,7 +41863,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const h3=mb.querySelector('h3'); if(h3&&h3.nextSibling) mb.insertBefore(wrap,h3.nextSibling); else mb.appendChild(wrap);
    [...mb.children].forEach(c=>{ if(c.classList.contains('close-x')||c.tagName==='H3'||c===wrap) return; c.classList.add('pjBeamHidden'); c.style.setProperty('display','none','important'); });
    preRender(id);
-   if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>preClick(e,id)); wrap.addEventListener('change',e=>preChange(e,id)); wrap.addEventListener('toggle',e=>{ const d=e.target; if(!d.dataset||d.dataset.prDet!=='adv') return; const tk=taskById(id); if(!tk||!tk.dimPR) return; tk.dimPR._advOpen=d.open; try{persist();}catch(_){ } },true); }
+   if(!wrap._wired){ wrap._wired=1; wrap.addEventListener('click',e=>preClick(e,id)); wrap.addEventListener('change',e=>preChange(e,id)); wrap.addEventListener('toggle',e=>{ const d=e.target; if(!d.dataset||(d.dataset.prDet!=='adv'&&d.dataset.prDet!=='tbl')) return; const tk=taskById(id); if(!tk||!tk.dimPR) return; if(d.dataset.prDet==='tbl') tk.dimPR._tblOpen=d.open; else tk.dimPR._advOpen=d.open; try{persist();}catch(_){ } },true); }
   }
   const _od_prec=window.openTaskDetail; if(typeof _od_prec==='function'){ window.openTaskDetail=function(id){ const r=_od_prec.apply(this,arguments); setTimeout(()=>{ try{ preFiche(id); }catch(e){ console.error(e); } },700); return r; }; }
   function preRender(id){
@@ -41865,7 +41883,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const t=taskById(id); if(!t) return; const dp=prData(t), el=e.target;
    if(el.matches('[data-pr="nom"]')){ dimSetDesignation(t,dp,el); return; }
    if(el.dataset.prAdv){ const sp=PR_SPEC.find(x=>x.k===el.dataset.prAdv); if(!sp) return; window._prErr=window._prErr||{}; delete window._prErr[id];
-    if(sp.t==='sel'){ if(sp.def!=null&&el.value===sp.def) delete dp[sp.k]; else dp[sp.k]=el.value; }
+    if(sp.t==='sel'){ if(el.value===''||(sp.def!=null&&el.value===sp.def)) delete dp[sp.k]; else dp[sp.k]=el.value; }
     else if(el.value===''){ delete dp[sp.k]; } else { const x=+String(el.value).replace(',','.'); if(!isFinite(x)||x<sp.min||x>sp.max) window._prErr[id]={key:sp.k,msg:sp.lbl+' : valeur comprise entre '+String(sp.min).replace('.',',')+' et '+String(sp.max).replace('.',',')+(sp.unit?' '+sp.unit:'')+'.'}; else dp[sp.k]=x; }
     dp._advOpen=true; try{persist();}catch(_){ } preRender(id); return; }
    const path=el.dataset.pr; if(!path) return;
@@ -41886,6 +41904,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     return; }
    const a=e.target.closest('[data-pr-act]'); if(!a) return; const act=a.dataset.prAct; const save=()=>{ try{persist();}catch(_){ } preRender(id); };
    if(act==='printNote'){ preState(id).view='note'; preRender(id); return; }
+   if(act==='rowReset'){ delete dp[a.dataset.k]; dp._advOpen=true; dp._tblOpen=true; save(); return; }
    if(act==='advReset'){ PR_SPEC.forEach(sp=>{ if(sp.k) delete dp[sp.k]; }); window._prErr=window._prErr||{}; delete window._prErr[id]; dp._advOpen=true; save(); return; }
    if(act==='exemple'){ miniAsk('Remplir des valeurs d\'illustration (portée, section, torons, hauteur des câbles et charges) ? Elles remplacent les valeurs saisies.','Remplir','Annuler',()=>{
      if(dp.prType==='dalle'){ Object.assign(dp,{Lp_m:10,hp_cm:30,sT_cm:35,sp0_MPa:1400,u_cm:3.5,g_kNm:1,q_kNm:2.5,systeme:'post',adh:'nadh',toron:'T15S',classeGlobale:'C30/37'}); delete dp.uApp_cm; }
@@ -46794,9 +46813,11 @@ document.head.appendChild(st);
  sp('bp','bp_poutres','Pont : répartition transversale des charges entre poutres',{warn:true,quand:dp=>dp.chkPoutres!==false,supposes:'Des poutres identiques posées sur appuis simples, des entretoises rigides, le trafic remplacé par sa résultante.',ignore:'La souplesse des entretoises, la torsion du tablier, les effets de phasage et de fluage.',ne:'Tabliers biais ou courbes, poutres inégales, entretoises souples ou absentes.',valeurs:vals([['nB','Nombre de poutres'],['e_m','Entraxe','m'],['L_m','Portée','m'],['qTraf_kNm','Trafic réparti','kN/m'],['PTraf_kN','Trafic concentré','kN']]),champs:[ch('qTraf_kNm','Trafic réparti','kN/m',0,5000),ch('PTraf_kN','Trafic concentré','kN',0,50000)]});
  sp('bp','bp_mixte','Pont : section mixte élastique et plastique',{warn:true,quand:dp=>dp.chkMixte!==false,supposes:'Une section élastique avec un coefficient d\'équivalence unique, un béton tendu négligé sous moment négatif, un moment plastique par blocs de contraintes.',ignore:'Le voilement des parois, le phasage de construction, le fluage, le retrait, la fatigue.',ne:'Poutres à parois élancées, grandes portées, ponts où la fatigue gouverne.',valeurs:vals([['hs_cm','Hauteur de poutre','cm'],['bs_cm','Semelle supérieure','cm'],['bi_cm','Semelle inférieure','cm'],['Asup_cm2','Armatures supérieures','cm²'],['Ainf_cm2','Armatures inférieures','cm²']]),champs:[ch('Asup_cm2','Armatures supérieures','cm²',0,5000),ch('Ainf_cm2','Armatures inférieures','cm²',0,5000)]});
  sp('dg','dg_efforts','Dallage : efforts par méthode prudente',{warn:true,quand:()=>true,seuils:[{k:'nb',nom:'Nombre de charges à partir duquel le cas est sensible',def:5,unit:'',min:1,max:100}],sensible:(dp,S)=>(Array.isArray(dp.charges)&&dp.charges.length>=S.nb)?'plusieurs charges peuvent se cumuler':null,supposes:'Un dallage posé sur un sol élastique, des charges isolées, des joints régulièrement espacés.',ignore:'Le cumul de charges proches, le retrait gêné (selon l\'option choisie), les écarts de température.',ne:'Rayonnages très serrés, charges très proches les unes des autres, sols très inégaux.',valeurs:vals([['L_m','Longueur','m'],['B_m','Largeur','m'],['h_cm','Épaisseur','cm'],['ks_MPam','Module de réaction du sol','MPa/m'],['qsol_kPa','Pression admissible du sol','kPa']]),champs:[ch('ks_MPam','Module de réaction du sol','MPa/m',1,500),ch('qsol_kPa','Pression admissible du sol','kPa',10,2000)]});
- sp('pr','bp_pertes','Précontrainte : pertes évaluées en deux sections',{warn:true,quand:()=>true,seuils:[{k:'L',nom:'Portée à partir de laquelle le cas est sensible',def:20,unit:'m',min:3,max:100}],sensible:(dp,S)=>(+dp.Lp_m>=S.L)?'la portée est grande, les pertes varient beaucoup le long du câble':null,supposes:'Un câble à tracé parabolique ; frottement, rentrée d\'ancrage, raccourcissement élastique, retrait, fluage et relaxation évalués à mi-portée et aux deux extrémités, section brute non fissurée.',ignore:'Les pertes en chaque point intermédiaire, la fissuration de la section, les variations de température, la mise en tension par étapes.',ne:'Poutres très longues, câbles à fort tracé, ouvrages continus, mise en tension échelonnée dans le temps.',valeurs:vals([['Lp_m','Portée','m'],['hp_cm','Hauteur','cm'],['sp0_MPa','Contrainte à la mise en tension','MPa'],['u_cm','Hauteur des câbles à mi-portée','cm']]),champs:[ch('sp0_MPa','Contrainte à la mise en tension','MPa',300,2000),ch('u_cm','Hauteur des câbles à mi-portée','cm',1,300)]});
- sp('pr','bp_flexion','Précontrainte : flexion à l\'état limite ultime',{warn:true,quand:()=>true,supposes:'Sections planes, béton comprimé en bloc rectangulaire, torons adhérents suivant la compatibilité des déformations, ou surtension forfaitaire pour les câbles non adhérents.',ignore:'Le fluage et le retrait au-delà de la perte finale, les moments hyperstatiques de précontrainte, la fatigue.',ne:'Éléments continus, câbles très peu adhérents, sections à très faible précontrainte.',valeurs:vals([['g_kNm','Charge permanente ajoutée'],['q_kNm','Charge d\'exploitation']]),champs:[ch('g_kNm','Charge permanente ajoutée','',0,1e5),ch('q_kNm','Charge d\'exploitation','',0,1e5)]});
- sp('pr','bp_fissure','Précontrainte : fissuration par limitation de la traction',{warn:true,quand:()=>true,supposes:'Pas de fissure tant que la traction du béton reste sous la limite fixée par la classe d\'exposition (section non fissurée).',ignore:'Le calcul de l\'ouverture de fissure lorsque la limite est dépassée, la fissuration due au retrait gêné.',ne:'Ambiances agressives, éléments exposés aux chlorures sans décompression complète.',valeurs:dp=>[['Classe d\'exposition',String(dp.expo||'')]]});
+ sp('pr','pr_securite','Précontrainte : coefficients de sécurité et choix prudents',{warn:true,quand:()=>true,cas:dp=>[dp.prType,dp.prForme,dp.Lp_m,dp.prb_cm,dp.hp_cm,dp.bfp_cm,dp.hfp_cm,dp.classeGlobale,dp.systeme,dp.adh,dp.tens,dp.toron,dp.acier,dp.nT,dp.sT_cm,dp.sp0_MPa,dp.u_cm,dp.uApp_cm,dp.g_kNm,dp.q_kNm,dp.expo],supposes:'Valeurs normales : coefficient de sécurité du béton 1,5 et de l\'acier de précontrainte 1,15. Le moment de fissuration tient compte de l\'excentricité du câble (plus prudent). Frottement, déviation et rentrée d\'ancrage : valeurs courantes de monotorons graissés, sauf valeurs que vous donnez.',ignore:'Une autre pratique existe avec des valeurs plus basses de ces coefficients (béton préfabriqué sous contrôle renforcé) et un moment de fissuration sans l\'effet d\'excentricité du câble : elle n\'est pas retenue par défaut.',ne:'Béton préfabriqué sous contrôle de fabrication renforcé, câbles en gaine métallique (frottement et rentrée d\'ancrage à demander au fournisseur du système), ouvrage où une valeur plus basse est justifiée.',valeurs:dp=>[['Coefficient de sécurité du béton γc',fnum(dp.gammaC==null?1.5:dp.gammaC)],['Coefficient de sécurité de l\'acier de précontrainte γs',fnum(dp.gammaSp==null?1.15:dp.gammaSp)],['Moment de fissuration : effet d\'excentricité du câble',(dp.mcrExc==null||+dp.mcrExc>=0.5)?'pris en compte':'ignoré']],champs:[{k:'gammaC',nom:'Coefficient de sécurité du béton γc',unit:'',min:1,max:2},{k:'gammaSp',nom:'Coefficient de sécurité de l\'acier de précontrainte γs',unit:'',min:1,max:1.5},{k:'mcrExc',nom:'Effet d\'excentricité du câble dans le moment de fissuration (1 = pris en compte, 0 = ignoré)',unit:'',min:0,max:1}]});
+ sp('pr','pr_frottement','Précontrainte : frottement, déviation parasite et rentrée d\'ancrage des câbles',{warn:true,quand:dp=>dp.systeme!=='pre',cas:dp=>[dp.Lp_m,dp.hp_cm,dp.u_cm,dp.uApp_cm,dp.tens,dp.adh,dp.systeme],lib:{accepte:['Utiliser les valeurs prudentes par défaut (à confirmer)','Je garde les valeurs affichées ci-dessus, signalées à confirmer.'],modifie:['Je saisis les valeurs de l\'agrément du système','Je donne les valeurs fournies par le fournisseur du système de précontrainte.']},supposes:'Le frottement du câble dans sa gaine, la déviation parasite et la rentrée des clavettes à la mise en tension prennent les valeurs affichées, courantes pour des monotorons graissés.',ignore:'Les valeurs propres à votre système de précontrainte (câbles en gaine métallique, ancrages particuliers) tant que vous ne les saisissez pas.',ne:'Câbles en gaine métallique ou systèmes dont l\'agrément donne d\'autres valeurs : saisir celles de l\'agrément.',valeurs:dp=>{ const P=k=>{ try{ return window.dimPrP(dp,k); }catch(_){ return ''; } }; return [['Coefficient de frottement du câble μ',fnum(P('muFrot'))],['Déviation parasite k (rad/m)',fnum(P('kFrot'))],['Rentrée d\'ancrage (mm)',fnum(P('rentree_mm'))]]; },champs:[{k:'muFrot',nom:'Coefficient de frottement du câble μ',unit:'',min:0,max:0.5},{k:'kFrot',nom:'Déviation parasite k',unit:'rad/m',min:0,max:0.03},{k:'rentree_mm',nom:'Rentrée d\'ancrage',unit:'mm',min:0,max:20}]});
+ sp('pr','pr_pertes','Précontrainte : pertes évaluées en deux sections',{warn:true,quand:()=>true,seuils:[{k:'L',nom:'Portée à partir de laquelle le cas est sensible',def:20,unit:'m',min:3,max:100}],sensible:(dp,S)=>(+dp.Lp_m>=S.L)?'la portée est grande, les pertes varient beaucoup le long du câble':null,supposes:'Un câble à tracé parabolique ; frottement, rentrée d\'ancrage, raccourcissement élastique, retrait, fluage et relaxation évalués à mi-portée et aux deux extrémités, section brute non fissurée.',ignore:'Les pertes en chaque point intermédiaire, la fissuration de la section, les variations de température, la mise en tension par étapes.',ne:'Poutres très longues, câbles à fort tracé, ouvrages continus, mise en tension échelonnée dans le temps.',valeurs:vals([['Lp_m','Portée','m'],['hp_cm','Hauteur','cm'],['sp0_MPa','Contrainte à la mise en tension','MPa'],['u_cm','Hauteur des câbles à mi-portée','cm']]),champs:[ch('sp0_MPa','Contrainte à la mise en tension','MPa',300,2000),ch('u_cm','Hauteur des câbles à mi-portée','cm',1,300)]});
+ sp('pr','pr_flexion','Précontrainte : flexion à l\'état limite ultime',{warn:true,quand:()=>true,supposes:'Sections planes, béton comprimé en bloc rectangulaire, torons adhérents suivant la compatibilité des déformations, ou surtension forfaitaire pour les câbles non adhérents.',ignore:'Le fluage et le retrait au-delà de la perte finale, les moments hyperstatiques de précontrainte, la fatigue.',ne:'Éléments continus, câbles très peu adhérents, sections à très faible précontrainte.',valeurs:vals([['g_kNm','Charge permanente ajoutée'],['q_kNm','Charge d\'exploitation']]),champs:[ch('g_kNm','Charge permanente ajoutée','',0,1e5),ch('q_kNm','Charge d\'exploitation','',0,1e5)]});
+ sp('pr','pr_fissure','Précontrainte : fissuration par limitation de la traction',{warn:true,quand:()=>true,supposes:'Pas de fissure tant que la traction du béton reste sous la limite fixée par la classe d\'exposition (section non fissurée).',ignore:'Le calcul de l\'ouverture de fissure lorsque la limite est dépassée, la fissuration due au retrait gêné.',ne:'Ambiances agressives, éléments exposés aux chlorures sans décompression complète.',valeurs:dp=>[['Classe d\'exposition',String(dp.expo||'')]]});
  sp('as','as_section','Analyse de section : sections planes et béton en bloc rectangulaire',{supposes:'Les sections planes restent planes, le béton comprimé est remplacé par un bloc rectangulaire, l\'acier est élastique puis plastique.',ignore:'Le flambement de l\'élément (les efforts saisis doivent déjà en tenir compte), le fluage, la fatigue.',ne:'Éléments élancés, pièces très courtes (régions de disque), chargements répétés.',valeurs:vals([['asB_cm','Largeur','cm'],['asH_cm','Hauteur','cm'],['asN','Effort normal','kN'],['asM','Moment','kN·m'],['asV','Effort tranchant','kN'],['enrobage_cm','Enrobage','cm']]),champs:[ch('asN','Effort normal','kN',-1e7,1e7),ch('asM','Moment','kN·m',-1e7,1e7),ch('enrobage_cm','Enrobage','cm',1,10)]});
  sp('as','as_cercle','Section circulaire : effort tranchant simplifié',{warn:true,quand:dp=>dp.asForme==='circulaire',sensible:dp=>(+dp.asV>0)?'un effort tranchant est appliqué à la section':null,supposes:'Pour le cisaillement, la section ronde est remplacée par un rectangle équivalent.',ignore:'La largeur réelle de la section ronde qui varie avec la hauteur.',ne:'Forts efforts tranchants, sections très petites.',valeurs:vals([['asD_cm','Diamètre','cm'],['asV','Effort tranchant','kN'],['asN','Effort normal','kN'],['asM','Moment','kN·m']]),champs:[ch('asV','Effort tranchant','kN',-1e7,1e7)]});
   sp('ac','ac_boulons','Assemblage boulonné : répartition de l\'effort',{warn:true,supposes:'L\'effort est réparti également entre les boulons, chaque boulon reprend sa part en cisaillement, en pression diamétrale ou en traction.',ignore:'La section nette des plaques, l\'arrachement de bloc, la déformation des plaques et la fatigue.',ne:'Assemblages très longs, plaques minces, boulons en nombre très inégal selon les rangées.',valeurs:vals([['acClasse','Classe des boulons'],['acDiam','Diamètre'],['acNL','Rangées'],['acNT','Boulons par rangée'],['acFv','Cisaillement','kN'],['acFt','Traction','kN']]),champs:[ch('acFv','Cisaillement','kN',0,1e7),ch('acFt','Traction','kN',0,1e7)],quand:dp=>dp.acType==='boulonne'});
@@ -46840,8 +46861,8 @@ document.head.appendChild(st);
  function dimValidateWindow(spec,ctx){
   ctx=ctx||{}; if(!ctx.dp&&ctx.pfx&&ctx.id) ctx.dp=getDp(ctx.pfx,ctx.id); const dp=ctx.dp; if(!dp) return null;
   const ov=overlay(); const sm=sensibleMsg(dp,spec); const cur=store(dp)[spec.id];
-  const rows=[ {icon:'check',nom:'J\'accepte',aide:'Je garde la méthode intégrée telle qu\'elle est décrite ci-dessus.',attr:'data-dv-c="accepte"',primary:true} ];
-  if(spec.champs&&spec.champs.length) rows.push({icon:'edit',nom:'Je modifie',aide:'Je donne moi-même mes valeurs.',attr:'data-dv-c="modifie"'}); else rows.push({icon:'edit',nom:'Je modifie',aide:'Je change moi-même les valeurs dans la fiche et les paramètres avancés.',attr:'data-dv-c="modifie"'});
+  const LB=spec.lib||{}; const rows=[ {icon:'check',nom:(LB.accepte&&LB.accepte[0])||'J\'accepte',aide:(LB.accepte&&LB.accepte[1])||'Je garde la méthode intégrée telle qu\'elle est décrite ci-dessus.',attr:'data-dv-c="accepte"',primary:true} ];
+  if(spec.champs&&spec.champs.length) rows.push({icon:'edit',nom:(LB.modifie&&LB.modifie[0])||'Je modifie',aide:(LB.modifie&&LB.modifie[1])||'Je donne moi-même mes valeurs.',attr:'data-dv-c="modifie"'}); else rows.push({icon:'edit',nom:'Je modifie',aide:'Je change moi-même les valeurs dans la fiche et les paramètres avancés.',attr:'data-dv-c="modifie"'});
   rows.push({icon:'chat',nom:'Je décris ma méthode',aide:'J\'explique ma méthode à l\'assistant, qui la met en calcul pas à pas.',attr:'data-dv-c="methode"'});
   rows.push({icon:'close',nom:'Annuler',aide:'Fermer sans rien changer.',attr:'data-dv-c=""'});
   ov.innerHTML='<div class="pcFeuCard dvCard"><h4 id="dvT">Voici ce qui est à valider</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
@@ -46861,7 +46882,7 @@ document.head.appendChild(st);
  function findInput(k){ const mb=document.getElementById('modalBody'); if(!mb) return null; return [...mb.querySelectorAll('input,select,textarea')].find(el=>[...el.attributes].some(a=>a.name.indexOf('data-')===0&&a.value===k)); }
  function editView(ov,spec,ctx){
   const dp=ctx.dp; const locked=(typeof dimStatut==='function')&&dimStatut(dp)==='calcule';
-  const cs=spec.champs.filter(c=>dp[c.k]!==undefined);
+  const cs=spec.champs.filter(c=>dp[c.k]!==undefined&&(!c.when||c.when(dp)));
   ov.innerHTML='<div class="pcFeuCard dvCard"><h4 id="dvT">Je modifie mes valeurs</h4><p class="dvWhat"><b>'+esc(spec.titre)+'</b></p>'
    +(locked?'<p class="dvSens" role="note">La fiche est verrouillée (calcul fait). Touchez « Recalculer l\'ouvrage » pour la rouvrir, puis revenez ici.</p>':'')
    +'<div class="dvFields">'+cs.map(c=>'<label class="dvFld"><span class="dvFl">'+esc(c.nom)+'</span><span class="dvFc"><input type="text" inputmode="decimal" data-dv-k="'+esc(c.k)+'" value="'+esc(dp[c.k]===null?'':String(dp[c.k]).replace('.',','))+'"'+(locked?' disabled':'')+'><span class="dvU">'+esc(c.unit||'')+'</span></span><span class="dvErr" data-dv-err="'+esc(c.k)+'" role="alert"></span></label>').join('')+'</div>'
