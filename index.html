@@ -46721,6 +46721,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ---- Admin : liste des sessions ---- */
   function beFormationRenderAdmin(){
     const w=document.getElementById('beFormationWrap'); if(!w) return;
+    try{ if(window.evlUi) window.evlUi.migrer(); }catch(e){}
     beFormationSync();
     const L=L_sessions();
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Formation</h2>'
@@ -47027,36 +47028,24 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   window.beEvalNew=function(sessionId, evalId){ beEvalDraft={sessionId, evalId:evalId||null}; beEvalNewRender(); };
   function beEvalNewRender(){
     const d=beEvalDraft; if(!d) return;
-    const ev = d.evalId ? L_evaluations().find(x=>x.id===d.evalId) : null;
-    const fos=L_formulaires();
-    const selected=(ev&&ev.formulaireIds)||[];
-    const opts=fos.map(f=>'<option value="'+esc(f.id)+'"'+(selected.includes(f.id)?' selected':'')+'>'+esc(f.nom)+' ('+f.questions.length+' question'+(f.questions.length>1?'s':'')+')</option>').join('');
-    openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>'+(ev?'Modifier l’évaluation':'Nouvelle évaluation')+'</h3>'
-      +'<div class="field"><label>Nom</label><input type="text" id="be-ev-a" value="'+esc(ev&&ev.nom||'')+'"></div>'
-      +'<div class="field"><label>Formulaires</label>'+(fos.length?'<select id="be-ev-b" multiple size="'+Math.min(6,fos.length)+'">'+opts+'</select>':'<p class="be-empty">Aucun formulaire. Créez-en un depuis « Gérer les formulaires ».</p>')+'</div>'
-      +'<div class="field"><label>Début de l’évaluation</label><input type="datetime-local" id="be-ev-c" value="'+esc(ev&&ev.dateDebut||'')+'"></div>'
-      +'<div class="field"><label>Fin de l’évaluation</label><input type="datetime-local" id="be-ev-d" value="'+esc(ev&&ev.dateFin||'')+'"></div>'
+    const ev = d.evalId ? L_evaluations().find(x=>x.id===d.evalId) : null; if(!ev){ closeModal(); return; }
+    openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>Modifier l’évaluation</h3>'
+      +'<div class="field"><label>Nom</label><input type="text" id="be-ev-a" value="'+esc(ev.nom||'')+'"></div>'
+      +'<div class="field"><label>Début de l’évaluation</label><input type="datetime-local" id="be-ev-c" value="'+esc(ev.dateDebut||'')+'"></div>'
+      +'<div class="field"><label>Fin de l’évaluation</label><input type="datetime-local" id="be-ev-d" value="'+esc(ev.dateFin||'')+'"></div>'
       +'<div class="modal-actions">'
-      +(ev?'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beEvalDel(\''+ev.id+'\')">Supprimer</button>':'')
+      +'<button class="ghost" style="color:var(--rust); border-color:var(--rust);" onclick="beEvalDel(\''+ev.id+'\')">Supprimer</button>'
       +'<button class="primary" id="be-ev-save">Enregistrer</button>'
-      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beSessionEvalsManage(d.sessionId));
+      +'<button class="ghost" onclick="closeModal()">Fermer</button></div>', ()=>beEvalOpenRender(ev.id));
     document.getElementById('be-ev-save').onclick=()=>beEvalSave();
   }
   window.beEvalSave=function(){
     const d=beEvalDraft; if(!d) return;
+    const ev=L_evaluations().find(x=>x.id===d.evalId); if(!ev) return;
     const nom=document.getElementById('be-ev-a').value.trim();
-    const sel=document.getElementById('be-ev-b');
-    const formulaireIds = sel ? Array.from(sel.selectedOptions).map(o=>o.value) : [];
-    const dateDebut=document.getElementById('be-ev-c').value||'';
-    const dateFin=document.getElementById('be-ev-d').value||'';
     if(!nom){ miniAlert('Le nom de l’évaluation est requis.'); return; }
-    if(!formulaireIds.length){ miniAlert('Choisissez au moins un formulaire.'); return; }
-    if(!d.evalId){
-      L_evaluations().push({id:uid('EV'), sessionId:d.sessionId, nom, formulaireIds, dateDebut, dateFin, statut:'brouillon', bareme:null, pjCorrection:null, moyenneClasse:null, soumissions:[]});
-    } else {
-      const ev=L_evaluations().find(x=>x.id===d.evalId); if(ev){ ev.nom=nom; ev.formulaireIds=formulaireIds; ev.dateDebut=dateDebut; ev.dateFin=dateFin; }
-    }
-    beSave(); beEvalDraft=null; closeModal(); beSessionEvalsManage(d.sessionId);
+    ev.nom=nom; ev.dateDebut=document.getElementById('be-ev-c').value||''; ev.dateFin=document.getElementById('be-ev-d').value||'';
+    beSave(); beEvalDraft=null; closeModal(); beEvalOpenRender(ev.id);
   };
   window.beEvalDel=function(id){
     const ev=L_evaluations().find(x=>x.id===id); if(!ev) return;
@@ -47066,17 +47055,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ---- Évaluations de la session : liste + formulaires + envoi (ouverte directement depuis la liste des sessions) ---- */
   function beSessionEvalsManage(sessionId){
     const s=L_sessions().find(x=>x.id===sessionId); if(!s) return;
+    try{ if(window.evlUi) window.evlUi.migrer(); }catch(e){}
     const evs=L_evaluations().filter(x=>x.sessionId===sessionId);
-    const evRow=e=>{
-      const nbSoum=(e.soumissions||[]).filter(x=>x.soumisLe).length, nbCorr=(e.soumissions||[]).filter(x=>x.statutCorrection==='corrigee').length;
-      return '<div class="be-row" data-ev="'+esc(e.id)+'"><span class="be-row-m"><b>'+esc(e.nom)+'</b><small>'+(e.dateDebut?esc(fmtDate2(e.dateDebut)):'')+(e.dateFin?' → '+esc(fmtDate2(e.dateFin)):'')+(e.statut!=='brouillon'?' · '+nbSoum+' réponse(s), '+nbCorr+' corrigée(s)':'')+(e.moyenneClasse!=null?' · Moyenne classe : '+esc(String(e.moyenneClasse)):'')+'</small></span><span class="be-ev-st be-ev-st-'+esc(e.statut)+'">'+(EV_ST[e.statut]||e.statut)+'</span></div>';
-    };
-    /* Évaluations rangées par statut : Brouillons, Envoyées, Clôturées */
-    const groupes=[['brouillon','📝 Brouillons'],['envoyee','📨 Envoyées'],['cloturee','🔒 Clôturées']];
-    const evHtml = evs.length ? groupes.map(([st,lb])=>{
-        const g=evs.filter(e=>(e.statut||'brouillon')===st); if(!g.length) return '';
-        return '<h4 class="be-ev-grp">'+lb+' <span class="be-ev-grp-n">'+g.length+'</span></h4><div class="be-list">'+g.map(evRow).join('')+'</div>';
-      }).join('') : '<p class="be-empty">Aucune évaluation.</p>';
+    const evHtml = window.evlUi ? window.evlUi.listeHtml(sessionId,'admin') : '<p class="be-empty">Aucune évaluation.</p>';
     /* Réponses des élèves : une ligne par copie, cliquable pour l'ouvrir et la corriger */
     const reps=[];
     evs.forEach(e=>(e.soumissions||[]).forEach(sb=>{ if(sb.soumisLe) reps.push({e,sb}); }));
@@ -47090,13 +47071,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>📝 Évaluations — '+esc(s.nom)+'</h3>'
       +evHtml
       +repHtml
-      +(beAdmin()?'<div class="row"><button type="button" class="ghost be-addbtn" id="be-ses-addev">+ Évaluation</button> <button type="button" class="ghost be-addbtn" id="be-ses-fomg">📑 Gérer les formulaires</button></div>':'')
-      +(beAdmin()?'<p class="empty-note" style="margin:8px 0 0;">Pour envoyer une évaluation aux élèves et qu’ils puissent y répondre, ouvrez-la ci-dessus puis cliquez sur « 📨 Envoyer aux élèves ».</p>':'')
+      +(beAdmin()?'<p class="empty-note" style="margin:8px 0 0;">Pour qu’un questionnaire soit envoyé aux élèves, ouvrez « Suivi et réponses » puis « 📨 Envoyer aux élèves ».</p>':'')
       +(beAdmin()?'<div class="modal-actions"><button class="primary" id="be-ses-send"'+(canSend?'':' disabled')+'>📤 Publier les corrections</button><button class="ghost" onclick="closeModal()">Fermer</button></div>':'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Fermer</button></div>'), ()=>beSessionOpenRender(sessionId));
     if(beAdmin()){
-      const aev=document.getElementById('be-ses-addev'); if(aev) aev.onclick=()=>beEvalNew(sessionId);
-      const fomg=document.getElementById('be-ses-fomg'); if(fomg) fomg.onclick=()=>beFormulairesManage(()=>beSessionEvalsManage(sessionId));
-      document.querySelectorAll('[data-ev]').forEach(r=>r.onclick=()=>beEvalOpen(r.dataset.ev));
       document.querySelectorAll('[data-rep-ev]').forEach(r=>r.onclick=()=>beCorrOpen(r.dataset.repEv, r.dataset.repEl));
       const pall=document.getElementById('be-rep-puball'); if(pall) pall.onclick=()=>beSessionEnvoyer(sessionId);
       const sendb=document.getElementById('be-ses-send'); if(sendb) sendb.onclick=()=>beSessionEnvoyer(sessionId);
@@ -47108,8 +47085,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   function beEvalOpenRender(id){
     const ev=L_evaluations().find(x=>x.id===id); if(!ev) return;
     const s=L_sessions().find(x=>x.id===ev.sessionId);
-    const fos=(ev.formulaireIds||[]).map(fid=>L_formulaires().find(f=>f.id===fid)).filter(Boolean);
-    const nbQ=fos.reduce((a,f)=>a+f.questions.length,0);
+    const nbQ=window.EvalQuest?window.EvalQuest.questionsDe(ev).length:0, okQ=!!(ev.questionnaire&&ev.questionnaire.valide&&nbQ);
     const eleves=(s&&s.eleveIds)||[];
     const rows = eleves.map(eid=>{
       const sb=(ev.soumissions||[]).find(x=>x.eleveId===eid);
@@ -47119,9 +47095,9 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       return '<div class="be-row"><span class="be-row-m"><b>'+esc(beNomFromId(eid))+'</b><small>'+statutTxt+'</small></span>'+(sb&&sb.soumisLe&&sb.statutCorrection!=='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Corriger</button>':'')+(sb&&sb.statutCorrection==='corrigee'?'<button type="button" class="ghost" data-corr="'+esc(eid)+'">Revoir</button>':'')+'</div>';
     }).join('') || '<p class="be-empty">Aucun élève inscrit dans cette session.</p>';
     openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>📝 '+esc(ev.nom)+'</h3>'
-      +'<p style="margin:0 0 6px;font-size:12.5px;color:var(--ink-soft);">'+esc(fos.map(f=>f.nom).join(', '))+' · '+nbQ+' question(s)</p>'
+      +'<p style="margin:0 0 6px;font-size:12.5px;color:var(--ink-soft);">'+(nbQ?nbQ+' question(s)'+(okQ?'':' · à relire avant l’envoi'):'Évaluation déposée (fichier) : pas de questionnaire')+'</p>'
       +'<p style="margin:0 0 12px;font-size:12.5px;color:var(--ink-soft);">'+(ev.dateDebut?esc(fmtDate2(ev.dateDebut)):'')+(ev.dateFin?' → '+esc(fmtDate2(ev.dateFin)):'')+' · <span class="be-ev-st">'+(EV_ST[ev.statut]||ev.statut)+'</span></p>'
-      +(ev.statut==='brouillon'?'<button type="button" class="ghost" id="be-ev-editbtn" style="margin-right:6px;">✎ Modifier</button><button type="button" class="primary" id="be-ev-sendbtn">📨 Envoyer aux élèves</button>':'')
+      +(ev.statut==='brouillon'?'<button type="button" class="ghost" id="be-ev-editbtn" style="margin-right:6px;">✎ Dates et nom</button>'+(okQ?'<button type="button" class="primary" id="be-ev-sendbtn">📨 Envoyer aux élèves</button>':'<span class="empty-note">Transformez le fichier en questionnaire et validez-le pour l’envoyer.</span>'):'')
       +'<h4 style="margin-top:14px;">Soumissions</h4><div class="be-list">'+rows+'</div>'
       +'<div class="modal-actions">'
       +(ev.statut!=='cloturee' && eleves.length && eleves.every(eid=>{ const sb=(ev.soumissions||[]).find(x=>x.eleveId===eid); return !sb||sb.statutCorrection==='corrigee'; }) && (ev.soumissions||[]).length ? '<button class="primary" id="be-ev-cloturer">🔒 Clôturer la correction</button>' : '')
@@ -47157,9 +47133,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
     let sb=(ev.soumissions||[]).find(x=>x.eleveId===eleveId);
     if(!sb){ sb={eleveId, eleveNom:beNomFromId(eleveId), reponses:{}, soumisLe:'', correction:{}, noteGlobale:null, statutCorrection:'a_corriger', publiee:false, publieeLe:''}; ev.soumissions=ev.soumissions||[]; ev.soumissions.push(sb); }
-    const fos=(ev.formulaireIds||[]).map(fid=>L_formulaires().find(f=>f.id===fid)).filter(Boolean);
-    const questions=[]; fos.forEach(f=>f.questions.forEach(q=>questions.push(q)));
-    const qHtml=questions.map((q,i)=>{
+    const questions=window.EvalQuest.questionsDe(ev);
+    const qHtml=questions.map((q,i)=>{ if(window.evlUi) return window.evlUi.corrQuestionHtml(q,i,sb,(sb.correction||{})[q.id]||{});
       const rep=(sb.reponses||{})[q.id]||'';
       const cor=(sb.correction||{})[q.id]||{};
       return '<div class="be-corr-q" data-qid="'+esc(q.id)+'">'
@@ -47223,6 +47198,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ================= FORMATION (élève stagiaire) ================= */
   function beFormationRenderEleve(){
     const w=document.getElementById('beFormationWrap'); if(!w) return;
+    try{ if(window.evlUi) window.evlUi.migrer(); }catch(e){}
     const meId=beMeId();
     const L=L_sessions().filter(s=>(s.eleveIds||[]).includes(meId));
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Mes sessions</h2></div>'
@@ -47234,21 +47210,8 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     const s=L_sessions().find(x=>x.id===id); if(!s || !(s.eleveIds||[]).includes(beMeId())) return;
     const sup=L_supports().filter(x=>x.sessionId===id);
     const supHtml = sup.length ? '<div class="be-list">'+sup.map(d=>'<div class="be-sup"><div class="be-row"><span class="be-row-m"><b>'+esc(d.theme)+'</b><small>'+(d.dateDepot?'Dépôt : '+esc(fmtDate(d.dateDepot)):'')+'</small></span>'+(beSupEtat(d,beMeId())==='en_cours'?'<button type="button" class="ghost" data-supok="'+esc(d.id)+'">✓ Terminé</button>':'')+'<span class="be-st '+(beSupEtat(d,beMeId())==='consulte'?'bst-va':(beSupEtat(d,beMeId())==='en_cours'?'bst-av':''))+'">'+BE_SUP_ST[beSupEtat(d,beMeId())]+'</span></div>'+(window.coursIaPjsHtml?window.coursIaPjsHtml(d,{eleve:true}):'')+'</div>').join('')+'</div>' : '<p class="be-empty">Aucun support de cours.</p>';
-    const now=beNowLocal();
-    const evs=L_evaluations().filter(x=>x.sessionId===id);
-    const evHtml = evs.length ? '<div class="be-list">'+evs.map(e=>{
-        const sb=(e.soumissions||[]).find(x=>x.eleveId===beMeId());
-        const ouverte = now>=(e.dateDebut||'') && (!e.dateFin || now<=e.dateFin);
-        let statutTxt, action='';
-        if(e.statut==='brouillon'){ statutTxt='Pas encore envoyée'; }
-        else if(sb && sb.publiee){ statutTxt='Correction disponible — note : '+esc(String(sb.noteGlobale)); action='<button type="button" class="ghost" data-voir="'+esc(e.id)+'">Voir</button>'; }
-        else if(sb && sb.soumisLe){ statutTxt='Soumis — en attente de correction'; }
-        else if(now < (e.dateDebut||'')){ statutTxt='Ouvre le '+esc(fmtDate2(e.dateDebut)); }
-        else if(e.dateFin && now > e.dateFin){ statutTxt=sb?'Clôturée, brouillon non soumis':'Clôturée, non soumise'; }
-        else if(sb && ouverte){ statutTxt='Brouillon enregistré — vous pouvez continuer.'; action='<button type="button" class="ghost" data-remplir="'+esc(e.id)+'">↩ Reprendre</button>'; }
-        else { statutTxt='À remplir avant le '+esc(fmtDate2(e.dateFin)); action='<button type="button" class="primary" data-remplir="'+esc(e.id)+'">Répondre</button>'; }
-        return '<div class="be-row"><span class="be-row-m"><b>'+esc(e.nom)+'</b><small>'+statutTxt+'</small></span>'+action+'</div>';
-      }).join('')+'</div>' : '<p class="be-empty">Aucune évaluation.</p>';
+    try{ if(window.evlUi) window.evlUi.migrer(); }catch(e){}
+    const evHtml = window.evlUi ? window.evlUi.listeHtml(id,'eleve') : '<p class="be-empty">Aucune évaluation.</p>';
     openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>🎓 '+esc(s.nom)+'</h3>'
       +(s.description?'<p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px;">'+esc(s.description)+'</p>':'')
       +'<h4>📚 Supports de cours</h4>'+supHtml
@@ -47256,70 +47219,10 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Retour</button></div>', ()=>beFormationRenderEleve());
     beSupPjWire(d=>{ beSupMark(d,beMeId(),'en_cours'); beSave(); },()=>beSessionOpenEleve(id)); if(window.coursIaPjsWire) window.coursIaPjsWire(document.getElementById('modalBody'));
     document.querySelectorAll('[data-supok]').forEach(b=>b.onclick=()=>{ const d=L_supports().find(x=>x.id===b.dataset.supok); if(d){ beSupMark(d,beMeId(),'consulte'); beSave(); beSessionOpenEleve(id); } });
-    document.querySelectorAll('[data-voir]').forEach(b=>b.onclick=()=>beEvalVoirCorrection(b.dataset.voir));
-    document.querySelectorAll('[data-remplir]').forEach(b=>b.onclick=()=>beEvalRemplir(b.dataset.remplir));
   }
-  window.beEvalRemplir=function(evalId){
-    const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
-    const now=beNowLocal();
-    if(now<(ev.dateDebut||'')||(ev.dateFin&&now>ev.dateFin)){ miniAlert('Cette évaluation n’est pas ouverte en ce moment.'); return; }
-    let sb=(ev.soumissions||[]).find(x=>x.eleveId===beMeId());
-    if(!sb){ ev.enCours=ev.enCours||{}; if(!ev.enCours[beMeId()]){ ev.enCours[beMeId()]=new Date().toISOString(); beSave(); } }
-    const fos=(ev.formulaireIds||[]).map(fid=>L_formulaires().find(f=>f.id===fid)).filter(Boolean);
-    const questions=[]; fos.forEach(f=>f.questions.forEach(q=>questions.push(q)));
-    const qHtml=questions.map((q,i)=>'<div class="field" data-qid="'+esc(q.id)+'"><label>Q'+(i+1)+'. '+esc(q.texte)+(q.pj&&q.pj.name?' <button type="button" class="ghost" data-vopj="'+esc(q.id)+'">📎 '+esc(q.pj.name)+'</button>':'')+'</label><textarea rows="3" data-rep>'+esc(sb&&sb.reponses&&sb.reponses[q.id]||'')+'</textarea></div>').join('');
-    openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>'+esc(ev.nom)+'</h3>'
-      +'<p class="empty-note" style="margin:0 0 10px;">À rendre avant le '+esc(fmtDate2(ev.dateFin))+'.</p>'
-      +qHtml
-      +'<div class="modal-actions"><button class="ghost" id="be-ev-save">💾 Enregistrer et continuer plus tard</button><button class="primary" id="be-ev-submit">Soumettre</button><button class="ghost" onclick="closeModal()">Annuler</button></div>', ()=>beSessionOpenEleve(ev.sessionId));
-    document.querySelectorAll('[data-vopj]').forEach(b=>b.onclick=()=>{ const q=questions.find(x=>x.id===b.dataset.vopj); if(q) beOpenPjViewer(q.pj); });
-    document.getElementById('be-ev-submit').onclick=()=>beEvalSoumettre(evalId);
-    document.getElementById('be-ev-save').onclick=()=>beEvalSauvegarder(evalId);
-  };
-  /* Enregistre les réponses en brouillon sans les soumettre : l'élève peut sortir et reprendre
-     plus tard, tant que la fenêtre de réponse (dateDebut/dateFin) de l'évaluation est ouverte. */
-  window.beEvalSauvegarder=function(evalId){
-    const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
-    const reponses={};
-    document.querySelectorAll('[data-qid]').forEach(div=>{ const t=div.querySelector('[data-rep]'); if(t) reponses[div.dataset.qid]=t.value; });
-    ev.soumissions=ev.soumissions||[];
-    let sb=ev.soumissions.find(x=>x.eleveId===beMeId());
-    if(!sb){ sb={eleveId:beMeId(), eleveNom:beMeNom(), reponses:{}, soumisLe:'', correction:{}, noteGlobale:null, statutCorrection:'a_corriger', publiee:false, publieeLe:''}; ev.soumissions.push(sb); }
-    sb.reponses=reponses;
-    beSave(); closeModal(); miniAlert('Vos réponses sont enregistrées. Vous pourrez les reprendre tant que la session n’est pas terminée.'); beSessionOpenEleve(ev.sessionId);
-  };
-  window.beEvalSoumettre=function(evalId){
-    const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
-    const now=beNowLocal();
-    if(now<(ev.dateDebut||'')||(ev.dateFin&&now>ev.dateFin)){ miniAlert('Le délai pour répondre est dépassé.'); closeModal(); return; }
-    const reponses={};
-    document.querySelectorAll('[data-qid]').forEach(div=>{ const t=div.querySelector('[data-rep]'); if(t) reponses[div.dataset.qid]=t.value; });
-    ev.soumissions=ev.soumissions||[];
-    let sb=ev.soumissions.find(x=>x.eleveId===beMeId());
-    if(!sb){ sb={eleveId:beMeId(), eleveNom:beMeNom(), reponses:{}, soumisLe:'', correction:{}, noteGlobale:null, statutCorrection:'a_corriger', publiee:false, publieeLe:''}; ev.soumissions.push(sb); }
-    sb.reponses=reponses; sb.soumisLe=new Date().toISOString();
-    beSave(); closeModal(); miniAlert('Vos réponses ont été envoyées.'); beSessionOpenEleve(ev.sessionId);
-  };
-  window.beEvalVoirCorrection=function(evalId){
-    const ev=L_evaluations().find(x=>x.id===evalId); if(!ev) return;
-    const sb=(ev.soumissions||[]).find(x=>x.eleveId===beMeId()); if(!sb) return;
-    const fos=(ev.formulaireIds||[]).map(fid=>L_formulaires().find(f=>f.id===fid)).filter(Boolean);
-    const questions=[]; fos.forEach(f=>f.questions.forEach(q=>questions.push(q)));
-    const qHtml=questions.map((q,i)=>{
-      const cor=(sb.correction||{})[q.id]||{};
-      return '<div class="be-corr-q" data-qid="'+esc(q.id)+'"><b>Q'+(i+1)+'. '+esc(q.texte)+'</b>'
-        +(q.pj&&q.pj.name?' <button type="button" class="ghost" data-vopj="'+esc(q.id)+'">📎 '+esc(q.pj.name)+'</button>':'')
-        +'<p class="empty-note" style="margin:6px 0;">Votre réponse : '+esc((sb.reponses||{})[q.id]||'')+'</p>'
-        +'<p class="empty-note" style="margin:6px 0;">Points : '+esc(String(cor.obtenu!=null?cor.obtenu:'?'))+' / '+esc(String(cor.max!=null?cor.max:'?'))+(cor.commentaire?' — '+esc(cor.commentaire):'')+'</p>'
-      +'</div>';
-    }).join('');
-    openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><h3>Correction — '+esc(ev.nom)+'</h3>'
-      +'<p class="empty-note" style="margin:0 0 10px;">Note globale : <b>'+esc(String(sb.noteGlobale))+'</b></p>'
-      +qHtml
-      +(ev.pjCorrection&&ev.pjCorrection.name?'<p class="empty-note">📎 '+esc(ev.pjCorrection.name)+'</p>':'')
-      +'<div class="modal-actions"><button class="ghost" onclick="closeModal()">Retour</button></div>', ()=>beSessionOpenEleve(ev.sessionId));
-    document.querySelectorAll('[data-vopj]').forEach(b=>b.onclick=()=>{ const q=questions.find(x=>x.id===b.dataset.vopj); if(q) beOpenPjViewer(q.pj); });
-  };
+  /* Réponses de l'élève : écran « une question à la fois » dans le module des questionnaires (evalQuestUiJs) */
+  window.beEvalRemplir=function(evalId){ if(window.evlUi) window.evlUi.jouer(evalId); };
+  window.beEvalVoirCorrection=function(evalId){ if(window.evlUi) window.evlUi.voirCorrection(evalId); };
 
   /* Ces fonctions sont appelées depuis des onclick="..." inline dans le HTML généré : un
      onclick inline résout l'identifiant dans la portée globale (window), pas dans la portée
@@ -47330,6 +47233,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   window.beFoCancelBack=beFoCancelBack;
   window.beFormationRenderEleve=beFormationRenderEleve;
   window.beSessionOpenEleve=beSessionOpenEleve;
+  window.__beEvalApi={now:beNowLocal,fmt2:fmtDate2,evalsAdmin:beSessionEvalsManage,openEval:beEvalOpen,eleve:beSessionOpenEleve};
 
   /* ===== Zoom / pan sur les schémas de dimensionnement (2D) =====
      S'applique génériquement à tout schéma .pcSvg affiché dans un conteneur .pcDraw, pour tous
@@ -50524,6 +50428,530 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
  };
  /* fermeture : l'espace mémorisé n'est conservé qu'un instant, le temps d'une réouverture immédiate du même ouvrage (après une dépendance, un retour de document) */
  { const cm=window.closeModal; if(typeof cm==='function'&&!cm.__esp){ const g=function(){ grace=true; clearTimeout(graceT); graceT=setTimeout(()=>{ grace=false; memo=null; try{ document.body.dataset.espace=projetBE()?'BE':'EG'; }catch(_){ } window.__espace=projetBE()?'BE':'EG'; },0); return cm.apply(this,arguments); }; g.__esp=1; window.closeModal=g; } }
+})();
+</script>
+<script id="evalQuestJs">
+(function(G){
+ 'use strict';
+ /* Questionnaires d'évaluation (onglet Formation) : types de questions, lecture contrôlée de la réponse de l'IA, migration des anciens formulaires, correction automatique.
+    Module pur, sans écran, testé sans navigateur. Règles : énoncés et propositions tels que dans le document ; un corrigé n'existe que s'il figure dans le document. */
+ var TYPES=[
+  {id:'qcm_unique',nom:'QCM (une seule réponse)'},{id:'qcm_multiple',nom:'QCM (plusieurs réponses)'},{id:'vrai_faux',nom:'Vrai ou faux'},
+  {id:'ouverte_courte',nom:'Question ouverte courte'},{id:'ouverte_longue',nom:'Question ouverte longue'},{id:'numerique',nom:'Réponse numérique'}];
+ var IDS=TYPES.map(function(t){ return t.id; });
+ var MAXQ=100, MAXT=2000, MAXP=500, MAXPROP=10;
+ function isObj(o){ return o!==null&&typeof o==='object'&&!Array.isArray(o); }
+ function clean(s){ return String(s==null?'':s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,' ').replace(/[ \t]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim(); }
+ function num(v){ if(typeof v==='number') return isFinite(v)?v:null; if(typeof v==='string'&&/^\s*-?\d+([.,]\d+)?\s*$/.test(v)) return parseFloat(v.replace(',','.')); return null; }
+ function nomType(id){ var t=TYPES.filter(function(x){ return x.id===id; })[0]; return t?t.nom:id; }
+ var LETTRES='abcdefghij';
+ function nouvelId(i){ return 'Q'+(Date.now().toString(36))+(i==null?'':i)+Math.random().toString(36).slice(2,5); }
+ /* index de proposition : accepte un entier (0 = première), une lettre (a, b…) ou le texte exact de la proposition */
+ function indexProp(v,props){
+  if(typeof v==='number'&&v>=0&&v<props.length&&Math.floor(v)===v) return v;
+  if(typeof v==='string'){ var s=clean(v); if(/^[a-jA-J]$/.test(s)){ var k=LETTRES.indexOf(s.toLowerCase()); if(k<props.length) return k; } for(var i=0;i<props.length;i++){ if(clean(props[i].texte)===s) return i; } }
+  return -1;
+ }
+ /* question contrôlée : renvoie {q, avert} ; q.a_verifier liste ce qui bloque la validation (propositions manquantes…) */
+ function validerQuestion(raw,i){
+  var av=[]; if(!isObj(raw)) return {q:null,avert:['Question illisible : ignorée.']};
+  var type=clean(raw.type); if(IDS.indexOf(type)<0){ return {q:null,avert:['Type de question inconnu : « '+type.slice(0,40)+' » (question ignorée).']}; }
+  var texte=clean(raw.enonce!=null?raw.enonce:raw.texte).slice(0,MAXT); if(!texte) return {q:null,avert:['Question sans énoncé : ignorée.']};
+  var q={id:clean(raw.id).slice(0,40)||nouvelId(i),type:type,texte:texte,statut:'non_verifie'}, bloq=[];
+  if(type==='qcm_unique'||type==='qcm_multiple'){
+   var props=(Array.isArray(raw.propositions)?raw.propositions:[]).map(function(p){ return clean(isObj(p)?p.texte:p).slice(0,MAXP); }).filter(Boolean).slice(0,MAXPROP);
+   q.propositions=props.map(function(t,k){ return {id:LETTRES[k],texte:t}; });
+   if(props.length<2) bloq.push('Propositions manquantes : au moins deux.');
+   var c=raw.corrige;
+   if(c!==undefined&&c!==null&&c!==''){
+    if(type==='qcm_unique'){ var k=indexProp(Array.isArray(c)?c[0]:c,q.propositions); if(k>=0) q.corrige={reponse:q.propositions[k].id}; else av.push('Bonne réponse non reconnue : laissée vide.'); }
+    else{ var L=(Array.isArray(c)?c:[c]).map(function(x){ return indexProp(x,q.propositions); }); if(L.length&&L.every(function(x){ return x>=0; })){ var u=[]; L.forEach(function(x){ if(u.indexOf(x)<0) u.push(x); }); u.sort(); q.corrige={reponses:u.map(function(x){ return q.propositions[x].id; })}; } else av.push('Bonnes réponses non reconnues : laissées vides.'); }
+   }
+  } else if(type==='vrai_faux'){
+   var c2=raw.corrige; if(c2===true||c2===false) q.corrige={reponse:c2}; else if(c2!==undefined&&c2!==null&&c2!==''){ var s2=clean(c2).toLowerCase(); if(s2==='vrai'||s2==='true') q.corrige={reponse:true}; else if(s2==='faux'||s2==='false') q.corrige={reponse:false}; else av.push('Bonne réponse non reconnue : laissée vide.'); }
+  } else if(type==='numerique'){
+   var cn=raw.corrige, v=isObj(cn)?num(cn.valeur):num(cn);
+   if(cn!==undefined&&cn!==null&&cn!==''){ if(v!==null){ q.corrige={valeur:v}; var tol=isObj(cn)?num(cn.tolerance):null; if(tol!==null&&tol>=0) q.corrige.tolerance=tol; } else av.push('Valeur attendue non reconnue : laissée vide.'); }
+   var un=clean(raw.unite).slice(0,20); if(un) q.unite=un;
+  } else{
+   var ct=clean(raw.corrige&&isObj(raw.corrige)?raw.corrige.texte:raw.corrige).slice(0,MAXT); if(ct) q.corrige={texte:ct};
+  }
+  var pts=num(raw.points); if(pts!==null&&pts>0&&pts<=1000) q.points=pts; else if(raw.points!==undefined&&raw.points!==null&&raw.points!=='') av.push('Barème ignoré.');
+  if(bloq.length) q.a_verifier=bloq;
+  if(isObj(raw.pj)&&raw.pj.name) q.pj=raw.pj;
+  return {q:q,avert:av.map(function(m){ return 'Question « '+texte.slice(0,40)+' » : '+m; })};
+ }
+ /* réponse de l'IA : {message, questions:[…]} */
+ function validerLecture(data){
+  var av=[]; if(!isObj(data)||!Array.isArray(data.questions)) return {ok:false,erreurs:['Réponse de l’IA inattendue : pas de liste de questions.'],avertissements:[]};
+  var qs=[]; data.questions.slice(0,MAXQ).forEach(function(r,i){ var x=validerQuestion(r,i); x.avert.forEach(function(m){ av.push(m); }); if(x.q) qs.push(x.q); });
+  if(!qs.length) return {ok:false,erreurs:['Aucune question lisible dans ce document.'],avertissements:av};
+  return {ok:true,questions:qs,avertissements:av,message:clean(data.message).slice(0,600)};
+ }
+ /* ancien formulaire -> questions « ouverte longue » (énoncé, réponse attendue et pièce jointe conservés) */
+ function depuisFormulaire(f){
+  return ((f&&f.questions)||[]).map(function(o){ var q={id:o.id||nouvelId(),type:'ouverte_longue',texte:clean(o.texte).slice(0,MAXT),statut:'accepte'}; if(clean(o.reponseAttendue)) q.corrige={texte:clean(o.reponseAttendue).slice(0,MAXT)}; if(o.pj) q.pj=o.pj; return q; });
+ }
+ /* migration (idempotente, sans perte : les formulaires d'origine ne sont jamais supprimés) */
+ function migrer(state){
+  var n={evaluations:0,modeles:0}; if(!state) return n; state.evaluations=state.evaluations||[]; var fos=state.formulaires||[];
+  state.evaluations.forEach(function(ev){
+   if(Array.isArray(ev.questions)) return;
+   if(Array.isArray(ev.formulaireIds)&&ev.formulaireIds.length){
+    var qs=[]; ev.formulaireIds.forEach(function(id){ var f=fos.filter(function(x){ return x.id===id; })[0]; if(f) qs=qs.concat(depuisFormulaire(f)); });
+    ev.questions=qs; ev.questionnaire={valide:true,source:'formulaire'}; ev.migre=true; n.evaluations++;
+   }
+  });
+  fos.forEach(function(f){
+   if(f.migre) return; var utilise=state.evaluations.some(function(e){ return (e.formulaireIds||[]).indexOf(f.id)>=0; });
+   f.migre=true;
+   if(!utilise){ state.evaluations.push({id:'EVM-'+f.id,sessionId:'',modele:true,nom:f.nom||'Questionnaire',dateDepot:'',pj:f.pj||null,visibleEleves:false,questions:depuisFormulaire(f),questionnaire:{valide:true,source:'formulaire'},formulaireIds:[f.id],statut:'brouillon',dateDebut:'',dateFin:'',bareme:null,pjCorrection:null,moyenneClasse:null,soumissions:[],migre:true}); n.modeles++; }
+  });
+  return n;
+ }
+ function questionsDe(ev){ return Array.isArray(ev&&ev.questions)?ev.questions.filter(function(q){ return q.statut!=='ecarte'; }):[]; }
+ /* réponse vide ? */
+ function vide(q,rep){ if(rep===undefined||rep===null) return true; if(Array.isArray(rep)) return !rep.length; return clean(rep)===''; }
+ /* correction automatique : seulement si le corrigé existe ; sinon null (à corriger à la main) */
+ function corriger(q,rep){
+  if(!q||!q.corrige) return null; var max=q.points>0?q.points:1, ok;
+  if(q.type==='qcm_unique'){ ok=rep===q.corrige.reponse; }
+  else if(q.type==='qcm_multiple'){ var a=(Array.isArray(rep)?rep:[]).slice().sort().join(','), b=(q.corrige.reponses||[]).slice().sort().join(','); ok=a===b&&b!==''; }
+  else if(q.type==='vrai_faux'){ if(rep!=='vrai'&&rep!=='faux') ok=false; else ok=(rep==='vrai')===q.corrige.reponse; }
+  else if(q.type==='numerique'){ var v=num(rep); ok=v!==null&&Math.abs(v-q.corrige.valeur)<=((q.corrige.tolerance||0)+1e-9); }
+  else return null;
+  return {obtenu:ok?max:0,max:max,auto:true};
+ }
+ /* texte lisible d'une réponse (formateur) */
+ function affiche(q,rep){
+  if(vide(q,rep)) return '';
+  var P=function(id){ var p=(q.propositions||[]).filter(function(x){ return x.id===id; })[0]; return p?(id.toUpperCase()+'. '+p.texte):String(id); };
+  if(q.type==='qcm_unique') return P(rep);
+  if(q.type==='qcm_multiple') return (Array.isArray(rep)?rep:[]).map(P).join('\n');
+  if(q.type==='vrai_faux') return rep==='vrai'?'Vrai':'Faux';
+  return String(rep);
+ }
+ function afficheCorrige(q){
+  var c=q&&q.corrige; if(!c) return '';
+  if(q.type==='qcm_unique'){ var p=(q.propositions||[]).filter(function(x){ return x.id===c.reponse; })[0]; return p?(p.id.toUpperCase()+'. '+p.texte):''; }
+  if(q.type==='qcm_multiple') return (c.reponses||[]).map(function(id){ var p=(q.propositions||[]).filter(function(x){ return x.id===id; })[0]; return p?(p.id.toUpperCase()+'. '+p.texte):''; }).join('\n');
+  if(q.type==='vrai_faux') return c.reponse?'Vrai':'Faux';
+  if(q.type==='numerique') return String(c.valeur).replace('.',',')+(q.unite?' '+q.unite:'')+(c.tolerance?' (± '+String(c.tolerance).replace('.',',')+')':'');
+  return c.texte||'';
+ }
+ /* vue de l'élève : jamais de corrigé ni de réglage du formateur */
+ function pourEleve(q){ var o={id:q.id,type:q.type,texte:q.texte}; if(q.propositions) o.propositions=q.propositions.map(function(p){ return {id:p.id,texte:p.texte}; }); if(q.unite) o.unite=q.unite; if(q.points) o.points=q.points; if(q.pj) o.pj=q.pj; return o; }
+ /* demande envoyée à l'IA : texte extrait et images réduites seulement, jamais le fichier d'origine */
+ function construireDemande(sources,consigne){
+  var ok=(sources||[]).filter(function(s){ return s&&!s.erreur; }), tot=0, nimg=0;
+  var src=ok.map(function(s){ var t=s.texte||''; if(tot+t.length>60000) t=t.slice(0,Math.max(0,60000-tot)); tot+=t.length; var im=(s.images||[]).filter(function(){ return nimg++<6; }); return {nom:clean(s.nom).slice(0,120),texte:t,images:im.slice()}; });
+  return {mode:'evaluation_questions',sources:src,consigne:clean(consigne).slice(0,1500)};
+ }
+ /* exemple simulé : un document d'évaluation fictif couvrant les six types */
+ function exemple(){
+  return {message:'Exemple simulé : six questions, une de chaque type. Les bonnes réponses ne figurent que pour trois d’entre elles.',questions:[
+   {type:'qcm_unique',enonce:'Quel outil sert à compacter le béton frais ?',propositions:['Le vibreur','La truelle','Le niveau laser'],corrige:0,points:2},
+   {type:'qcm_multiple',enonce:'Quels équipements de protection sont obligatoires sur un chantier ?',propositions:['Casque','Chaussures de sécurité','Lunettes de soleil','Gants adaptés'],points:3},
+   {type:'vrai_faux',enonce:'Un coffrage doit être humidifié avant le coulage.',corrige:true,points:1},
+   {type:'ouverte_courte',enonce:'Citez un risque lié au travail en hauteur.'},
+   {type:'ouverte_longue',enonce:'Décrivez les étapes de préparation d’un coulage de dalle.',points:5},
+   {type:'numerique',enonce:'Quelle est la surface, en m², d’une pièce de 4 m sur 3 m ?',corrige:{valeur:12},unite:'m²',points:2}]};
+ }
+ G.EvalQuest={TYPES:TYPES,IDS:IDS,nomType:nomType,validerQuestion:validerQuestion,validerLecture:validerLecture,depuisFormulaire:depuisFormulaire,migrer:migrer,questionsDe:questionsDe,vide:vide,corriger:corriger,affiche:affiche,afficheCorrige:afficheCorrige,pourEleve:pourEleve,construireDemande:construireDemande,exemple:exemple,clean:clean,num:num,nouvelId:nouvelId};
+ if(typeof module!=='undefined'&&module.exports) module.exports=G.EvalQuest;
+})(typeof window!=='undefined'?window:this);
+</script>
+<style id="evlCss">
+.evlRoot{color:var(--ds-ink,var(--ink,#16232B));font-size:15px;line-height:1.4;max-width:100%;overflow-wrap:anywhere}
+.evlRoot *{box-sizing:border-box}
+.evlNote{margin:6px 0;color:var(--ds-ink-soft,var(--ink-soft,#5f6a66));font-size:14px}
+.evlPriv{padding:8px 12px;border:1.5px dashed var(--ds-accent,#FFC400);border-radius:12px;color:var(--ds-ink,var(--ink,#16232B))}
+.evlErr{margin:8px 0;padding:8px 12px;border:1.5px solid var(--ds-danger,#B4432D);border-radius:12px;color:var(--ds-danger,#B4432D);font-size:14px}
+.evlInfo{margin:8px 0;padding:8px 12px;border:1.5px solid var(--ds-accent,#FFC400);border-radius:12px;font-size:14px}
+.evlSoon{margin:30px 0;text-align:center;font:700 22px/1.3 system-ui,sans-serif}
+.evlList{display:flex;flex-direction:column;gap:10px;margin:8px 0}
+.evlIt{border:1.5px solid var(--ds-line,var(--line,#DAD8D1));border-radius:14px;padding:8px 10px}
+.evlH{display:flex;align-items:center;gap:10px;min-height:48px}
+.evlH b{flex:1 1 auto;min-width:0;font-size:16px}
+.evlRoot button.evlEye{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;padding:0;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:14px;background:transparent;color:inherit}
+.evlRoot button.evlEye[data-err]{border-color:var(--ds-danger,#B4432D);color:var(--ds-danger,#B4432D)}
+.evlIcF{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border:2px solid var(--ds-accent,#FFC400);border-radius:14px}
+.evlB{padding-inline-start:54px}
+.evlB[hidden]{display:none!important}
+.evlB small{display:block;color:var(--ds-ink-soft,var(--ink-soft,#5f6a66));font-size:13px;margin:2px 0}
+.evlRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 12px;margin:8px 0;align-items:start}
+.evlRow.evlOne{display:flex;justify-content:flex-end}
+@media (max-width:640px){.evlRow{grid-template-columns:repeat(2,minmax(0,1fr))}.evlB{padding-inline-start:0}}
+@media (max-width:360px){.evlRow{grid-template-columns:minmax(0,1fr)}}
+.evlBw{display:flex;align-items:center;gap:8px;min-height:48px;min-width:0}
+.evlBw .evlBl{font-weight:600;font-size:14.5px;line-height:1.2;min-width:0;cursor:pointer}
+.evlRoot button.evlIcB{display:inline-flex;align-items:center;justify-content:center;flex:none;width:48px;height:48px;min-width:48px;padding:0;border:2px solid var(--ds-accent,#FFC400);border-radius:14px;background:transparent;color:inherit;cursor:pointer}
+.evlRoot button.evlIcB:hover,.evlRoot button.evlIcB:focus-visible{background:var(--ds-accent-soft,#FFE9A3);color:#000}
+.evlRoot button.evlIcB:disabled{opacity:.4;cursor:not-allowed}
+.evlPri button.evlIcB{background:var(--ds-accent,#FFC400);color:#000}
+.evlRoot button:focus-visible,.evlRoot input:focus-visible,.evlRoot textarea:focus-visible,.evlRoot select:focus-visible{outline:3px solid var(--ds-focus,#16232B);outline-offset:2px}
+.evlChip{display:inline-block;padding:2px 10px;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:999px;font-size:13px;margin:0 4px 2px 0}
+.evlChipNv{border-color:var(--ds-accent,#FFC400);font-weight:600}
+.evlChipOk{border-color:var(--ds-ok,#2f7d4f);color:var(--ds-ok,#2f7d4f)}
+.evlFld{margin:10px 0}
+.evlFld label{display:block;font-weight:600;margin-bottom:4px}
+.evlRoot .evlIn{width:100%;font-size:16px;min-height:44px;padding:9px 10px;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:10px;background:transparent;color:inherit}
+.evlQ{border:1.5px solid var(--ds-line,#DAD8D1);border-radius:14px;padding:10px 12px;margin:10px 0}
+.evlQ.evlOff{opacity:.55}
+.evlQ h5{margin:0 0 4px;font-size:15px}
+.evlQ ol{margin:4px 0;padding-inline-start:22px}
+.evlQ li.evlOk{font-weight:700}
+.evlEd{margin:8px 0;padding:10px 12px;border:1.5px solid var(--ds-accent,#FFC400);border-radius:14px}
+.evlProg{height:10px;border-radius:999px;background:var(--ds-line,#DAD8D1);overflow:hidden;margin:6px 0 12px}
+.evlProg i{display:block;height:100%;background:var(--ds-accent,#FFC400)}
+.evlOpt{display:flex;align-items:center;gap:10px;min-height:48px;padding:6px 10px;border:1.5px solid var(--ds-line,#9a9a9a);border-radius:12px;margin:6px 0;cursor:pointer}
+.evlOpt input{width:22px;height:22px;flex:none}
+.evlOpt:has(input:checked){border-color:var(--ds-accent,#FFC400);background:var(--ds-accent-soft,rgba(255,196,0,.18))}
+.evlCorr{font-size:13px;color:var(--ds-ink-soft,#5f6a66)}
+.evlRoot select.evlIn{appearance:auto}
+</style>
+<script id="evalQuestUiJs">
+(function(){
+ 'use strict';
+ var EQ=window.EvalQuest; if(!EQ) return;
+ var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+ var T=function(s){ try{ return window.dimT?window.dimT(s):s; }catch(_){ return s; } };
+ var IC={
+  doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',open:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  down:'<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>',wand:'<path d="M4 20L16 8"/><path d="M15 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/><path d="M19 12l.7 1.3L21 14l-1.3.7L19 16l-.7-1.3L17 14l1.3-.7z"/>',
+  list:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',trash:'<path d="M5 7h14M10 4h4M7 7l1 13h8l1-13"/>',play:'<path d="M8 5l11 7-11 7z"/>',
+  upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/>',cam:'<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',close:'<path d="M6 6l12 12M18 6L6 18"/>',back:'<path d="M15 5l-7 7 7 7"/>',next:'<path d="M9 5l7 7-7 7"/>',
+  book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',undo:'<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/>',
+  eyeoff:'<path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.1 4M6.6 6.7A16.6 16.6 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>'};
+ var svg=function(k,s){ return '<svg viewBox="0 0 24 24" width="'+(s||26)+'" height="'+(s||26)+'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(IC[k]||IC.doc)+'</svg>'; };
+ function btn(ic,label,act,id,o){ o=o||{}; var nm=T(label); return '<span class="evlBw'+(o.primary?' evlPri':'')+'"><button type="button" class="evlIcB" aria-label="'+esc(nm)+'" title="'+esc(nm)+'" data-evl="'+esc(act)+'"'+(id!=null?' data-id="'+esc(id)+'"':'')+(o.disabled?' disabled':'')+'>'+svg(ic)+'</button><span class="evlBl">'+esc(nm)+'</span></span>'; }
+ function row(items,one){ return '<div class="evlRow'+(one?' evlOne':'')+'">'+items.join('')+'</div>'; }
+ function chip(t,c){ return '<span class="evlChip'+(c?' evlChip'+c:'')+'">'+esc(T(t))+'</span>'; }
+ var FK='evl_fold', FOLD={}; try{ FOLD=JSON.parse(localStorage.getItem(FK)||'{}')||{}; }catch(_){ FOLD={}; }
+ function foldSave(){ try{ localStorage.setItem(FK,JSON.stringify(FOLD)); }catch(_){ } }
+ function eyeBtn(hidden,title,id){ var lab=T(hidden?'Afficher':'Masquer')+' : '+title; return '<button type="button" class="evlEye" data-evl-eye="'+esc(id)+'" aria-pressed="'+(hidden?'false':'true')+'" aria-label="'+esc(lab)+'" title="'+esc(lab)+'">'+svg(hidden?'eyeoff':'open',22)+'</button>'; }
+ function ar(){ try{ return !!(window.dimLang&&window.dimLang()==='ar'); }catch(_){ return false; } }
+ function S(){ try{ return (typeof state!=='undefined')?state:window.state; }catch(_){ return window.state; } }
+ function evs(){ var s=S(); s.evaluations=s.evaluations||[]; return s.evaluations; }
+ function evById(id){ return evs().filter(function(e){ return e.id===id; })[0]; }
+ function save(){ try{ persist(); }catch(_){ } }
+ function admin(){ return !!(window.paIsAdmin&&window.paIsAdmin()); }
+ function meId(){ return (window.PILOTAGE_USER&&window.PILOTAGE_USER.id)||'local'; }
+ function meNom(){ return (window.PILOTAGE_USER&&window.PILOTAGE_USER.nom)||'Moi'; }
+ function api(){ return window.__beEvalApi||{}; }
+ function migrer(){ try{ var n=EQ.migrer(S()); if(n.evaluations||n.modeles) save(); return n; }catch(_){ return {evaluations:0,modeles:0}; } }
+ function genrePj(pj){ var n=String(pj&&pj.name||'').toLowerCase(), s=String(pj&&pj.src||''); if(/^data:application\/pdf/.test(s)||/\.pdf$/.test(n)) return 'pdf'; if(/^data:image\//.test(s)||/\.(jpe?g|png|webp|gif|heic)$/.test(n)) return 'image'; if(/\.docx?$/.test(n)) return 'word'; return 'autre'; }
+ function telecharger(pj){ try{ var a=document.createElement('a'); a.href=pj.src; a.download=pj.name||'evaluation'; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); },500); }catch(_){ } }
+ function visibleEleve(e){ if(e.modele||!e.sessionId) return false; if(e.visibleEleves===true) return true; if(e.visibleEleves===false) return false; return (e.statut||'brouillon')!=='brouillon'; }
+ function valide(e){ return !!(e.questionnaire&&e.questionnaire.valide&&EQ.questionsDe(e).length); }
+ function statutEleve(e){
+  var now=api().now?api().now():'', sb=(e.soumissions||[]).filter(function(x){ return x.eleveId===meId(); })[0], ouv=now>=(e.dateDebut||'')&&(!e.dateFin||now<=e.dateFin);
+  if(e.statut==='brouillon') return {txt:'Pas encore envoyée',act:''};
+  if(sb&&sb.publiee) return {txt:'Correction disponible — note : '+String(sb.noteGlobale),act:'voir'};
+  if(sb&&sb.soumisLe) return {txt:'Soumis — en attente de correction',act:'auto'};
+  if(now<(e.dateDebut||'')) return {txt:'Ouvre le '+(api().fmt2?api().fmt2(e.dateDebut):e.dateDebut),act:''};
+  if(e.dateFin&&now>e.dateFin) return {txt:sb?'Clôturée, brouillon non soumis':'Clôturée, non soumise',act:''};
+  if(sb&&ouv) return {txt:'Brouillon enregistré — vous pouvez continuer.',act:'jouer',lab:'Reprendre'};
+  return {txt:'À remplir avant le '+(api().fmt2?api().fmt2(e.dateFin):e.dateFin),act:'jouer',lab:'Répondre',primary:true};
+ }
+ /* ---------- liste des évaluations (même style que les supports de cours) ---------- */
+ function ligne(e,role){
+  var adm=role==='admin', pj=e.pj, hidden=!!FOLD['it:'+e.id], qn=EQ.questionsDe(e).length, ok=valide(e), g=pj?genrePj(pj):'';
+  var small=[]; if(e.dateDepot) small.push(esc(T('Dépôt'))+' : '+esc(window.fmtDate?window.fmtDate(e.dateDepot):e.dateDepot)); if(pj&&pj.name) small.push('📎 '+esc(pj.name));
+  var chips=''; if(qn) chips+=chip(ok?'Questionnaire : '+qn+' question(s)':'Questionnaire à relire',ok?'Ok':'Nv'); if(e.migre) chips+=chip('ancien formulaire');
+  var info=''; if(adm&&ok){ var nbS=(e.soumissions||[]).filter(function(x){ return x.soumisLe; }).length; info='<small>'+esc((e.dateDebut?(api().fmt2?api().fmt2(e.dateDebut):e.dateDebut):T('dates à définir'))+(e.dateFin?' → '+(api().fmt2?api().fmt2(e.dateFin):e.dateFin):''))+' · '+esc(T({brouillon:'Brouillon',envoyee:'Envoyée',cloturee:'Clôturée'}[e.statut]||e.statut))+' · '+nbS+' '+esc(T('réponse(s)'))+'</small>'; }
+  var b1=[]; 
+  if(pj&&g==='pdf') b1.push(btn('open','Ouvrir le PDF','ouvrir',e.id)); else if(pj&&g==='image') b1.push(btn('open','Ouvrir l’image','ouvrir',e.id));
+  if(pj) b1.push(btn('down','Télécharger','telecharger',e.id));
+  var b2=[];
+  if(adm){ if(pj) b1.push(btn('wand',qn?'Refaire le questionnaire':'Transformer en questionnaire','transformer',e.id)); if(qn) b2.push(btn('list','Relire le questionnaire','relire',e.id)); if(ok||qn) b2.push(btn('play','Suivi et réponses','suivi',e.id)); b2.push(btn('trash','Supprimer','supprimer',e.id)); }
+  else if(ok){ var st=statutEleve(e); info='<small>'+esc(T(st.txt))+'</small>'; if(st.act==='jouer') b1.push(btn('play',st.lab,'jouer',e.id,{primary:st.primary})); else if(st.act==='voir') b1.push(btn('check','Voir la correction','voir',e.id)); }
+  return '<div class="evlIt" data-evid="'+esc(e.id)+'"><div class="evlH">'+eyeBtn(hidden,e.nom,'it:'+e.id)+'<span class="evlIcF" aria-hidden="true">'+svg('doc')+'</span><b>'+esc(e.nom)+'</b></div><div class="evlB"'+(hidden?' hidden':'')+'>'+(small.length?'<small>'+small.join(' · ')+'</small>':'')+(chips?'<div>'+chips+'</div>':'')+info+(b1.length?row(b1):'')+(b2.length?row(b2):'')+'</div></div>';
+ }
+ function listeHtml(sessionId,role){
+  migrer(); var adm=role==='admin';
+  var L=evs().filter(function(e){ return e.sessionId===sessionId&&(adm||visibleEleve(e)); }).sort(function(a,b){ return String(b.dateDepot||'').localeCompare(String(a.dateDepot||'')); });
+  var h='<div class="evlRoot" data-evl-sess="'+esc(sessionId)+'" data-evl-role="'+role+'">';
+  h+=L.length?'<div class="evlList">'+L.map(function(e){ return ligne(e,role); }).join('')+'</div>':'<p class="evlNote">'+esc(T('Aucune évaluation.'))+'</p>';
+  if(adm){ var mod=evs().filter(function(e){ return e.modele; }).length; h+=row([btn('upload','Déposer une évaluation','deposer',sessionId,{primary:1})].concat(mod?[btn('book','Reprendre un ancien questionnaire','modeles',sessionId)]:[])); }
+  return h+'</div>';
+ }
+ /* ---------- écrans (fenêtre commune de l'application) ---------- */
+ function modal(html,back){ openModal('<button class="close-x" onclick="closeModal()" aria-label="Fermer" title="Fermer">×</button><div class="evlRoot">'+html+'</div>',back); }
+ function retourListe(sessionId){ if(api().evalsAdmin) api().evalsAdmin(sessionId); else closeModal(); }
+ /* dépôt d'une évaluation (fichier) */
+ var DEP=null;
+ function deposer(sessionId){
+  if(ar()){ modal('<h3>'+esc(T('Déposer une évaluation'))+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
+  DEP={sessionId:sessionId,pj:null};
+  modal('<h3>'+esc(T('Déposer une évaluation'))+'</h3>'
+   +'<div class="evlFld"><label for="evlT">'+esc(T('Titre'))+'</label><input id="evlT" class="evlIn" type="text" maxlength="120"></div>'
+   +'<div class="evlFld"><label for="evlD">'+esc(T('Date de dépôt'))+'</label><input id="evlD" class="evlIn" type="date" value="'+esc(new Date().toISOString().slice(0,10))+'"></div>'
+   +'<div class="evlFld"><label>'+esc(T('Fichier (PDF, Word, image ou photo)'))+'</label><p class="evlNote" id="evlPjN">'+esc(T('Aucun fichier.'))+'</p>'
+   +row([btn('upload','Depuis l’appareil','pj_app'),btn('cam','Prendre une photo','pj_photo')])
+   +'<input type="file" id="evlF1" accept="image/*,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden><input type="file" id="evlF2" accept="image/*" capture="environment" hidden></div>'
+   +'<p class="evlErr" id="evlDE" role="alert" hidden></p>'
+   +row([btn('check','Enregistrer','dep_ok',null,{primary:1}),btn('close','Annuler','dep_non')]),function(){ retourListe(sessionId); });
+  ['evlF1','evlF2'].forEach(function(id){ var i=document.getElementById(id); i.onchange=function(){ var f=i.files&&i.files[0]; if(!f) return; if(f.size>12e6){ erreurDep(T('Fichier trop gros (12 Mo au plus).')); return; } readFileAsDataUrl(f).then(function(src){ DEP.pj={name:f.name,src:src}; var n=document.getElementById('evlPjN'); if(n) n.textContent=f.name; var t=document.getElementById('evlT'); if(t&&!t.value.trim()) t.value=f.name.replace(/\.[^.]+$/,'').slice(0,120); erreurDep(''); }); i.value=''; }; });
+ }
+ function erreurDep(m){ var e=document.getElementById('evlDE'); if(!e) return; e.textContent=m; e.hidden=!m; }
+ function enregistrerDepot(){
+  var t=EQ.clean(document.getElementById('evlT').value); if(!t){ erreurDep(T('Le titre est requis.')); return; } if(!DEP.pj){ erreurDep(T('Choisissez un fichier ou prenez une photo.')); return; }
+  evs().push({id:uid('EV'),sessionId:DEP.sessionId,nom:t.slice(0,120),dateDepot:document.getElementById('evlD').value||'',pj:DEP.pj,visibleEleves:true,statut:'brouillon',dateDebut:'',dateFin:'',bareme:null,pjCorrection:null,moyenneClasse:null,soumissions:[]});
+  save(); var sid=DEP.sessionId; DEP=null; retourListe(sid);
+ }
+ /* anciens formulaires migrés mais sans session : on les reprend dans la session courante */
+ function modeles(sessionId){
+  var L=evs().filter(function(e){ return e.modele; });
+  modal('<h3>'+esc(T('Reprendre un ancien questionnaire'))+'</h3><p class="evlNote">'+esc(T('Ces questionnaires viennent des anciens formulaires. Choisissez-en un : une copie est ajoutée à cette session.'))+'</p>'
+   +'<div class="evlList">'+L.map(function(e){ return '<div class="evlIt"><div class="evlH"><span class="evlIcF" aria-hidden="true">'+svg('list')+'</span><b>'+esc(e.nom)+'</b></div><div class="evlB"><small>'+EQ.questionsDe(e).length+' '+esc(T('question(s)'))+'</small>'+row([btn('plus','Ajouter à la session','modele_ajout',e.id)])+'</div></div>'; }).join('')+'</div>'
+   +row([btn('back','Retour','retour',sessionId)]),function(){ retourListe(sessionId); }); DEP={sessionId:sessionId};
+ }
+ /* ---------- transformation en questionnaire ---------- */
+ var TEMP=window.__evTemp=window.__evTemp||[];
+ function reduireImage(f){ return new Promise(function(res,rej){ var u=URL.createObjectURL(f), im=new Image(); im.onload=function(){ var k=Math.min(1,1024/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k)); c.getContext('2d').drawImage(im,0,0,c.width,c.height); var d=c.toDataURL('image/jpeg',0.6).split(',')[1]; c.width=0; c.height=0; try{ URL.revokeObjectURL(u); }catch(_){ } res({type:'image/jpeg',data:d}); }; im.onerror=function(){ try{ URL.revokeObjectURL(u); }catch(_){ } rej(new Error('Image illisible.')); }; im.src=u; }); }
+ var depsNav={image:reduireImage,pdf:async function(f){ var lib=await loadPdfJs(), pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise, texte='', n=Math.min(pdf.numPages,60), i;
+   for(i=1;i<=n;i++){ var pg=await pdf.getPage(i), c=await pg.getTextContent(); texte+=c.items.map(function(x){ return x.str; }).join(' ')+'\n\n'; }
+   var images=[]; if(EQ.clean(texte).length<40){ for(i=1;i<=Math.min(pdf.numPages,4);i++){ var p2=await pdf.getPage(i), v0=p2.getViewport({scale:1}), v=p2.getViewport({scale:1024/Math.max(v0.width,v0.height)}), cv=document.createElement('canvas'); cv.width=Math.round(v.width); cv.height=Math.round(v.height); await p2.render({canvasContext:cv.getContext('2d'),viewport:v}).promise; images.push({type:'image/jpeg',data:cv.toDataURL('image/jpeg',0.6).split(',')[1]}); cv.width=0; cv.height=0; } }
+   return {texte:texte,images:images}; }};
+ var TR={msg:'',ko:false,occupe:false};
+ function transformer(id){
+  var e=evById(id); if(!e) return; if(ar()){ modal('<h3>'+esc(T('Transformer en questionnaire'))+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
+  TR.id=id; TR.msg=''; TR.ko=false; TR.occupe=false; rendreTr();
+ }
+ function rendreTr(){
+  var e=evById(TR.id); if(!e) return; var qn=EQ.questionsDe(e).length;
+  modal('<h3>'+esc(T('Transformer en questionnaire'))+'</h3><p class="evlNote"><b>'+esc(e.nom)+'</b></p>'
+   +'<p class="evlNote evlPriv">'+esc(T('Seuls le texte extrait et des images réduites sont envoyés à l’IA. Rien n’est conservé côté serveur, et les copies temporaires sont effacées à la fin.'))+'</p>'
+   +'<p class="evlNote">'+esc(T('L’IA recopie les questions et leurs propositions telles qu’elles sont dans le document, avec le bon type (QCM, vrai ou faux, question ouverte, réponse numérique). La bonne réponse n’est reprise que si elle figure dans le document. Vous relisez tout avant de valider.'))+'</p>'
+   +(qn?'<p class="evlInfo">'+esc(T('Cette évaluation a déjà un questionnaire. Une nouvelle analyse le remplace.'))+'</p>':'')
+   +(TR.msg?'<p class="'+(TR.ko?'evlErr':'evlInfo')+'" role="'+(TR.ko?'alert':'status')+'">'+esc(TR.msg)+'</p>':'')
+   +row([btn('wand',TR.occupe?'Analyse en cours…':'Lancer l’analyse','tr_go',null,{primary:1,disabled:TR.occupe}),btn('book','Voir un exemple','tr_ex',null,{disabled:TR.occupe}),btn('back','Retour','tr_non')]),function(){ retourListe(e.sessionId); });
+ }
+ function blobDe(pj){ return fetch(pj.src).then(function(r){ return r.blob(); }).then(function(b){ return new File([b],pj.name||'document',{type:b.type||''}); }); }
+ function lancerAnalyse(){
+  var e=evById(TR.id); if(!e||!e.pj||TR.occupe) return;
+  if(typeof navigator!=='undefined'&&navigator.onLine===false){ TR.msg=T('Hors ligne : l’IA a besoin d’Internet. Vous pouvez voir un exemple.'); TR.ko=true; rendreTr(); return; }
+  if(typeof window.dimIaCall!=='function'||typeof SUPABASE_URL==='undefined'){ TR.msg=T('L’assistant n’est pas relié à ce site. Vous pouvez voir un exemple.'); TR.ko=true; rendreTr(); return; }
+  TR.occupe=true; TR.msg=T('Lecture du document…'); TR.ko=false; rendreTr();
+  var t={src:null,corps:null}; TEMP.push(t);
+  function fin(){ t.src=null; t.corps=null; var i=TEMP.indexOf(t); if(i>=0) TEMP.splice(i,1); TR.occupe=false; }
+  function echec(m){ fin(); TR.msg=m; TR.ko=true; rendreTr(); }
+  blobDe(e.pj).then(function(f){ t.src=f; return window.CoursIa.lireSource(f,depsNav); }).then(function(src){
+   if(src.erreur){ echec(T(src.erreur)); return; }
+   t.corps=EQ.construireDemande([src],''); TR.msg=T('L’IA lit le document…'); rendreTr();
+   return window.dimIaCall(t.corps).then(function(x){
+    var resp=x&&x.resp, j=(x&&x.j)||{}; var pol=window.dimIaPolite?window.dimIaPolite(j):null;
+    if(pol){ echec(pol); return; }
+    if(!resp||resp.status===404||resp.status===502&&!j.error){ echec(T('L’assistant des questionnaires n’est pas disponible pour l’instant (fonction serveur absente). Rien n’a été modifié. Vous pouvez voir un exemple.')); return; }
+    if(resp.status===400&&/^Message vide/.test(String(j.error||''))){ echec(T('Le serveur n’est pas encore à jour pour les questionnaires. Rien n’a été modifié. Vous pouvez voir un exemple.')); return; }
+    if(!resp.ok||j.error){ echec(j.error?String(j.error).slice(0,200):T('L’analyse n’a pas abouti. Rien n’a été modifié.')); return; }
+    var r=EQ.validerLecture(j.data); if(!r.ok){ echec(r.erreurs[0]); return; }
+    fin(); appliquerLecture(e,r,'ia');
+   });
+  }).catch(function(er){ echec(T('L’analyse n’a pas abouti : ')+String(er&&er.message||er).slice(0,120)); });
+ }
+ function appliquerLecture(e,r,source){
+  e.questions=r.questions; e.questionnaire={valide:false,source:source,retourImmediat:false}; e.avertissementsLecture=r.avertissements.slice(0,30); save(); relecture(e.id,r.message);
+ }
+ /* ---------- relecture par le formateur ---------- */
+ var RL={ed:null,err:'',msg:''};
+ function propsListe(q){ return (q.propositions||[]).map(function(p,i){ var bon=q.corrige&&(q.corrige.reponse===p.id||(q.corrige.reponses||[]).indexOf(p.id)>=0); return '<li'+(bon?' class="evlOk"':'')+'>'+esc(p.texte)+(bon?' ✓':'')+'</li>'; }).join(''); }
+ function carte(q,i){
+  var ec=q.statut==='ecarte', ed=RL.ed===q.id, c=EQ.afficheCorrige(q);
+  var h='<div class="evlQ'+(ec?' evlOff':'')+'" data-qid="'+esc(q.id)+'"><h5>'+esc(T('Question'))+' '+(i+1)+' '+chip(EQ.nomType(q.type))+' '+chip(q.statut==='non_verifie'?'non vérifiée':(q.statut==='ecarte'?'écartée':(q.statut==='modifie'?'modifiée par vous':'acceptée')),q.statut==='non_verifie'?'Nv':(q.statut==='ecarte'?'':'Ok'))+'</h5><div>'+esc(q.texte).replace(/\n/g,'<br>')+'</div>';
+  if(q.propositions) h+='<ol type="A">'+propsListe(q)+'</ol>';
+  h+='<p class="evlCorr">'+(c?esc(T('Bonne réponse'))+' : '+esc(c).replace(/\n/g,'<br>'):esc(T('Bonne réponse : non indiquée dans le document. Vous pouvez la saisir.')))+(q.points?' · '+esc(T('Barème'))+' : '+esc(String(q.points).replace('.',','))+' '+esc(T('point(s)')):'')+'</p>';
+  if(q.a_verifier&&q.a_verifier.length) h+='<p class="evlErr">'+esc(q.a_verifier.join(' '))+'</p>';
+  h+=ed?editQ(q):(ec?row([btn('undo','Reprendre','q_reprend',q.id)]):row([btn('check','J’accepte','q_ok',q.id,{disabled:!!(q.a_verifier&&q.a_verifier.length)}),btn('edit','Je modifie','q_mod',q.id),btn('close','Écarter','q_ecarte',q.id)]));
+  return h+'</div>';
+ }
+ function sel(f,lab,opts,cur){ return '<div class="evlFld"><label for="evq-'+f+'">'+esc(T(lab))+'</label><select id="evq-'+f+'" class="evlIn" data-f="'+f+'">'+opts.map(function(o){ return '<option value="'+esc(o[0])+'"'+(String(o[0])===String(cur)?' selected':'')+'>'+esc(T(o[1]))+'</option>'; }).join('')+'</select></div>'; }
+ function inp(f,lab,v,o){ o=o||{}; return '<div class="evlFld"><label for="evq-'+f+'">'+esc(T(lab))+'</label>'+(o.area?'<textarea id="evq-'+f+'" class="evlIn" rows="'+(o.rows||3)+'" data-f="'+f+'">'+esc(v==null?'':v)+'</textarea>':'<input id="evq-'+f+'" class="evlIn" type="text" '+(o.num?'inputmode="decimal" ':'')+'data-f="'+f+'" value="'+esc(v==null?'':v)+'">')+'</div>'; }
+ function editQ(q){
+  var c=q.corrige||{}, h='<div class="evlEd"><h6>'+esc(T('Je modifie'))+'</h6>';
+  h+=sel('type','Type de question',EQ.TYPES.map(function(t){ return [t.id,t.nom]; }),q.type);
+  h+=inp('texte','Énoncé',q.texte,{area:1,rows:4});
+  if(q.type==='qcm_unique'||q.type==='qcm_multiple'){
+   h+=inp('props','Propositions (une par ligne)',(q.propositions||[]).map(function(p){ return p.texte; }).join('\n'),{area:1,rows:5});
+   if(q.type==='qcm_unique') h+=sel('bon','Bonne réponse (si elle figure dans le document)',[['','— non indiquée —']].concat((q.propositions||[]).map(function(p){ return [p.id,p.id.toUpperCase()+'. '+p.texte]; })),c.reponse||'');
+   else h+='<div class="evlFld"><label>'+esc(T('Bonnes réponses (si elles figurent dans le document)'))+'</label>'+(q.propositions||[]).map(function(p){ return '<label class="evlOpt"><input type="checkbox" data-bonm="'+p.id+'"'+((c.reponses||[]).indexOf(p.id)>=0?' checked':'')+'><span>'+esc(p.id.toUpperCase()+'. '+p.texte)+'</span></label>'; }).join('')+'</div>';
+  } else if(q.type==='vrai_faux') h+=sel('bon','Bonne réponse (si elle figure dans le document)',[['','— non indiquée —'],['vrai','Vrai'],['faux','Faux']],c.reponse===true?'vrai':(c.reponse===false?'faux':''));
+  else if(q.type==='numerique') h+=inp('bon','Valeur attendue (si elle figure dans le document)',c.valeur!=null?String(c.valeur).replace('.',','):'',{num:1})+inp('tol','Tolérance (facultative)',c.tolerance!=null?String(c.tolerance).replace('.',','):'',{num:1})+inp('unite','Unité (facultative)',q.unite||'');
+  else h+=inp('bon','Réponse attendue (si elle figure dans le document)',c.texte||'',{area:1,rows:3});
+  h+=inp('points','Barème en points (facultatif)',q.points!=null?String(q.points).replace('.',','):'',{num:1});
+  h+=(RL.err?'<p class="evlErr" role="alert">'+esc(RL.err)+'</p>':'')+row([btn('check','Enregistrer','q_save',q.id,{primary:1}),btn('close','Annuler','q_non',q.id)]);
+  return h+'</div>';
+ }
+ function relecture(id,msg){
+  var e=evById(id); if(!e) return; if(ar()){ modal('<h3>'+esc(T('Questionnaire'))+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
+  RL.id=id; RL.msg=msg||RL.msg||''; var qs=e.questions||[], att=(e.avertissementsLecture||[]);
+  var restants=qs.filter(function(q){ return q.statut==='non_verifie'; }).length;
+  modal('<h3>'+esc(T('Relire le questionnaire'))+'</h3><p class="evlNote"><b>'+esc(e.nom)+'</b></p>'
+   +(RL.msg?'<p class="evlInfo" role="status">'+esc(RL.msg)+'</p>':'')
+   +'<p class="evlNote">'+esc(T('Chaque question est reprise telle qu’elle est dans le document. Acceptez, modifiez ou écartez chacune, puis validez.'))+'</p>'
+   +(att.length?'<p class="evlInfo">'+att.map(esc).join('<br>')+'</p>':'')
+   +(qs.length?qs.map(carte).join(''):'<p class="evlNote">'+esc(T('Aucune question.'))+'</p>')
+   +'<label class="evlOpt"><input type="checkbox" id="evlRI"'+(e.questionnaire&&e.questionnaire.retourImmediat?' checked':'')+'><span>'+esc(T('Montrer la correction automatique à l’élève dès l’envoi. Sinon, rien n’est montré avant votre publication.'))+'</span></label>'
+   +(RL.verr?'<p class="evlErr" role="alert">'+esc(RL.verr)+'</p>':'')
+   +row([btn('check','Valider le questionnaire','q_valider',id,{primary:1}),btn('wand','Refaire l’analyse','transformer',id,{disabled:!e.pj}),btn('back','Retour','retour',e.sessionId)]),function(){ retourListe(e.sessionId); });
+  RL.verr='';
+ }
+ function lireBonne(q,type){
+  var v=document.querySelector('.evlEd [data-f="bon"]'); if(type==='qcm_unique'){ return v&&v.value?{reponse:v.value}:undefined; }
+  if(type==='qcm_multiple'){ var L=[]; document.querySelectorAll('.evlEd [data-bonm]').forEach(function(c){ if(c.checked) L.push(c.getAttribute('data-bonm')); }); return L.length?{reponses:L}:undefined; }
+  if(type==='vrai_faux') return v&&v.value?{reponse:v.value==='vrai'}:undefined;
+  if(type==='numerique'){ var n=EQ.num(v&&v.value); if(!EQ.clean(v&&v.value)) return undefined; if(n===null) throw new Error(T('Valeur attendue : un nombre est attendu.')); var o={valeur:n}, t=document.querySelector('.evlEd [data-f="tol"]'), tv=t&&EQ.clean(t.value)?EQ.num(t.value):null; if(tv!==null&&tv>=0) o.tolerance=tv; return o; }
+  var tx=EQ.clean(v&&v.value); return tx?{texte:tx}:undefined;
+ }
+ function enregistrerQ(id){
+  var e=evById(RL.id); if(!e) return; var q=(e.questions||[]).filter(function(x){ return x.id===id; })[0]; if(!q) return;
+  try{
+   var f=function(n){ var el=document.querySelector('.evlEd [data-f="'+n+'"]'); return el?el.value:''; };
+   var type=f('type'); if(EQ.IDS.indexOf(type)<0) throw new Error(T('Type inconnu.'));
+   var texte=EQ.clean(f('texte')); if(!texte) throw new Error(T('L’énoncé ne peut pas être vide.'));
+   var typeChange=type!==q.type, nq={id:q.id,type:type,texte:texte.slice(0,2000),statut:'modifie'};
+   if(type==='qcm_unique'||type==='qcm_multiple'){
+    var vieux=(q.propositions||[]), L=String(f('props')||'').split(/\n/).map(function(s){ return EQ.clean(s); }).filter(Boolean).slice(0,10);
+    if(L.length<2) throw new Error(T('Un QCM demande au moins deux propositions.'));
+    nq.propositions=L.map(function(t,i){ return {id:'abcdefghij'[i],texte:t.slice(0,500)}; });
+    var same=vieux.length===L.length&&vieux.every(function(p,i){ return p.texte===L[i]; });
+    if(!typeChange&&same){ var b=lireBonne(q,type); if(b) nq.corrige=b; }
+   } else{
+    var b4=typeChange?undefined:lireBonne(q,type); if(b4) nq.corrige=b4;
+    if(type==='numerique'){ var u=EQ.clean(f('unite')).slice(0,20); if(u) nq.unite=u; }
+   }
+   var pt=EQ.clean(f('points')); if(pt){ var pn=EQ.num(pt); if(pn===null||pn<=0||pn>1000) throw new Error(T('Barème : un nombre supérieur à 0 est attendu.')); nq.points=pn; }
+   if(q.pj) nq.pj=q.pj;
+   var i=e.questions.indexOf(q); e.questions[i]=nq; RL.ed=null; RL.err=''; save();
+  }catch(er){ RL.err=er.message||String(er); }
+ }
+ function validerQuestionnaire(id){
+  var e=evById(id); if(!e) return; var qs=(e.questions||[]).filter(function(q){ return q.statut!=='ecarte'; });
+  var rest=qs.filter(function(q){ return q.statut==='non_verifie'; }).length;
+  if(!qs.length){ RL.verr=T('Il faut au moins une question.'); return false; }
+  if(rest){ RL.verr=rest+' '+T('question(s) restent à accepter, modifier ou écarter.'); return false; }
+  var bad=qs.filter(function(q){ return (q.type==='qcm_unique'||q.type==='qcm_multiple')&&(!q.propositions||q.propositions.length<2); }).length;
+  if(bad){ RL.verr=T('Un QCM n’a pas assez de propositions.'); return false; }
+  var ri=document.getElementById('evlRI'); e.questionnaire=Object.assign(e.questionnaire||{},{valide:true,retourImmediat:!!(ri&&ri.checked)}); e.avertissementsLecture=[]; save(); return true;
+ }
+ /* ---------- questionnaire joué par l'élève : une question à la fois ---------- */
+ var P=null;
+ function sbDe(e,creer){ var sb=(e.soumissions||[]).filter(function(x){ return x.eleveId===meId(); })[0]; if(!sb&&creer){ e.soumissions=e.soumissions||[]; sb={eleveId:meId(),eleveNom:meNom(),reponses:{},soumisLe:'',correction:{},noteGlobale:null,statutCorrection:'a_corriger',publiee:false,publieeLe:''}; e.soumissions.push(sb); } return sb; }
+ function jouer(id){
+  var e=evById(id); if(!e||!valide(e)) return; if(ar()){ modal('<h3>'+esc(e.nom)+'</h3><p class="evlSoon">'+esc(T('Bientôt disponible'))+' — قريبًا</p>'); return; }
+  var now=api().now?api().now():''; if(now<(e.dateDebut||'')||(e.dateFin&&now>e.dateFin)){ miniAlert('Cette évaluation n’est pas ouverte en ce moment.'); return; }
+  var sb=sbDe(e,false); if(sb&&sb.soumisLe){ miniAlert('Vous avez déjà envoyé vos réponses.'); return; }
+  if(!sb){ e.enCours=e.enCours||{}; if(!e.enCours[meId()]){ e.enCours[meId()]=new Date().toISOString(); save(); } }
+  var rep={}; if(sb&&sb.reponses) Object.keys(sb.reponses).forEach(function(k){ rep[k]=sb.reponses[k]; });
+  P={id:id,i:0,rep:rep,fin:false}; rendreP();
+ }
+ function questionsEleve(e){ return EQ.questionsDe(e).map(EQ.pourEleve); }
+ function champ(q,v){
+  var h='';
+  if(q.type==='qcm_unique') h=(q.propositions||[]).map(function(p){ return '<label class="evlOpt"><input type="radio" name="evlr" value="'+p.id+'"'+(v===p.id?' checked':'')+'><span>'+esc(p.id.toUpperCase()+'. '+p.texte)+'</span></label>'; }).join('');
+  else if(q.type==='qcm_multiple') h=(q.propositions||[]).map(function(p){ return '<label class="evlOpt"><input type="checkbox" name="evlr" value="'+p.id+'"'+((Array.isArray(v)&&v.indexOf(p.id)>=0)?' checked':'')+'><span>'+esc(p.id.toUpperCase()+'. '+p.texte)+'</span></label>'; }).join('')+'<p class="evlNote">'+esc(T('Plusieurs réponses possibles.'))+'</p>';
+  else if(q.type==='vrai_faux') h=[['vrai','Vrai'],['faux','Faux']].map(function(o){ return '<label class="evlOpt"><input type="radio" name="evlr" value="'+o[0]+'"'+(v===o[0]?' checked':'')+'><span>'+esc(T(o[1]))+'</span></label>'; }).join('');
+  else if(q.type==='ouverte_courte') h='<input class="evlIn" type="text" name="evlr" maxlength="300" value="'+esc(v||'')+'" aria-label="'+esc(T('Votre réponse'))+'">';
+  else if(q.type==='numerique') h='<div style="display:flex;align-items:center;gap:8px"><input class="evlIn" type="text" inputmode="decimal" name="evlr" value="'+esc(v||'')+'" aria-label="'+esc(T('Votre réponse (nombre)'))+'">'+(q.unite?'<span>'+esc(q.unite)+'</span>':'')+'</div>';
+  else h='<textarea class="evlIn" name="evlr" rows="6" aria-label="'+esc(T('Votre réponse'))+'">'+esc(v||'')+'</textarea>';
+  return h;
+ }
+ function lireChamp(q){
+  var els=document.querySelectorAll('.evlRoot [name="evlr"]'); if(q.type==='qcm_multiple'){ var L=[]; els.forEach(function(x){ if(x.checked) L.push(x.value); }); return L; }
+  if(q.type==='qcm_unique'||q.type==='vrai_faux'){ var r; els.forEach(function(x){ if(x.checked) r=x.value; }); return r; }
+  return els[0]?els[0].value:'';
+ }
+ function garder(){
+  var e=evById(P.id); if(!e) return; var qs=questionsEleve(e); if(P.fin||!qs[P.i]) return; var q=qs[P.i], v=lireChamp(q);
+  if(v===undefined||EQ.vide(q,v)) delete P.rep[q.id]; else P.rep[q.id]=v;
+  var sb=sbDe(e,true); if(sb.soumisLe) return; sb.reponses=JSON.parse(JSON.stringify(P.rep)); save();
+ }
+ function rendreP(){
+  var e=evById(P.id); if(!e) return; var qs=questionsEleve(e), n=qs.length, back=function(){ if(api().eleve) api().eleve(e.sessionId); else closeModal(); };
+  if(P.fin){
+   var rep=qs.map(function(q,i){ var vide=EQ.vide(q,P.rep[q.id]); return '<li><button type="button" class="evlIcB" style="width:auto;min-width:48px;padding:0 12px" data-evl="p_aller" data-id="'+i+'">'+esc(T('Question'))+' '+(i+1)+'</button> '+(vide?'<b>'+esc(T('sans réponse'))+'</b>':esc(T('répondu')))+'</li>'; }).join('');
+   modal('<h3>'+esc(e.nom)+'</h3><div class="evlProg" role="progressbar" aria-valuemin="0" aria-valuemax="'+n+'" aria-valuenow="'+n+'"><i style="width:100%"></i></div><p class="evlNote">'+esc(T('Relisez avant d’envoyer. Après l’envoi, vous ne pourrez plus modifier vos réponses.'))+'</p><ul style="list-style:none;padding:0">'+rep+'</ul>'
+    +row([btn('back','Précédent','p_prec'),btn('check','Envoyer mes réponses','p_envoyer',null,{primary:1}),btn('close','Continuer plus tard','p_fermer')]),back);
+   return;
+  }
+  var q=qs[P.i], pct=Math.round((P.i)/n*100);
+  modal('<h3>'+esc(e.nom)+'</h3><p class="evlNote" id="evlPos">'+esc(T('Question'))+' '+(P.i+1)+' / '+n+'</p><div class="evlProg" role="progressbar" aria-valuemin="0" aria-valuemax="'+n+'" aria-valuenow="'+P.i+'"><i style="width:'+pct+'%"></i></div>'
+   +'<div class="evlFld"><label>'+esc(q.texte).replace(/\n/g,'<br>')+(q.points?' <small class="evlCorr">('+esc(String(q.points).replace('.',','))+' '+esc(T('point(s)'))+')</small>':'')+'</label>'+(q.pj&&q.pj.name?'<button type="button" class="evlTx" data-evl="p_pj" style="min-height:44px">📎 '+esc(q.pj.name)+'</button>':'')+champ(q,P.rep[q.id])+'</div>'
+   +row([btn('back','Précédent','p_prec',null,{disabled:P.i===0}),btn('next',P.i===n-1?'Relire et envoyer':'Suivant','p_suiv',null,{primary:1}),btn('close','Continuer plus tard','p_fermer')]),back);
+ }
+ function envoyerP(){
+  var e=evById(P.id); if(!e) return; var now=api().now?api().now():''; if(now<(e.dateDebut||'')||(e.dateFin&&now>e.dateFin)){ miniAlert('Le délai pour répondre est dépassé.'); closeModal(); return; }
+  var sb=sbDe(e,true); sb.reponses=JSON.parse(JSON.stringify(P.rep)); sb.soumisLe=new Date().toISOString();
+  var auto={}; EQ.questionsDe(e).forEach(function(q){ var c=EQ.corriger(q,sb.reponses[q.id]); if(c) auto[q.id]=c; }); sb.auto=auto; save();
+  var ri=e.questionnaire&&e.questionnaire.retourImmediat, id=e.id; P=null;
+  if(ri) resultatAuto(id); else{ closeModal(); miniAlert('Vos réponses ont été envoyées.'); if(api().eleve) api().eleve(e.sessionId); }
+ }
+ /* retour immédiat (seulement si le formateur l'a autorisé) : résultat des questions corrigées automatiquement */
+ function resultatAuto(id){
+  var e=evById(id), sb=e&&sbDe(e,false); if(!e||!sb) return; var rows='', ob=0, mx=0;
+  EQ.questionsDe(e).forEach(function(q,i){ var c=sb.auto&&sb.auto[q.id]; if(!c) return; ob+=c.obtenu; mx+=c.max; rows+='<li>'+esc(T('Question'))+' '+(i+1)+' : '+(c.obtenu>=c.max?esc(T('juste')):esc(T('à revoir')))+(c.obtenu<c.max?' — '+esc(T('bonne réponse'))+' : '+esc(EQ.afficheCorrige(q)).replace(/\n/g,'<br>'):'')+'</li>'; });
+  modal('<h3>'+esc(e.nom)+'</h3><p class="evlInfo" role="status">'+esc(T('Vos réponses ont été envoyées.'))+'</p>'+(mx?'<p class="evlNote">'+esc(T('Correction automatique'))+' : <b>'+String(ob).replace('.',',')+' / '+String(mx).replace('.',',')+'</b></p><ul>'+rows+'</ul><p class="evlNote">'+esc(T('Les questions ouvertes seront corrigées par le formateur.'))+'</p>':'<p class="evlNote">'+esc(T('Aucune question n’est corrigée automatiquement : le formateur corrigera vos réponses.'))+'</p>')+row([btn('back','Retour','retour',e.sessionId)]),function(){ if(api().eleve) api().eleve(e.sessionId); });
+ }
+ /* correction publiée : réponse, points, commentaire ; jamais la réponse attendue */
+ function voirCorrection(id){
+  var e=evById(id), sb=e&&sbDe(e,false); if(!e||!sb) return;
+  var h=EQ.questionsDe(e).map(function(q,i){ var cor=(sb.correction||{})[q.id]||{}; return '<div class="evlQ"><h5>'+esc(T('Question'))+' '+(i+1)+'</h5><div>'+esc(q.texte).replace(/\n/g,'<br>')+'</div><p class="evlNote">'+esc(T('Votre réponse'))+' : '+esc(EQ.affiche(q,(sb.reponses||{})[q.id])).replace(/\n/g,'<br>')+'</p><p class="evlNote">'+esc(T('Points'))+' : '+esc(String(cor.obtenu!=null?cor.obtenu:'?'))+' / '+esc(String(cor.max!=null?cor.max:'?'))+(cor.commentaire?' — '+esc(cor.commentaire):'')+'</p></div>'; }).join('');
+  modal('<h3>'+esc(T('Correction'))+' — '+esc(e.nom)+'</h3><p class="evlNote">'+esc(T('Note globale'))+' : <b>'+esc(String(sb.noteGlobale))+'</b></p>'+h+(e.pjCorrection&&e.pjCorrection.name?'<p class="evlNote">📎 '+esc(e.pjCorrection.name)+'</p>':'')+row([btn('back','Retour','retour',e.sessionId)]),function(){ if(api().eleve) api().eleve(e.sessionId); });
+ }
+ /* question dans la fenêtre de correction du formateur : réponse typée, réponse attendue, points prérenseignés si correction automatique */
+ function corrQuestionHtml(q,i,sb,cor){
+  var rep=(sb.reponses||{})[q.id], auto=EQ.corriger(q,rep), att=EQ.afficheCorrige(q), txt=EQ.affiche(q,rep);
+  var ob=cor.obtenu!=null?cor.obtenu:(auto?auto.obtenu:''), mx=cor.max!=null?cor.max:(auto?auto.max:(q.points>0?q.points:''));
+  return '<div class="be-corr-q" data-qid="'+esc(q.id)+'"><b>Q'+(i+1)+'. '+esc(q.texte)+'</b> <small>'+esc(T(EQ.nomType(q.type)))+'</small>'
+   +(q.pj&&q.pj.name?' <button type="button" class="ghost" data-vopj="'+esc(q.id)+'">📎 '+esc(q.pj.name)+'</button>':'')
+   +'<div class="be-corr-rep"><span class="be-corr-lb">Réponse de l’élève</span><div class="be-corr-txt">'+(txt?esc(txt).replace(/\n/g,'<br>'):'<em>Aucune réponse</em>')+'</div></div>'
+   +(att?'<div class="be-corr-rep be-corr-att"><span class="be-corr-lb">Réponse attendue</span><div class="be-corr-txt">'+esc(att).replace(/\n/g,'<br>')+'</div></div>':'')
+   +(auto&&cor.obtenu==null?'<p class="evlCorr">'+esc(T('Corrigé automatiquement : vous pouvez changer les points.'))+'</p>':(!auto&&q.type!=='ouverte_courte'&&q.type!=='ouverte_longue'?'<p class="evlCorr">'+esc(T('Pas de bonne réponse indiquée : à corriger à la main.'))+'</p>':''))
+   +'<div class="be-corr-pts"><label>Points obtenus <input type="text" inputmode="decimal" data-cf="obtenu" value="'+esc(ob!==''?String(ob):'')+'"></label><label>Max <input type="text" inputmode="decimal" data-cf="max" value="'+esc(mx!==''?String(mx):'')+'"></label></div>'
+   +'<div class="field"><label>Commentaire</label><textarea rows="2" data-cf="commentaire">'+esc(cor.commentaire||'')+'</textarea></div></div>';
+ }
+ /* ---------- actions ---------- */
+ document.addEventListener('click',function(ev){
+  var eyeB=ev.target.closest&&ev.target.closest('[data-evl-eye]');
+  if(eyeB&&eyeB.closest('.evlRoot')){ ev.preventDefault(); var key=eyeB.getAttribute('data-evl-eye'), body=eyeB.closest('.evlH').nextElementSibling; if(!body) return; var hide=!body.hidden; body.hidden=hide; FOLD[key]=hide?1:0; foldSave(); eyeB.setAttribute('aria-pressed',hide?'false':'true'); eyeB.innerHTML=svg(hide?'eyeoff':'open',22); return; }
+  var lb=ev.target.closest&&ev.target.closest('.evlBl'); if(lb&&lb.closest('.evlRoot')){ var b0=lb.parentNode.querySelector('.evlIcB'); if(b0&&!b0.disabled) b0.click(); return; }
+  var b=ev.target.closest&&ev.target.closest('[data-evl]'); if(!b||b.disabled||!b.closest('.evlRoot')) return;
+  var a=b.getAttribute('data-evl'), id=b.getAttribute('data-id'), root=b.closest('.evlRoot'), sess=root&&root.getAttribute('data-evl-sess');
+  var A={
+   ouvrir:function(){ var e=evById(id); if(e&&e.pj&&window.beOpenPjViewer) window.beOpenPjViewer(e.pj); },
+   telecharger:function(){ var e=evById(id); if(e&&e.pj) telecharger(e.pj); },
+   deposer:function(){ deposer(id); }, modeles:function(){ modeles(id); },
+   pj_app:function(){ document.getElementById('evlF1').click(); }, pj_photo:function(){ document.getElementById('evlF2').click(); },
+   dep_ok:function(){ enregistrerDepot(); }, dep_non:function(){ var s=DEP&&DEP.sessionId; DEP=null; retourListe(s); },
+   modele_ajout:function(){ var m=evById(id); if(!m||!DEP) return; var c=JSON.parse(JSON.stringify(m)); c.id=uid('EV'); c.sessionId=DEP.sessionId; c.modele=false; delete c.migre; c.visibleEleves=false; c.dateDepot=new Date().toISOString().slice(0,10); c.formulaireIds=[]; c.soumissions=[]; c.statut='brouillon'; evs().push(c); save(); var s=DEP.sessionId; DEP=null; retourListe(s); },
+   retour:function(){ retourListe(id); },
+   transformer:function(){ transformer(id); }, tr_go:function(){ lancerAnalyse(); }, tr_non:function(){ var e=evById(TR.id); retourListe(e&&e.sessionId); },
+   tr_ex:function(){ var e=evById(TR.id); if(!e) return; var r=EQ.validerLecture(EQ.exemple()); appliquerLecture(e,r,'exemple'); },
+   relire:function(){ RL.ed=null; RL.err=''; relecture(id); },
+   suivi:function(){ if(api().openEval) api().openEval(id); },
+   supprimer:function(){ var e=evById(id); if(!e) return; miniConfirm('Supprimer cette évaluation ?',function(){ var s=e.sessionId; S().evaluations=evs().filter(function(x){ return x.id!==id; }); save(); retourListe(s); }); },
+   q_ok:function(){ var q=qDe(id); if(q){ q.statut='accepte'; save(); } relecture(RL.id); },
+   q_ecarte:function(){ var q=qDe(id); if(q){ q.statut='ecarte'; save(); } relecture(RL.id); },
+   q_reprend:function(){ var q=qDe(id); if(q){ q.statut='non_verifie'; save(); } relecture(RL.id); },
+   q_mod:function(){ RL.ed=id; RL.err=''; relecture(RL.id); },
+   q_non:function(){ RL.ed=null; RL.err=''; relecture(RL.id); },
+   q_save:function(){ enregistrerQ(id); relecture(RL.id); },
+   q_valider:function(){ if(validerQuestionnaire(id)){ var e=evById(id); closeModal(); miniAlert('Questionnaire validé. Définissez les dates puis envoyez-le aux élèves depuis « Suivi et réponses ».'); retourListe(e.sessionId); } else relecture(id); },
+   jouer:function(){ jouer(id); }, voir:function(){ voirCorrection(id); }, auto:function(){ resultatAuto(id); },
+   p_prec:function(){ garder(); if(P.fin){ P.fin=false; P.i=questionsEleve(evById(P.id)).length-1; } else if(P.i>0) P.i--; rendreP(); },
+   p_suiv:function(){ garder(); var n=questionsEleve(evById(P.id)).length; if(P.i<n-1) P.i++; else P.fin=true; rendreP(); },
+   p_fermer:function(){ garder(); var e=evById(P.id); P=null; closeModal(); if(e&&api().eleve) api().eleve(e.sessionId); },
+   p_aller:function(){ P.i=+id; P.fin=false; rendreP(); },
+   p_envoyer:function(){ miniConfirm('Envoyer vos réponses ? Vous ne pourrez plus les modifier.',function(){ envoyerP(); }); },
+   p_pj:function(){ var e=evById(P.id); var q=EQ.questionsDe(e)[P.i]; if(q&&q.pj&&window.beOpenPjViewer) window.beOpenPjViewer(q.pj); }
+  };
+  function qDe(qid){ var e=evById(RL.id); return e&&(e.questions||[]).filter(function(x){ return x.id===qid; })[0]; }
+  if(A[a]){ ev.preventDefault(); A[a](); }
+ });
+ window.evlUi={listeHtml:listeHtml,migrer:migrer,corrQuestionHtml:corrQuestionHtml,deposer:deposer,jouer:jouer,voirCorrection:voirCorrection,questions:function(e){ return EQ.questionsDe(e); },visibleEleve:visibleEleve,valide:valide,state:{get P(){ return P; },get RL(){ return RL; },get TR(){ return TR; }},relecture:relecture,transformer:transformer};
 })();
 </script>
 <script id="plLecJs">
