@@ -26589,7 +26589,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
       parts.forEach(pt=>{ const d=document.createElement('div'); d.innerHTML=pt; const tx=d.textContent.trim(); if(!/⚠/.test(tx)) return;
        const bad=/non vérifi|NON vérifi|dépass|insuffisan|à revoir|augmenter/i.test(tx); const k=tx.slice(0,140); if(!AN.some(a=>a.k===k)) AN.push({k,bad,tx}); }); });
     { const sn=window.dimSolNoteTxt&&window.dimSolNoteTxt(dp); if(sn) AN.push({k:'solclass',bad:false,tx:sn}); }
-    let thN=null; try{ thN=window.thm?window.thm.note(dp,kind,t):null; }catch(_){ thN=null; } if(thN) thN.pts.forEach(q=>{ AN.push({k:'th'+q.tx.slice(0,60),bad:!!q.bad,tx:q.tx}); });
+    let thN=null; try{ thN=window.thm?window.thm.note(dp,kind,t,res):null; }catch(_){ thN=null; } if(thN) thN.pts.forEach(q=>{ AN.push({k:'th'+q.tx.slice(0,60),bad:!!q.bad,tx:q.tx}); });
     let dvN=null; try{ dvN=window.dimValidNote?window.dimValidNote(dp,kind):null; }catch(_){ dvN=null; } if(dvN) dvN.pts.forEach(q=>{ if(!AN.some(a=>a.tx===q.tx)) AN.push({k:'dv'+q.tx.slice(0,60),bad:!!q.bad,tx:q.tx}); });
     if(/par défaut/i.test(html)&&!AN.some(a=>!a.bad)) AN.push({k:'def',bad:false,tx:'Des coefficients sont retenus « par défaut » (voir les sections ci-dessus) : à confirmer par le validateur.'});
     /* sections : une par titre h4 / h5 */
@@ -26966,12 +26966,15 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const choice=pcChooseEngine(dp);
    const res = choice.engine==='charge_roulante' ? pcComputeChargeRoulante(dp,choice) : pcComputePoutreContinue(dp,choice);
    res._gammaG=(dp.eluComb==='610b')?1.25:1.35; // combinaison ELU 6.10b (1,25 G) en option ; défaut 1,35 G
+   let thOn=false; try{ thOn=!!(window.thm&&window.thm.on(dp)); }catch(_){ }
+   if(thOn){ const Nt=window.thm.axial('pc',dp); res._th={Nt:Math.max(0,Nt)*1.5,gov:null}; if(res._engine==='charge_roulante') res._th.txt='Température non prise en compte avec le moteur de charge roulante.'; }
    // Un seul passage : le ferraillage (flexion + cadres) est calculé tout de suite derrière le RDM,
    // sans étape de validation séparée — mais l'utilisateur voit toujours les efforts (étape 6) avant/avec lui.
    try{ res.ferraillage=pcFerraillage(dp,res); }catch(_){ res.ferraillage=null; }
    // Plan de ferraillage (dispositions constructives EC2) : section + moteur ferraillagePoutrePlan, lu par le dessin du plan
    try{ res.section={b_cm:+dp.b_cm||20,h_cm:+dp.h_cm||50,enrobage_cm:(dp.enrobage_cm!=null&&dp.enrobage_cm!=='')?+dp.enrobage_cm:3,classeGlobale:dp.classeGlobale||'C25/30',classeAcier:dp.classeAcier||'B500'}; res.plan=ferraillagePoutrePlan(res,dp); }catch(err){ console.error(err); res.plan=null; }
    try{ pcPlanVerifs(dp,res); }catch(err){ console.error(err); }
+   if(thOn&&res.ferraillage){ try{ const dp0=Object.assign({},dp); ['thDT','thGrad'].forEach(k=>{ delete dp0[k]; }); const r0=pcCompute({dimPC:dp0}); const sg=r=>JSON.stringify([r.ferraillage.travees.map(x=>x.ferrInf.As),r.ferraillage.appuis.map(x=>x.ferrSup.As),(r.ferraillage.cadres||[]).map(c=>c.AswS)]); res._th.gov=!!(r0&&r0.ferraillage&&sg(r0)!==sg(res)); const fa=r=>'travées '+r.ferraillage.travees.map(x=>x.ferrInf.As==null?'—':x.ferrInf.As.toFixed(2).replace('.',',')).join(' ; ')+', appuis '+r.ferraillage.appuis.map(x=>x.ferrSup.As==null?'—':x.ferrSup.As.toFixed(2).replace('.',',')).join(' ; ')+' (cm²)'; res._th.txt=res._th.gov&&r0&&r0.ferraillage?('Sans température : '+fa(r0)+'. Avec température : '+fa(res)+'.'):''; }catch(e){ console.error(e); } }
    return res;
   }
   /* Poids propre de la poutre : 25 kN/m³ (béton armé) × b × h, charge permanente répartie sur toute la poutre. Ajouté seulement si dp.poidsPropre === true
@@ -26996,6 +26999,8 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
    const groups={}; qCharges.forEach(c=>{ const k=(c.groupe!=null&&c.groupe!=='')?('g'+c.groupe):('u'+Math.random().toString(36).slice(2)); (groups[k]=groups[k]||[]).push(c); });
    const caseG=pcRunCase(spans,EIarr,supports,gCharges,samplesPerSpan);
    const qCases=Object.values(groups).map(list=>pcRunCase(spans,EIarr,supports,list,samplesPerSpan));
+   /* variation de température : cas variable d'accompagnement (déjà multiplié par ψ), vide = aucun effet */
+   try{ if(window.thm&&window.thm.on(dp)){ const thc=window.thm.beamCase('pc',dp,samplesPerSpan); if(thc) qCases.push(thc); } }catch(e){ console.error(e); }
    const combine=(key)=>spans.map((L,e)=>samplesPerSpan[e].map((xi,k)=>{
     let mn=0,mx=0; qCases.forEach(c=>{ const v=c[key][e][k]; if(v<0) mn+=v; else mx+=v; });
     return { g:caseG[key][e][k], min:caseG[key][e][k]+mn, max:caseG[key][e][k]+mx };
@@ -44826,13 +44831,14 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
    const fctm=0.3*Math.pow(fck,2/3), fctEff=(dp.asMinFct==='fl')?Math.max((1.6-hcm*10/1000)*fctm,fctm):fctm;
    const AsMin=Math.max(0.26*(fctEff/fyk)*b*d,0.0013*b*d)*1e4, AsMax=0.04*b*h*1e4; // cm²
    const KLIM=0.21;
+   const AsN=(res._th&&res._th.Nt>0)?res._th.Nt/1000/fyd*1e4:0; /* acier supplémentaire pour la traction thermique si la déformation est empêchée (cm²) */
    const flex=(M_kNm)=>{
     const MEd=Math.abs(M_kNm)/1000; // MN·m
-    if(MEd<1e-9) return {As:AsMin,mu:0,K:0,z:0.9*d,Mkn:0};
+    if(MEd<1e-9) return {As:AsMin+AsN,mu:0,K:0,z:0.9*d,Mkn:0};
     const K=MEd/(b*d*d*fck);
     if(K>KLIM) return {As:null,mu:K,K,Mkn:Math.abs(M_kNm),warn:'Section insuffisante (K='+K.toFixed(3)+' > K\'=0,21) — armatures comprimées non couvertes par ce calcul simplifié.'};
     const z=Math.min(0.95*d,d*(0.5+Math.sqrt(Math.max(0,0.25-K/1.3333))));
-    return {As:Math.max(MEd/(z*fyd)*1e4,AsMin),Acalc:MEd/(z*fyd)*1e4,mu:K,K,z,Mkn:Math.abs(M_kNm)};
+    return {As:Math.max(MEd/(z*fyd)*1e4,AsMin)+AsN,Acalc:MEd/(z*fyd)*1e4,mu:K,K,z,Mkn:Math.abs(M_kNm)};
    };
    const delta=elsSaisi(dp,'delta')?+dp.delta:1, zones=pcZoneMoments(res,delta,dp);
    const travees=zones.travee.map((zo,e)=>({ e, Mtravee:zo.Mtravee, Vmax:zo.Vmax, ferrInf:flex(zo.Mtravee) }));
@@ -47702,7 +47708,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
 
   /* ===== Variation de température : adaptateurs des modules (géométrie seulement ; aucun calcul du module n'est modifié, moteur commun window.thm) ===== */
   window.THM_GEOM=window.THM_GEOM||{};
-  window.THM_GEOM.pc={prop:'dimPC',geom:dp=>{ const sp=(dp.travees||[]).map(x=>+x.portee_m).filter(v=>v>0), b=(+dp.b_cm)/100, h=(+dp.h_cm)/100; if(!sp.length||!(b>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et la section de la poutre.'}; return {ok:true,kind:'beam',spans:sp,h,A:b*h,I:b*h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
+  window.THM_GEOM.pc={prop:'dimPC',geom:dp=>{ const sp=(dp.travees||[]).map(x=>+x.portee_m).filter(v=>v>0), b=(+dp.b_cm)/100, h=(+dp.h_cm)/100; if(!sp.length||!(b>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et la section de la poutre.'}; const ap=dp.appuis||[]; return {ok:true,kind:'beam',integrated:true,fixL:!!(ap[0]&&ap[0].blocage_rotation),fixR:!!(ap[sp.length]&&ap[sp.length].blocage_rotation),spans:sp,h,A:b*h,I:b*h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   window.THM_GEOM.dl={prop:'dimDL',geom:dp=>{ const lx=+dp.lx_m, ly=+dp.ly_m, h=(+dp.h_cm)/100, n=Math.max(1,Math.round(+dp.nTravees)||1); if(!(lx>0)||!(ly>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les portées et l\'épaisseur de la dalle.'}; return {ok:true,kind:'slab',perM:true,spans:new Array(n).fill(lx),B:ly,h,A:h,I:h*h*h/12,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   window.THM_GEOM.pf={prop:'dimPF',geom:dp=>{ const sp=(dp.portees||[]).map(Number).filter(v=>v>0), pb=dp.secPoutre||{}, pc=dp.secPoteau||{}, bb=(+pb.b)/100, hb=(+pb.h)/100, bc=(+pc.b)/100, hc=(+pc.h)/100, H=(dp.hauteurs||[]).map(Number).filter(v=>v>0)[0]; if(!sp.length||!(bb>0)||!(hb>0)||!(H>0)) return {ok:false,msg:'Renseigner d\'abord les portées, hauteurs et sections du portique.'}; return {ok:true,kind:'frame',spans:sp,h:hb,A:bb*hb,I:bb*hb*hb*hb/12,Hc:H,Ic:(bc>0&&hc>0)?bc*hc*hc*hc/12:0,E:PC_ECM[dp.classeGlobale]||31000,alpha0:10,mat:'beton'}; }};
   window.THM_GEOM.dg={prop:'dimDG',geom:dp=>{ const L=+dp.L_m, B=+dp.B_m, h=(+dp.h_cm)/100; if(!(L>0)||!(B>0)||!(h>0)) return {ok:false,msg:'Renseigner d\'abord les dimensions du dallage.'}; const J=dgJ(dp), Lj=Math.max(J.px,J.py); return {ok:true,kind:'dallage',perM:true,spans:[Lj],Lj,B,Lfull:L,h,A:h,I:h*h*h/12,E:dgP(dp,'Ecm_MPa'),alpha0:10,mat:'beton',fric:dgP(dp,'muFrot')*dgP(dp,'gammaBeton')*h*Lj/2,lblL:'Allongement libre d\'un panneau (entre joints)'}; }};
@@ -48055,16 +48061,19 @@ document.head.appendChild(st);
  ];
  const reg=()=>window.THM_GEOM||{};
  const saisi=(dp,k)=>dp&&dp[k]!==undefined&&dp[k]!==null&&dp[k]!==''&&isFinite(+dp[k]);
- const dflt=(g,k)=>({thAlpha:(g&&g.alpha0)||10,thE:(g&&g.E)||31000,thBloc:1,thRig:1,thPsi:0.6})[k];
+ const dflt=(g,k)=>({thAlpha:(g&&g.alpha0)||10,thE:(g&&g.E)||31000,thBloc:1,thRig:1,thPsi:(g&&g.psi0)||0.6})[k];
  const val=(dp,g,k)=>saisi(dp,k)?+dp[k]:dflt(g,k);
  const on=dp=>{ if(!dp) return false; const a=num(dp.thDT), b=num(dp.thGrad); return (a!=null&&a!==0)||(b!=null&&b!==0); };
  /* ---------- calcul ---------- */
- function solveSupports(L,kEI){ /* moments sur appuis (convention : positif = fibre inférieure tendue), extrémités articulées, courbure libre kappa : L_i M_{i-1} + 2(L_i+L_{i+1}) M_i + L_{i+1} M_{i+1} = -3 EIκ (L_i+L_{i+1}) */
-  const n=L.length, M=new Array(n+1).fill(0); if(n<2) return M; const m=n-1, a=[],b=[],c=[],d=[];
-  for(let i=1;i<=m;i++){ a.push(i>1?L[i-1]:0); b.push(2*(L[i-1]+L[i])); c.push(i<m?L[i]:0); d.push(-3*kEI*(L[i-1]+L[i])); }
-  for(let i=1;i<m;i++){ const w=a[i]/b[i-1]; b[i]-=w*c[i-1]; d[i]-=w*d[i-1]; }
-  const x=new Array(m); x[m-1]=d[m-1]/b[m-1]; for(let i=m-2;i>=0;i--) x[i]=(d[i]-c[i]*x[i+1])/b[i];
-  for(let i=0;i<m;i++) M[i+1]=x[i]; return M;
+ function solveSupports(L,kEI,fixL,fixR){ /* moments sur appuis (positif = fibre inférieure tendue) ; extrémités articulées ou encastrées (pente nulle) ; courbure libre kappa : L_i M_{i-1} + 2(L_i+L_{i+1}) M_i + L_{i+1} M_{i+1} = -3 EIκ (L_i+L_{i+1}) ; encastrement : 2 M_0 + M_1 = -3 EIκ */
+  const n=L.length, N=n+1, M=new Array(N).fill(0); if(!n) return M;
+  const A=[]; for(let i=0;i<N;i++){ A.push(new Array(N+1).fill(0)); }
+  if(fixL){ A[0][0]=2; if(N>1) A[0][1]=1; A[0][N]=-3*kEI; } else { A[0][0]=1; }
+  if(fixR){ A[n][n]=2; A[n][n-1]=1; A[n][N]=-3*kEI; } else { A[n][n]=1; }
+  for(let i=1;i<n;i++){ A[i][i-1]=L[i-1]; A[i][i]=2*(L[i-1]+L[i]); A[i][i+1]=L[i]; A[i][N]=-3*kEI*(L[i-1]+L[i]); }
+  for(let c=0;c<N;c++){ let pv=c; for(let r=c+1;r<N;r++) if(Math.abs(A[r][c])>Math.abs(A[pv][c])) pv=r; if(Math.abs(A[pv][c])<1e-14) continue; const t=A[c]; A[c]=A[pv]; A[pv]=t;
+   for(let r=0;r<N;r++){ if(r===c) continue; const f=A[r][c]/A[c][c]; if(f) for(let k=c;k<=N;k++) A[r][k]-=f*A[c][k]; } }
+  for(let i=0;i<N;i++) M[i]=Math.abs(A[i][i])>1e-14?A[i][N]/A[i][i]:0; return M;
  }
  function profile(g,kappa,EIeff,M,npt){ /* flèche w(x) de chaque travée : courbure = κ + M/EI, appuis à flèche nulle ; positif = vers le bas */
   const out=[]; let x0=0;
@@ -48086,7 +48095,7 @@ document.head.appendChild(st);
    return r; }
   r.N=-E*g.A*al*dT*bl*1000; r.dirN=dT>0?'compression':(dT<0?'traction':'');
   const EI=E*g.I*1000*rg; r.EI=EI;
-  const sp=g.spans; r.M=solveSupports(sp,EI*r.kappa);
+  const sp=g.spans; r.M=solveSupports(sp,EI*r.kappa,!!g.fixL,!!g.fixR);
   r.Msup=Math.max(0,...r.M.map(x=>Math.abs(x)));
   r.Mfix=EI*r.kappa*bl; /* courbure empêchée aux deux extrémités (encastrement parfait) */
   r.prof=profile(g,r.kappa,EI,r.M); let fm=0; r.prof.forEach(p=>p.forEach(q=>{ if(Math.abs(q.w)>Math.abs(fm)) fm=q.w; })); r.fmax=fm; r.ffree=Math.max(...sp.map(L=>Math.abs(r.kappa)*L*L/8));
@@ -48157,8 +48166,46 @@ document.head.appendChild(st);
    if(r.kind==='slab'&&r.dB!=null) rows.push(row('Allongement libre dans l\'autre sens',mm(r.dB),'B = '+fr(g.B,2)+' m'));
    if(r.dEpsMixte!=null&&r.dEpsMixte!==0) rows.push(row('Écart de dilatation acier / béton',fr(r.dEpsMixte*1e6,1)+' ×10⁻⁶','effet sur la connexion non calculé : à confirmer'));
   }
-  return '<div class="pfTblW"><table class="pfTbl thmTbl"><thead><tr><th>Grandeur</th><th>Valeur</th><th>Remarque</th><th>ELU (× 1,50)</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div><p class="pcNote">Effets calculés à part : ils ne modifient pas les résultats du dimensionnement ; à combiner avec les autres actions par l\'ingénieur (ψ × effet, puis coefficient de sécurité de l\'action variable).</p>';
+  return '<div class="pfTblW"><table class="pfTbl thmTbl"><thead><tr><th>Grandeur</th><th>Valeur</th><th>Remarque</th><th>ELU (× 1,50)</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div><p class="pcNote">'+(g.integrated?'Ces effets entrent dans les combinaisons du calcul comme action variable : ψ × effet, puis coefficient de sécurité de l\'action variable. Ils sont donc inclus dans les armatures et les vérifications.':'Effets calculés à part : ils ne modifient pas les résultats du dimensionnement ; à combiner avec les autres actions par l\'ingénieur (ψ × effet, puis coefficient de sécurité de l\'action variable).')+'</p>';
  }
+
+ /* ---------- fenêtre de confirmation des valeurs thermiques par défaut (mêmes classes et même présentation que la fenêtre des valeurs prudentes des assemblages) ---------- */
+ function cfRows(dp,g,err){
+  const T=s=>(window.dimT?window.dimT(s):s);
+  const ib=(icon,label,attrs,dis)=>'<span class="dimIBw"><button type="button" class="dimIB" data-dimui="1" aria-label="'+esc(T(label))+'" title="'+esc(T(label))+'" '+(attrs||'')+(dis?' disabled aria-disabled="true"':'')+'>'+(window.dimBiSvg?window.dimBiSvg(icon):'')+'</button><span class="dimIBl">'+esc(T(label))+'</span></span>';
+  return PARAMS.map(p=>{ const sa=saisi(dp,p.k), v=val(dp,g,p.k), d0=dflt(g,p.k);
+   return '<div class="acCfRow thmCfRow"><div class="acCfN"><b>'+esc(p.lbl)+'</b><span class="acCfH">'+esc(p.aide)+'</span><span class="acCfD">Valeur par défaut à confirmer : '+fr(d0,p.step<0.1?2:(p.k==='thE'?0:1))+(p.unit?' '+esc(p.unit):'')+' <span class="pcElsTag'+(sa?' on':'')+'">'+(sa?'saisi':'par défaut')+'</span></span>'+(err&&err.k===p.k?'<span class="dvErr" role="alert">'+esc(err.msg)+'</span>':'')+'</div><div class="acCfC"><input type="text" inputmode="decimal" data-thcf="'+p.k+'" aria-label="'+esc(p.lbl)+'" value="'+esc(String(+(+v).toFixed(4)).replace('.',','))+'"><span class="acCfU">'+esc(p.unit||'')+'</span></div><div class="acCfR">'+ib('reset','Rétablir','data-thcf-ret="'+p.k+'"',!sa)+'</div></div>'; }).join('')
+   +'<div class="acCfRow thmCfRow"><div class="acCfN"><b>Coefficient de sécurité d\'une action variable</b><span class="acCfD">'+fr(GQ,2)+' <span class="pcElsTag">normatif, non modifiable</span></span></div></div>';
+ }
+ function confirmWindow(ctx){
+  const dp=ctx.dp, g=gOf(ctx.pfx,dp); if(!g) return; const T=s=>(window.dimT?window.dimT(s):s);
+  const old=document.getElementById('thCfOv'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='thCfOv'; ov.className='pcFeuOv dvOv'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-labelledby','thCfT'); document.body.appendChild(ov);
+  try{ window.dimChEsc&&window.dimChEsc(ov); }catch(_){ }
+  ov.addEventListener('mousedown',e=>{ ov._down=(e.target===ov); });
+  let err=null;
+  const ib=(icon,label,attrs)=>'<span class="dimIBw"><button type="button" class="dimIB" data-dimui="1" aria-label="'+esc(T(label))+'" title="'+esc(T(label))+'" '+attrs+'>'+(window.dimBiSvg?window.dimBiSvg(icon):'')+'</button><span class="dimIBl">'+esc(T(label))+'</span></span>';
+  const draw=()=>{ ov.innerHTML='<div class="pcFeuCard dvCard acCfCard"><h4 id="thCfT">Valeurs thermiques à confirmer</h4><p class="dvWhat">Ces valeurs sont retenues par défaut pour la variation de température. Confirmez-les ou saisissez les vôtres : la note indiquera « confirmé par l\'ingénieur » ou « saisi ».</p><div class="acCfTab">'+cfRows(dp,g,err)+'</div><div class="dvBtns">'+ib('check','Je confirme','data-thcf-x="ok"')+ib('close','Annuler','data-thcf-x="no"')+'</div></div>'; };
+  draw();
+  ov.addEventListener('change',e=>{ const el=e.target.closest('[data-thcf]'); if(!el) return; const k=el.dataset.thcf, p=PARAMS.find(x=>x.k===k); if(!p) return; err=null; const raw=el.value.trim().replace(',','.');
+   if(raw===''){ delete dp[k]; } else { const x=Number(raw); if(!isFinite(x)) err={k,msg:'Valeur numérique attendue.'}; else if(x<p.min||x>p.max) err={k,msg:'Valeur comprise entre '+fr(p.min,2)+' et '+fr(p.max,2)+(p.unit?' '+p.unit:'')+'.'}; else if(Math.abs(x-dflt(g,k))<1e-9) delete dp[k]; else dp[k]=x; }
+   save(); draw(); });
+  ov.addEventListener('click',e=>{ const r=e.target.closest('[data-thcf-ret]'); if(r){ delete dp[r.dataset.thcfRet]; err=null; save(); draw(); return; }
+   const b=e.target.closest('[data-thcf-x]'); if(!b){ if(e.target===ov&&ov._down) ov.remove(); return; }
+   if(b.dataset.thcfX==='no'){ ov.remove(); return; } if(err) return;
+   const spec=(window.dimValidSpecs&&window.dimValidSpecs[ctx.pfx]||[]).find(x=>x.id==='th_valeurs'); ov.remove();
+   if(spec&&window.dimValidCommit) window.dimValidCommit(ctx,spec,{choix:PARAMS.some(p=>saisi(dp,p.k))?'modifie':'accepte'});
+   try{ inject(true); }catch(_){ } if(ctx.onAccept) ctx.onAccept(); });
+  const f=ov.querySelector('[data-thcf-x="ok"]'); if(f) try{ f.focus({preventScroll:true}); }catch(_){ }
+ }
+ function gOf(pfx,dp,t){ const A=reg()[pfx]; if(!A) return null; try{ return A.geom(dp,t||null); }catch(_){ return null; } }
+ function beamCase(pfx,dp,xs,t){ /* cas thermique prêt à entrer dans les combinaisons : mêmes tableaux que le moteur RDM (M, V, Defl par travée et point, R par appui), valeurs déjà multipliées par ψ ; M positif = fibre inférieure tendue, flèche positive vers le bas */
+  const g=gOf(pfx,dp,t); if(!g||!g.ok||!on(dp)) return null; const r=calc(dp,g); if(!r.ok||!r.M) return null; const ps=r.psi, sp=r.spans, n=sp.length, EI=r.EI;
+  const M=[],V=[],D=[]; sp.forEach((L,e)=>{ const m0=r.M[e]*ps, m1=r.M[e+1]*ps, k=r.kappa*ps, c0=k+(EI>0?m0/EI:0), c1=k+(EI>0?m1/EI:0), A=-L*(2*c0+c1)/6; M.push(xs[e].map(x=>m0+(m1-m0)*x/L)); V.push(xs[e].map(()=>(m1-m0)/L)); D.push(xs[e].map(x=>c0*x*x/2+(c1-c0)*x*x*x/(6*L)+A*x)); });
+  const R=[]; for(let i=0;i<=n;i++){ const vr=i<n?(r.M[i+1]-r.M[i])*ps/sp[i]:0, vl=i>0?(r.M[i]-r.M[i-1])*ps/sp[i-1]:0; R.push(vr-vl); }
+  return {M,V,Defl:D,R,_th:true}; }
+ function axial(pfx,dp){ /* effort normal thermique si la déformation est empêchée : positif = traction, déjà multiplié par ψ (kN, ou kN/m) */
+  const g=gOf(pfx,dp); if(!g||!g.ok||!on(dp)) return 0; const r=calc(dp,g); if(!r.ok||r.N==null) return 0; return r.N*r.psi; }
  function ctxOf(pfx,t){ const A=reg()[pfx]; if(!A) return null; const dp=t&&t[A.prop]; if(!dp) return null; let g=null; try{ g=A.geom(dp,t); }catch(_){ g={ok:false,msg:'Géométrie incomplète.'}; } return {A,dp,g}; }
  function wrapHtml(pfx,dp,g){
   const r=on(dp)?calc(dp,g):null, shell=g&&g.kind==='shell', head=n=>'<h5 class="thmH" data-thm-h="'+n+'">';
@@ -48202,19 +48249,21 @@ document.head.appendChild(st);
   save(); inject(true); },true);
  document.addEventListener('toggle',e=>{ const d=e.target; if(d&&d.classList&&d.classList.contains('thmAdv')){ const c=ctxNow(); if(c){ c.dp._thmAdv=d.open; save(); } } },true);
  /* ---------- note de calcul ---------- */
- function note(dp,kind,t){
+ function frD(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(iso||''); return m?m[3]+'/'+m[2]+'/'+m[1]:''; }
+ function note(dp,kind,t,res){
   try{ const pfx=KIND2PFX[kind]; if(!pfx||!on(dp)) return null; const c=ctxOf(pfx,t); if(!c) return null; const r=calc(dp,c.g), g=c.g;
-   const o=k=>saisi(dp,k)?'Saisi':'Par défaut', f=fr;
+   const cf=dp.valid&&dp.valid.th_valeurs, o=k=>saisi(dp,k)?'Saisi':(cf&&cf.date?'Confirmé par l\'ingénieur le '+frD(cf.date):'Par défaut'), f=fr;
    const hyp=[['Variation de température',(num(dp.thDT)!=null?'ΔT = '+f(dp.thDT,1)+' °C':'ΔT non saisi')+' ; gradient '+(num(dp.thGrad)!=null?f(dp.thGrad,1)+' °C':'non saisi'),'Saisi']];
    const rows=[['Variation uniforme ΔT',num(dp.thDT)!=null?f(dp.thDT,1)+' °C':'—','Saisi'],['Gradient (face basse moins face haute)',num(dp.thGrad)!=null?f(dp.thGrad,1)+' °C':'—','Saisi'],['Coefficient de dilatation α',f(val(dp,g,'thAlpha'),1)+' ×10⁻⁶ /K',o('thAlpha')],['Module d\'élasticité E',f(val(dp,g,'thE'),0)+' MPa',o('thE')],['Taux de blocage',f(val(dp,g,'thBloc'),2),o('thBloc')],['Facteur de rigidité en flexion',f(val(dp,g,'thRig'),2),o('thRig')],['Coefficient de combinaison ψ',f(val(dp,g,'thPsi'),2),o('thPsi')],['Coefficient de sécurité d\'une action variable',f(GQ,2),'Normatif']];
    const tb=(head,rs)=>'<table class="ncT"><thead><tr>'+head.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rs.map(q=>'<tr>'+q.map(z=>'<td>'+z+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
-   let sec='<h4>Variation de température</h4>'+tb(['Paramètre','Valeur','Origine'],rows);
+   let sec='<h4>'+(c.g.integrated?'Effets thermiques dans les combinaisons':'Variation de température')+'</h4>'+tb(['Paramètre','Valeur','Origine'],rows);
+   if(c.g.integrated){ const th=res&&res._th; sec+='<p class="pcNote">Combinaison retenue : ELU = γG·G + 1,50·Q + 1,50·ψ·T ; ELS caractéristique = G + Q + ψ·T. La température T est une action variable d\'accompagnement (ψ = '+f(val(dp,c.g,'thPsi'),2)+') ; le cas où elle domine n\'est pas calculé séparément : saisir ψ = 1 pour l\'approcher. Le signe saisi est conservé (le sens inverse se calcule en changeant le signe).</p>'; if(th&&th.gov!=null) sec+='<p class="pcNote"><b>'+(th.gov?'La température gouverne : les armatures ou vérifications sont majorées par rapport au calcul sans température.':'La température ne gouverne pas : le dimensionnement reste celui du calcul sans température.')+'</b>'+(th.txt?' '+esc(th.txt):'')+'</p>'; }
    if(r.ok){ const d=document.createElement('div'); d.innerHTML=tableHtml(dp,g,r); const tbl=d.querySelector('table'); if(tbl){ tbl.className='ncT'; sec+=tbl.outerHTML; } sec+='<div class="pcDraw">'+svg(dp,g,r)+'</div>'; }
    else sec+='<p class="pcNote">'+esc(r.msg)+'</p>';
    const pts=[
     {tx:'Variation de température : ΔT et gradient saisis ; valeurs à confirmer par l\'ingénieur selon le site, l\'exposition et la couleur de surface.',bad:false},
     {tx:'Coefficient de dilatation, module d\'élasticité, taux de blocage, rigidité en flexion et ψ retenus '+((['thAlpha','thE','thBloc','thRig','thPsi'].every(k=>saisi(dp,k)))?'saisis':'« par défaut » pour ceux non saisis')+' : à confirmer.',bad:false},
-    {tx:'Les effets thermiques sont calculés à part : ils ne sont pas ajoutés aux armatures ni aux vérifications du module ; l\'ingénieur les combine avec les autres actions.',bad:false}];
+    (c.g.integrated?{tx:'Température intégrée aux combinaisons comme action variable d\'accompagnement (ψ × effet, coefficient de sécurité de l\'action variable) ; cas où elle domine : à confirmer.',bad:false}:{tx:'Les effets thermiques sont calculés à part : ils ne sont pas ajoutés aux armatures ni aux vérifications du module ; l\'ingénieur les combine avec les autres actions.',bad:false})];
    if(kind==='pont') pts.push({tx:'Actions thermiques du pont (variation uniforme et différence de température selon le type de tablier) : règle non intégrée, valeurs saisies par l\'ingénieur ; à trancher.',bad:false},{tx:'Écart de dilatation entre l\'acier et le béton (béton pris à 10 ×10⁻⁶ /K) : indiqué, sans calcul de l\'effet sur la connexion ; à confirmer.',bad:false},{tx:'Effort et rigidité calculés sur la poutre métallique seule (dalle de béton non incluse) ; déplacements des appareils d\'appui donnés pour un tablier libre de se dilater ; à confirmer.',bad:false});
    if(kind==='dallage') pts.push({tx:'Relevé des bords : calculé sans le poids propre du dallage ni la réaction du sol, donc majorant ; à confirmer.',bad:false},{tx:'L\'option « Retrait et température » des joints a sa propre variation de température (15 °C par défaut) : elle est indépendante de celle-ci ; ne pas les cumuler sans vérification ; à trancher.',bad:false});
    if(kind==='acier') pts.push({tx:'Appuis glissants ou butées : la raideur des appuis n\'est pas modélisée, utiliser le taux de blocage ; à confirmer.',bad:false});
@@ -48223,7 +48272,7 @@ document.head.appendChild(st);
    return {hyp,rows,section:'<section class="ncSec">'+sec+'</section>',pts};
   }catch(e){ console.warn('thmNote',e); return null; }
  }
- window.thm={on,calc,svg,note,tableHtml,PARAMS,val,saisi,num,fr,inject,KIND2PFX,PX,wrapHtml,ctxOf,GQ};
+ window.thm={on,calc,svg,note,tableHtml,PARAMS,val,saisi,num,fr,inject,KIND2PFX,PX,wrapHtml,ctxOf,GQ,gOf,beamCase,axial,confirmWindow};
 })();
 </script>
 <script id="dimValidJs">
@@ -48256,9 +48305,14 @@ document.head.appendChild(st);
  const vals=list=>dp=>{ const o=[]; list.forEach(([k,l,u,m])=>{ const v=dp[k]; if(v===undefined||v===null||v==='') return; let sv; if(typeof v==='boolean') sv=v?'oui':'non'; else if(m){ let r=null; try{ r=typeof m==='function'?m(v):m[v]; }catch(_){ r=null; } sv=(r!=null&&r!=='')?String(r):fnum(v); } else sv=(typeof v==='string'&&/^[a-z0-9]+(_[a-z0-9]+)+$/.test(v))?v.replace(/_/g,' '):fnum(v); o.push([l,sv+(u&&typeof v!=='boolean'?' '+u:'')]); }); return o; };
  const sp=(pfx,id,titre,o)=>{ (SPECS[pfx]=SPECS[pfx]||[]).push(Object.assign({pfx,id,titre,warn:false},o)); };
  const ch=(k,nom,unit,min,max)=>({k,nom,unit,min,max});
+ /* variation de température : valeurs par défaut à confirmer, demandées AVANT la validation de la méthode */
+ ['pc','pf','dl','dg','stl','bp','rs'].forEach(pf=>sp(pf,'th_valeurs','Variation de température : valeurs par défaut à confirmer',{warn:true,quand:dp=>!!(window.thm&&window.thm.on(dp)),cas:dp=>[dp.thAlpha,dp.thE,dp.thBloc,dp.thRig,dp.thPsi],open:ctx=>window.thm.confirmWindow(ctx),
+  ptTxt:{accepte:'Valeurs thermiques par défaut (dilatation, module, taux de blocage, rigidité en flexion, coefficient de combinaison) confirmées par l\'ingénieur : à conserver avec la note.',modifie:'Valeurs thermiques saisies ou modifiées par l\'ingénieur : non vérifiées par l\'application.'},
+  supposes:'Des valeurs courantes de dilatation, de module, de taux de blocage, de rigidité en flexion et de coefficient de combinaison, données par défaut à confirmer.',ignore:'Les caractéristiques réelles de votre matériau et de vos appuis si elles diffèrent.',ne:'Matériaux particuliers ou appuis dont la raideur est connue précisément.',
+  valeurs:dp=>[['Les valeurs sont celles de la fenêtre de confirmation','par défaut sauf saisie']]}));
  /* variation de température : même méthode pour tous les modules concernés (moteur commun window.thm) */
  ['pc','pf','dl','dg','stl','bp','rs'].forEach(pf=>sp(pf,'th_methode','Variation de température : déformation libre et effets si elle est empêchée',{warn:true,quand:dp=>!!(window.thm&&window.thm.on(dp)),cas:dp=>[dp.thDT,dp.thGrad,dp.thAlpha,dp.thE,dp.thBloc,dp.thRig,dp.thPsi],
-  supposes:'Une variation de température uniforme sur tout l\'élément et un gradient linéaire dans l\'épaisseur ; un allongement proportionnel à la variation ; si la déformation est empêchée, un effort égal au module, à la section, à la dilatation et à la variation, multiplié par le taux de blocage ; une poutre continue sur appuis simples aux extrémités pour le moment dû au gradient.',
+  supposes:'Combinaison retenue : ELU = coefficient des charges permanentes × G + 1,50 × Q + 1,50 × ψ × température ; ELS = G + Q + ψ × température ; la température est une action d\'accompagnement, la note dira si elle gouverne. Une variation de température uniforme sur tout l\'élément et un gradient linéaire dans l\'épaisseur ; un allongement proportionnel à la variation ; si la déformation est empêchée, un effort égal au module, à la section, à la dilatation et à la variation, multiplié par le taux de blocage ; une poutre continue sur appuis simples aux extrémités pour le moment dû au gradient.',
   ignore:'Les variations de température non linéaires dans l\'épaisseur, la raideur réelle des appuis (remplacée par le taux de blocage), le fluage et la fissuration (remplacés par un facteur de rigidité), le poids propre qui retient la déformation.',
   ne:'Éléments très massifs, gradients non linéaires, appuis dont la raideur est connue précisément, ouvrages où la température varie beaucoup d\'un point à l\'autre.',
   valeurs:dp=>vals([['thDT','Variation uniforme ΔT','°C'],['thGrad','Gradient dans l\'épaisseur','°C'],['thAlpha','Coefficient de dilatation α','×10⁻⁶ /K'],['thE','Module d\'élasticité E','MPa'],['thBloc','Taux de blocage'],['thRig','Facteur de rigidité en flexion'],['thPsi','Coefficient ψ']])(dp).concat([['Autres paramètres','par défaut, voir les paramètres avancés de la température']]),
@@ -48551,7 +48605,7 @@ document.head.appendChild(st);
  const pass={on:false}; window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&voiceOn) stopVoice(); },true); window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&voiceOn) stopVoice(); },true);
  document.addEventListener('click',e=>{
   const t=e.target; if(!t||!t.closest) return;
-  const op=t.closest('[data-dv-open]'); if(op){ e.preventDefault(); e.stopPropagation(); const c=ctxNow(); if(!c) return; const s=ALLOF(c.pfx).find(x=>x.id===op.dataset.dvOpen); if(s) dimValidateWindow(s,{pfx:c.pfx,id:c.id,dp:c.dp}); return; }
+  const op=t.closest('[data-dv-open]'); if(op){ e.preventDefault(); e.stopPropagation(); const c=ctxNow(); if(!c) return; const s=ALLOF(c.pfx).find(x=>x.id===op.dataset.dvOpen); if(s){ if(s.open) s.open({pfx:c.pfx,id:c.id,dp:c.dp}); else dimValidateWindow(s,{pfx:c.pfx,id:c.id,dp:c.dp}); } return; }
   const rt=t.closest('[data-dv-ret]'); if(rt){ e.preventDefault(); const c=ctxNow(); if(!c) return; if(c.dp.validSeuils) delete c.dp.validSeuils[rt.dataset.dvRet]; try{ persist(); }catch(_){ } inject(c,true); return; }
   const sk=t.closest('[data-dv-sk]'); if(sk){ e.preventDefault(); const c=ctxNow(); if(!c) return; const s=skillById(c.dp,sk.dataset.i); if(!s) return;
    if(sk.dataset.dvSk==='del'){ if(!sk.dataset.sure){ sk.dataset.sure='1'; sk.textContent='Confirmer la suppression'; return; } c.dp.skills=skillsOf(c.dp).filter(x=>x.id!==s.id); Object.keys(store(c.dp)).forEach(k=>{ if(store(c.dp)[k].skillId===s.id) delete store(c.dp)[k]; }); try{ persist(); }catch(_){ } inject(c,true); clip('Méthode supprimée.'); return; }
@@ -48561,7 +48615,7 @@ document.head.appendChild(st);
   const P=pending(dp,pf); if(!P.length) return;
   /* la validation attend les contrôles de domaine du module (dimGuardClick / dimGateRun) : refus d'abord, fenêtre ensuite */
   const gate={pf,id,run(){ const P2=pending(dp,pf); if(!P2.length) return false;
-   const step=i=>{ if(i>=P2.length){ pass.on=true; try{ const bb=document.querySelector('[data-'+pf+'-act="validerForm"]')||b; bb.click(); }finally{ pass.on=false; } return; } dimValidateWindow(P2[i],{pfx:pf,id,dp,onAccept:()=>step(i+1)}); };
+   const step=i=>{ if(i>=P2.length){ pass.on=true; try{ const bb=document.querySelector('[data-'+pf+'-act="validerForm"]')||b; bb.click(); }finally{ pass.on=false; } return; } (P2[i].open?P2[i].open:(c0=>dimValidateWindow(P2[i],c0)))({pfx:pf,id,dp,onAccept:()=>step(i+1)}); };
    step(0); return true; }};
   window.__dvGate=gate; setTimeout(()=>{ if(window.__dvGate===gate) window.__dvGate=null; },0);
  },true);
@@ -48584,7 +48638,7 @@ document.head.appendChild(st);
    return {hyp,pts,annex,user,section:hyp.length?'<section class="ncSec"><h4>Validations et méthodes</h4>'+hyp.map(x=>'<p>'+esc(x)+'</p>').join('')+'</section>':''};
   }catch(e){ console.warn('dimValidNote',e); return null; }
  };
- window.dimValidateWindow=dimValidateWindow; window.dimValidSpecs=SPECS; window.dimValidPending=pending;
+ window.dimValidCommit=commit; window.dimValidateWindow=dimValidateWindow; window.dimValidSpecs=SPECS; window.dimValidPending=pending;
 
  /* ---------- Styles ---------- */
  const css=document.createElement('style'); css.id='dimValidCss';
