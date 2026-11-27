@@ -24624,7 +24624,7 @@ body.sb-off.pj-back-on:not(.plan-fs-on) #pjFiltBtn,body.sb-off.pj-back-on:not(.p
 
 /* ===== Mode test : étiquette TEST, bouton Évaluation, demandes d'accès et comptes d'essai (administrateur général) ===== */
 (function(){
-  const VER='v535';
+  const VER='v536';
   window.PILOTAGE_VER=VER;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const P=()=>window.PILOTAGE_PROJET||{}, glob=()=>!!P().global, ACC=b=>window.PILOTAGE_ACC?window.PILOTAGE_ACC(b):Promise.reject(new Error('Hors connexion'));
@@ -26392,6 +26392,7 @@ body.be-eleve-mode .tab[data-page="dashboard"],body.be-eleve-mode .tab[data-page
   /* ================= MISSIONS ================= */
   window.beMissionsRender=function(){
     const w=document.getElementById('beMissionsWrap'); if(!w) return;
+    beFormationSync();
     const L=L_missions();
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>📋 Missions</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beMAdd">＋ Mission</button>':'')
@@ -46134,6 +46135,16 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
     beSave(); beMissionsRender();
     if(mm) beMissionEdit(mm); else closeModal();
   };
+  /* rattrapage : toute mission de type formation (même créée avant) a sa session dans l'onglet Formation */
+  function beFormationSync(){
+    try{
+      let n=0; const L=L_sessions();
+      L_missions().forEach(mm=>{ if(!/formation/i.test(beTypeMissionNom(mm.typeMissionId)||'')) return; if(L.some(x=>x.missionId===mm.id)) return;
+        L.push({id:uid('SES'),nom:(mm.client||'Formation'),description:beTypeMissionNom(mm.typeMissionId)||'',dateDebut:mm.dateDebut||'',dateFin:mm.dateFin||'',eleveIds:[],missionId:mm.id}); n++; });
+      if(n) beSave();
+      return n;
+    }catch(e){ console.warn('beFormationSync',e); return 0; }
+  }
   /* une mission de type formation crée automatiquement sa session dans l'onglet Formation (une seule par mission) */
   function beMissionFormationSession(mm){
     try{
@@ -46707,12 +46718,14 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
   /* ---- Admin : liste des sessions ---- */
   function beFormationRenderAdmin(){
     const w=document.getElementById('beFormationWrap'); if(!w) return;
+    beFormationSync();
     const L=L_sessions();
     w.innerHTML = '<div class="be-mt"><div class="be-mt-top"><h2>🎓 Formation</h2>'
       +(beAdmin()?'<button type="button" class="primary be-addbtn" id="beSesAdd">＋ Session</button>':'')
       +'</div>'
       +(L.length?'<div class="be-list">'+L.map(s=>{ const c=beSesCounts(s); return '<div class="be-row" data-id="'+esc(s.id)+'"><span class="be-row-m"><b>'+esc(s.nom)+'</b><small>'+(s.dateDebut?esc(fmtDate2(s.dateDebut)):'')+(s.dateFin?' → '+esc(fmtDate2(s.dateFin)):'')+beSessionEtatHtml(s)+'</small><div class="be-row-badges">'+beSessionRowBadgesAdmin(s)+'</div></span>'
         +(beAdmin()?'<span class="be-ses-tools">'
+          +'<button type="button" class="be-ses-ic" data-sed="'+esc(s.id)+'" title="Modifier la session" aria-label="Modifier la session">✎</button>'
           +'<button type="button" class="be-ses-ic" data-cal="'+esc(s.id)+'" title="Dates de la session">📅</button>'
           +'<button type="button" class="be-ses-ic" data-ele="'+esc(s.id)+'" title="Élèves">🧑‍🎓'+beIcBadge(c.ele)+'</button>'
           +'<button type="button" class="be-ses-ic" data-sup="'+esc(s.id)+'" title="Supports de cours">📚'+beIcBadge(c.sup)+'</button>'
@@ -46722,6 +46735,7 @@ const PT_FEU_FI=[1,0.985,0.969,0.954,0.939,0.924,0.908,0.893,0.878,0.863,0.847,0
       +'</div>';
     const b=document.getElementById('beSesAdd'); if(b) b.onclick=()=>beSessionEdit(null);
     w.querySelectorAll('.be-row[data-id]').forEach(r=>r.onclick=()=>beSessionOpen(r.dataset.id));
+    w.querySelectorAll('[data-sed]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const ss=L_sessions().find(x=>x.id===b.dataset.sed); if(ss) beSessionEdit(ss); });
     w.querySelectorAll('[data-cal]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); beSessionCalOpen(b.dataset.cal); });
     w.querySelectorAll('[data-ele]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); beSessionElevesManage(b.dataset.ele); });
     w.querySelectorAll('[data-sup]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); beSessionSupportsManage(b.dataset.sup); });
