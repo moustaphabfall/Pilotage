@@ -52717,6 +52717,7 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   return entete('Descente de charge')
    +'<p class="dcNote">'+T('Deux manières de faire une descente de charge. Choisissez la vôtre.')+'</p>'
    +sec('accueil.voies','Choisir une voie',row([btn('plug','Depuis un plugin','voie_plugin',{big:1,sub:'Revit d’abord, puis Robot et AutoCAD : le plugin envoie un fichier, l’application crée les ouvrages.'}),btn('spark','Avec l’agent IA','voie_agent',{big:1,sub:'Déposez vos plans et photos : l’agent propose le découpage et la maquette 3D.'})]))
+   +(window.dcDemoHtml?window.dcDemoHtml():'')
    +sec('accueil.poteau','Un seul poteau ?','<p class="dcNote">'+T('Pour un poteau seul, ouvrez la fiche du poteau : le bouton « Descente de charges » y est toujours.')+'</p>',{gen:true});
  }
  function creerBloc(){
@@ -53033,7 +53034,115 @@ td .dimIBl,th .dimIBl{overflow-wrap:normal;max-width:none}
   var mb=document.getElementById('modalBody'); mb.classList.add('fiche-wide'); rendre();
  };
  window.dcV2=window.dcV2||{};
- window.dcV2.state=DS;
+ window.dcV2.state=DS; window.dcV2.rendre=rendre; window.dcV2.ui={sec:sec,btn:btn,row:row,esc:esc};
+})();
+</script>
+<script id="dcDemoUiJs">
+(function(){
+ 'use strict';
+ /* Jeu de démonstration : 7 chantiers fictifs ajoutés AU PROJET OUVERT, par fusion. Tout ce qui est ajouté porte la marque demo:true et un identifiant commençant par DEMO- ;
+    rien d'existant n'est modifié ; recharger ne crée aucun doublon ; « Retirer » ne supprime que ce qui porte la marque. Sauvegarde par le chemin normal (persist). */
+ var URL_JEU='demo/jeu-demonstration.json', occupe=false, msg='', msgKo=false;
+ function appState(){ try{ return (typeof state!=='undefined')?state:window.state; }catch(_){ return window.state; } }
+ function superAdmin(){ var p=window.PILOTAGE_PROJET; return !!(p&&p.global===true); }
+ function compte(){ var S=appState()||{}, t=(S.tasks||[]).filter(function(x){ return x.demo; }).length, p=(S.projetsMission||[]).filter(function(x){ return x.demo; }).length, pl=(S.plans||[]).filter(function(x){ return x.demo; }).length; return {taches:t,chantiers:p,plans:pl}; }
+ function normNom(s){ return String(s||'').toLowerCase().replace(/œ/g,'oe').normalize('NFD').replace(/[̀-ͯ]/g,''); }
+ function metierPour(S,corps){
+  var R={go:/gros oeuvre/,archi:/architect/,cc:/clos/,cvc:/cvc|chauffage|ventilation/,plomberie:/plomb/,electricite:/electric/,courants_faibles:/courants faibles/,securite_incendie:/incendie/}, NOM={go:'Gros œuvre / Structure',archi:'Architecture',cc:'Clos et couvert',cvc:'CVC',plomberie:'Plomberie',electricite:'Électricité',courants_faibles:'Courants faibles',securite_incendie:'Sécurité incendie'};
+  S.metiers=S.metiers||[]; var m=S.metiers.filter(function(x){ return R[corps].test(normNom(x.nom)); })[0];
+  if(!m){ m={id:'DEMO-MET-'+corps,nom:NOM[corps],couleur:'#8a8a8a',demo:true}; try{ if(typeof metierPushSorted==='function') metierPushSorted(m); else S.metiers.push(m); }catch(_){ S.metiers.push(m); } }
+  return m;
+ }
+ function aNorm(pl,X,Y){ var cm=pl.cm_par_px; return {x:Math.round((pl.ox_px+X/cm)/pl.w*10000)/10000,y:Math.round((1-(pl.oy_px+Y/cm)/pl.h)*10000)/10000}; }
+ var CEMAP={archi:'Architecture',go:'Structure',cc:'Clos et couvert',tech:'CET'};
+ async function charger(){
+  var S=appState(), X=window.DcExchange; if(!S||!X||typeof taskBase!=='function') throw new Error('L’application n’est pas prête.');
+  var r=await fetch(URL_JEU,{cache:'no-cache'}); if(!r.ok) throw new Error('Le fichier du jeu de démonstration est introuvable.');
+  var jeu=await r.json(); if(!jeu||jeu.format!=='bina-demo'||!Array.isArray(jeu.chantiers)) throw new Error('Fichier de démonstration illisible.');
+  var lus=jeu.chantiers.map(function(c){ var v=X.read(c.echange); if(!v.ok) throw new Error('Chantier '+c.code+' : '+v.erreurs[0]); return v; });
+  ['tasks','plans','zonesChantier','batiments','niveaux','projetsMission','metiers'].forEach(function(k){ S[k]=Array.isArray(S[k])?S[k]:[]; }); S.nivBat=S.nivBat||{};
+  var L=(typeof window.L_typesStructure==='function')?window.L_typesStructure():[], TSN={poteau:'Poteaux & structures verticales',poutre:'Poutres & éléments horizontaux',dalle:'Dalles, planchers & poinçonnement',semelle:'Semelles & fondations superficielles',pieu:'Pieux & fondations profondes',voile:'Voiles & murs en béton armé'};
+  var ids={}; ['tasks','plans','zonesChantier','batiments','projetsMission'].forEach(function(k){ ids[k]={}; S[k].forEach(function(x){ ids[k][x.id]=1; }); });
+  var n={taches:0,pieces:0,plans:0,chantiers:0};
+  jeu.chantiers.forEach(function(c,ci){
+   var doc=lus[ci].doc, projNom=doc.projet.nom;
+   if(!ids.projetsMission['DEMO-PJM-'+c.id]){ S.projetsMission.push({id:'DEMO-PJM-'+c.id,nom:projNom,demo:true}); n.chantiers++; }
+   var bid='DEMO-B-'+c.id; if(!ids.batiments[bid]){ S.batiments.push({id:bid,nom:c.nom+' (Démo)',demo:true}); ids.batiments[bid]=1; }
+   var plansDe={}; c.plans.forEach(function(p){ plansDe[p.id]=p; var id='DEMO-PL-'+p.id; if(ids.plans[id]) return;
+    S.plans.push({id:id,nom:p.nom,niveau:c.code+' Démo · '+p.niveau,ce:CEMAP[p.famille],typeDoc:(/Toiture/.test(p.niveau)?'Plan de toiture':'Plan de niveau'),batiment:'',lot:'',w:p.w,h:p.h,src:'demo/'+p.fichier,texts:[],date:jeu.reference_date,version:1,echelle:{mpp:p.mpp,methode:'demo'},demo:true}); ids.plans[id]=1; n.plans++; });
+   var pj=function(pid){ var p=plansDe[pid]; return p?{p:p,appId:'DEMO-PL-'+pid}:null; };
+   doc.batiments[0].niveaux.forEach(function(nv){
+    var lib=c.code+' Démo · '+nv.nom; if(S.niveaux.indexOf(lib)<0) S.niveaux.push(lib); S.nivBat[lib]=bid;
+    var ex=c.extras['@niveau:'+nv.nom]||{}, rootId='DEMO-ZR-'+c.code+'-'+nv.nom;
+    if(!ids.zonesChantier[rootId]){ S.zonesChantier.push({id:rootId,nom:'Zone '+lib,niveau:lib,parentId:null,demo:true}); ids.zonesChantier[rootId]=1; }
+    var plA=pj(ex.archi);
+    (nv.pieces||[]).forEach(function(pc){
+     var zid='DEMO-Z-'+pc.id_externe; if(ids.zonesChantier[zid]) return;
+     var z={id:zid,nom:pc.nom,niveau:lib,parentId:rootId,demo:true,plp:{cle:pc.id_externe,polygone_cm:pc.polygone_cm,hauteur_cm:pc.hauteur_cm||null,source:pc.source||null,statut:'importe',genre:pc.genre||'piece',batiment:c.nom,cote_z_cm:Math.round(nv.cote_m*100)}};
+     ['classe','materiau','classe_resistance','porteur','exterieur','resistance_feu'].forEach(function(k){ if(pc[k]!==undefined) z[k]=pc[k]; });
+     if(plA&&pc.polygone_cm) z.poly={planId:plA.appId,pts:pc.polygone_cm.map(function(q){ var u=aNorm(plA.p,q[0],q[1]); return [u.x,u.y]; })};
+     if(pc.hauteur_cm>0) z.hauteur=pc.hauteur_cm/100; S.zonesChantier.push(z); ids.zonesChantier[zid]=1; n.pieces++;
+    });
+    var zonesPiece={}; S.zonesChantier.forEach(function(z){ if(z.demo&&z.niveau===lib&&z.parentId) zonesPiece[z.nom]=z.id; });
+    function tache(nom,corps,extra){
+     var tid='DEMO-T-'+nom; if(ids.tasks[tid]) return null; var av=c.avancement[nom]||{pct:0,etat:'afaire'}, met=metierPour(S,corps);
+     var t=taskBase(tid,nom,lib,Object.assign({etat:av.etat,pct:av.pct,quand:av.quand||'',dateFin:av.dateFin||'',dureeEstimee:Math.max(1,Math.round((new Date(av.dateFin)-new Date(av.quand))/86400000)||1),metierId:met.id,batId:bid,mbf:{projet:projNom},demo:true,demoChantier:c.code},extra||{}));
+     S.tasks.unshift(t); ids.tasks[tid]=1; n.taches++; return t;
+    }
+    (nv.ouvrages||[]).forEach(function(o){
+     var e=c.extras[o.nom]||{}, ts=L.filter(function(x){ return x.nom===TSN[o.type]; })[0], pl=pj(e.planId), cal=e.calc;
+     var t=tache(o.nom,'go',{typeStructureId:ts?ts.id:null,descenteV2:{version:'1.0',type:o.type,id_externe:o.id_externe||'',geometrie:o.geometrie,charges:o.charges||null,materiau:o.materiau||null,statut:'importe',origine:'Jeu de démonstration',niveau_cote_m:nv.cote_m}});
+     if(!t) return;
+     if(cal&&cal.data){ var dd=JSON.parse(JSON.stringify(cal.data)); dd.nom=o.nom; t[cal.module]=dd; }
+     if(pl&&e.pos_cm){ var u=aNorm(pl.p,e.pos_cm.x,e.pos_cm.y); t.pos={planId:pl.appId,x:u.x,y:u.y}; }
+     var b=e.bim||{}; t.pastille={version:'1.1',cle:o.id_externe,type:o.type,lot:'structure',forme:e.forme,dimensions_cm:e.dimensions_cm,position_cm:{x:Math.round(e.pos_cm.x),y:Math.round(e.pos_cm.y),z:e.cote_z_cm},rotation_deg:e.rotation_deg||0,piece:'',parametres:null,confiance:'haute',source:{plan:pl?pl.p.nom:'',page:1},niveau_cote_cm:e.cote_z_cm,statut:'importe',porteur:true,exterieur:false,materiau:b.materiau,classe_resistance:b.classe_resistance};
+    });
+    (nv.pastilles||[]).forEach(function(p){
+     var e=c.extras[p.nom]||{}, pl=pj(e.planId), corps=e.corps==='go'?'go':(e.corps==='archi'?'archi':(e.corps==='cc'?'cc':p.lot));
+     var t=tache(p.nom,corps,{}); if(!t) return;
+     t.pastille={version:'1.1',cle:p.id_externe,type:p.type,lot:p.lot,forme:p.forme,dimensions_cm:p.dimensions_cm,position_cm:p.position_cm,rotation_deg:p.rotation_deg||0,piece:p.piece||'',parametres:p.parametres||null,confiance:'haute',source:p.source||null,niveau_cote_cm:Math.round(nv.cote_m*100),statut:'importe'};
+     ['materiau','classe_resistance','porteur','exterieur','resistance_feu'].forEach(function(k){ if(p[k]!==undefined) t.pastille[k]=p[k]; });
+     if(p.piece&&zonesPiece[p.piece]){ t.zoneChantierId=zonesPiece[p.piece]; t.zoneChantierIds=[zonesPiece[p.piece]]; }
+     if(pl){ var u=aNorm(pl.p,p.position_cm.x,p.position_cm.y); if(u.x>=0&&u.x<=1&&u.y>=0&&u.y<=1) t.pos={planId:pl.appId,x:u.x,y:u.y}; }
+    });
+   });
+  });
+  try{ if(typeof nbApplyOrder==='function') nbApplyOrder(); }catch(_){ }
+  try{ persist(); }catch(_){ } try{ if(typeof renderAll==='function') renderAll(); }catch(_){ }
+  return n;
+ }
+ function retirer(){
+  var S=appState(); if(!S) return null; var av=compte(), nivDemo={}, zd={};
+  ['tasks','plans','zonesChantier'].forEach(function(k){ (S[k]||[]).forEach(function(x){ if(x.demo&&x.niveau) nivDemo[x.niveau]=1; if(k==='zonesChantier'&&x.demo) zd[x.id]=1; }); });
+  /* lignes que l'application crée elle-même pour une pièce de démonstration (sol, plafond, murs) : retirées avec la pièce */
+  S.tasks=(S.tasks||[]).filter(function(t){ return !(t.demo||(zd[t.zoneChantierId]&&/^(Sol|Plafond|Murs?)\b/.test(t.quoi||''))); });
+  if(Array.isArray(S.zoneFamilles)) S.zoneFamilles=S.zoneFamilles.filter(function(f){ return !zd[f.zoneChantierId]; });
+  var md={}; (S.metiers||[]).forEach(function(m){ if(m.demo) md[m.id]=1; });
+  /* systèmes et familles que l'application génère elle-même pour un métier de démonstration */
+  var sd={}; (S.systemes||[]).forEach(function(x){ if(md[x.metierId]) sd[x.id]=1; });
+  if(Array.isArray(S.systemes)) S.systemes=S.systemes.filter(function(x){ return !sd[x.id]; });
+  if(Array.isArray(S.familleTypes)) S.familleTypes=S.familleTypes.filter(function(f){ return !sd[f.systemeId]&&String(f.id).indexOf('DEMO-MET-')<0; });
+  ['plans','zonesChantier','batiments','projetsMission','metiers'].forEach(function(k){ if(Array.isArray(S[k])) S[k]=S[k].filter(function(x){ return !x.demo; }); });
+  var utilises={}; (S.tasks||[]).concat(S.plans||[],S.zonesChantier||[]).forEach(function(x){ if(x.niveau) utilises[x.niveau]=1; });
+  S.niveaux=(S.niveaux||[]).filter(function(x){ return !(nivDemo[x]&&!utilises[x]); }); Object.keys(S.nivBat||{}).forEach(function(k){ if(nivDemo[k]&&!utilises[k]) delete S.nivBat[k]; });
+  if(S.perimetre&&Array.isArray(S.perimetre.niveaux)) S.perimetre.niveaux=S.perimetre.niveaux.filter(function(x){ return !(nivDemo[x]&&!utilises[x]); });
+  try{ persist(); }catch(_){ } try{ if(typeof renderAll==='function') renderAll(); }catch(_){ }
+  return av;
+ }
+ window.dcDemo={charger:charger,retirer:retirer,compte:compte,superAdmin:superAdmin};
+ function T(s){ try{ return window.dimT?window.dimT(s):s; }catch(_){ return s; } }
+ window.dcDemoHtml=function(){
+  var U=window.dcV2&&window.dcV2.ui; if(!U||!superAdmin()) return '';
+  var c=compte(), etat=c.chantiers?'<p class="dcNote dcInfo">'+c.chantiers+' '+T('chantier(s) de démonstration présent(s) dans ce projet')+' · '+c.taches+' '+T('ouvrage(s)')+' · '+c.plans+' '+T('plan(s)')+'.</p>':'<p class="dcNote">'+T('Aucun chantier de démonstration dans ce projet.')+'</p>';
+  return U.sec('accueil.demo','Jeu de démonstration (super administrateur)','<p class="dcNote">'+T('Ajoute 7 chantiers fictifs à ce projet, marqués « Démo », sans toucher à vos données. Recharger ne crée pas de doublon. « Retirer » enlève seulement ce qui est marqué « Démo ». Les plans sont lus à la demande (aucun poids ajouté aux données du projet).')+'</p>'+etat+(msg?'<p class="'+(msgKo?'dcErr':'dcNote dcInfo')+'" role="status">'+U.esc(msg)+'</p>':'')+U.row([U.btn('download','Charger le jeu de démonstration','demo_charger',{disabled:occupe}),U.btn('trash','Retirer le jeu de démonstration','demo_retirer',{disabled:occupe||!c.chantiers})]));
+ };
+ function rend(){ try{ window.dcV2.rendre(); }catch(_){ } }
+ document.addEventListener('click',function(e){
+  var b=e.target.closest&&e.target.closest('[data-dc="demo_charger"],[data-dc="demo_retirer"]'); if(!b||b.disabled) return; e.stopPropagation(); e.preventDefault();
+  var act=b.getAttribute('data-dc'); if(!superAdmin()) return;
+  if(act==='demo_charger') miniConfirm('Ajouter les 7 chantiers de démonstration à ce projet ? Vos données ne sont pas modifiées ; tout est marqué « Démo » et retirable.',async function(){ occupe=true; msg=T('Chargement…'); msgKo=false; rend(); try{ var n=await charger(); msg=n.chantiers||n.taches?(n.chantiers+' '+T('chantier(s),')+' '+n.taches+' '+T('ouvrage(s),')+' '+n.pieces+' '+T('pièce(s),')+' '+n.plans+' '+T('plan(s) ajoutés.')):T('Le jeu de démonstration était déjà présent : rien n’a été ajouté.'); }catch(er){ msg=er.message||String(er); msgKo=true; } occupe=false; rend(); },'Charger','Annuler');
+  else miniConfirm('Retirer tout ce qui est marqué « Démo » de ce projet ? Vos données ne sont pas touchées.',function(){ var a=retirer(); msg=a?(a.chantiers+' '+T('chantier(s) et')+' '+a.taches+' '+T('ouvrage(s) retirés.')):''; msgKo=false; rend(); },'Retirer','Annuler');
+ },true);
 })();
 </script>
 </body></html>
